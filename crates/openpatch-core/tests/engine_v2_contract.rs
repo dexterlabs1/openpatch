@@ -474,3 +474,54 @@ fn midi_events_stereo_first_callback_and_adoption_neither_allocate_nor_free() {
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     assert!(audio.iter().flatten().all(|v| v.is_finite()));
 }
+
+#[test]
+fn routing_first_callbacks_and_state_adoption_neither_allocate_nor_free() {
+    let p = patch(
+        vec![
+            node("source", "poly_constant", &[("channels", 16.0)]),
+            node("multiple", "mult", &[]),
+            node("transpose", "octave", &[("octaves", -2.0)]),
+            node("mix", "mix6", &[("average", 1.0), ("level", 0.5)]),
+            node(
+                "stereo",
+                "mid_side",
+                &[("encode_width", 0.5), ("decode_width", 1.5)],
+            ),
+            node("audio", "audio_stereo", &[]),
+        ],
+        vec![
+            cable("source", "out", "multiple", "signal"),
+            cable("multiple", "out1", "transpose", "pitch"),
+            cable("transpose", "out", "mix", "in1"),
+            cable("multiple", "out2", "mix", "in6"),
+            cable("mix", "out", "stereo", "left"),
+            cable("multiple", "out8", "stereo", "right"),
+            cable("stereo", "left", "audio", "left"),
+            cable("stereo", "right", "audio", "right"),
+        ],
+        "audio",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let mut original = [[0.0; 2]; 129];
+    let mut replacement = [[0.0; 2]; 129];
+    let mut poly = [PortFrame::default(); 129];
+    let mut mono = [0.0; 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            new.adopt_state_from(&old);
+            old.process_audio_block(&mut original[..length]);
+            new.process_audio_block(&mut replacement[..length]);
+            assert_eq!(&original[..length], &replacement[..length]);
+            old.process_poly_block(&mut poly[..length]);
+            new.process_poly_block(&mut poly[..length]);
+            old.process_block(&mut mono[..length]);
+            new.process_block(&mut mono[..length]);
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

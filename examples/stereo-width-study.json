@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "left",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128,
+        "waveform": 0
+      }
+    },
+    {
+      "id": "right",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 131.1398,
+        "waveform": 0
+      }
+    },
+    {
+      "id": "width",
+      "kind": "mid_side",
+      "params": {
+        "encode_width": 1,
+        "decode_width": 1
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.35
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "left",
+      "to": "width",
+      "input": "left"
+    },
+    {
+      "from": "right",
+      "to": "width",
+      "input": "right"
+    },
+    {
+      "from": "width",
+      "output": "left",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "width",
+      "output": "right",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

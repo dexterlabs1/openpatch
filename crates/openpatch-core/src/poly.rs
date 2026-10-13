@@ -2,6 +2,7 @@
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
+use crate::routing::{self, Routing};
 use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -33,7 +34,7 @@ impl PortFrame {
             0.0
         }
     }
-    fn voice(&self, voice: usize, normal: f32) -> f32 {
+    pub(crate) fn voice(&self, voice: usize, normal: f32) -> f32 {
         match self.channels {
             0 => normal,
             1 => self.values[0],
@@ -43,10 +44,11 @@ impl PortFrame {
 }
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "poly_constant" | "poly_split" | "poly_merge" | "poly_sum" | "midi_cv" | "audio_stereo"
-    )
+    routing::input_names(kind).is_some()
+        || matches!(
+            kind,
+            "poly_constant" | "poly_split" | "poly_merge" | "poly_sum" | "midi_cv" | "audio_stereo"
+        )
 }
 fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     let number = name.strip_prefix(prefix)?.parse::<usize>().ok()?;
@@ -57,6 +59,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if let Some(ports) = routing::input_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     match kind {
         "poly_constant" | "midi_cv" => None,
         "audio_stereo" => match name {
@@ -70,6 +75,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if let Some(ports) = routing::output_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if kind == "midi_cv" {
         MIDI_OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "poly_split" {
@@ -128,7 +136,9 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if kind == "midi_cv" {
+    let outputs = if let Some(names) = routing::output_names(&kind) {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if kind == "midi_cv" {
         MIDI_OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -187,6 +197,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             json!("first clock after reset/start, then every clock_div clocks");
     }
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
+    routing::annotate(module);
 }
 
 #[derive(Debug)]
@@ -203,9 +214,13 @@ enum Model {
     Sum,
     Midi(Box<MidiCv>),
     Stereo(f32),
+    Routing(Routing),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if let Some(model) = Routing::build(node) {
+            return model.map(Self::Routing);
+        }
         if node.kind == "midi_cv" {
             return Ok(Self::Midi(Box::new(MidiCv::build(node, rate)?)));
         }
@@ -342,10 +357,14 @@ impl PolyEngine {
                 inputs: [None; MAX_PORTS],
                 output_start: output_count,
             });
-            output_count += match node.kind.as_str() {
-                "poly_split" => 16,
-                "midi_cv" => MIDI_OUTPUTS.len(),
-                _ => 1,
+            output_count += if let Some(ports) = routing::output_names(&node.kind) {
+                ports.len()
+            } else {
+                match node.kind.as_str() {
+                    "poly_split" => 16,
+                    "midi_cv" => MIDI_OUTPUTS.len(),
+                    _ => 1,
+                }
             };
         }
         let mut edges = Vec::with_capacity(patch.cables.len());
@@ -489,6 +508,19 @@ impl PolyEngine {
                         );
                     }
                     self.outputs[node.output_start] = frame;
+                }
+                Model::Routing(routing) => {
+                    let mut inputs = [PortFrame::default(); MAX_PORTS];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    let count = routing::output_names(&node.kind).unwrap().len();
+                    routing.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + count],
+                    );
                 }
                 Model::Midi(midi) => midi.process(
                     &mut self.outputs[node.output_start..node.output_start + MIDI_OUTPUTS.len()],

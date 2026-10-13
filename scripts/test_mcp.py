@@ -355,6 +355,26 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.assertFalse((self.workspace / "invalid.wav").exists())
         self.assertEqual(self.patch_snapshot(), before)
 
+    def test_stereo_width_patch_edits_render_and_undo_through_mcp(self) -> None:
+        patch = json.loads((REPOSITORY / "examples" / "stereo-width-study.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        self.require_tool_success("render_audio", {"filename": "wide.wav", "seconds": 0.05})
+        with wave.open(str(self.workspace / "wide.wav")) as wav:
+            self.assertEqual(wav.getnchannels(), 2)
+            samples = struct.unpack("<4800h", wav.readframes(2400))
+        self.assertNotEqual(samples[::2], samples[1::2])
+        self.require_tool_success("set_parameter", {"id": "width", "parameter": "decode_width", "value": 0})
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "width", "port": "left", "seconds": 0.05}))
+        self.assertEqual(measured["max_channels"], 1)
+        self.assertGreater(measured["channels"][0]["peak"], 1)
+        self.require_tool_success("render_audio", {"filename": "mono.wav", "seconds": 0.05})
+        with wave.open(str(self.workspace / "mono.wav")) as wav:
+            samples = struct.unpack("<4800h", wav.readframes(2400))
+        self.assertEqual(samples[::2], samples[1::2])
+        self.require_tool_success("undo")
+        self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.05})
+        self.assertEqual((self.workspace / "wide.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
+
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")
         self.assertIn("result", listed, f"tools/list failed: {listed}")

@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **22 built-in kinds**: seven legacy utilities, six reference-voice
-kinds, five functional utilities and four version-2 polyphonic routing/source
-utilities. This count is not a count of completed VCV equivalents.
+There are **28 built-in kinds**: seven legacy utilities, six reference-voice
+kinds, five functional utilities, four version-2 polyphonic routing/source
+utilities, MIDI → CV, stereo audio, and four stereo/pitch/routing processors. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback and a master-signal visualizer exist; neither supplies the complete Audio or Scope feature set.
 
@@ -18,8 +18,7 @@ The selected first target is a **generic VCO → VCF → VCA voice with ADSR**, 
 
 Version 1 retains mono, same-sample DAG evaluation. Version 2 implements named
 source outputs, 0–16 channels, explicit voice policies and one sample of delay
-per cable, including feedback cycles. Ten independent engine contract tests
-pass; polyphonic hardware I/O and full module parity remain separate work.
+per cable, including feedback cycles. Independent engine contract tests cover routing, state migration and MIDI; polyphonic hardware I/O and full module parity remain separate work.
 See [ENGINE_V2.md](ENGINE_V2.md) for exact routing, normalization and state rules.
 
 ## Implemented functional utility contracts
@@ -55,6 +54,15 @@ feedback timing, retirement and edge-history continuity. These establish the
 specified functional subsets. They do not mark the related VCV inventory rows
 complete or qualify multichannel audio hardware.
 
+## Stereo, mixing and pitch utilities
+
+`mid_side`, `mix6`, `octave`, and `mult` implement their documented signal roles
+with explicit OpenPatch policies for unspecified boundaries. See
+[ROUTING_MODULES.md](ROUTING_MODULES.md) for equations, voltage scaling, native
+controls, voice counts, safety behavior, and the stereo study. `midi_cv` and
+`audio_stereo` contracts are in [MIDI_AUDIO.md](MIDI_AUDIO.md). None of these
+additions imply complete stock-module or host parity.
+
 ## Core inventory
 
 Names follow the Core library; parenthesized aliases match the manual. The Audio family contains three distinct modules. [Official Core inventory](https://library.vcvrack.com/Core)
@@ -88,7 +96,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
 | ADSR EG | Envelope | Partial: reference RC ADSR implemented | Capacitor trajectories, timing convention, sustain, release and retrigger from every stage |
-| Mix | Mixing | Related legacy two-input sum | Channel count, gain, normaling and summation policies |
+| Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity, bypass and VCV differential acceptance remain open |
 | VCA Mix | Mixing | Planned | Per-channel/master CV, independent outputs, headroom |
 | 8vert | Voltage utility | Partial: single `attenuverter` with 10 V normalization and offset | Eight channels and downward input propagation |
 | Mutes | Routing | Planned | Independent mute states, normaling and persistence |
@@ -97,13 +105,13 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | SEQ 3 | Sequencing | Planned | Step/reset ordering, clock boundaries and saved sequence |
 | Sequential Switch 1 to 4 | Routing | Planned | Selected-path routing and clock/reset transitions |
 | Sequential Switch 4 to 1 | Routing | Planned | Input selection and clock/reset transitions |
-| Octave | Pitch utility | Planned | Exact pitch-voltage increments and boundaries |
+| Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison, bypass and full host workflow acceptance remain open |
 | Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Scale UI/presets, broader per-voice boundary cases and direct VCV comparison |
 | Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
 | Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
 | Sum | Polyphony | Partial: `poly_sum`, unity mono reduction and empty-input behavior tested | OUT level control, level/channel indicators and headroom behavior |
 | Viz | Measurement | Planned; engine channel frames now available | Per-channel voltage display calibration |
-| Mid/Side | Stereo | Planned; named-output foundation implemented | Encode/decode identity and gain normalization |
+| Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
 | Noise | Source | Partial: seeded Gaussian `white_noise` with RMS control | Colored outputs, spectral-density budget and VCV level calibration |
 | Random | Modulation | Planned | Trigger timing, distribution and repeatability |
 | CV Mix | Mixing | Planned | Offset/gain combination and voltage endpoints |
@@ -112,7 +120,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Compare | Voltage processing | Planned | Boundary comparisons and simultaneous events |
 | Gates | Gate processing | Planned | Timing, retrigger and overlapping-event cases |
 | Process | Voltage processing | Planned | Transfer curves, endpoints and operation order |
-| Mult | Routing | Cable fan-out exists; dedicated module planned | Output identity and channel propagation |
+| Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host/bypass behavior and boundary comparison remain open |
 | Rescale | Voltage processing | Partial: affine `attenuverter` only | Configurable range limiting and remaining transfer behavior |
 | Random Values | Source | Planned | Sampling events, statistics and repeatability |
 | Push | Gate utility | Clock-gate interface implemented; not equivalent | Press/release/latch state and persistence |

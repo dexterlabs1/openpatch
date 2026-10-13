@@ -117,7 +117,7 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**Twenty-four built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**Twenty-eight built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, four stereo/pitch/routing modules, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
@@ -129,6 +129,7 @@ New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 
 
 | Guide | What it covers |
 |---|---|
+| [Stereo and routing](docs/ROUTING_MODULES.md) | Mid/Side width, six-input mixing, octave shifts, and signal distribution |
 | [MIDI and audio](docs/MIDI_AUDIO.md) | Keyboard performance, input devices, stereo routing, and reproducible agent performances |
 | [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |

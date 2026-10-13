@@ -104,6 +104,10 @@ impl Keyboard {
                 events.extend(self.release());
                 self.base += 12;
             }
+            if ui.button("All notes off").clicked() {
+                events.extend(self.release());
+                events.push(MidiEvent::Panic);
+            }
             ui.label(if playable {
                 "A W S E D F T G Y H U J K · MIDI channel 1"
             } else {

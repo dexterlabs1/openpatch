@@ -280,6 +280,11 @@ impl OpenPatch {
         }
     }
     fn send_notes(&mut self, events: Vec<MidiEvent>) {
+        if events.contains(&MidiEvent::Panic) {
+            self.panic_notes();
+            self.status = "All notes released".into();
+            return;
+        }
         if let Some(audio) = &mut self.audio {
             if !audio.is_playing() {
                 return;
@@ -327,6 +332,7 @@ impl OpenPatch {
         }
         let mut open = true;
         egui::Window::new("Audio & MIDI")
+            .default_pos(ctx.content_rect().center() - Vec2::new(220.0, 190.0))
             .open(&mut open)
             .resizable(false)
             .default_width(430.0)
@@ -672,6 +678,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Stereo width study").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/stereo-width-study.json"
+                            ))
+                            .expect("valid bundled stereo study");
+                            self.replace_from_menu(patch, "Stereo width study");
                             ui.close();
                         }
                         if ui.button("MIDI keyboard voice").clicked() {
@@ -1276,7 +1290,29 @@ impl OpenPatch {
         if *frame == 76 {
             self.settings_open = true;
         }
-        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84) {
+        if *frame == 88 {
+            self.settings_open = false;
+            self.keyboard_open = false;
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/stereo-width-study.json"))
+                    .expect("valid bundled stereo study");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("stereo study compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(1.0);
+            self.title = "Stereo width study".into();
+        }
+        if *frame == 100 {
+            let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+                "nodes":[{"id":"mix","kind":"mix6"},{"id":"octave","kind":"octave"},
+                    {"id":"mult","kind":"mult"},{"id":"stereo","kind":"mid_side"}]}))
+            .unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("routing modules compile");
+            self.rack = Rack::default();
+            self.title = "Stereo and routing utilities".into();
+        }
+        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -1300,7 +1336,9 @@ impl OpenPatch {
                 3 => path.with_file_name("rack-polyphonic.png"),
                 4 => path.with_file_name("rack-routing.png"),
                 5 => path.with_file_name("rack-midi.png"),
-                _ => path.with_file_name("audio-midi-settings.png"),
+                6 => path.with_file_name("audio-midi-settings.png"),
+                7 => path.with_file_name("rack-stereo-width.png"),
+                _ => path.with_file_name("rack-routing-modules.png"),
             };
             image::save_buffer(
                 target,
@@ -1311,7 +1349,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 7 {
+            if *captures == 9 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }

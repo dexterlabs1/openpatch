@@ -462,6 +462,37 @@ impl Rack {
                     MUTED,
                 );
             }
+            if node.kind == "mid_side" {
+                for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
+                    painter.text(
+                        point(x, 78.0),
+                        Align2::CENTER_CENTER,
+                        label,
+                        FontId::proportional(10.0 * self.zoom),
+                        MUTED,
+                    );
+                }
+                painter.line_segment(
+                    [point(width * 0.5, 70.0), point(width * 0.5, 384.0)],
+                    Stroke::new(self.zoom, Color32::from_gray(175)),
+                );
+                painter.text(
+                    point(width * 0.5, 204.0),
+                    Align2::CENTER_CENTER,
+                    "L/R  >  M/S  >  L/R",
+                    FontId::proportional(10.0 * self.zoom),
+                    MUTED,
+                );
+            }
+            if node.kind == "mult" {
+                painter.text(
+                    point(width * 0.5, 143.0),
+                    Align2::CENTER_CENTER,
+                    "EIGHT IDENTICAL OUTPUTS",
+                    FontId::proportional(10.0 * self.zoom),
+                    MUTED,
+                );
+            }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if node.kind == "midi_cv" {
                     let x = 20.0 + (index % 2) as f32 * width * 0.5;
@@ -537,6 +568,40 @@ impl Rack {
                     );
                     continue;
                 }
+                if node.kind == "mix6" && matches!(*name, "invert" | "average") {
+                    let value = node.params.get(*name).copied().unwrap_or(0.0);
+                    let x = if *name == "average" {
+                        20.0
+                    } else {
+                        width * 0.5 + 5.0
+                    };
+                    let rect = Rect::from_min_size(
+                        point(x, 199.0),
+                        vec2(width * 0.5 - 25.0, 26.0) * self.zoom,
+                    );
+                    let button = ui.put(
+                        rect,
+                        egui::Button::new(if *name == "average" {
+                            "Average"
+                        } else {
+                            "Invert"
+                        })
+                        .selected(value >= 0.5),
+                    );
+                    if button.clicked() {
+                        self.selected = Some(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":if value >= 0.5 { 0.0 } else { 1.0 }}),
+                        ));
+                    }
+                    button.on_hover_text(if *name == "average" {
+                        "Divide by the number of active input jacks, including patched 0 V."
+                    } else {
+                        "Reverse the output polarity."
+                    });
+                    continue;
+                }
                 let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
                 let mut max = spec["max"].as_f64().unwrap_or(1.0) as f32;
                 if let Some(ratio) = spec["sample_rate_max_ratio"].as_f64() {
@@ -569,6 +634,10 @@ impl Rack {
                 }
                 let (knob_position, radius) = if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
+                } else if node.kind == "mid_side" {
+                    (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
+                } else if node.kind == "mix6" {
+                    (pos2(width * 0.5, 125.0), 32.0)
                 } else {
                     parameter_position(count, index, width)
                 };
@@ -687,7 +756,7 @@ impl Rack {
                     Rect::from_center_size(
                         value_center,
                         vec2(
-                            if count >= 4 {
+                            if count >= 4 || node.kind == "mid_side" {
                                 width * 0.5 - 12.0
                             } else {
                                 width - 20.0
@@ -1291,6 +1360,27 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    if kind == "mid_side" {
+        return if input {
+            match index {
+                0 | 1 => pos2(width * (0.15 + index as f32 * 0.20), 245.0),
+                2 | 3 => pos2(width * (0.65 + (index - 2) as f32 * 0.20), 245.0),
+                4 => pos2(width * 0.25, 305.0),
+                _ => pos2(width * 0.75, 305.0),
+            }
+        } else {
+            pos2(width * [0.15, 0.35, 0.65, 0.85][index], 374.0)
+        };
+    }
+    if kind == "mix6" && input {
+        return pos2(
+            width * ((index % 3) + 1) as f32 / 4.0,
+            270.0 + (index / 3) as f32 * 52.0,
+        );
+    }
+    if kind == "mult" && input {
+        return pos2(width * 0.5, 100.0);
+    }
     if count > 4 {
         let rows = count.div_ceil(4);
         let first_y = if input {
@@ -1690,7 +1780,9 @@ fn panel_width(kind: &str) -> f32 {
     match kind {
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
-        "audio_stereo" => HP * 12.0,
+        "audio_stereo" | "octave" => HP * 12.0,
+        "mid_side" | "mult" => HP * 20.0,
+        "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
         "quantizer" => HP * 16.0,
@@ -1710,8 +1802,12 @@ fn panel_width(kind: &str) -> f32 {
 fn title(kind: &str) -> &str {
     match kind {
         "poly_constant" => "POLY VOLTAGE",
-        "midi_cv" => "MIDI → CV",
+        "midi_cv" => "MIDI TO CV",
         "audio_stereo" => "STEREO AUDIO",
+        "mid_side" => "MID / SIDE",
+        "mix6" => "MIX 6",
+        "octave" => "OCTAVE",
+        "mult" => "MULT",
         "poly_split" => "SPLIT",
         "poly_merge" => "MERGE",
         "poly_sum" => "SUM",
@@ -1762,6 +1858,8 @@ fn parameter_label(name: &str) -> &str {
         "channel" => "MIDI CHANNEL",
         "allocation" => "ALLOCATION",
         "clock_div" => "CLOCK DIVIDE",
+        "encode_width" | "decode_width" => "WIDTH",
+        "octaves" => "OCTAVES",
         name => name,
     }
 }
@@ -1774,11 +1872,13 @@ fn port_label(name: &str) -> &str {
         "signal" => "IN",
         "velocity" => "VEL",
         "aftertouch" => "AFT",
-        "pitchwheel" => "PITCH WHEEL",
-        "modwheel" => "MOD WHEEL",
+        "pitchwheel" => "BEND",
+        "modwheel" => "MOD",
         "clock_div" => "CLK / N",
         "clock" => "CLK",
         "continue" => "CONT",
+        "encode_cv" | "decode_cv" => "WIDTH CV",
+        "shift_cv" => "SHIFT CV",
         other => other,
     }
 }
@@ -1789,6 +1889,9 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     let order: &[&str] = match node.kind.as_str() {
         "quantizer" => &["scale_mask", "offset"],
         "midi_cv" => &["channels", "channel", "allocation", "clock_div"],
+        "mid_side" => &["encode_width", "decode_width"],
+        "mix6" => &["level", "average", "invert"],
+        "octave" => &["octaves"],
         "white_noise" => &["level", "seed"],
         "attenuverter" => &["gain", "offset"],
         "crossfade" => &["mix", "law"],
@@ -1854,6 +1957,8 @@ fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
             }
         }
         "gain" => format!("{value:.2}x"),
+        "encode_width" | "decode_width" => format!("{:.0}%", value * 100.0),
+        "octaves" => format!("{value:+.0} oct"),
         _ => format_value(value, spec["unit"].as_str().unwrap_or("")),
     }
 }
@@ -2673,6 +2778,63 @@ mod tests {
                 assert!(point.distance(*other) >= 65.0);
             }
         }
+    }
+
+    #[test]
+    fn stereo_routing_panels_patch_named_ports_and_toggle_mix_average() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = Patch {
+            version: 2,
+            nodes: [
+                ("stereo", "mid_side"),
+                ("mix", "mix6"),
+                ("octave", "octave"),
+                ("mult", "mult"),
+            ]
+            .into_iter()
+            .map(|(id, kind)| Node {
+                id: id.into(),
+                kind: kind.into(),
+                params: Default::default(),
+            })
+            .collect(),
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            pos2(219.0, 386.0),
+            pos2(504.0, 334.0),
+        );
+        assert!(matches!(action, Some(RackAction::Command("connect", args))
+            if args["from"] == "stereo" && args["output"] == "left" && args["to"] == "mix" && args["input"] == "in6"));
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            pos2(984.0, 373.0),
+            pos2(624.0, 344.0),
+        );
+        assert!(matches!(action, Some(RackAction::Command("connect", args))
+            if args["from"] == "mult" && args["output"] == "out8" && args["to"] == "octave" && args["input"] == "pitch"));
+        let position = pos2(391.5, 224.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.0,
+            vec![egui::Event::PointerMoved(position), button(position, true)],
+        );
+        let action = frame(&ctx, &mut rack, &patch, 3.1, vec![button(position, false)]);
+        assert!(
+            matches!(action, Some(RackAction::Command("set_parameter", args))
+            if args["id"] == "mix" && args["parameter"] == "average" && args["value"] == 1.0)
+        );
     }
 
     #[test]
