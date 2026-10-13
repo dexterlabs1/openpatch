@@ -640,10 +640,14 @@ impl Scope {
         );
         response.on_hover_text("Time view preserves each pixel column’s minimum and maximum. Statistics use every active captured sample. Missing voices leave gaps. X/Y is a decimated phase portrait. FS means normalized digital amplitude, not volts. Scope controls are session-only.");
     }
+    pub fn smoke_xy(&mut self) {
+        self.xy = true;
+    }
     /// Uses actual engine output in Linux CI without accessing an audio device.
     pub fn smoke_fixture(&mut self) {
         self.open = true;
         self.fixture = true;
+        self.status.clear();
         self.settings.seconds = 0.02;
         self.selection = ScopeSelection {
             x: Some(ScopeEndpoint {

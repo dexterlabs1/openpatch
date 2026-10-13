@@ -1712,9 +1712,12 @@ impl OpenPatch {
             self.title = "Signal inspection".into();
             self.scope.smoke_fixture();
         }
+        if *frame == 160 {
+            self.scope.smoke_xy();
+        }
         if matches!(
             *frame,
-            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156
+            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1745,7 +1748,8 @@ impl OpenPatch {
                 9 => path.with_file_name("rack-modulation.png"),
                 10 => path.with_file_name("project-save.png"),
                 11 => path.with_file_name("project-unsaved.png"),
-                _ => path.with_file_name("signal-scope.png"),
+                12 => path.with_file_name("signal-scope.png"),
+                _ => path.with_file_name("signal-scope-xy.png"),
             };
             image::save_buffer(
                 target,
@@ -1756,7 +1760,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 13 {
+            if *captures == 14 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
