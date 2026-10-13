@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>OpenPatch — Visual Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d11;
+      --panel: #11151b;
+      --panel-raised: #151a22;
+      --line: #252c37;
+      --line-bright: #343e4d;
+      --text: #edf1f6;
+      --muted: #8994a3;
+      --dim: #606c7b;
+      --mint: #79e5bd;
+      --mint-ink: #0d261e;
+      --blue: #88a8ff;
+      --pink: #e8a2db;
+      --danger: #ff9e9e;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 53% -30%, rgba(74, 115, 127, .13), transparent 43rem),
+        var(--bg);
+      font-family: var(--sans);
+      letter-spacing: -.012em;
+    }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+    .topbar {
+      height: 66px;
+      padding: 0 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,.065);
+      background: rgba(11,13,17,.76);
+    }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-mark {
+      width: 29px; height: 29px; border: 1px solid rgba(121,229,189,.5);
+      display: grid; place-items: center; border-radius: 8px;
+      color: var(--mint); font-size: 16px; line-height: 1;
+      box-shadow: inset 0 0 18px rgba(121,229,189,.09);
+    }
+    .brand-name { font-size: 13px; font-weight: 750; letter-spacing: .14em; }
+    .brand-divider { height: 18px; width: 1px; background: var(--line-bright); margin: 0 4px; }
+    .product-name { color: #aab4c1; font-size: 12px; letter-spacing: .06em; }
+    .top-right { display: flex; align-items: center; gap: 18px; }
+    .local-badge, .gpu-badge {
+      display: flex; align-items: center; gap: 8px; color: var(--muted);
+      font: 10px var(--mono); letter-spacing: .04em; text-transform: uppercase;
+    }
+    .local-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px rgba(121,229,189,.7); }
+    .top-rule { height: 17px; width: 1px; background: var(--line); }
+    main { width: min(1360px, 100%); margin: 0 auto; padding: 34px 34px 26px; flex: 1; }
+    .heading-row { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 24px; }
+    .eyebrow { color: var(--mint); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .16em; margin-bottom: 10px; }
+    h1 { margin: 0; font-size: clamp(23px, 3vw, 31px); line-height: 1.15; letter-spacing: -.045em; font-weight: 600; }
+    .heading-copy { color: var(--muted); margin: 9px 0 0; font-size: 13px; line-height: 1.6; }
+    .workspace-chip { border: 1px solid var(--line); color: #a2adba; border-radius: 7px; padding: 9px 11px; font: 10px var(--mono); white-space: nowrap; }
+    .workspace-chip span { color: var(--mint); margin-right: 7px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 294px; gap: 17px; align-items: start; }
+    .stage-card, .side-card { border: 1px solid var(--line); background: rgba(17,21,27,.91); border-radius: 12px; overflow: hidden; box-shadow: 0 22px 70px rgba(0,0,0,.18); }
+    .stage-top {
+      height: 50px; padding: 0 17px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--line); background: rgba(255,255,255,.012);
+    }
+    .stage-label { display: flex; align-items: center; gap: 9px; color: #b9c2ce; font: 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+    .stage-label .spark { color: var(--mint); font-size: 13px; }
+    .stage-meta { color: var(--dim); font: 10px var(--mono); }
+    .visual-wrap { position: relative; min-height: 300px; background: #080b10; }
+    canvas { width: 100%; height: clamp(300px, 48vw, 510px); display: block; }
+    .canvas-caption {
+      position: absolute; left: 18px; bottom: 16px; color: rgba(221,232,238,.55);
+      font: 9px var(--mono); text-transform: uppercase; letter-spacing: .12em;
+      pointer-events: none; user-select: none;
+    }
+    .canvas-error { position: absolute; inset: 0; display: none; padding: 28px; place-items: center; text-align: center; color: #ffd1d1; background: #100d12; font: 12px/1.7 var(--mono); }
+    .transport { padding: 16px 17px 17px; border-top: 1px solid var(--line); }
+    .file-row { display: flex; gap: 11px; align-items: center; }
+    .file-button {
+      height: 37px; padding: 0 13px; border: 1px solid #34414c; border-radius: 7px;
+      background: #192129; color: #dbe6e8; font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: .18s ease;
+    }
+    .file-button:hover { border-color: #5c7d76; background: #1d2c2d; }
+    .file-button .plus { color: var(--mint); padding-right: 7px; font-size: 15px; vertical-align: -1px; }
+    .track-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .track-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6d0db; font-size: 11px; }
+    .track-sub { color: var(--dim); font: 9px var(--mono); }
+    input[type="file"] { display: none; }
+    .transport-row { display: grid; grid-template-columns: 37px minmax(0,1fr) auto; align-items: center; gap: 13px; margin-top: 15px; }
+    .play-button { border: 0; height: 36px; width: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; background: var(--mint); color: var(--mint-ink); font-size: 13px; padding-left: 2px; transition: transform .16s ease, filter .16s ease; }
+    .play-button:hover { transform: scale(1.05); filter: brightness(1.08); }
+    .play-button:disabled { cursor: not-allowed; opacity: .55; }
+    .timeline { min-width: 0; }
+    .seek { width: 100%; height: 3px; accent-color: var(--mint); display: block; cursor: pointer; }
+    .time-row { display: flex; justify-content: space-between; color: var(--dim); font: 9px var(--mono); margin-top: 8px; }
+    .volume { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 9px var(--mono); }
+    .volume input { width: 66px; accent-color: var(--mint); }
+    .side-card { padding: 0; }
+    .side-section { padding: 17px; border-bottom: 1px solid var(--line); }
+    .side-section:last-child { border-bottom: 0; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; margin: 0 0 13px; color: #aab5c2; font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .section-title small { color: var(--dim); font: 9px var(--mono); letter-spacing: 0; }
+    .mode-list { display: grid; gap: 7px; }
+    .mode-button {
+      min-height: 48px; padding: 0 11px; width: 100%; display: flex; align-items: center; gap: 11px;
+      border: 1px solid transparent; background: transparent; border-radius: 8px; text-align: left;
+      color: #8f9aa8; cursor: pointer; transition: .16s ease;
+    }
+    .mode-button:hover { background: rgba(255,255,255,.025); color: #d9e2e9; }
+    .mode-button[aria-pressed="true"] { border-color: rgba(121,229,189,.25); background: rgba(121,229,189,.065); color: #d9f4e9; }
+    .mode-icon { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line-bright); border-radius: 6px; color: #9caaba; font: 13px var(--mono); }
+    [aria-pressed="true"] .mode-icon { border-color: rgba(121,229,189,.38); color: var(--mint); }
+    .mode-text { display: flex; flex-direction: column; gap: 3px; }
+    .mode-name { font-size: 11px; font-weight: 600; }
+    .mode-desc { color: var(--dim); font-size: 9px; }
+    .control { margin-top: 17px; }
+    .control:first-of-type { margin-top: 0; }
+    .control-label { display: flex; justify-content: space-between; margin-bottom: 9px; color: #a8b2bf; font-size: 10px; }
+    .control-value { color: var(--mint); font: 10px var(--mono); }
+    input[type="range"] { width: 100%; height: 3px; accent-color: var(--mint); cursor: pointer; }
+    .range-ends { display: flex; justify-content: space-between; color: var(--dim); font: 8px var(--mono); margin-top: 5px; }
+    details.shader-details { padding: 0; }
+    details.shader-details summary { list-style: none; cursor: pointer; }
+    details.shader-details summary::-webkit-details-marker { display: none; }
+    details.shader-details summary::after { content: "+"; color: var(--mint); float: right; font: 14px var(--mono); margin-top: -3px; }
+    details[open].shader-details summary::after { content: "−"; }
+    .shader-note { color: var(--dim); font-size: 10px; line-height: 1.55; margin: 0 0 12px; }
+    textarea {
+      width: 100%; min-height: 190px; resize: vertical; border: 1px solid #2a3440;
+      border-radius: 7px; padding: 11px; background: #0b0f14; color: #c5d7dc;
+      font: 9px/1.55 var(--mono); tab-size: 2; outline: none;
+    }
+    textarea:focus { border-color: #4a766d; box-shadow: 0 0 0 2px rgba(121,229,189,.08); }
+    .apply-row { display: flex; gap: 8px; align-items: center; margin-top: 9px; }
+    .apply-button { flex: 0 0 auto; border: 1px solid rgba(121,229,189,.3); border-radius: 6px; padding: 8px 10px; background: rgba(121,229,189,.1); color: #bff6df; font: 10px var(--mono); cursor: pointer; }
+    .apply-button:hover { background: rgba(121,229,189,.17); }
+    .shader-status { min-width: 0; color: var(--mint); font: 9px/1.4 var(--mono); overflow-wrap: anywhere; }
+    .shader-status.error { color: var(--danger); }
+    .shader-help { color: var(--dim); font: 9px/1.5 var(--mono); margin: 10px 0 0; }
+    footer { min-height: 43px; border-top: 1px solid rgba(255,255,255,.055); padding: 0 34px; display: flex; justify-content: space-between; align-items: center; color: #697482; font: 9px var(--mono); }
+    footer span:last-child { color: #596472; }
+    button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+    @media (max-width: 880px) {
+      main { padding: 25px 20px; }
+      .layout { grid-template-columns: 1fr; }
+      .side-card { display: grid; grid-template-columns: 1fr 1fr; }
+      .side-section { border-right: 1px solid var(--line); }
+      .side-section:nth-child(2) { border-right: 0; }
+      .side-section:last-child { grid-column: 1 / -1; border-right: 0; border-top: 1px solid var(--line); }
+    }
+    @media (max-width: 560px) {
+      .topbar { padding: 0 17px; height: 58px; }
+      .top-right { gap: 10px; }
+      .gpu-badge, .top-rule { display: none; }
+      main { padding: 22px 13px; }
+      .heading-row { display: block; margin-bottom: 18px; }
+      .workspace-chip { display: inline-block; margin-top: 14px; }
+      .side-card { display: block; }
+      .side-section { border-right: 0; }
+      .side-section:nth-child(2) { border-top: 1px solid var(--line); }
+      .side-section:last-child { border-top: 1px solid var(--line); }
+      .visual-wrap, canvas { min-height: 280px; height: 62vw; }
+      .transport { padding: 13px; }
+      .file-button { padding: 0 10px; }
+      .volume { gap: 5px; }
+      .volume input { width: 48px; }
+      footer { padding: 0 15px; font-size: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">◌</div>
+        <span class="brand-name">OPENPATCH</span>
+        <span class="brand-divider"></span>
+        <span class="product-name">Visual Lab</span>
+      </div>
+      <div class="top-right">
+        <span class="local-badge">Local preview</span>
+        <span class="top-rule"></span>
+        <span class="gpu-badge" id="rendererLabel">WebGL2 · initializing</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="heading-row">
+        <div>
+          <div class="eyebrow">Audio · Visualizer</div>
+          <h1>Give your sound a shape.</h1>
+          <p class="heading-copy">A shader preview for your patch. Load a local audio file and explore its signal in real time.</p>
+        </div>
+        <div class="workspace-chip"><span>●</span>Runs locally in this browser</div>
+      </div>
+
+      <div class="layout">
+        <section class="stage-card" aria-label="Visualizer preview">
+          <div class="stage-top">
+            <div class="stage-label"><span class="spark">✳</span><span id="modeStageLabel">Aurora field</span></div>
+            <div class="stage-meta" id="signalLabel">WAITING FOR AUDIO</div>
+          </div>
+          <div class="visual-wrap">
+            <canvas id="visualizer" aria-label="WebGL audio visualization"></canvas>
+            <div class="canvas-caption" id="canvasCaption">AMBIENT PREVIEW · LOAD AUDIO TO BEGIN</div>
+            <div class="canvas-error" id="canvasError" role="alert">WebGL2 is unavailable in this browser.<br>Try a browser with WebGL2 enabled.</div>
+          </div>
+          <div class="transport">
+            <div class="file-row">
+              <label class="file-button" for="audioFile"><span class="plus">＋</span>Choose audio</label>
+              <input id="audioFile" type="file" accept="audio/*,.wav,.wave,.mp3,.flac,.ogg,.m4a">
+              <div class="track-info">
+                <div class="track-name" id="trackName">No audio loaded</div>
+                <div class="track-sub" id="trackSub">Choose a file from this device</div>
+              </div>
+            </div>
+            <div class="transport-row">
+              <button class="play-button" id="playButton" type="button" aria-label="Play audio" disabled>▶</button>
+              <div class="timeline">
+                <input class="seek" id="seekBar" type="range" min="0" max="1000" value="0" aria-label="Seek audio" disabled>
+                <div class="time-row"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
+              </div>
+              <label class="volume" title="Playback volume">VOL <input id="volume" type="range" min="0" max="1" step="0.01" value="0.3" aria-label="Playback volume"></label>
+            </div>
+            <audio id="audio" preload="none"></audio>
+          </div>
+        </section>
+
+        <aside class="side-card" aria-label="Visualizer controls">
+          <section class="side-section">
+            <h2 class="section-title">Visual mode <small>3 MODES</small></h2>
+            <div class="mode-list" role="group" aria-label="Visual mode">
+              <button class="mode-button" data-mode="0" aria-pressed="true" type="button">
+                <span class="mode-icon">✳</span><span class="mode-text"><span class="mode-name">Aurora</span><span class="mode-desc">Soft, flowing color fields</span></span>
+              </button>
+              <button class="mode-button" data-mode="1" aria-pressed="false" type="button">
+                <span class="mode-icon">▥</span><span class="mode-text"><span class="mode-name">Spectrum</span><span class="mode-desc">Frequency across the frame</span></span>
+              </button>
+              <button class="mode-button" data-mode="2" aria-pressed="false" type="button">
+                <span class="mode-icon">∿</span><span class="mode-text"><span class="mode-name">Oscilloscope</span><span class="mode-desc">Waveform in motion</span></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="side-section">
+            <h2 class="section-title">Response</h2>
+            <div class="control">
+              <label class="control-label" for="sensitivity">Sensitivity <span class="control-value" id="sensitivityValue">1.20×</span></label>
+              <input id="sensitivity" type="range" min="0.25" max="3" step="0.01" value="1.2">
+              <div class="range-ends"><span>SUBTLE</span><span>INTENSE</span></div>
+            </div>
+            <div class="control">
+              <label class="control-label" for="smoothness">Smoothing <span class="control-value" id="smoothnessValue">0.72</span></label>
+              <input id="smoothness" type="range" min="0" max="0.95" step="0.01" value="0.72">
+              <div class="range-ends"><span>PRECISE</span><span>FLUID</span></div>
+            </div>
+          </section>
+
+          <section class="side-section">
+            <details class="shader-details" id="shaderDetails">
+              <summary class="section-title">Fragment shader <small>GLSL ES 3.00</small></summary>
+              <p class="shader-note">Edit the preview shader. Your audio patch and engine are unaffected.</p>
+              <textarea id="shaderSource" spellcheck="false" aria-label="GLSL fragment shader source"></textarea>
+              <div class="apply-row">
+                <button id="applyShader" class="apply-button" type="button">Apply shader</button>
+                <span id="shaderStatus" class="shader-status" role="status">Built-in shader active</span>
+              </div>
+              <p class="shader-help">Inputs: <code>u_audio</code> · <code>u_time</code> · <code>u_resolution</code> · <code>u_level</code> · <code>u_mode</code> · <code>u_sensitivity</code></p>
+            </details>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <footer><span>OPENPATCH VISUAL LAB <span aria-hidden="true">/</span> PREVIEW BUILD</span><span>Audio stays on your device</span></footer>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("visualizer");
+      const rendererLabel = document.getElementById("rendererLabel");
+      const canvasError = document.getElementById("canvasError");
+      const shaderSource = document.getElementById("shaderSource");
+      const shaderStatus = document.getElementById("shaderStatus");
+      const audioElement = document.getElementById("audio");
+      const filePicker = document.getElementById("audioFile");
+      const playButton = document.getElementById("playButton");
+      const seekBar = document.getElementById("seekBar");
+      const sensitivity = document.getElementById("sensitivity");
+      const smoothing = document.getElementById("smoothness");
+      const volume = document.getElementById("volume");
+      const modeNames = ["Aurora field", "Spectrum", "Oscilloscope"];
+
+      const fragmentShader = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D u_audio;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform float u_level;
+uniform float u_sensitivity;
+uniform int u_mode;
+out vec4 outColor;
+
+float fft(float x) {
+  return texture(u_audio, vec2(clamp(x, 0.0, 0.499), 0.5)).r;
+}
+float wave(float x) {
+  return texture(u_audio, vec2(0.5 + (clamp(x, -1.0, 1.0) + 1.0) * 0.249, 0.5)).r * 2.0 - 1.0;
+}
+float lineMask(float distanceToLine, float thickness) {
+  return 1.0 - smoothstep(thickness, thickness + fwidth(distanceToLine) * 1.8, distanceToLine);
+}
+vec3 palette(float t) {
+  vec3 a = vec3(0.12, 0.28, 0.34);
+  vec3 b = vec3(0.24, 0.48, 0.46);
+  vec3 c = vec3(0.85, 0.54, 0.78);
+  return a + b * cos(6.28318 * (t + vec3(0.0, 0.22, 0.48))) + c * 0.25;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  vec2 p = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float time = u_time;
+  float energy = clamp(u_level * u_sensitivity * 3.0, 0.0, 1.0);
+  vec3 color = vec3(0.018, 0.027, 0.043);
+
+  if (u_mode == 0) {
+    float low = fft(0.04);
+    float mid = fft(0.25);
+    float high = fft(0.44);
+    float drift = sin(p.x * 2.4 + time * 0.22) * 0.18 + cos(p.y * 3.2 - time * 0.17) * 0.17;
+    float cloudA = sin(p.x * 2.7 + p.y * 1.7 + time * 0.18 + low * 2.2);
+    float cloudB = cos(p.y * 3.1 - p.x * 1.3 - time * 0.13 + mid * 1.8);
+    float veil = smoothstep(-0.48, 0.78, cloudA * 0.48 + cloudB * 0.36 + drift + energy * 0.3);
+    float halo = exp(-length(p - vec2(0.14 * sin(time * 0.12), 0.12 * cos(time * 0.1))) * (1.65 - energy * 0.28));
+    vec3 aurora = mix(vec3(0.035, 0.13, 0.17), vec3(0.2, 0.62, 0.49), veil * (0.55 + low * 0.8));
+    aurora = mix(aurora, vec3(0.48, 0.3, 0.56), smoothstep(0.12, 0.9, cloudB * 0.5 + high * 1.3) * 0.52);
+    color += aurora * (0.16 + veil * 0.45) + vec3(0.18, 0.42, 0.44) * halo * (0.09 + energy * 0.18);
+    color += vec3(0.06, 0.13, 0.18) * exp(-abs(p.y + 0.36 * sin(p.x * 2.0 + time * 0.1)) * 4.0) * (0.07 + mid * 0.18);
+  } else if (u_mode == 1) {
+    float x = clamp(uv.x, 0.001, 0.999);
+    float freq = fft(x * 0.499) * u_sensitivity;
+    float shaped = pow(x, 0.72);
+    float ridge = 0.12 + min(freq, 0.82) * 0.78;
+    float bar = step(1.0 - uv.y, ridge) * (0.42 + 0.58 * smoothstep(0.0, 1.0, uv.y));
+    float cap = lineMask(abs(uv.y - (1.0 - ridge)), 0.003);
+    float grid = lineMask(abs(fract(x * 32.0) - 0.5), 0.012) * 0.13;
+    vec3 spectrum = mix(vec3(0.25, 0.76, 0.62), vec3(0.75, 0.48, 0.79), shaped);
+    color += spectrum * bar * 0.67 + vec3(0.65, 0.9, 0.83) * cap * 0.9;
+    color += vec3(0.17, 0.25, 0.31) * grid * (uv.y > 0.1 ? 1.0 : 0.0);
+    color += vec3(0.12, 0.32, 0.31) * exp(-abs(uv.y - (1.0 - ridge)) * 0.035) * 0.12;
+  } else {
+    float x = uv.x * 2.0 - 1.0;
+    float sampleValue = wave(x);
+    float raw = lineMask(abs(uv.y - (0.5 + sampleValue * 0.31 * u_sensitivity)), 0.004);
+    float glow = exp(-abs(uv.y - (0.5 + sampleValue * 0.31 * u_sensitivity)) * 48.0);
+    float center = lineMask(abs(uv.y - 0.5), 0.0011);
+    float grid = lineMask(abs(fract(uv.x * 8.0) - 0.5), 0.009) + lineMask(abs(fract(uv.y * 6.0) - 0.5), 0.009);
+    color += vec3(0.1, 0.3, 0.29) * center * 0.28;
+    color += vec3(0.14, 0.23, 0.29) * grid * 0.1;
+    color += vec3(0.38, 0.93, 0.73) * glow * 0.42;
+    color += vec3(0.69, 1.0, 0.87) * raw * 0.95;
+  }
+
+  float vignette = smoothstep(1.25, 0.15, length(p));
+  color *= 0.52 + vignette * 0.48;
+  color = pow(max(color, 0.0), vec3(0.88));
+  outColor = vec4(color, 1.0);
+}`;
+      shaderSource.value = fragmentShader;
+
+      const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "low-power" });
+      if (!gl) {
+        rendererLabel.textContent = "WebGL2 unavailable";
+        canvasError.style.display = "grid";
+        return;
+      }
+      rendererLabel.textContent = "WebGL2 · ready";
+
+      const vertexSource = `#version 300 es
+in vec2 a_position;
+void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
+      const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+      const vao = gl.createVertexArray();
+      const buffer = gl.createBuffer();
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      const audioTexture = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, audioTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const audioTextureData = new Uint8Array(512);
+      audioTextureData.fill(128);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 512, 1, 0, gl.RED, gl.UNSIGNED_BYTE, audioTextureData);
+
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const log = gl.getShaderInfoLog(shader) || "Unknown shader compile error";
+          gl.deleteShader(shader);
+          throw new Error(log.trim());
+        }
+        return shader;
+      }
+
+      function createProgram(source) {
+        const vertex = compileShader(gl.VERTEX_SHADER, vertexSource);
+        let fragment;
+        try {
+          fragment = compileShader(gl.FRAGMENT_SHADER, source);
+        } catch (error) {
+          gl.deleteShader(vertex);
+          throw error;
+        }
+        const program = gl.createProgram();
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.bindAttribLocation(program, 0, "a_position");
+        gl.linkProgram(program);
+        gl.deleteShader(vertex);
+        gl.deleteShader(fragment);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const log = gl.getProgramInfoLog(program) || "Unknown shader link error";
+          gl.deleteProgram(program);
+          throw new Error(log.trim());
+        }
+        const uniforms = {};
+        for (const key of ["u_audio", "u_time", "u_resolution", "u_level", "u_sensitivity", "u_mode"]) {
+          uniforms[key] = gl.getUniformLocation(program, key);
+        }
+        return { program, uniforms };
+      }
+
+      let activeProgram;
+      try {
+        activeProgram = createProgram(fragmentShader);
+        shaderStatus.textContent = "Built-in shader active";
+      } catch (error) {
+        canvasError.style.display = "grid";
+        canvasError.textContent = "The built-in shader could not compile.\n" + error.message;
+        return;
+      }
+
+      const analyserData = new Uint8Array(256);
+      const timeData = new Uint8Array(512);
+      let audioContext = null;
+      let analyser = null;
+      let gainNode = null;
+      let mediaSource = null;
+      let objectUrl = null;
+      let mode = 0;
+      let smoothedLevel = 0;
+      const startTime = performance.now();
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(rect.width * ratio));
+        const height = Math.max(1, Math.round(rect.height * ratio));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          gl.viewport(0, 0, width, height);
+        }
+      }
+
+      function updateAudioTexture() {
+        let level = 0;
+        audioTextureData.fill(128);
+        if (analyser && !audioElement.paused && !audioElement.ended) {
+          analyser.getByteFrequencyData(analyserData);
+          analyser.getByteTimeDomainData(timeData);
+          let sum = 0;
+          for (let index = 0; index < 256; index++) {
+            const frequency = analyserData[index];
+            audioTextureData[index] = frequency;
+            const sample = (timeData[index * 2] - 128) / 128;
+            audioTextureData[index + 256] = Math.max(0, Math.min(255, Math.round((sample * 0.5 + 0.5) * 255)));
+            sum += frequency;
+          }
+          level = sum / (256 * 255);
+        }
+        const smoothingFactor = Number(smoothing.value);
+        smoothedLevel = smoothedLevel * smoothingFactor + level * (1 - smoothingFactor);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, audioTexture);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 512, 1, gl.RED, gl.UNSIGNED_BYTE, audioTextureData);
+        return smoothedLevel;
+      }
+
+      function draw(now) {
+        resizeCanvas();
+        const level = updateAudioTexture();
+        const { program, uniforms } = activeProgram;
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform1i(uniforms.u_audio, 0);
+        gl.uniform1f(uniforms.u_time, (now - startTime) / 1000);
+        gl.uniform2f(uniforms.u_resolution, canvas.width, canvas.height);
+        gl.uniform1f(uniforms.u_level, level);
+        gl.uniform1f(uniforms.u_sensitivity, Number(sensitivity.value));
+        gl.uniform1i(uniforms.u_mode, mode);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        requestAnimationFrame(draw);
+      }
+      requestAnimationFrame(draw);
+
+      document.querySelectorAll(".mode-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          mode = Number(button.dataset.mode);
+          document.querySelectorAll(".mode-button").forEach((item) => {
+            item.setAttribute("aria-pressed", String(item === button));
+          });
+          document.getElementById("modeStageLabel").textContent = modeNames[mode];
+        });
+      });
+      sensitivity.addEventListener("input", () => {
+        document.getElementById("sensitivityValue").textContent = Number(sensitivity.value).toFixed(2) + "×";
+      });
+      smoothing.addEventListener("input", () => {
+        document.getElementById("smoothnessValue").textContent = Number(smoothing.value).toFixed(2);
+      });
+
+      document.getElementById("applyShader").addEventListener("click", () => {
+        try {
+          const next = createProgram(shaderSource.value);
+          const previous = activeProgram;
+          activeProgram = next;
+          gl.deleteProgram(previous.program);
+          shaderStatus.textContent = "Shader compiled · preview active";
+          shaderStatus.classList.remove("error");
+        } catch (error) {
+          shaderStatus.textContent = "Compile failed · previous shader still active: " + error.message;
+          shaderStatus.classList.add("error");
+        }
+      });
+
+      function setupAudioGraph() {
+        if (audioContext) return audioContext.resume();
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("Web Audio is unavailable in this browser.");
+        audioContext = new AudioContextClass();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.72;
+        gainNode = audioContext.createGain();
+        gainNode.gain.value = Number(volume.value);
+        mediaSource = audioContext.createMediaElementSource(audioElement);
+        mediaSource.connect(analyser);
+        analyser.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        return audioContext.resume();
+      }
+
+      function formatTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+        const whole = Math.floor(seconds);
+        return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+      }
+
+      function setPlaying(playing) {
+        playButton.textContent = playing ? "Ⅱ" : "▶";
+        playButton.setAttribute("aria-label", playing ? "Pause audio" : "Play audio");
+        document.getElementById("signalLabel").textContent = playing ? "SIGNAL ACTIVE" : (audioElement.src ? "SIGNAL READY" : "WAITING FOR AUDIO");
+        document.getElementById("canvasCaption").textContent = playing ? "LIVE SIGNAL · LOCAL PLAYBACK" : (audioElement.src ? "READY · PRESS PLAY TO VISUALIZE" : "AMBIENT PREVIEW · LOAD AUDIO TO BEGIN");
+      }
+
+      filePicker.addEventListener("change", () => {
+        const file = filePicker.files && filePicker.files[0];
+        if (!file) return;
+        audioElement.pause();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = URL.createObjectURL(file);
+        audioElement.src = objectUrl;
+        audioElement.load();
+        document.getElementById("trackName").textContent = file.name;
+        document.getElementById("trackSub").textContent = "LOCAL FILE · " + (file.type || "AUDIO").toUpperCase();
+        playButton.disabled = false;
+        seekBar.disabled = false;
+        seekBar.value = "0";
+        setPlaying(false);
+      });
+
+      playButton.addEventListener("click", async () => {
+        if (!audioElement.src) return;
+        try {
+          await setupAudioGraph();
+          if (audioElement.paused) await audioElement.play();
+          else audioElement.pause();
+        } catch (error) {
+          document.getElementById("trackSub").textContent = "PLAYBACK ERROR · " + error.message;
+        }
+      });
+      audioElement.addEventListener("play", () => setPlaying(true));
+      audioElement.addEventListener("pause", () => setPlaying(false));
+      audioElement.addEventListener("ended", () => {
+        setPlaying(false);
+        audioElement.currentTime = 0;
+      });
+      audioElement.addEventListener("loadedmetadata", () => {
+        document.getElementById("duration").textContent = formatTime(audioElement.duration);
+      });
+      audioElement.addEventListener("timeupdate", () => {
+        document.getElementById("currentTime").textContent = formatTime(audioElement.currentTime);
+        if (Number.isFinite(audioElement.duration) && audioElement.duration > 0 && !seekBar.matches(":active")) {
+          seekBar.value = String(Math.round(audioElement.currentTime / audioElement.duration * 1000));
+        }
+      });
+      audioElement.addEventListener("error", () => {
+        document.getElementById("trackSub").textContent = "This audio format could not be played by the browser.";
+      });
+      seekBar.addEventListener("input", () => {
+        if (Number.isFinite(audioElement.duration) && audioElement.duration > 0) {
+          audioElement.currentTime = Number(seekBar.value) / 1000 * audioElement.duration;
+        }
+      });
+      volume.addEventListener("input", () => {
+        if (gainNode) gainNode.gain.setTargetAtTime(Number(volume.value), audioContext.currentTime, 0.025);
+      });
+
+      window.addEventListener("resize", resizeCanvas, { passive: true });
+      window.addEventListener("beforeunload", () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (audioContext && audioContext.state !== "closed") audioContext.close();
+      });
+    })();
+  </script>
+</body>
+</html>

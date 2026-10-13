@@ -10,15 +10,28 @@ thread_local! {
 
 fn record() {
     let _ = TRACKING.try_with(|enabled| {
-        if enabled.get() { let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1)); }
+        if enabled.get() {
+            let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
+        }
     });
 }
 
 unsafe impl GlobalAlloc for TrackingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { record(); unsafe { System.alloc(layout) } }
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 { record(); unsafe { System.alloc_zeroed(layout) } }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 { record(); unsafe { System.realloc(ptr, layout, size) } }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) { unsafe { System.dealloc(ptr, layout) } }
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        record();
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        record();
+        unsafe { System.alloc_zeroed(layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        record();
+        unsafe { System.realloc(ptr, layout, size) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) }
+    }
 }
 
 #[global_allocator]
@@ -31,7 +44,9 @@ fn process_block_allocates_nothing_even_on_first_callback() {
     ALLOCATIONS.with(|count| count.set(0));
     TRACKING.with(|enabled| enabled.set(true));
     for length in [0, 1, 3, 64, 127, 128, 129, 1025] {
-        for _ in 0..20 { engine.process_block(&mut samples[..length]); }
+        for _ in 0..20 {
+            engine.process_block(&mut samples[..length]);
+        }
     }
     TRACKING.with(|enabled| enabled.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0, "audio callback allocated");

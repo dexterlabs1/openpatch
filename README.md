@@ -30,10 +30,16 @@ cd openpatch
 cargo build --release
 cargo run --release -- demo demo.wav
 cargo run --release -- render examples/tremolo.json tremolo.wav 5
+cargo run --release -- visualizer visualizer.html
 ```
 
 Open the resulting WAV in your audio player. Existing files are never overwritten.
 The executable is `target/release/openpatch` (`openpatch.exe` on Windows).
+
+Open `visualizer.html` in a browser and select your rendered WAV for the bundled
+Aurora, Spectrum, and Oscilloscope visuals. You can edit and compile GLSL live.
+This is a standalone visual preview; native visuals will be integrated with the
+live instrument. See [visualizer architecture](docs/VISUALIZERS.md).
 
 ## Agent control
 
@@ -50,7 +56,7 @@ with a 3 Hz LFO, render five seconds, and report the peak and RMS.”
 
 Tools: `catalog`, `inspect_patch`, `replace_patch`, `add_module`, `remove_module`,
 `connect`, `disconnect`, `set_parameter`, `set_output`, `save_patch`, `load_patch`,
-`render_audio`, and `benchmark`.
+`render_audio`, `export_visualizer`, and `benchmark`.
 
 Each MCP process owns one independent patch. Edits validate before committing,
 with optional revision checks. Files are confined to the configured workspace
