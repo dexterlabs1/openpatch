@@ -100,6 +100,24 @@ these images do not demonstrate live audio-device qualification.</sub>
 </details>
 
 <details>
+<summary><strong>Sequence pitch, timbre, and accents</strong></summary>
+
+![Three-row sequencer with 24 voltage controls driving a connected analog voice](docs/images/openpatch-sequencer.png)
+
+Choose **File → Sequenced analog voice**. Edit three independent voltage rows,
+click step numbers to enable triggers, and rotate the pattern from the module's
+context menu. Clock, Run, and Reset buttons use the same ordered performance
+path available to Claude and Codex. Offline MCP events let you render or measure
+a performance at specified sample frames.
+
+<sub>Native Linux / Mesa CI render. The illuminated step comes from an offline
+engine fixture; this screenshot does not demonstrate live audio-device testing.</sub>
+
+[Sequencer controls, timing, and remaining parity →](docs/SEQUENCER.md)
+
+</details>
+
+<details>
 <summary><strong>Make a voice move with a clocked LFO</strong></summary>
 
 ![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)

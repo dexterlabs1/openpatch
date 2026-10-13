@@ -134,6 +134,20 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Push | Gate utility | Clock-gate interface implemented; not equivalent | Press/release/latch state and persistence |
 | Sample & Hold Analog Shift Register | Sampling | Partial: single `sample_hold`, hysteresis and live-state continuity | Eight rows, shift ordering, clear/random modes and runtime JSON persistence |
 
+## Hidden legacy modules and existing patches
+
+The 49-module baseline above counts the 12 Core and 37 visible Free modules.
+The [pinned Free manifest](https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/plugin.json)
+also retains two hidden legacy models. They remain part of existing-patch
+compatibility even though the public manual's index omits them. Track them in
+addition to the visible inventory; do not silently substitute a different model
+when importing an old patch.
+
+| Model slug | Module | Rust status | Acceptance gate |
+|---|---|---|---|
+| `VCA` | VCA-2 | Planned | Both amplifier channels, linear/exponential control inputs, gain law, polyphony and saved parameter mapping |
+| `Unity` | Unity | Planned | Both mixing sections, sum/average behavior, normaling, polarity and saved state |
+
 ## Delivery order and acceptance rules
 
 1. **Validate the reference voice.** Publish circuit equations, component values, voltage scaling, assumptions, and unsupported physical effects. Test the ramp source, ladder, OTA VCA, and RC envelope independently and together. Compare circuit solvers against an independent high-accuracy reference; compare physical hardware only when a specific measured target exists. Preserve old patches and continuous oscillator/capacitor state during edits.
