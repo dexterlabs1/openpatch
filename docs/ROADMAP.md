@@ -19,7 +19,7 @@ This plan starts from the code inspected on the baseline date:
 - Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. Complete corresponding VCV module contracts remain open.
 - Native host: rack browser, module movement, rotary controls, cable creation/removal, workspace save/load with layout sidecars, shared multi-step patch undo/redo, and optional GLSL visuals. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Layout movement is not yet an undoable project action. Selectable-device stereo output, one hardware MIDI input, polyphonic MIDI → CV, and a performance keyboard are implemented. Hardware audio input and hands-on MIDI/device qualification remain open. See [MIDI_AUDIO.md](MIDI_AUDIO.md).
 - Control: UI and MCP share revision-checked transactions and bounded history. `preview_edits` validates a candidate without committing; `apply_edits` validates the final graph and commits up to 256 edit operations as one revision/history action. History retains at most 128 prior/future patch snapshots combined. Rendering/export clone the active patch without cloning history. Audio swaps compiled graphs through bounded queues and carries matching DSP state forward. Stdio starts with one application instance; it cannot attach to an arbitrary already-running window.
-- Validation: repository tests and platform CI exist. Ten independent engine-v2 contract tests pass, covering timing/counts, feedback, normalization, routing, retirement/state adoption, invalid data, legacy rendering and allocation/deallocation checks. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
+- Validation: repository tests and platform CI exist. Independent engine-v2 contract tests pass, covering timing/counts, feedback, normalization, routing, retirement/state adoption, invalid data, legacy rendering and allocation/deallocation checks. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
 
 “Partial” below means useful behavior exists but its acceptance gate is open. “Missing” means the capability is not implemented. Gates describe proposed OpenPatch tests, not claims about current results.
 
@@ -67,7 +67,7 @@ count; newly connected edges start empty. Compatible unchanged edges and active
 voices retain state across graph replacement. Retired voices reset, and
 ordinary modules execute only their active preallocated states.
 
-Ten independent tests in
+Independent tests in
 `crates/openpatch-core/tests/engine_v2_contract.rs` cover old JSON/render
 compatibility, named outputs, zero/one/sixteen channels, sparse routing,
 normalization and broadcast, exact self/two-node recurrences, callback

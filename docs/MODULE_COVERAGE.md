@@ -27,7 +27,7 @@ Five additional original models use at most two inputs and one output. No VCV or
 
 | Kind | Implemented behavior | Explicit gaps against related VCV modules |
 |---|---|---|
-| `quantizer` | Nearest enabled 12-tone note at 1 V/oct; integer `scale_mask` bits C through B; `offset` and `offset_cv` add volts before quantization. Exact ties choose the higher pitch, including below zero. Empty mask passes the adjusted pitch through. In v2, pitch sets voice count and offset CV follows auxiliary broadcast rules. | No piano display or factory-scale preset browser. The tie and empty-scale policies are OpenPatch contracts, not claimed VCV equivalence. |
+| `quantizer` | Nearest enabled 12-tone note at 1 V/oct; integer `scale_mask` bits C through B; `offset` and `offset_cv` add volts before quantization. Exact ties choose the higher pitch, including below zero. Empty mask passes the adjusted pitch through. In v2, pitch sets voice count and offset CV follows auxiliary broadcast rules. | Native piano-key scale editing is implemented; no factory-scale preset browser. The tie and empty-scale policies are OpenPatch contracts, not claimed VCV equivalence. |
 | `sample_hold` | One held voltage per voice; captures the simultaneously received signal when trigger rises to 1 V, rearms at 0.1 V or below; starts at `initial`. Ideal hold without droop. In v2, trigger sets voice count; mono signal broadcasts. | No eight-row shift register, normalization chain, clear/random controls, or saved runtime voltage in patch JSON. |
 | `white_noise` | Single Gaussian white-noise output with `level` in RMS volts and an integer 24-bit `seed`. Reproducible sequence within an execution environment; no peak clipping. | No colored-noise outputs, VCV-specific level calibration, or identical VCV random sequence. |
 | `attenuverter` | Computes `gain * signal + offset`; gain −1…1, offset −10…10 V; unpatched signal is 10 V. In v2, signal sets voice count. | No eight-section control bank or input propagation; no Rescale range limiter or slew behavior. |
@@ -114,7 +114,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Sequential Switch 1 to 4 | Routing | Planned | Selected-path routing and clock/reset transitions |
 | Sequential Switch 4 to 1 | Routing | Planned | Input selection and clock/reset transitions |
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison, bypass and full host workflow acceptance remain open |
-| Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Scale UI/presets, broader per-voice boundary cases and direct VCV comparison |
+| Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
 | Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
 | Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
 | Sum | Polyphony | Partial: `poly_sum`, unity mono reduction and empty-input behavior tested | OUT level control, level/channel indicators and headroom behavior |

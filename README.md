@@ -78,10 +78,14 @@ Patches live in `~/OpenPatch` by default. **Save as** creates a new JSON file an
 <details>
 <summary><strong>Make a voice move with a clocked LFO</strong></summary>
 
+![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)
+
 Choose **File → Clocked modulation**. Four simultaneous waveforms let one LFO
 shape volume, filter cutoff, and other CV destinations. Patch a clock and the
 rate knob displays a multiplier; use reset to align phase independently. FM,
 PWM, bipolar/unipolar ranges, and inversion are available directly on the panel.
+
+<sub>Native Linux / Mesa CI render.</sub>
 
 [Modulation controls and signal contract →](docs/MODULATION.md)
 
