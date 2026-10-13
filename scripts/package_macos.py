@@ -19,6 +19,10 @@ macos = contents / "MacOS"
 macos.mkdir(parents=True, exist_ok=True)
 shutil.copy2(binary, macos / "openpatch-desktop")
 (macos / "openpatch-desktop").chmod(0o755)
+resources = contents / "Resources"
+resources.mkdir(parents=True, exist_ok=True)
+icon = pathlib.Path(__file__).resolve().parents[1] / "crates/openpatch-desktop/assets/OpenPatch.icns"
+shutil.copy2(icon, resources / "OpenPatch.icns")
 with (contents / "Info.plist").open("wb") as stream:
     plistlib.dump({
         "CFBundleName": "OpenPatch",
@@ -27,6 +31,7 @@ with (contents / "Info.plist").open("wb") as stream:
         "CFBundleVersion": "2",
         "CFBundleShortVersionString": "0.2.0",
         "CFBundleExecutable": "openpatch-desktop",
+        "CFBundleIconFile": "OpenPatch.icns",
         "CFBundlePackageType": "APPL",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "12.0",

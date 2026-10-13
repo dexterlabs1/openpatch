@@ -59,6 +59,10 @@ fn run() -> Result<(), String> {
     }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(
+                eframe::icon_data::from_png_bytes(include_bytes!("../assets/openpatch.png"))
+                    .expect("bundled OpenPatch icon must be valid PNG"),
+            )
             .with_inner_size([1320.0, 880.0])
             .with_min_inner_size([940.0, 680.0])
             .with_app_id("org.openpatch.desktop"),
