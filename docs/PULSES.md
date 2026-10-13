@@ -2,6 +2,10 @@
 
 `pulses` is an original Rust implementation of the manual trigger/gate role described in the [VCV Free manual](https://vcvrack.com/Free#Pulses). It is a digital utility with ten independent buttons, no inputs or saved parameters, and twenty mono outputs: `trig1`…`trig10`, then `gate1`…`gate10`. It requires a version-2 patch.
 
+![Pulses beside the sequencer in the native Studio Rack interface](images/openpatch-pulses.png)
+
+*Native Linux CI capture using an offline engine snapshot, with rows 1 and 10 held. This is UI evidence, not macOS device playback qualification.*
+
 ## Play the connected example
 
 Choose **File → Manual pulses voice**. Row 1 holds the envelope open; row 2 advances the four-note sequence; row 3 toggles sequencer Run; row 4 resets its position. The remaining rows are free for patching. Start audio to play the voice. The example is also available as [`manual-pulses-voice.json`](../examples/manual-pulses-voice.json).
