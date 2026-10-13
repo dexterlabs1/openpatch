@@ -95,9 +95,13 @@ f64 precision, tap order, separate multiply/add operations, eight circuit steps,
 solver limits and 64-sample latency are unchanged. Each voice retains its own
 history, parameters and diagnostics; persistent state size is unchanged.
 
-On the M1 Max, the compiler generates paired **scalar** arithmetic, not SIMD.
-The paired interpolation path still spills some accumulators to the stack, so
-further improvement remains possible. New tests compare every sample and
+The source expresses independent scalar lanes, but the final M1 Max release
+executable with ThinLTO already vectorizes most interpolation arithmetic.
+Its inspected interpolation loops do not spill accumulators to the stack.
+Paired decimation uses packed adjacent-tap products followed by ordered scalar
+additions. Earlier inspection of intermediate, pre-LTO assembly understated
+this optimization; the actual timed executable is the relevant evidence.
+New tests compare every sample and
 internal solver state against independent scalar instances and frozen reference
 code, including unequal histories/parameters, control-history draining, invalid
 inputs, state adoption and voice shrink/regrowth. Public Engine tests cover odd
