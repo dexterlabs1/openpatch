@@ -49,6 +49,23 @@ a modal dialog, a blocked/no-op drop, or a newer graph revision cancels the
 preview without adding history. Pan/zoom remain persisted view settings without
 separate undo entries.
 
+## Exact parameter values
+
+Right-click a knob to type a value directly in its parameter menu. Double-clicking
+the displayed value also opens an editor. **Enter** or **Apply** commits a valid
+value as one shared undo action; **Escape** or **Cancel** discards the draft.
+Clicking outside the parameter menu cancels it. Losing app focus or opening
+a modal editor also discards the draft. The editor shows the control's units
+and accepted range. Gain controls accept
+decibels, including `-inf` for silence; stepped controls require a permitted step.
+Expressions and musical note names are not supported yet.
+
+An open draft belongs to the patch revision at which it was opened. If another
+edit, including an MCP command, changes that revision, reopen the control before
+applying a value. The command also checks that original revision when committing,
+so a concurrent change cannot be overwritten between drawing and applying the
+editor. Rejected drafts add no undo entry.
+
 ## Shared MCP operation
 
 `duplicate_modules` uses an explicit, nonempty source-to-destination mapping.

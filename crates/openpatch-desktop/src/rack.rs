@@ -112,7 +112,12 @@ impl DuplicateCableMode {
 
 struct ParameterEdit {
     id: String,
+    kind: String,
     parameter: String,
+    revision: u64,
+    surface: ParameterEditSurface,
+    menu_popup: Option<egui::Id>,
+    stale: bool,
     text: String,
     min: f32,
     max: f32,
@@ -122,6 +127,18 @@ struct ParameterEdit {
     gain_power: Option<f32>,
     raw_max: f32,
     focus: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ParameterEditSurface {
+    Window,
+    KnobMenu,
+}
+
+enum ParameterEditOutcome {
+    Keep,
+    Apply(f32),
+    Cancel,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,6 +208,7 @@ pub struct Rack {
     observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
+    requested_parameter_menu: Option<(String, String)>,
     shortcuts_enabled: bool,
     suppress_reveal_once: bool,
     gesture: u64,
@@ -217,6 +235,7 @@ impl Default for Rack {
             observed_revision: 0,
             dragging_cable: false,
             editing: None,
+            requested_parameter_menu: None,
             shortcuts_enabled: true,
             suppress_reveal_once: false,
             gesture: 0,
@@ -231,6 +250,11 @@ impl Default for Rack {
 }
 
 impl Rack {
+    /// Open a real knob context menu on the next paint for the native smoke fixture.
+    pub(crate) fn request_parameter_menu_for_smoke(&mut self, id: &str, parameter: &str) {
+        self.requested_parameter_menu = Some((id.to_owned(), parameter.to_owned()));
+    }
+
     pub(crate) fn set_shortcuts_enabled(&mut self, enabled: bool) {
         if !enabled {
             self.cancel_module_drag();
@@ -717,6 +741,24 @@ impl Rack {
             self.dragging_cable = false;
             self.observed_revision = revision;
         }
+        if !ui.input(|i| i.focused) || !self.shortcuts_enabled || !ui.is_enabled() {
+            if let Some(edit) = self.editing.take() {
+                if let Some(id) = edit.menu_popup {
+                    egui::Popup::close_id(ui.ctx(), id);
+                }
+            }
+        }
+        if let Some(edit) = &mut self.editing {
+            if (edit.revision != revision || !parameter_target_matches(edit, patch, catalog))
+                && !edit.stale
+            {
+                if let Some(id) = edit.menu_popup {
+                    egui::Popup::close_id(ui.ctx(), id);
+                }
+                edit.stale = true;
+                edit.surface = ParameterEditSurface::Window;
+            }
+        }
         let released_manual = self.release_manual_if_needed(ui, patch);
         let interactive = ui.is_enabled();
         let drag_interactive = interactive
@@ -745,6 +787,7 @@ impl Rack {
             .filter(|id| !self.positions.contains_key(*id))
             .cloned();
         self.reconcile(patch, catalog);
+        let popup_open_at_frame_start = egui::Popup::is_any_open(ui.ctx());
         let mut action = None;
         let (canvas, response) = ui.allocate_exact_size(
             ui.available_size().max(vec2(1.0, 1.0)),
@@ -964,6 +1007,8 @@ impl Rack {
             }
             let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
             if interactive
+                && !popup_open_at_frame_start
+                && !egui::Popup::is_any_open(ui.ctx())
                 && ui.input(|i| {
                     i.pointer.button_pressed(PointerButton::Primary)
                         && i.pointer.interact_pos().is_some_and(|p| {
@@ -983,7 +1028,7 @@ impl Rack {
                     format!("{} module {}", title(&node.kind), node.id),
                 )
             });
-            if panel_response.clicked() {
+            if !popup_open_at_frame_start && panel_response.clicked() {
                 self.select_primary(node.id.clone());
             }
             panel_response.context_menu(|ui| {
@@ -1042,7 +1087,7 @@ impl Rack {
                     format!("Move {} module", node.id),
                 )
             });
-            if header_response.clicked() {
+            if !popup_open_at_frame_start && header_response.clicked() {
                 if ui.input(|i| i.modifiers.shift) {
                     self.toggle_selection(node.id.clone());
                 } else {
@@ -1686,6 +1731,42 @@ impl Rack {
                 } else {
                     parameter_value(name, value, spec)
                 };
+                let make_edit = |surface| ParameterEdit {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                    parameter: name.to_string(),
+                    revision,
+                    surface,
+                    menu_popup: None,
+                    stale: false,
+                    text: if let Some(power) = gain_power {
+                        gain_db(value, power).to_string()
+                    } else {
+                        slew_min
+                            .map_or(value * display_scale, |min| slew_display(value, min))
+                            .to_string()
+                    },
+                    min: if gain_power.is_some() {
+                        f32::NEG_INFINITY
+                    } else if slew_min.is_some() {
+                        0.0
+                    } else {
+                        min * display_scale
+                    },
+                    max: if let Some(power) = gain_power {
+                        gain_db(max, power)
+                    } else if slew_min.is_some() {
+                        max.exp2() * 1000.0
+                    } else {
+                        max * display_scale
+                    },
+                    step: step.map(|step| step * display_scale),
+                    display_scale,
+                    slew_min,
+                    gain_power,
+                    raw_max: max,
+                    focus: true,
+                };
                 let normalized = if geometric {
                     normalize_geometric(value, min, max)
                 } else {
@@ -1700,6 +1781,51 @@ impl Rack {
                 );
                 knob.widget_info(|| {
                     egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, name))
+                });
+                if self
+                    .requested_parameter_menu
+                    .as_ref()
+                    .is_some_and(|(id, parameter)| id == &node.id && parameter == name)
+                {
+                    egui::Popup::open_id(ui.ctx(), knob.id.with("popup"));
+                    self.requested_parameter_menu = None;
+                }
+                let mut parameter_popup = egui::Popup::context_menu(&knob)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                // A programmatic smoke opening has no saved pointer anchor.
+                // Real right-clicks retain their fixed pointer position.
+                if !knob.secondary_clicked()
+                    && egui::Popup::position_of_id(ui.ctx(), knob.id.with("popup")).is_none()
+                {
+                    parameter_popup = parameter_popup
+                        .anchor(egui::PopupAnchor::Position(knob.rect.right_bottom()));
+                }
+                parameter_popup.show(|ui| {
+                    let same_target = self.editing.as_ref().is_some_and(|edit| {
+                        edit.surface == ParameterEditSurface::KnobMenu
+                            && edit.id == node.id
+                            && edit.parameter == *name
+                    });
+                    if !same_target {
+                        self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                    }
+                    self.editing.as_mut().unwrap().menu_popup = Some(knob.id.with("popup"));
+                    ui.set_min_width(244.0);
+                    ui.strong(parameter_label(name));
+                    ui.label(format!("Current: {display_value}"));
+                    let outcome = parameter_editor_contents(ui, self.editing.as_mut().unwrap());
+                    match outcome {
+                        ParameterEditOutcome::Keep => {}
+                        ParameterEditOutcome::Apply(raw) => {
+                            let edit = self.editing.take().unwrap();
+                            action = Some(parameter_edit_action(&edit, raw));
+                            ui.close();
+                        }
+                        ParameterEditOutcome::Cancel => {
+                            self.editing = None;
+                            ui.close();
+                        }
+                    }
                 });
                 if knob.drag_started() {
                     self.select_primary(node.id.clone());
@@ -1843,40 +1969,10 @@ impl Rack {
                     )
                 });
                 if value_response.double_clicked() {
-                    self.editing = Some(ParameterEdit {
-                        id: node.id.clone(),
-                        parameter: name.to_string(),
-                        text: if let Some(power) = gain_power {
-                            gain_db(value, power).to_string()
-                        } else {
-                            slew_min
-                                .map_or(value * display_scale, |min| slew_display(value, min))
-                                .to_string()
-                        },
-                        min: if gain_power.is_some() {
-                            f32::NEG_INFINITY
-                        } else if slew_min.is_some() {
-                            0.0
-                        } else {
-                            min * display_scale
-                        },
-                        max: if let Some(power) = gain_power {
-                            gain_db(max, power)
-                        } else if slew_min.is_some() {
-                            max.exp2() * 1000.0
-                        } else {
-                            max * display_scale
-                        },
-                        step: step.map(|step| step * display_scale),
-                        display_scale,
-                        slew_min,
-                        gain_power,
-                        raw_max: max,
-                        focus: true,
-                    });
+                    self.editing = Some(make_edit(ParameterEditSurface::Window));
                 }
                 knob.on_hover_text(format!(
-                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset.",
+                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset; right-click to type a value.",
                     name,
                     display_value,
                     if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
@@ -2233,7 +2329,7 @@ impl Rack {
                 }
                 self.dragging_cable = false;
             }
-            if response.clicked() {
+            if !popup_open_at_frame_start && response.clicked() {
                 self.selected = None;
                 self.selection.clear();
                 self.pending = None;
@@ -2257,6 +2353,14 @@ impl Rack {
         }
         if self.pan != initial_pan {
             self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+        if self.editing.as_ref().is_some_and(|edit| {
+            edit.surface == ParameterEditSurface::KnobMenu
+                && edit
+                    .menu_popup
+                    .is_none_or(|id| !egui::Popup::is_id_open(ui.ctx(), id))
+        }) {
+            self.editing = None;
         }
         self.parameter_editor(ui.ctx(), &mut action);
         released_manual.or(if interactive { action } else { None })
@@ -3814,32 +3918,129 @@ impl Rack {
         let Some(edit) = &mut self.editing else {
             return;
         };
-        let mut close = false;
-        egui::Window::new(format!("{} / {}", edit.id, edit.parameter)).id(egui::Id::new("rack-parameter-editor")).collapsible(false).resizable(false).show(ctx, |ui| {
-            ui.label(format!("Range: {} to {}", edit.min, edit.max));
-            let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
-            if edit.focus { input.request_focus(); edit.focus = false; }
-            let parsed = parsed_parameter_value(edit);
-            if edit.gain_power.is_some() { ui.label("Enter dB. -inf sets the gain to zero."); }
-            if edit.slew_min.is_some() { ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored)."); }
-            if edit.display_scale == 0.5 { ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive."); }
-            if edit.parameter == "frequency" && edit.display_scale != 0.5 { ui.label("Enter frequency in Hz."); }
-            if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
-            if edit.display_scale==100.0&&matches!(edit.parameter.as_str(),"pulse_width"|"fm_amount"|"pwm_amount") {ui.label("Enter a percentage.");}
-            else if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
-            if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") { ui.label("Enter time in seconds."); }
-            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-            ui.horizontal(|ui| {
-                if ui.add_enabled(parsed.is_some(), egui::Button::new("Apply")).clicked() || (enter && parsed.is_some()) {
-                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":edit.gain_power.map_or_else(|| edit.slew_min.map_or(parsed.unwrap() / edit.display_scale, |min| if parsed.unwrap() == 0.0 {min} else {(parsed.unwrap()/1000.0).log2().max(min)}), |power| if parsed.unwrap() == f32::NEG_INFINITY {0.0} else {10.0_f32.powf(parsed.unwrap()/(20.0*power)).min(edit.raw_max)})}))); close = true;
-                }
-                if ui.button("Cancel").clicked() { close = true; }
-            });
-            if parsed.is_none() { ui.colored_label(Color32::LIGHT_RED, "Enter a finite value within the range."); }
-        });
-        if close {
-            self.editing = None;
+        if edit.surface != ParameterEditSurface::Window {
+            return;
         }
+        let mut outcome = ParameterEditOutcome::Keep;
+        egui::Window::new(format!("{} / {}", edit.id, edit.parameter))
+            .id(egui::Id::new("rack-parameter-editor"))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                outcome = parameter_editor_contents(ui, edit);
+            });
+        match outcome {
+            ParameterEditOutcome::Keep => {}
+            ParameterEditOutcome::Apply(raw) => {
+                let edit = self.editing.take().unwrap();
+                *action = Some(parameter_edit_action(&edit, raw));
+            }
+            ParameterEditOutcome::Cancel => self.editing = None,
+        }
+    }
+}
+
+fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value) -> bool {
+    patch
+        .nodes
+        .iter()
+        .any(|node| node.id == edit.id && node.kind == edit.kind)
+        && catalog["modules"].as_array().is_some_and(|modules| {
+            modules.iter().any(|module| {
+                module["kind"].as_str() == Some(edit.kind.as_str())
+                    && module["params"].get(edit.parameter.as_str()).is_some()
+            })
+        })
+}
+
+fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
+    if let Some(power) = edit.gain_power {
+        if parsed == f32::NEG_INFINITY {
+            0.0
+        } else {
+            10.0_f32.powf(parsed / (20.0 * power)).min(edit.raw_max)
+        }
+    } else if let Some(min) = edit.slew_min {
+        if parsed == 0.0 {
+            min
+        } else {
+            (parsed / 1000.0).log2().max(min)
+        }
+    } else {
+        parsed / edit.display_scale
+    }
+}
+
+fn parameter_edit_action(edit: &ParameterEdit, value: f32) -> RackAction {
+    RackAction::Command(
+        "set_parameter",
+        json!({"id":edit.id,"parameter":edit.parameter,"value":value,"expected_revision":edit.revision}),
+    )
+}
+
+fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> ParameterEditOutcome {
+    ui.label(format!("Range: {} to {}", edit.min, edit.max));
+    let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
+    if edit.focus {
+        input.request_focus();
+        edit.focus = false;
+    }
+    let parsed = parsed_parameter_value(edit);
+    if edit.gain_power.is_some() {
+        ui.label("Enter dB. -inf sets the gain to zero.");
+    }
+    if edit.slew_min.is_some() {
+        ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored).");
+    }
+    if edit.display_scale == 0.5 {
+        ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive.");
+    }
+    if edit.parameter == "frequency" && edit.display_scale != 0.5 {
+        ui.label("Enter frequency in Hz.");
+    }
+    if edit.parameter == "waveform" {
+        ui.label("0 = Saw, 1 = Pulse");
+    }
+    if edit.display_scale == 100.0
+        && matches!(
+            edit.parameter.as_str(),
+            "pulse_width" | "fm_amount" | "pwm_amount"
+        )
+    {
+        ui.label("Enter a percentage.");
+    } else if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") {
+        ui.label("Enter a ratio from 0 to 1.");
+    }
+    if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") {
+        ui.label("Enter time in seconds.");
+    }
+    if edit.stale {
+        ui.colored_label(
+            Color32::LIGHT_RED,
+            "Patch changed. Reopen this control to edit its current value.",
+        );
+    }
+    let enter = (input.has_focus() || input.lost_focus())
+        && ui.input(|i| i.focused && i.key_pressed(egui::Key::Enter));
+    let mut apply = false;
+    let mut cancel = false;
+    ui.horizontal(|ui| {
+        apply = ui
+            .add_enabled(parsed.is_some() && !edit.stale, egui::Button::new("Apply"))
+            .clicked();
+        cancel = ui.button("Cancel").clicked();
+    });
+    if parsed.is_none() {
+        ui.colored_label(Color32::LIGHT_RED, "Enter a finite value within the range.");
+    }
+    if cancel || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        ParameterEditOutcome::Cancel
+    } else if (apply || enter) && !edit.stale {
+        parsed.map_or(ParameterEditOutcome::Keep, |value| {
+            ParameterEditOutcome::Apply(parameter_edit_raw_value(edit, value))
+        })
+    } else {
+        ParameterEditOutcome::Keep
     }
 }
 
@@ -6073,6 +6274,212 @@ mod tests {
         }
     }
 
+    fn right_click_parameter(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        revision: u64,
+        position: Pos2,
+        start_time: f64,
+    ) -> egui::FullOutput {
+        for (offset, pressed) in [(0.0, true), (0.1, false)] {
+            frame_revision_state(
+                ctx,
+                rack,
+                patch,
+                start_time + offset,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                true,
+                true,
+                revision,
+            );
+        }
+        frame_revision_state(
+            ctx,
+            rack,
+            patch,
+            start_time + 0.2,
+            vec![],
+            true,
+            true,
+            revision,
+        )
+        .1
+    }
+
+    #[test]
+    fn knob_secondary_click_opens_direct_numeric_popup_without_module_menu_or_selection_change() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"vco","kind":"multi_vco"},{"id":"other","kind":"constant"}]
+        }))
+        .unwrap();
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+        rack.select_only("other".into());
+        let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+        assert_eq!(rack.selected_ids(), vec!["other"]);
+        let edit = rack.editing.as_ref().expect("knob popup editor");
+        assert_eq!(edit.id, "vco");
+        assert_eq!(edit.parameter, "frequency");
+        assert_eq!(edit.revision, 7);
+        assert_eq!(edit.surface, ParameterEditSurface::KnobMenu);
+        let mut text = Vec::new();
+        fn collect(shape: &egui::Shape, text: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(item) => text.push(item.galley.text().to_owned()),
+                egui::Shape::Vec(items) => {
+                    for item in items {
+                        collect(item, text);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for shape in &output.shapes {
+            collect(&shape.shape, &mut text);
+        }
+        assert!(
+            text.iter().any(|label| label.starts_with("Current:")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|label| label.starts_with("Range:")),
+            "{text:?}"
+        );
+        assert!(
+            !text.iter().any(|label| label.contains("Duplicate with")),
+            "{text:?}"
+        );
+        rack.editing.as_mut().unwrap().text = "440".into();
+        let enter = egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.3,
+            vec![enter.clone()],
+            true,
+            true,
+            7,
+        )
+        .0;
+        assert!(
+            matches!(action,Some(RackAction::Command("set_parameter",args)) if args["id"]=="vco" && args["parameter"]=="frequency" && args["expected_revision"]==7 && args["value"]==440.0 && args.get("history_group").is_none())
+        );
+        assert!(rack.editing.is_none());
+        assert!(
+            frame_revision_state(&ctx, &mut rack, &patch, 1.4, vec![enter], true, true, 7)
+                .0
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn numeric_popup_rejects_invalid_unfocused_and_stale_drafts() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"vco","kind":"multi_vco"}]
+        }))
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 4);
+        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 137.0), 1.0);
+        rack.editing.as_mut().unwrap().text = "not a number".into();
+        let enter = egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        assert!(frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.3,
+            vec![enter.clone()],
+            true,
+            true,
+            4
+        )
+        .0
+        .is_none());
+        assert!(rack.editing.is_some());
+        rack.editing.as_mut().unwrap().text = "440".into();
+        assert!(frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.4,
+            vec![enter.clone()],
+            false,
+            true,
+            4
+        )
+        .0
+        .is_none());
+        assert!(rack.editing.is_none());
+
+        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 137.0), 2.0);
+        rack.editing.as_mut().unwrap().text = "880".into();
+        assert!(
+            frame_revision_state(&ctx, &mut rack, &patch, 2.3, vec![], true, true, 5)
+                .0
+                .is_none()
+        );
+        let edit = rack.editing.as_ref().expect("stale draft stays visible");
+        assert!(edit.stale);
+        assert_eq!(edit.surface, ParameterEditSurface::Window);
+        assert_eq!(edit.text, "880");
+        assert!(frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.4,
+            vec![enter.clone()],
+            true,
+            true,
+            5
+        )
+        .0
+        .is_none());
+        assert!(rack.editing.is_some());
+        assert!(frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.5,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            true,
+            true,
+            5
+        )
+        .0
+        .is_none());
+        assert!(rack.editing.is_none());
+    }
+
     fn stacked_fixture() -> Patch {
         serde_json::from_value(json!({"version":2,"nodes":[{"id":"src","kind":"constant","params":{"value":1}},{"id":"alt","kind":"constant","params":{"value":2}},{"id":"target","kind":"gain"},{"id":"dest","kind":"gain"}],"cables":[{"id":"one","from":"src","to":"target","input":"signal"},{"id":"two","from":"src","to":"target","input":"signal"}],"output":"target"})).unwrap()
     }
@@ -7261,7 +7668,12 @@ mod tests {
                 if cause == "editor" {
                     rack.editing = Some(ParameterEdit {
                         id: "a".into(),
+                        kind: "constant".into(),
                         parameter: "value".into(),
+                        revision: 0,
+                        surface: ParameterEditSurface::Window,
+                        menu_popup: None,
+                        stale: false,
                         text: "0".into(),
                         min: -10.0,
                         max: 10.0,
@@ -10313,6 +10725,185 @@ mod tests {
         ] {
             assert!(restored.restore_layout(&bad).is_err());
             assert_eq!(restored.layout(), layout);
+        }
+    }
+
+    fn numeric_popup_label_center(output: &egui::FullOutput, label: &str) -> Pos2 {
+        fn find(shape: &egui::Shape, label: &str) -> Option<Pos2> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, label)),
+                _ => None,
+            }
+        }
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| find(&shape.shape, label))
+            .unwrap_or_else(|| panic!("missing popup button {label}"))
+    }
+
+    #[test]
+    fn numeric_popup_pointer_apply_cancel_and_outside_click_preserve_selection() {
+        for outcome in ["Apply", "Cancel", "outside"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"vco","kind":"multi_vco"},{"id":"other","kind":"constant"}]}))
+            .unwrap();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+            rack.select_only("other".into());
+            let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+            let input_point =
+                numeric_popup_label_center(&output, &rack.editing.as_ref().unwrap().text);
+            for (time, pressed) in [(1.23, true), (1.24, false)] {
+                assert!(frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(input_point),
+                        button(input_point, pressed)
+                    ],
+                    true,
+                    true,
+                    7
+                )
+                .0
+                .is_none());
+                assert!(
+                    rack.editing.is_some(),
+                    "clicking the input must keep the popup open"
+                );
+            }
+            let output = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![
+                    egui::Event::Key {
+                        key: egui::Key::A,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers {
+                            command: true,
+                            ..Default::default()
+                        },
+                    },
+                    egui::Event::Text("440".into()),
+                ],
+                true,
+                true,
+                7,
+            )
+            .1;
+            assert_eq!(rack.editing.as_ref().unwrap().text, "440");
+            let point = if outcome == "outside" {
+                pos2(99.0, 40.0)
+            } else {
+                numeric_popup_label_center(&output, outcome)
+            };
+            let mut actions = Vec::new();
+            for (time, pressed) in [(1.4, true), (1.5, false)] {
+                if let Some(action) = frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                    true,
+                    true,
+                    7,
+                )
+                .0
+                {
+                    actions.push(action);
+                }
+            }
+            assert_eq!(rack.selected_ids(), vec!["other"], "{outcome}");
+            assert!(rack.editing.is_none(), "{outcome}");
+            assert!(!egui::Popup::is_any_open(&ctx), "{outcome}");
+            if outcome == "Apply" {
+                assert_eq!(actions.len(), 1);
+                assert!(
+                    matches!(&actions[0], RackAction::Command("set_parameter", args)
+                    if args["id"] == "vco" && args["parameter"] == "frequency"
+                    && args["value"] == 440.0 && args["expected_revision"] == 7
+                    && args.get("history_group").is_none())
+                );
+            } else {
+                assert!(actions.is_empty(), "{outcome}");
+            }
+        }
+    }
+
+    #[test]
+    fn numeric_popup_modal_disable_closes_popup_and_target_changes_stale_the_draft() {
+        for change in ["modal", "shortcuts", "removed", "kind"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"vco","kind":"multi_vco"}]}))
+            .unwrap();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+            right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+            rack.editing.as_mut().unwrap().text = "880".into();
+            match change {
+                "removed" => patch.nodes.clear(),
+                "kind" => patch.nodes[0].kind = "multi_lfo".into(),
+                "shortcuts" => rack.set_shortcuts_enabled(false),
+                _ => {}
+            }
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![],
+                true,
+                change != "modal",
+                7
+            )
+            .0
+            .is_none());
+            assert!(!egui::Popup::is_any_open(&ctx), "{change}");
+            if matches!(change, "modal" | "shortcuts") {
+                assert!(rack.editing.is_none());
+                rack.set_shortcuts_enabled(true);
+                frame_revision_state(&ctx, &mut rack, &patch, 1.4, vec![], true, true, 7);
+                assert!(
+                    rack.editing.is_none(),
+                    "reenabling must not resurrect a closed draft"
+                );
+            } else {
+                let edit = rack.editing.as_ref().unwrap();
+                assert!(edit.stale);
+                assert_eq!(edit.surface, ParameterEditSurface::Window);
+                assert_eq!(edit.text, "880");
+                let output =
+                    frame_revision_state(&ctx, &mut rack, &patch, 1.4, vec![], true, true, 7).1;
+                let point = numeric_popup_label_center(&output, "Apply");
+                for (time, pressed) in [(1.5, true), (1.6, false)] {
+                    assert!(frame_revision_state(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time,
+                        vec![egui::Event::PointerMoved(point), button(point, pressed)],
+                        true,
+                        true,
+                        7
+                    )
+                    .0
+                    .is_none());
+                }
+                assert!(rack.editing.as_ref().unwrap().stale);
+            }
         }
     }
 }

@@ -1823,7 +1823,19 @@ impl OpenPatch {
         if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
             self.toggle_play();
         }
-        if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        if ctx.input(|i| {
+            i.events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: egui::Key::Enter,
+                        pressed: true,
+                        repeat: false,
+                        ..
+                    }
+                )
+            })
+        }) {
             self.browse();
         }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
@@ -3553,6 +3565,40 @@ impl OpenPatch {
             self.audio_performance_open = true;
             self.status = "Audio performance · simulated screenshot fixture".into();
         }
+        if frame == 606 {
+            self.audio_performance_open = false;
+            self.smoke_diagnostics = None;
+            self.keyboard_open = false;
+            self.browser_open = false;
+            self.select_analysis(None);
+            let patch: Patch = serde_json::from_value(json!({
+                "version":2,"sample_rate":48000,
+                "nodes":[
+                    {"id":"tone","kind":"analog_vco","params":{"frequency":523.251,"pulse_width":0.35}},
+                    {"id":"vca","kind":"analog_vca"},
+                    {"id":"out","kind":"audio_stereo"}
+                ],
+                "cables":[
+                    {"from":"tone","output":"out","to":"vca","input":"signal"},
+                    {"from":"vca","output":"out","to":"out","input":"left"}
+                ],
+                "output":"out"
+            })).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("parameter context fixture compiles");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
+                    "tone":[0,0],"vca":[210,0],"out":[420,0]
+                }}))
+                .unwrap();
+            self.rack.select_only("tone".into());
+            self.rack
+                .request_parameter_menu_for_smoke("tone", "frequency");
+            self.title = "Exact frequency · direct knob entry".into();
+            self.status =
+                "Right-click a knob to enter a value · Apply creates one undo step".into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -3592,6 +3638,7 @@ impl OpenPatch {
                 | 554
                 | 578
                 | 600
+                | 622
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3644,7 +3691,8 @@ impl OpenPatch {
                 31 => path.with_file_name("rack-pulses.png"),
                 32 => path.with_file_name("rack-push.png"),
                 33 => path.with_file_name("rack-gates.png"),
-                _ => path.with_file_name("audio-performance-simulated.png"),
+                34 => path.with_file_name("audio-performance-simulated.png"),
+                _ => path.with_file_name("parameter-context-entry.png"),
             };
             image::save_buffer(
                 target,
@@ -3656,12 +3704,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 35 {
+            if captures == 36 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 632, "Native screenshot timeout");
+        assert!(frame < 654, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -3847,6 +3895,235 @@ mod project_workflow_tests {
             allow_close: false,
             smoke_test: None,
         }
+    }
+
+    fn parameter_entry_host(path: &Path) -> OpenPatch {
+        let mut app = host(path);
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{
+                "version":2,"nodes":[
+                    {"id":"tone","kind":"analog_vco","params":{"frequency":220.0}},
+                    {"id":"level","kind":"constant","params":{"value":1.0}}
+                ]
+            }})
+        ));
+        app.rack.select_only("tone".into());
+        app.observe_document();
+        app
+    }
+
+    #[test]
+    fn parameter_smoke_fixture_opens_real_popup_without_a_pointer() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.smoke_test = Some((dir.path().join("unused.png"), 605, 35));
+        let ctx = egui::Context::default();
+        app.smoke(&ctx);
+        app.sync();
+        let mut output = None;
+        for frame in 0..3 {
+            output = Some(ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    time: Some(frame as f64),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| app.rack_workspace(ctx, None),
+            ));
+        }
+        let output = output.unwrap();
+        preset_text(&output, "Apply");
+        preset_text(&output, "Enter frequency in Hz.");
+        assert!(egui::Popup::is_any_open(&ctx));
+    }
+
+    #[test]
+    fn parameter_enter_and_held_repeat_do_not_open_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = parameter_entry_host(dir.path());
+        app.browser_open = false;
+        app.rack
+            .request_parameter_menu_for_smoke("tone", "frequency");
+        let ctx = egui::Context::default();
+        for frame in 0..5 {
+            let events = if frame >= 2 {
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: frame > 2,
+                    modifiers: egui::Modifiers::NONE,
+                }]
+            } else {
+                vec![]
+            };
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    time: Some(frame as f64),
+                    events,
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    app.global_shortcuts(ctx);
+                    app.rack_workspace(ctx, None);
+                },
+            );
+            assert!(!app.browser_open, "frame {frame}");
+        }
+        assert!(!egui::Popup::is_any_open(&ctx));
+    }
+
+    #[test]
+    fn captured_parameter_revision_rejects_mcp_races_even_after_app_sync() {
+        for sync_before_apply in [false, true] {
+            for mutation in ["parameter", "grouped", "remove_readd", "unrelated"] {
+                let dir = tempfile::tempdir().unwrap();
+                let mut app = parameter_entry_host(dir.path());
+                if mutation == "grouped" {
+                    assert!(app.command(
+                        "set_parameter",
+                        json!({
+                            "id":"tone","parameter":"frequency","value":330.0,
+                            "history_group":"prior-knob-drag"
+                        })
+                    ));
+                }
+                let opened_revision = app.revision;
+                let opened_state = app.state_id;
+                let layout = app.rack.layout();
+                let selection = app.rack.selected_ids();
+                // This is the emitted Apply command after the UI's own stale
+                // check. An MCP edit can win before app.command takes the lock.
+                let apply = json!({"id":"tone","parameter":"frequency","value":440.0,
+                    "expected_revision":opened_revision});
+                match mutation {
+                    "parameter" | "grouped" => {
+                        let mut args = json!({"id":"tone","parameter":"frequency","value":660.0});
+                        if mutation == "grouped" {
+                            args["history_group"] = json!("prior-knob-drag");
+                        }
+                        execute_shared(&app.shared, "set_parameter", args).unwrap();
+                    }
+                    "remove_readd" => {
+                        execute_shared(&app.shared,"apply_edits",json!({"edits":[
+                            {"tool":"remove_module","arguments":{"id":"tone"}},
+                            {"tool":"add_module","arguments":{"id":"tone","kind":"analog_vco","params":{"frequency":880.0}}}
+                        ]})).unwrap();
+                    }
+                    _ => {
+                        execute_shared(
+                            &app.shared,
+                            "set_parameter",
+                            json!({
+                                "id":"level","parameter":"value","value":2.0
+                            }),
+                        )
+                        .unwrap();
+                    }
+                }
+                let newer = app.shared.lock().unwrap().snapshot();
+                if mutation == "grouped" {
+                    assert_eq!(newer["state_id"], opened_state);
+                }
+                if sync_before_apply {
+                    app.sync();
+                }
+                assert!(
+                    !app.command("set_parameter", apply),
+                    "{mutation}, synced={sync_before_apply}"
+                );
+                assert!(app.status.contains("revision conflict"), "{}", app.status);
+                assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
+                assert_eq!(app.revision, newer["revision"].as_u64().unwrap());
+                assert_eq!(app.rack.layout(), layout);
+                assert_eq!(app.rack.selected_ids(), selection);
+            }
+        }
+    }
+
+    #[test]
+    fn numeric_parameter_apply_is_one_ungrouped_history_action_with_exact_undo_redo() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = parameter_entry_host(dir.path());
+        // A prior grouped knob edit must not absorb the numeric Apply action.
+        assert!(app.command(
+            "set_parameter",
+            json!({"id":"tone","parameter":"frequency",
+            "value":330.0,"history_group":"prior-knob-drag"})
+        ));
+        let before = app.shared.lock().unwrap().snapshot();
+        let before_patch = app.patch.clone();
+        let before_state = app.state_id;
+        let layout = app.rack.layout();
+        let selection = app.rack.selected_ids();
+        let apply = json!({"id":"tone","parameter":"frequency","value":440.0,
+            "expected_revision":app.revision});
+        assert!(apply.get("history_group").is_none());
+        assert!(app.command("set_parameter", apply));
+        let after = app.shared.lock().unwrap().snapshot();
+        let edited_patch = app.patch.clone();
+        let edited_state = app.state_id;
+        assert_ne!(edited_state, before_state);
+        assert_eq!(
+            after["revision"].as_u64().unwrap(),
+            before["revision"].as_u64().unwrap() + 1
+        );
+        assert_eq!(
+            after["history"]["undo_steps"].as_u64().unwrap(),
+            before["history"]["undo_steps"].as_u64().unwrap() + 1
+        );
+        assert_eq!(app.patch.nodes[0].params["frequency"], 440.0);
+        app.history(false);
+        assert_eq!(
+            serde_json::to_value(&app.patch).unwrap(),
+            serde_json::to_value(&before_patch).unwrap()
+        );
+        assert_eq!(app.state_id, before_state);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["redo_steps"],
+            1
+        );
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), selection);
+        app.history(true);
+        assert_eq!(
+            serde_json::to_value(&app.patch).unwrap(),
+            serde_json::to_value(&edited_patch).unwrap()
+        );
+        assert_eq!(app.state_id, edited_state);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["redo_steps"],
+            0
+        );
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), selection);
+    }
+
+    #[test]
+    fn rejected_numeric_parameter_value_preserves_graph_history_layout_and_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = parameter_entry_host(dir.path());
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let selection = app.rack.selected_ids();
+        assert!(!app.command(
+            "set_parameter",
+            json!({"id":"tone","parameter":"frequency",
+            "value":1_000_000.0,"expected_revision":app.revision})
+        ));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), selection);
     }
 
     fn preset_frame(
