@@ -93,9 +93,11 @@ const KERNEL: [f64; TAPS] = make_kernel();
 /// The callback is invoked eight times in chronological order per host sample.
 #[derive(Clone, Debug)]
 pub(crate) struct Oversampler {
-    input: [f64; INPUT_TAPS],
-    output: [f64; TAPS],
-    control: [f64; INPUT_TAPS],
+    // Mirrored rings expose chronological histories as contiguous slices. Each
+    // write updates both halves; FIR reads no longer wrap at every coefficient.
+    input: [f64; INPUT_TAPS * 2],
+    output: [f64; TAPS * 2],
+    control: [f64; INPUT_TAPS * 2],
     control_nonzero: usize,
     input_head: usize,
     output_head: usize,
@@ -103,9 +105,9 @@ pub(crate) struct Oversampler {
 impl Oversampler {
     pub(crate) fn new() -> Self {
         Self {
-            input: [0.0; INPUT_TAPS],
-            output: [0.0; TAPS],
-            control: [0.0; INPUT_TAPS],
+            input: [0.0; INPUT_TAPS * 2],
+            output: [0.0; TAPS * 2],
+            control: [0.0; INPUT_TAPS * 2],
             control_nonzero: 0,
             input_head: 0,
             output_head: 0,
@@ -135,38 +137,59 @@ impl Oversampler {
     ) -> f64 {
         self.input_head = (self.input_head + 1) % INPUT_TAPS;
         self.input[self.input_head] = input;
+        self.input[self.input_head + INPUT_TAPS] = input;
         self.control_nonzero -= usize::from(self.control[self.input_head] != 0.0);
         self.control[self.input_head] = control;
+        self.control[self.input_head + INPUT_TAPS] = control;
         self.control_nonzero += usize::from(control != 0.0);
+        let input_history = &self.input[self.input_head + 1..self.input_head + 1 + INPUT_TAPS];
+        let control_history = &self.control[self.input_head + 1..self.input_head + 1 + INPUT_TAPS];
+        // Accumulate independent phase lanes together so the compiler can use
+        // SIMD without reordering the additions within any reconstructed sample.
+        // The first 512 taps cover all eight lanes; tap 512 belongs to phase 0.
+        let mut interpolated = [0.0; OVERSAMPLING];
+        let mut interpolated_control = [0.0; OVERSAMPLING];
+        if self.control_nonzero > 0 {
+            for ((coefficients, signal), control) in KERNEL
+                .as_chunks::<OVERSAMPLING>()
+                .0
+                .iter()
+                .zip(input_history.iter().rev())
+                .zip(control_history.iter().rev())
+            {
+                for phase in 0..OVERSAMPLING {
+                    interpolated[phase] += coefficients[phase] * signal;
+                    interpolated_control[phase] += coefficients[phase] * control;
+                }
+            }
+            interpolated_control[0] += KERNEL[TAPS - 1] * control_history[0];
+        } else {
+            for (coefficients, signal) in KERNEL
+                .as_chunks::<OVERSAMPLING>()
+                .0
+                .iter()
+                .zip(input_history.iter().rev())
+            {
+                for phase in 0..OVERSAMPLING {
+                    interpolated[phase] += coefficients[phase] * signal;
+                }
+            }
+        }
+        interpolated[0] += KERNEL[TAPS - 1] * input_history[0];
         let mut result = 0.0;
         for phase in 0..OVERSAMPLING {
-            let mut interpolated = 0.0;
-            let mut interpolated_control = 0.0;
-            let mut tap = phase;
-            let mut history = self.input_head;
-            while tap < TAPS {
-                interpolated += KERNEL[tap] * self.input[history];
-                if self.control_nonzero > 0 {
-                    interpolated_control += KERNEL[tap] * self.control[history];
-                }
-                history = if history == 0 {
-                    INPUT_TAPS - 1
-                } else {
-                    history - 1
-                };
-                tap += OVERSAMPLING;
-            }
             self.output_head = (self.output_head + 1) % TAPS;
-            self.output[self.output_head] = circuit(
-                interpolated * OVERSAMPLING as f64,
-                interpolated_control * OVERSAMPLING as f64,
+            let output = circuit(
+                interpolated[phase] * OVERSAMPLING as f64,
+                interpolated_control[phase] * OVERSAMPLING as f64,
             );
+            self.output[self.output_head] = output;
+            self.output[self.output_head + TAPS] = output;
             // Decimate at phase zero to retain the exact integer 64-sample delay.
             if phase == 0 {
-                let mut history = self.output_head;
-                for coefficient in KERNEL {
-                    result += coefficient * self.output[history];
-                    history = if history == 0 { TAPS - 1 } else { history - 1 };
+                let history = &self.output[self.output_head + 1..self.output_head + 1 + TAPS];
+                for (coefficient, sample) in KERNEL.iter().zip(history.iter().rev()) {
+                    result += coefficient * sample;
                 }
             }
         }
@@ -224,11 +247,16 @@ impl Integrator {
         // Start at the previous solution. The cyclic bidiagonal Jacobian is
         // solved analytically, including the instantaneous feedback corner.
         let mut candidate = old;
+        // Retain the currents already evaluated at each accepted Newton trial.
+        // Re-evaluating tanh at the identical state adds work without changing
+        // the residual, Jacobian, or derivative used by the next host step.
+        let initial_evaluation = currents(old, u, k);
+        let mut evaluation = initial_evaluation;
         let mut accepted_residual = f64::INFINITY;
         let mut iterations = 0;
         for iteration in 0..MAX_NEWTON {
             iterations = iteration + 1;
-            let (f, derivative, input_derivative) = currents(candidate, u, k);
+            let (f, derivative, input_derivative) = evaluation;
             let residual =
                 std::array::from_fn(|i| candidate[i] - old[i] - self.previous_term[i] - g * f[i]);
             let norm = max_abs(residual);
@@ -252,12 +280,14 @@ impl Integrator {
             for _ in 0..MAX_BACKTRACK {
                 let trial = std::array::from_fn(|i| candidate[i] + damping * delta[i]);
                 if trial.iter().all(|x| x.is_finite()) {
-                    let (trial_f, _, _) = currents(trial, u, k);
+                    let trial_evaluation = currents(trial, u, k);
+                    let trial_f = trial_evaluation.0;
                     let trial_residual = max_abs(std::array::from_fn(|i| {
                         trial[i] - old[i] - self.previous_term[i] - g * trial_f[i]
                     }));
                     if trial_residual < norm {
                         candidate = trial;
+                        evaluation = trial_evaluation;
                         if trial_residual <= RESIDUAL_TOLERANCE * (1.0 + max_abs(trial)) {
                             accepted_residual = trial_residual;
                         }
@@ -283,8 +313,9 @@ impl Integrator {
             // count the event, and resume from a consistent derivative next step.
             // No hidden clipping or unbounded Newton retries.
             self.diagnostics.solver_failures = self.diagnostics.solver_failures.saturating_add(1);
+            evaluation = initial_evaluation;
         }
-        self.previous_term = currents(self.q, u, k).0.map(|f| g * f);
+        self.previous_term = evaluation.0.map(|f| g * f);
         self.previous_input = input;
         OUTPUT_GAIN * 2.0 * THERMAL_VOLTAGE * self.q[3]
     }
@@ -390,6 +421,9 @@ impl Ladder {
             * OVERSAMPLING as f64
     }
 }
+
+#[cfg(test)]
+mod optimization_reference;
 
 #[cfg(test)]
 mod tests {
