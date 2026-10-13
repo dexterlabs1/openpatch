@@ -54,7 +54,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Action | Control |
 |---|---|
 | Play / pause | **Space** |
-| Add a module | **Enter**, **+ Add module**, or right-click empty rack space |
+| Open the library | **Enter**, **+ Add module**, or right-click empty rack space |
+| Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Stack signals at an input | Hold **Shift** when finishing a cable; right-click the input to move or remove a particular cable |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
@@ -285,6 +286,19 @@ outputs. Their [signal contracts](docs/ROUTING_MODULES.md) state the voltage,
 normaling, and voice behavior explicitly.
 
 <sub>Native Linux / Mesa CI render. Original Rust functional implementations.</sub>
+
+</details>
+
+<details>
+<summary><strong>Browse without leaving the rack</strong></summary>
+
+![Studio Rack docked module library](docs/images/openpatch-library.png)
+
+Search module names, controls and ports, filter by musical role, and star favorites.
+Drag a tile onto the rack to preview its placement; adding a module is one undo step.
+The library stays open while you patch cables and edit controls.
+
+<sub>Actual native Linux / Mesa CI render. macOS is the primary design target.</sub>
 
 </details>
 

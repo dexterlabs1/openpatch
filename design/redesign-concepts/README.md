@@ -19,6 +19,13 @@ Implemented so far: procedural rack materials, matching graphite application chr
 
 The first pass adds smoothly lit warm aluminum panels, beveled edges, machined knobs, recessed jacks, amber selection outlines, raised cable shading and graphite application controls. Existing control positions and patching interactions remain in place. This is an actual Linux/Mesa native render from [commit 4483066](https://github.com/dexterlabs1/openpatch/commit/448306620e42f72edab2767a9cd8455660af4ffe), separate from the generated concepts below; it does not establish macOS device or playback qualification.
 
+![Docked Studio Rack library in the actual OpenPatch application](../../docs/images/openpatch-library.png)
+
+The second pass adds a resizable right library with compact module previews, search,
+role filters, saved favorites, keyboard navigation and drag placement. This native
+render is from [commit dda4dc7](https://github.com/dexterlabs1/openpatch/commit/dda4dc7b9c48043338a2383724bc068fc65fe726).
+The library was also reviewed at the 940 × 680 minimum window size.
+
 ## Visual previews
 
 ### Studio Rack
