@@ -17,6 +17,7 @@ fn main() {
 }
 fn run() -> Result<(), String> {
     let mut mcp = false;
+    let mut smoke_test = None;
     let mut workspace = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -26,6 +27,11 @@ fn run() -> Result<(), String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--mcp" => mcp = true,
+            "--smoke-test" => {
+                smoke_test = Some(PathBuf::from(
+                    args.next().ok_or("--smoke-test needs a PNG path")?,
+                ))
+            }
             "--workspace" => {
                 workspace = PathBuf::from(args.next().ok_or("--workspace needs a directory")?)
             }
@@ -61,7 +67,7 @@ fn run() -> Result<(), String> {
     eframe::run_native(
         "OpenPatch",
         options,
-        Box::new(move |cc| Ok(Box::new(app::OpenPatch::new(cc, shared, mcp)))),
+        Box::new(move |cc| Ok(Box::new(app::OpenPatch::new(cc, shared, mcp, smoke_test)))),
     )
     .map_err(|e| e.to_string())
 }

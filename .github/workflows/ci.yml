@@ -37,7 +37,7 @@ jobs:
           python-version: '3.12'
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev xvfb
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -46,6 +46,16 @@ jobs:
         run: cargo test --locked --workspace
       - name: Release binary
         run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Native window and GLSL smoke test
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p native-test-output
+          timeout 45s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/${{ matrix.target }}/release/openpatch-desktop --smoke-test native-test-output/rack.png --workspace /tmp/openpatch-smoke
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: native-desktop-screenshot
+          path: native-test-output/
       - name: macOS application bundle
         if: runner.os == 'macOS'
         run: |

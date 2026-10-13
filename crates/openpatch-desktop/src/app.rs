@@ -49,9 +49,15 @@ pub struct OpenPatch {
     undo_patch: Option<Patch>,
     confirm_close: bool,
     allow_close: bool,
+    smoke_test: Option<(std::path::PathBuf, u32)>,
 }
 impl OpenPatch {
-    pub fn new(cc: &eframe::CreationContext<'_>, shared: SharedSession, mcp: bool) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        shared: SharedSession,
+        mcp: bool,
+        smoke_test: Option<std::path::PathBuf>,
+    ) -> Self {
         let mut style = (*cc.egui_ctx.style()).clone();
         style.visuals = egui::Visuals::dark();
         style.visuals.panel_fill = BG;
@@ -114,6 +120,7 @@ impl OpenPatch {
             undo_patch: None,
             confirm_close: false,
             allow_close: false,
+            smoke_test: smoke_test.map(|path| (path, 0)),
         };
         app.refresh_files();
         app
@@ -688,6 +695,61 @@ impl eframe::App for OpenPatch {
                         }
                     });
                 });
+        }
+        if let Some((path, frame)) = &mut self.smoke_test {
+            *frame += 1;
+            if *frame == 1 {
+                let visualizer = self
+                    .visualizer
+                    .as_mut()
+                    .expect("Native shader must compile");
+                let gl = self.gl.as_ref().expect("Native GL context is required");
+                assert!(visualizer.compile(gl, "this is not GLSL").is_err());
+                visualizer
+                    .compile(gl, DEFAULT_SHADER)
+                    .expect("Valid shader must recover");
+            }
+            // Exercise each native render mode before capturing the default view.
+            self.visual_mode = match *frame {
+                2..=4 => 1,
+                5..=7 => 2,
+                _ => 0,
+            };
+            if *frame == 12 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            }
+            let screenshot = ctx.input(|input| {
+                input.events.iter().find_map(|event| {
+                    if let egui::Event::Screenshot { image, .. } = event {
+                        Some(image.clone())
+                    } else {
+                        None
+                    }
+                })
+            });
+            if let Some(image) = screenshot {
+                assert!(image.width() >= 900 && image.height() >= 600);
+                assert!(
+                    image
+                        .pixels
+                        .windows(2)
+                        .filter(|pixels| pixels[0] != pixels[1])
+                        .count()
+                        > 1000,
+                    "Rendered window is blank"
+                );
+                image::save_buffer(
+                    path,
+                    image.as_raw(),
+                    image.width() as u32,
+                    image.height() as u32,
+                    image::ColorType::Rgba8,
+                )
+                .expect("Save native screenshot");
+                self.allow_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            assert!(*frame < 180, "Timed out waiting for native screenshot");
         }
         ctx.request_repaint_after(Duration::from_millis(33));
     }
