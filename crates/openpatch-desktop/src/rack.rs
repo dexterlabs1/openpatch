@@ -2337,8 +2337,8 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
-        "switch_1to4" => "SWITCH 1 → 4",
-        "switch_4to1" => "SWITCH 4 → 1",
+        "switch_1to4" => "SWITCH 1:4",
+        "switch_4to1" => "SWITCH 4:1",
         "poly_constant" => "POLY VOLTAGE",
         "midi_cv" => "MIDI TO CV",
         "audio_stereo" => "STEREO AUDIO",
