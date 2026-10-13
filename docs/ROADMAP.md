@@ -40,11 +40,11 @@ This plan starts from the code inspected on the baseline date:
 | DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
-| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion, Initialize/Randomize and saved bypass | Presets, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
+| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion, Initialize/Randomize, a native module preset library and saved bypass | Rack preset conversion/templates, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
 | Parameter/cable interaction | Partial | Precise entry, fine control, reset, reconnect/delete/fan-out, keyboard shortcuts and cable presentation work together; no swallowed gestures or accidental edits behind dialogs. |
 | History | Partial; shared 128-step patch undo/redo, explicit parameter grouping and observed-state layout restoration implemented | Complete project history including layout movement; verify restored geometry, gesture boundaries, branching and concurrent MCP edits without lost updates, including states the GUI has not observed. |
 | Browser/navigation | Partial | Search, filters/favorites, keyboard access, contextual help, zoom/pan and large-rack navigation; selections and newly created modules remain visible. |
-| Project lifecycle | Partial; coherent native projects, atomic Save/Save As, Revert, content-based dirty state and per-instance recovery implemented | Qualify physical interruption/durability across filesystems, standard file dialogs, project-level MCP operations, templates, assets and module presets. See [PROJECTS.md](PROJECTS.md) for guarantees and remaining boundaries. |
+| Project lifecycle | Partial; coherent native projects, atomic Save/Save As, Revert, content-based dirty state and per-instance recovery implemented | Qualify physical interruption/durability across filesystems, standard file dialogs, project-level MCP operations, factory templates, assets and VCV preset conversion. Native module presets are available separately. See [PROJECTS.md](PROJECTS.md) for guarantees and remaining boundaries. |
 | Hardware audio | Partial; selectable device and explicit stereo sink | Select backend/device/rate/buffer; stereo and 8/16-channel input/output; loopback channel-isolation and latency checks; hot unplug/reconnect without callback blockage. |
 | MIDI and keyboard performance | Partial; hardware input, keyboard, voice allocation and sample-timed traces | Input/output notes, gates, CC, pitch bend, pressure, clock/transport, learn/mapping, poly allocation, and keyboard performance; timestamp/order tests and stuck-note recovery. |
 | Plugin extensibility | Missing | Versioned Rust module API/manifests, state migration, install/discovery/update and missing-module recovery; publish compatibility boundaries. Existing VCV binary support remains a separate unfulfilled gate. |
@@ -85,8 +85,8 @@ The next gates are:
 
 1. **Complete rack construction workflows.** With stacked inputs available,
    add Rack's hovered-single-module duplication of outgoing connections while
-   retaining selected-group semantics. Initialize and Randomize now share the UI/MCP transaction path; add module
-   presets, then complete layout-movement history. These actions must
+   retaining selected-group semantics. Initialize, Randomize and native presets now share the UI/MCP transaction path;
+   add Rack preset conversion/templates and complete layout-movement history. These actions must
    share the UI/MCP transaction path and preserve unrelated live state.
 2. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported

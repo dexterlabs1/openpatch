@@ -234,6 +234,9 @@ pub(crate) struct Seq3 {
     action_count: usize,
 }
 impl Seq3 {
+    pub(crate) fn set_running(&mut self, running: bool) {
+        self.state.running = running;
+    }
     pub(crate) fn initialize_state(&mut self) {
         self.state.step = 0;
     }
@@ -560,6 +563,48 @@ mod tests {
         assert_eq!(s.state.trigger_pulse, 4);
         assert_eq!(s.state.guard, 3);
         assert_eq!(s.action_count, 1);
+    }
+    #[test]
+    fn running_state_load_assigns_only_the_latch_without_a_button_event() {
+        let mut s = seq(&[("running", 0.0)]);
+        s.state.step = 4;
+        s.state.phase = 0.375;
+        s.state.compensation = 0.125;
+        s.state.length = 6;
+        s.state.clock.high = true;
+        s.state.run.high = true;
+        s.state.reset.high = true;
+        s.state.external_gate = true;
+        s.state.clock_pulse = 7;
+        s.state.trigger_pulse = 6;
+        s.state.manual_pulse = 5;
+        s.state.run_pulse = 4;
+        s.state.reset_pulse = 3;
+        s.state.guard = 2;
+        s.enqueue(ModuleAction::Clock);
+        let before = s.state;
+        let queued = s.actions[..s.action_count].to_vec();
+        s.set_running(true);
+        assert!(s.state.running);
+        assert_eq!(s.state.step, before.step);
+        assert_eq!(s.state.length, before.length);
+        assert_eq!(s.state.phase, before.phase);
+        assert_eq!(s.state.compensation, before.compensation);
+        assert_eq!(s.state.clock.high, before.clock.high);
+        assert_eq!(s.state.run.high, before.run.high);
+        assert_eq!(s.state.reset.high, before.reset.high);
+        assert_eq!(s.state.external_gate, before.external_gate);
+        assert_eq!(s.state.clock_pulse, before.clock_pulse);
+        assert_eq!(s.state.trigger_pulse, before.trigger_pulse);
+        assert_eq!(s.state.manual_pulse, before.manual_pulse);
+        assert_eq!(s.state.run_pulse, before.run_pulse);
+        assert_eq!(s.state.reset_pulse, before.reset_pulse);
+        assert_eq!(s.state.guard, before.guard);
+        assert_eq!(&s.actions[..s.action_count], queued.as_slice());
+        s.set_running(false);
+        assert!(!s.state.running);
+        assert_eq!(s.state.external_gate, before.external_gate);
+        assert_eq!(s.state.run_pulse, before.run_pulse);
     }
     #[test]
     fn cv_schmitt_thresholds_track_while_paused_and_reset_precedes_clock() {

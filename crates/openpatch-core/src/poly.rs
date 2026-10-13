@@ -624,6 +624,18 @@ impl PolyEngine {
         }
         true
     }
+    pub(crate) fn set_module_running(&mut self, index: usize, running: bool) -> bool {
+        let Some(node) = self.nodes.get_mut(index) else {
+            return false;
+        };
+        match &mut node.model {
+            Model::Seq3(seq) => {
+                seq.set_running(running);
+                true
+            }
+            _ => false,
+        }
+    }
     pub(crate) fn resolve_tap(&self, id: &str, port: &str) -> Result<usize, String> {
         let index = *self
             .node_lookup

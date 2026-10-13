@@ -1091,6 +1091,17 @@ impl Engine {
             EngineKind::Poly(engine) => engine.initialize_module_state(handle.node),
         }
     }
+    /// Restore SEQ3's running latch without synthesizing a Run action or
+    /// changing its phase, step, detectors, pulses, or queued actions.
+    pub fn set_module_running(&mut self, handle: ModuleHandle, running: bool) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.set_module_running(handle.node, running),
+            EngineKind::Legacy(_) => false,
+        }
+    }
     /// Invalid direct events are ignored without allocating on the audio thread.
     /// Legacy graphs have no MIDI modules and ignore all events.
     pub fn handle_midi(&mut self, event: MidiEvent) {

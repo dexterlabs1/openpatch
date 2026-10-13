@@ -110,6 +110,17 @@ hook once; history restores saved controls without replaying that hook.
 Randomize produces reproducible saved values; redo does not reroll them.
 See the [full editing and live-state contract](RACK_EDITING.md#initialize-and-randomize).
 
+## Module preset library
+
+Capture a module with `capture_module_preset`, review the returned `preset`, then
+save those exact contents with `save_module_preset`. Use `list_module_presets`
+and `read_module_preset` to browse saved `.opreset` files. Apply reviewed inline
+contents with `apply_module_preset`, including the observed `expected_revision`.
+Application supports preview and atomic batches; file reads are not repeated at
+commit time. Complete live SEQ-3 captures use actual Run state from a coherent
+callback snapshot, never an unavailable-state guess. See the
+[preset format, history and storage contract](MODULE_PRESETS.md).
+
 ## Named outputs, polyphony, and feedback
 
 New sessions and **New patch** use patch version 2. Each cable has a source

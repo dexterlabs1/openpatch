@@ -3,6 +3,7 @@ use super::*;
 #[derive(Default)]
 struct Live {
     calls: Mutex<Vec<Value>>,
+    current: Mutex<Option<(Patch, u64)>>,
 }
 
 impl LiveModuleEvents for Live {
@@ -10,7 +11,15 @@ impl LiveModuleEvents for Live {
         unreachable!()
     }
     fn snapshot(&self) -> Value {
-        json!({})
+        let current = self.current.lock().unwrap();
+        let (patch, revision) = current.as_ref().unwrap();
+        let modules: serde_json::Map<String,Value> = patch.nodes.iter().filter(|node| node.kind == "seq3").map(|node| {
+            (node.id.clone(),json!({"available":true,"revision":revision,"frame":0,"state":{"running":running::initial_running(node)}}))
+        }).collect();
+        json!({"modules":modules})
+    }
+    fn load_module_running(&self, states: &BTreeMap<String, bool>) {
+        self.calls.lock().unwrap().push(json!({"load":states}));
     }
     fn retire_modules(&self, ids: &[String]) {
         self.calls.lock().unwrap().push(json!({"retire":ids}));
@@ -22,6 +31,7 @@ impl LiveModuleEvents for Live {
             .push(json!({"retire_cables":ids}));
     }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
+        *self.current.lock().unwrap() = Some((patch.clone(), revision));
         self.calls
             .lock()
             .unwrap()
@@ -91,8 +101,21 @@ fn initialize_preview_commit_and_history_preserve_structure_and_hook_order() {
     session.execute("redo", json!({})).unwrap();
     assert_eq!(session.snapshot()["patch"], committed["patch"]);
     let calls = live.calls.lock().unwrap();
-    assert_eq!(calls.len(), 2);
-    assert!(calls.iter().all(|call| call.get("sync").is_some()));
+    assert_eq!(calls.len(), 4);
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.get("sync").is_some())
+            .count(),
+        2
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.get("load").is_some())
+            .count(),
+        2
+    );
 }
 
 #[test]

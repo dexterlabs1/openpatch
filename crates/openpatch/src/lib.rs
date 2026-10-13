@@ -5,4 +5,5 @@
 
 pub mod control;
 pub mod mcp;
+pub mod presets;
 pub mod visualizer;

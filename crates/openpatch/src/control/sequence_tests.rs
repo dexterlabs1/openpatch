@@ -6,6 +6,7 @@ struct MockLive {
     queued: AtomicUsize,
     synced: Mutex<Vec<u64>>,
     retired: Mutex<Vec<String>>,
+    modules: Mutex<Value>,
 }
 impl LiveModuleEvents for MockLive {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
@@ -13,13 +14,17 @@ impl LiveModuleEvents for MockLive {
         Ok(json!({"status":"queued","id":id,"action":action,"sequence":sequence}))
     }
     fn snapshot(&self) -> Value {
-        json!({"queued":self.queued.load(Ordering::Relaxed),"applied":0,"dropped":0,"backpressure":0})
+        json!({"queued":self.queued.load(Ordering::Relaxed),"applied":0,"dropped":0,"backpressure":0,"modules":*self.modules.lock().unwrap()})
     }
     fn retire_modules(&self, ids: &[String]) {
         self.retired.lock().unwrap().extend_from_slice(ids);
     }
-    fn sync_patch(&self, _patch: &Patch, revision: u64) {
+    fn sync_patch(&self, patch: &Patch, revision: u64) {
         self.synced.lock().unwrap().push(revision);
+        let modules: serde_json::Map<String,Value> = patch.nodes.iter().filter(|node| node.kind == "seq3").map(|node| {
+            (node.id.clone(),json!({"available":true,"revision":revision,"frame":0,"state":{"running":running::initial_running(node)}}))
+        }).collect();
+        *self.modules.lock().unwrap() = Value::Object(modules);
     }
 }
 fn session() -> Session {

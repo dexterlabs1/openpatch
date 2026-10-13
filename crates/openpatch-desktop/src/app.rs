@@ -4,7 +4,7 @@ use crate::{
     keyboard::Keyboard,
     midi::{MidiInputManager, MidiPortInfo},
     project::{Document, FileToken, Store},
-    rack::{Rack, RackAction},
+    rack::{parameter_label, parameter_value, title as module_title, PresetMode, Rack, RackAction},
     scope::Scope,
     visuals::{Visualizer, DEFAULT_SHADER},
 };
@@ -38,6 +38,149 @@ enum PendingAction {
     Load(String),
     Recover(String),
     Close,
+}
+
+struct PresetDialog {
+    id: String,
+    kind: String,
+    revision: u64,
+    mode: PresetMode,
+    name: String,
+    search: String,
+    query: String,
+    capture: Option<Value>,
+    source: String,
+    frame: Option<u64>,
+    entries: Vec<Value>,
+    offset: usize,
+    total: usize,
+    preview: Option<Value>,
+    preview_filename: Option<String>,
+    status: String,
+    pending: bool,
+    await_release: bool,
+    focus_name: bool,
+}
+
+impl PresetDialog {
+    fn new(id: String, kind: String, revision: u64, mode: PresetMode) -> Self {
+        Self {
+            id,
+            kind,
+            revision,
+            mode,
+            name: String::new(),
+            search: String::new(),
+            query: String::new(),
+            capture: None,
+            source: String::new(),
+            frame: None,
+            entries: Vec::new(),
+            offset: 0,
+            total: 0,
+            preview: None,
+            preview_filename: None,
+            status: String::new(),
+            pending: true,
+            await_release: true,
+            focus_name: true,
+        }
+    }
+
+    fn target_status(&self, patch: &Patch, revision: u64) -> Result<(), String> {
+        let Some(node) = patch.nodes.iter().find(|node| node.id == self.id) else {
+            return Err(
+                "This module was removed. Close the preset window and choose another module."
+                    .into(),
+            );
+        };
+        if node.kind != self.kind {
+            return Err(
+                "This module changed type. Close the preset window and choose it again.".into(),
+            );
+        }
+        if revision != self.revision {
+            return Err("The patch changed since this preset window opened. Refresh the target before continuing.".into());
+        }
+        Ok(())
+    }
+}
+
+enum PresetIntent {
+    None,
+    Cancel,
+    Retry,
+    Search,
+    RefreshTarget,
+    Previous,
+    Next,
+    Read(String),
+    Save,
+    Apply,
+}
+
+fn preset_controls(ui: &mut egui::Ui, preset: &Value, catalog: &Value) {
+    ui.label("Controls in this preset");
+    let module = catalog["modules"].as_array().and_then(|modules| {
+        modules
+            .iter()
+            .find(|module| module["kind"] == preset["kind"])
+    });
+    egui::ScrollArea::vertical()
+        .id_salt("preset-controls-scroll")
+        .max_height(170.0)
+        .show(ui, |ui| {
+            egui::Grid::new("preset-controls")
+                .striped(true)
+                .show(ui, |ui| {
+                    if let Some(params) = preset["params"].as_object() {
+                        for (name, value) in params {
+                            ui.label(if name == "running" {
+                                "RUN"
+                            } else {
+                                parameter_label(name)
+                            });
+                            let spec = module
+                                .and_then(|module| module["params"].get(name))
+                                .unwrap_or(&Value::Null);
+                            ui.label(preset_control_value(name, value, spec));
+                            ui.end_row();
+                        }
+                    }
+                    if let Some(bypassed) = preset["bypassed"].as_bool() {
+                        ui.label("Bypass");
+                        ui.label(if bypassed { "On" } else { "Off" });
+                        ui.end_row();
+                    }
+                });
+        });
+}
+
+fn preset_control_value(name: &str, value: &Value, spec: &Value) -> String {
+    if name == "running" {
+        return if value.as_f64().unwrap_or(0.0) >= 0.5 {
+            "On"
+        } else {
+            "Off"
+        }
+        .into();
+    }
+    value.as_f64().map_or_else(
+        || value.to_string(),
+        |raw| parameter_value(name, raw as f32, spec),
+    )
+}
+
+fn preset_filename(name: &str) -> Option<String> {
+    let stem = name.trim().trim_end_matches(".opreset");
+    let filename = format!("{stem}.opreset");
+    (!stem.is_empty()
+        && !stem.starts_with('.')
+        && filename.len() <= 120
+        && stem
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte)))
+    .then_some(filename)
 }
 
 pub struct OpenPatch {
@@ -78,6 +221,7 @@ pub struct OpenPatch {
     file_focus: bool,
     browser_open: bool,
     browser_focus: bool,
+    preset_dialog: Option<PresetDialog>,
     search: String,
     catalog: Value,
     start: Instant,
@@ -202,6 +346,7 @@ impl OpenPatch {
             file_focus: false,
             browser_open: false,
             browser_focus: false,
+            preset_dialog: None,
             search: String::new(),
             catalog: catalog(),
             start: Instant::now(),
@@ -366,6 +511,7 @@ impl OpenPatch {
             && !ctx.wants_keyboard_input()
             && ctx.input(|i| i.focused)
             && !self.browser_open
+            && self.preset_dialog.is_none()
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.settings_open
@@ -1642,6 +1788,327 @@ impl OpenPatch {
             self.add_module(&kind);
         }
     }
+
+    fn load_preset_dialog(&self, dialog: &mut PresetDialog) {
+        dialog.pending = false;
+        if let Err(error) = dialog.target_status(&self.patch, self.revision) {
+            dialog.status = error;
+            return;
+        }
+        match dialog.mode {
+            PresetMode::Save => {
+                match execute_shared(
+                    &self.shared,
+                    "capture_module_preset",
+                    json!({
+                        "id":dialog.id,"expected_revision":dialog.revision
+                    }),
+                ) {
+                    Ok(result) => {
+                        let preset = result.get("preset").cloned();
+                        if result["id"].as_str() != Some(dialog.id.as_str())
+                            || result["revision"].as_u64() != Some(dialog.revision)
+                            || preset.as_ref().is_none_or(|value| {
+                                value["kind"].as_str() != Some(dialog.kind.as_str())
+                            })
+                        {
+                            dialog.status =
+                                "The capture did not match this module. Retry capture.".into();
+                            return;
+                        }
+                        dialog.capture = preset;
+                        dialog.source = result["state_source"]
+                            .as_str()
+                            .unwrap_or("saved_parameters")
+                            .into();
+                        dialog.frame = result["frame"].as_u64();
+                        dialog.status =
+                            "Review the captured controls, then save under a new name.".into();
+                    }
+                    Err(error) => {
+                        dialog.capture = None;
+                        dialog.status = format!("Current module state is unavailable: {error}. Retry capture when ready.");
+                    }
+                }
+            }
+            PresetMode::Browse => {
+                match execute_shared(
+                    &self.shared,
+                    "list_module_presets",
+                    json!({
+                        "kind":dialog.kind,"query":dialog.query,"offset":dialog.offset,"limit":30
+                    }),
+                ) {
+                    Ok(result) => {
+                        dialog.entries = result["presets"].as_array().cloned().unwrap_or_default();
+                        dialog.offset = result["offset"].as_u64().unwrap_or(0) as usize;
+                        dialog.total = result["total"].as_u64().unwrap_or(0) as usize;
+                        dialog.status = if dialog.total == 0 {
+                            if dialog.query.is_empty() {
+                                "No presets for this module yet.".into()
+                            } else {
+                                "No matching presets.".into()
+                            }
+                        } else {
+                            format!("{} compatible library entries", dialog.total)
+                        };
+                    }
+                    Err(error) => {
+                        dialog.entries.clear();
+                        dialog.status = format!("Could not list presets: {error}");
+                    }
+                }
+            }
+        }
+    }
+
+    fn preset_window(&mut self, ctx: &egui::Context) {
+        let Some(mut dialog) = self.preset_dialog.take() else {
+            return;
+        };
+        if dialog.await_release {
+            dialog.await_release = false;
+        } else if dialog.pending {
+            self.load_preset_dialog(&mut dialog);
+        }
+        let target_error = dialog.target_status(&self.patch, self.revision).err();
+        let mut intent = PresetIntent::None;
+        egui::Modal::new(egui::Id::new("module-preset-dialog")).show(ctx, |ui| {
+            ui.set_width(540.0);
+            ui.heading(match dialog.mode {
+                PresetMode::Save => "Save module preset",
+                PresetMode::Browse => "Browse module presets",
+            });
+            ui.label(format!("{} · {}", module_title(&dialog.kind), dialog.id));
+            ui.label(RichText::new("Presets store module controls and bypass only. Rack cables and position stay in the project.").color(MUTED).size(11.0));
+            if let Some(error) = &target_error {
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if dialog.mode == PresetMode::Save && dialog.capture.is_some() {
+                    ui.label("The captured snapshot remains saveable. Refresh only if you want a new capture.");
+                }
+                if self.patch.nodes.iter().any(|node| node.id == dialog.id && node.kind == dialog.kind)
+                    && ui.button("Refresh target").clicked()
+                {
+                    intent = PresetIntent::RefreshTarget;
+                }
+            }
+            ui.separator();
+            match dialog.mode {
+                PresetMode::Save => {
+                    if let Some(preset) = &dialog.capture {
+                        let source = match dialog.source.as_str() {
+                            "live" => "Current live module state",
+                            "offline_reset" => "Offline module state",
+                            _ => "Saved module controls",
+                        };
+                        ui.label(match dialog.frame {
+                            Some(frame) => format!("Captured from {source} at audio frame {frame}"),
+                            None => format!("Captured from {source}"),
+                        });
+                        preset_controls(ui, preset, &self.catalog);
+                    } else {
+                        ui.label("Waiting for a current module snapshot.");
+                        if ui.button("Retry capture").clicked() {
+                            intent = PresetIntent::Retry;
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("New preset name");
+                        let response = ui.add(egui::TextEdit::singleline(&mut dialog.name)
+                            .hint_text("warm-vco").desired_width(240.0));
+                        if dialog.focus_name {
+                            response.request_focus();
+                            dialog.focus_name = false;
+                        }
+                        ui.label(".opreset");
+                        if (response.has_focus() || response.lost_focus())
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            intent = PresetIntent::Save;
+                        }
+                    });
+                    ui.label(RichText::new("Use letters, numbers, dashes, underscores or periods. Existing presets are never overwritten.").color(MUTED).size(11.0));
+                    if !dialog.name.is_empty() && preset_filename(&dialog.name).is_none() {
+                        ui.colored_label(Color32::LIGHT_RED, "Enter a simple name without spaces or paths.");
+                    }
+                }
+                PresetMode::Browse => {
+                    ui.horizontal(|ui| {
+                        ui.label("Search presets");
+                        let response = ui.add(egui::TextEdit::singleline(&mut dialog.search)
+                            .hint_text("Search the full library by name").desired_width(270.0));
+                        if ui.button("Search").clicked()
+                            || (response.has_focus() || response.lost_focus())
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            intent = PresetIntent::Search;
+                        }
+                    });
+                    egui::ScrollArea::vertical().id_salt("preset-library-scroll").max_height(190.0).show(ui, |ui| {
+                        for entry in &dialog.entries {
+                            let filename = entry["filename"].as_str().unwrap_or("");
+                            if entry["valid"] == false {
+                                ui.colored_label(Color32::LIGHT_RED,
+                                    format!("{} — {}", filename, entry["error"].as_str().unwrap_or("Invalid preset")));
+                                continue;
+                            }
+                            let response = ui.selectable_label(dialog.preview_filename.as_deref() == Some(filename), filename);
+                            if response.clicked() {
+                                response.request_focus();
+                                intent = PresetIntent::Read(filename.to_owned());
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(dialog.offset > 0, egui::Button::new("Previous")).clicked() {
+                            intent = PresetIntent::Previous;
+                        }
+                        ui.label(format!("{}–{} of {}", if dialog.total == 0 { 0 } else { dialog.offset + 1 },
+                            (dialog.offset + dialog.entries.len()).min(dialog.total), dialog.total));
+                        if ui.add_enabled(dialog.offset + dialog.entries.len() < dialog.total,
+                            egui::Button::new("Next")).clicked() {
+                            intent = PresetIntent::Next;
+                        }
+                        if ui.button("Refresh library").clicked() {
+                            intent = PresetIntent::Retry;
+                        }
+                    });
+                    if let Some(preset) = &dialog.preview {
+                        ui.separator();
+                        ui.strong(dialog.preview_filename.as_deref().unwrap_or("Preset preview"));
+                        preset_controls(ui, preset, &self.catalog);
+                        ui.label(RichText::new("Apply uses these reviewed settings. It leaves the module's cables and rack position in place.").color(MUTED).size(11.0));
+                    } else {
+                        ui.label("Select a preset to preview its controls before applying.");
+                    }
+                }
+            }
+            ui.separator();
+            if !dialog.status.is_empty() {
+                ui.label(&dialog.status);
+            }
+            ui.horizontal(|ui| {
+                let enabled = match dialog.mode {
+                    PresetMode::Save => dialog.capture.is_some() && preset_filename(&dialog.name).is_some(),
+                    PresetMode::Browse => target_error.is_none() && dialog.preview.is_some(),
+                };
+                let label = if dialog.mode == PresetMode::Save { "Save preset" } else { "Apply preset" };
+                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                    intent = if dialog.mode == PresetMode::Save { PresetIntent::Save } else { PresetIntent::Apply };
+                }
+                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    intent = PresetIntent::Cancel;
+                }
+            });
+        });
+        if matches!(&intent, PresetIntent::None)
+            && dialog.mode == PresetMode::Browse
+            && dialog.preview.is_some()
+            && target_error.is_none()
+            && ctx.input(|i| i.key_pressed(egui::Key::Enter))
+            && !ctx.wants_keyboard_input()
+        {
+            intent = PresetIntent::Apply;
+        }
+        let mut close = false;
+        match intent {
+            PresetIntent::None => {}
+            PresetIntent::Cancel => close = true,
+            PresetIntent::Retry => dialog.pending = true,
+            PresetIntent::Search => {
+                dialog.query = dialog.search.trim().to_owned();
+                dialog.offset = 0;
+                dialog.preview = None;
+                dialog.preview_filename = None;
+                dialog.pending = true;
+            }
+            PresetIntent::RefreshTarget => {
+                dialog.revision = self.revision;
+                dialog.capture = None;
+                dialog.preview = None;
+                dialog.preview_filename = None;
+                dialog.status = "Refreshing this module…".into();
+                dialog.pending = true;
+            }
+            PresetIntent::Previous => {
+                dialog.offset = dialog.offset.saturating_sub(30);
+                dialog.pending = true;
+            }
+            PresetIntent::Next => {
+                dialog.offset += 30;
+                dialog.pending = true;
+            }
+            PresetIntent::Read(filename) => {
+                dialog.preview = None;
+                dialog.preview_filename = None;
+                match execute_shared(
+                    &self.shared,
+                    "read_module_preset",
+                    json!({"filename":filename}),
+                ) {
+                    Ok(result)
+                        if result["filename"].as_str() == Some(filename.as_str())
+                            && result["preset"]["kind"].as_str() == Some(dialog.kind.as_str()) =>
+                    {
+                        dialog.preview = result.get("preset").cloned();
+                        dialog.preview_filename = Some(filename);
+                        dialog.status = "Review the settings, then choose Apply preset.".into();
+                    }
+                    Ok(_) => {
+                        dialog.status =
+                            "This preset is not compatible with the selected module.".into()
+                    }
+                    Err(error) => dialog.status = format!("Could not read preset: {error}"),
+                }
+            }
+            PresetIntent::Save => {
+                if let Some(preset) = &dialog.capture {
+                    if let Some(filename) = preset_filename(&dialog.name) {
+                        match execute_shared(
+                            &self.shared,
+                            "save_module_preset",
+                            json!({
+                                "filename":filename,"preset":preset
+                            }),
+                        ) {
+                            Ok(_) => {
+                                self.status = format!("Preset saved: {filename}");
+                                close = true;
+                            }
+                            Err(error) => dialog.status = format!("Could not save preset: {error}"),
+                        }
+                    } else {
+                        dialog.status =
+                            "Enter a simple preset name without spaces or paths.".into();
+                    }
+                }
+            }
+            PresetIntent::Apply => {
+                if let Err(error) = dialog.target_status(&self.patch, self.revision) {
+                    dialog.status = error;
+                } else if let Some(preset) = &dialog.preview {
+                    match execute_shared(
+                        &self.shared,
+                        "apply_module_preset",
+                        json!({
+                            "id":dialog.id,"preset":preset,"expected_revision":dialog.revision
+                        }),
+                    ) {
+                        Ok(_) => {
+                            self.sync();
+                            self.status = format!(
+                                "Preset applied: {}",
+                                dialog.preview_filename.as_deref().unwrap_or("preset")
+                            );
+                            close = true;
+                        }
+                        Err(error) => dialog.status = format!("Could not apply preset: {error}"),
+                    }
+                }
+            }
+        }
+        if !close {
+            self.preset_dialog = Some(dialog);
+        }
+    }
     fn files_window(&mut self, ctx: &egui::Context) {
         let Some(mode) = self.file_mode else {
             return;
@@ -1821,7 +2288,8 @@ impl OpenPatch {
             return;
         };
         *frame += 1;
-        if *frame == 1 {
+        let (path, frame, captures) = (path.clone(), *frame, *captures);
+        if frame == 1 {
             let v = self
                 .visualizer
                 .as_mut()
@@ -1830,13 +2298,13 @@ impl OpenPatch {
             assert!(v.compile(gl, "this is not GLSL").is_err());
             v.compile(gl, DEFAULT_SHADER).expect("Shader recovery");
         }
-        self.visuals_open = (*frame >= 2 && *frame <= 8) || *captures == 1;
-        self.visual_mode = match *frame {
+        self.visuals_open = (2..=8).contains(&frame) || captures == 1;
+        self.visual_mode = match frame {
             2..=4 => 1,
             5..=7 => 2,
             _ => 0,
         };
-        if *frame == 28 {
+        if frame == 28 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/clocked-random-voice.json"))
                     .expect("valid bundled random voice");
@@ -1846,8 +2314,8 @@ impl OpenPatch {
             self.rack.set_zoom(0.75);
             self.title = "Clocked random voice".into();
         }
-        if *frame == 40 || *frame == 52 {
-            let (source, title, zoom) = if *frame == 40 {
+        if frame == 40 || frame == 52 {
+            let (source, title, zoom) = if frame == 40 {
                 (
                     include_str!("../../../examples/polyphonic-voice.json"),
                     "Polyphonic voice",
@@ -1868,7 +2336,7 @@ impl OpenPatch {
             self.rack.set_zoom(zoom);
             self.title = title.into();
         }
-        if *frame == 64 {
+        if frame == 64 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/midi-keyboard-voice.json"))
                     .expect("valid bundled MIDI voice");
@@ -1879,10 +2347,10 @@ impl OpenPatch {
             self.title = "MIDI keyboard voice".into();
             self.keyboard_open = true;
         }
-        if *frame == 76 {
+        if frame == 76 {
             self.settings_open = true;
         }
-        if *frame == 88 {
+        if frame == 88 {
             self.settings_open = false;
             self.keyboard_open = false;
             let patch: Patch =
@@ -1894,7 +2362,7 @@ impl OpenPatch {
             self.rack.set_zoom(1.0);
             self.title = "Stereo width study".into();
         }
-        if *frame == 100 {
+        if frame == 100 {
             let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
                 "nodes":[{"id":"mix","kind":"mix6"},{"id":"octave","kind":"octave"},
                     {"id":"mult","kind":"mult"},{"id":"stereo","kind":"mid_side"}]}))
@@ -1904,7 +2372,7 @@ impl OpenPatch {
             self.rack = Rack::default();
             self.title = "Stereo and routing utilities".into();
         }
-        if *frame == 112 {
+        if frame == 112 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/clocked-modulation.json"))
                     .expect("valid bundled modulation voice");
@@ -1914,16 +2382,16 @@ impl OpenPatch {
             self.rack.set_zoom(0.75);
             self.title = "Clocked modulation".into();
         }
-        if *frame == 124 {
+        if frame == 124 {
             self.file_mode = Some(FileMode::Save);
             self.file_focus = true;
             self.filename = "clocked-modulation.openpatch".into();
         }
-        if *frame == 136 {
+        if frame == 136 {
             self.file_mode = None;
             self.confirm_discard = Some(PendingAction::Close);
         }
-        if *frame == 148 {
+        if frame == 148 {
             self.confirm_discard = None;
             let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[{"id":"calibration","kind":"multi_lfo","params":{"frequency":100.0}}],"output":"calibration","output_port":"sine"})).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
@@ -1932,7 +2400,7 @@ impl OpenPatch {
             self.title = "Signal inspection".into();
             self.scope.smoke_fixture();
         }
-        if *frame == 172 {
+        if frame == 172 {
             self.scope.open = false;
             let patch: Patch = serde_json::from_str(include_str!(
                 "../../../examples/sequenced-analog-voice.json"
@@ -1955,7 +2423,7 @@ impl OpenPatch {
                 .set_sequence_states(BTreeMap::from([("sequence".into(), telemetry)]), false);
             self.title = "Sequenced analog voice · offline preview".into();
         }
-        if *frame == 188 {
+        if frame == 188 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/switched-stereo-voice.json"))
                     .unwrap();
@@ -1978,7 +2446,7 @@ impl OpenPatch {
             self.rack.set_sequence_states(states, false);
             self.title = "Switched stereo voice · offline preview".into();
         }
-        if *frame == 204 {
+        if frame == 204 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/voltage-utilities.json"))
                     .expect("valid voltage utilities fixture");
@@ -1987,7 +2455,7 @@ impl OpenPatch {
             self.rack = Rack::default();
             self.title = "Voltage utilities".into();
         }
-        if *frame == 220 {
+        if frame == 220 {
             execute_shared(
                 &self.shared,
                 "set_bypass",
@@ -1996,13 +2464,13 @@ impl OpenPatch {
             .expect("mute bypass fixture");
             self.title = "Voltage utilities · Mutes bypassed".into();
         }
-        if *frame == 244 || *frame == 260 {
+        if frame == 244 || frame == 260 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/gate-shaping-voice.json"))
                     .expect("valid gate shaping fixture");
             let mut engine = patch.compile().expect("gate shaping fixture compiles");
             engine.process_block(&mut vec![0.0; 48_000]);
-            if *frame == 260 {
+            if frame == 260 {
                 for (id, event) in [
                     ("logic", openpatch_core::ModuleAction::BPress),
                     ("process", openpatch_core::ModuleAction::GatePress),
@@ -2034,14 +2502,14 @@ impl OpenPatch {
                 "motion":[0,420],"clock":[300,420],"notes":[450,420],"vco":[690,420],"out":[900,420]
             }})).expect("fixture layout");
             self.rack.set_module_states(lights, controls);
-            self.title = if *frame == 260 {
+            self.title = if frame == 260 {
                 "Manual gates · offline DSP snapshot"
             } else {
                 "Gate shaping voice · offline preview"
             }
             .into();
         }
-        if *frame == 284 {
+        if frame == 284 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/layered-stereo-morph.json"))
                     .expect("valid layered stereo fixture");
@@ -2061,7 +2529,7 @@ impl OpenPatch {
                 .set_module_states(BTreeMap::from([("mix".into(), lights)]), BTreeMap::new());
             self.title = "Layered stereo morph · offline DSP snapshot".into();
         }
-        if *frame == 308 {
+        if frame == 308 {
             let patch:Patch=serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[
                 {"id":"tone","kind":"analog_vco","params":{"frequency":130.8128}},
                 {"id":"filter","kind":"ladder_vcf","params":{"cutoff":1200}},
@@ -2084,7 +2552,7 @@ impl OpenPatch {
             self.rack.apply_duplicate_placement(placement);
             self.title = "Duplicated voice pair · two selected".into();
         }
-        if *frame == 332 {
+        if frame == 332 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/stacked-pitch-voice.json"))
                     .expect("valid stacked pitch fixture");
@@ -2096,7 +2564,7 @@ impl OpenPatch {
                 .expect("stacked fixture layout");
             self.title = "Stacked pitch voice · three cables at V/OCT".into();
         }
-        if *frame == 356 {
+        if frame == 356 {
             let patch: Patch =
                 serde_json::from_str(include_str!("../../../examples/synced-waveform-voice.json"))
                     .expect("valid waveform fixture");
@@ -2118,11 +2586,77 @@ impl OpenPatch {
                 .set_module_states(BTreeMap::from([("mix".into(), lights)]), BTreeMap::new());
             self.title = "Synced waveform voice · offline DSP snapshot".into();
         }
-        if *frame == 160 {
+        if frame == 380 {
+            self.audio = None;
+            self.attach_live_events();
+            let patch: Patch = serde_json::from_value(json!({
+                "version":2,"sample_rate":48000,
+                "nodes":[
+                    {"id":"tone","kind":"analog_vco","params":{"frequency":220.0,"waveform":1.0}},
+                    {"id":"out","kind":"audio_out"}
+                ],
+                "cables":[{"from":"tone","to":"out","input":"signal"}],
+                "output":"out"
+            }))
+            .unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("preset fixture compiles");
+            self.rack = Rack::default();
+            self.title = "VCO preset library · offline preview".into();
+            let revision = self.shared.lock().unwrap().revision();
+            self.preset_dialog = Some(PresetDialog::new(
+                "tone".into(),
+                "analog_vco".into(),
+                revision,
+                PresetMode::Save,
+            ));
+            if let Some(dialog) = &mut self.preset_dialog {
+                dialog.name = "warm-vco".into();
+            }
+        }
+        if frame == 398 {
+            let preset = self
+                .preset_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.capture.clone())
+                .expect("offline preset capture is visible");
+            execute_shared(
+                &self.shared,
+                "save_module_preset",
+                json!({
+                    "filename":"warm-vco.opreset","preset":preset
+                }),
+            )
+            .expect("smoke preset saves");
+            self.preset_dialog = None;
+        }
+        if frame == 404 {
+            self.preset_dialog = Some(PresetDialog::new(
+                "tone".into(),
+                "analog_vco".into(),
+                self.revision,
+                PresetMode::Browse,
+            ));
+        }
+        if frame == 408 {
+            let result = execute_shared(
+                &self.shared,
+                "read_module_preset",
+                json!({
+                    "filename":"warm-vco.opreset"
+                }),
+            )
+            .expect("smoke preset reads");
+            if let Some(dialog) = &mut self.preset_dialog {
+                dialog.preview = result.get("preset").cloned();
+                dialog.preview_filename = Some("warm-vco.opreset".into());
+            }
+        }
+        if frame == 160 {
             self.scope.smoke_xy();
         }
         if matches!(
-            *frame,
+            frame,
             12 | 24
                 | 36
                 | 48
@@ -2146,6 +2680,8 @@ impl OpenPatch {
                 | 320
                 | 344
                 | 368
+                | 392
+                | 416
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2163,7 +2699,7 @@ impl OpenPatch {
                 image.pixels.windows(2).filter(|p| p[0] != p[1]).count() > 1000,
                 "Blank window"
             );
-            let target = match *captures {
+            let target = match captures {
                 0 => path.clone(),
                 1 => path.with_file_name("rack-visuals.png"),
                 2 => path.with_file_name("rack-utilities.png"),
@@ -2187,7 +2723,9 @@ impl OpenPatch {
                 20 => path.with_file_name("rack-vca-mix-fade.png"),
                 21 => path.with_file_name("rack-duplication.png"),
                 22 => path.with_file_name("rack-stacked-routing.png"),
-                _ => path.with_file_name("rack-multi-vco.png"),
+                23 => path.with_file_name("rack-multi-vco.png"),
+                24 => path.with_file_name("module-preset-save.png"),
+                _ => path.with_file_name("module-preset-browser.png"),
             };
             image::save_buffer(
                 target,
@@ -2197,13 +2735,14 @@ impl OpenPatch {
                 image::ColorType::Rgba8,
             )
             .expect("Save screenshot");
-            *captures += 1;
-            if *captures == 24 {
+            let captures = captures + 1;
+            self.smoke_test.as_mut().unwrap().2 = captures;
+            if captures == 26 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 394, "Native screenshot timeout");
+        assert!(frame < 442, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2216,6 +2755,7 @@ impl eframe::App for OpenPatch {
         if !ctx.wants_keyboard_input()
             && !self.confirm_engine_upgrade
             && !self.recovery_open
+            && self.preset_dialog.is_none()
             && self.file_mode.is_none()
             && self.confirm_discard.is_none()
         {
@@ -2288,8 +2828,12 @@ impl eframe::App for OpenPatch {
             self.rack.set_module_states(lights, controls);
         }
         let mut action = None;
-        self.rack
-            .set_shortcuts_enabled(!self.browser_open && !self.settings_open && !self.shader_open);
+        self.rack.set_shortcuts_enabled(
+            !self.browser_open
+                && !self.settings_open
+                && !self.shader_open
+                && self.preset_dialog.is_none(),
+        );
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
             .show(ctx, |ui| {
@@ -2301,6 +2845,7 @@ impl eframe::App for OpenPatch {
                     && self.confirm_discard.is_none()
                     && !self.recovery_open
                     && !self.confirm_engine_upgrade
+                    && self.preset_dialog.is_none()
                     && !self.allow_close;
                 ui.add_enabled_ui(interactive, |ui| {
                     action = self
@@ -2316,6 +2861,14 @@ impl eframe::App for OpenPatch {
                 self.duplicate_modules(&ids, with_inputs);
             }
             Some(RackAction::OpenBrowser) => self.browse(),
+            Some(RackAction::Preset {
+                id,
+                kind,
+                revision,
+                mode,
+            }) => {
+                self.preset_dialog = Some(PresetDialog::new(id, kind, revision, mode));
+            }
             Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
             Some(RackAction::LayoutChanged) => {
                 self.status = "Module moved".into();
@@ -2325,6 +2878,7 @@ impl eframe::App for OpenPatch {
         self.observe_document();
         self.browser(ctx);
         self.files_window(ctx);
+        self.preset_window(ctx);
         self.shader_window(ctx);
         self.audio_settings(ctx);
         self.recovery_window(ctx);
@@ -2427,6 +2981,7 @@ mod project_workflow_tests {
             file_focus: false,
             browser_open: false,
             browser_focus: false,
+            preset_dialog: None,
             search: String::new(),
             catalog: catalog(),
             start: Instant::now(),
@@ -2452,6 +3007,386 @@ mod project_workflow_tests {
             allow_close: false,
             smoke_test: None,
         }
+    }
+
+    fn preset_frame(
+        ctx: &egui::Context,
+        app: &mut OpenPatch,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1000.0, 800.0),
+                )),
+                time: Some(time),
+                events,
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| app.preset_window(ctx),
+        )
+    }
+
+    fn preset_text(output: &egui::FullOutput, label: &str) -> egui::Pos2 {
+        fn in_shape(shape: &egui::Shape, label: &str) -> Option<egui::Pos2> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| in_shape(shape, label)),
+                _ => None,
+            }
+        }
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| in_shape(&shape.shape, label))
+            .unwrap_or_else(|| panic!("missing preset UI label {label}"))
+    }
+
+    fn preset_click(ctx: &egui::Context, app: &mut OpenPatch, at: egui::Pos2, time: f64) {
+        for (offset, pressed) in [(0.0, true), (0.1, false)] {
+            preset_frame(
+                ctx,
+                app,
+                time + offset,
+                vec![
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn preset_save_uses_reviewed_capture_after_patch_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"tone","kind":"analog_vco","params":{"frequency":220.0}}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        app.rack.select_only("tone".into());
+        let layout = app.rack.layout();
+        let selection = app.rack.selected_ids();
+        let mut dialog = PresetDialog::new(
+            "tone".into(),
+            "analog_vco".into(),
+            app.revision,
+            PresetMode::Save,
+        );
+        dialog.name = "reviewed-tone".into();
+        dialog.await_release = false;
+        app.preset_dialog = Some(dialog);
+        let ctx = egui::Context::default();
+        preset_frame(&ctx, &mut app, 0.0, vec![]);
+        let reviewed = app
+            .preset_dialog
+            .as_ref()
+            .unwrap()
+            .capture
+            .clone()
+            .expect("capture");
+        assert_eq!(reviewed["params"]["frequency"], 220.0);
+
+        assert!(app.command(
+            "set_parameter",
+            json!({
+                "id":"tone","parameter":"frequency","value":330.0
+            })
+        ));
+        let output = preset_frame(&ctx, &mut app, 1.0, vec![]);
+        let save = preset_text(&output, "Save preset");
+        preset_click(&ctx, &mut app, save, 2.0);
+        assert!(app.preset_dialog.is_none());
+        let saved = execute_shared(
+            &app.shared,
+            "read_module_preset",
+            json!({
+                "filename":"reviewed-tone.opreset"
+            }),
+        )
+        .unwrap();
+        assert_eq!(saved["preset"], reviewed);
+        assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), selection);
+    }
+
+    #[test]
+    fn preset_save_accepts_enter_from_name_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"tone","kind":"analog_vco"}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        let mut dialog = PresetDialog::new(
+            "tone".into(),
+            "analog_vco".into(),
+            app.revision,
+            PresetMode::Save,
+        );
+        dialog.name = "enter-preset".into();
+        dialog.await_release = false;
+        app.preset_dialog = Some(dialog);
+        let ctx = egui::Context::default();
+        preset_frame(&ctx, &mut app, 0.0, vec![]);
+        preset_frame(
+            &ctx,
+            &mut app,
+            1.0,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(app.preset_dialog.is_none());
+        assert!(execute_shared(
+            &app.shared,
+            "read_module_preset",
+            json!({
+                "filename":"enter-preset.opreset"
+            })
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn preset_preview_formats_controls_without_changing_saved_precision() {
+        let catalog = catalog();
+        let spec = &catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "analog_vco")
+            .unwrap()["params"]["frequency"];
+        let precise = json!(261.6255798339844_f64);
+        assert_eq!(
+            preset_control_value("frequency", &precise, spec),
+            "261.6 Hz"
+        );
+        assert_eq!(precise, json!(261.6255798339844_f64));
+        assert_eq!(
+            preset_control_value("running", &json!(1.0), &Value::Null),
+            "On"
+        );
+        assert_eq!(
+            preset_control_value("running", &json!(0.0), &Value::Null),
+            "Off"
+        );
+    }
+
+    #[test]
+    fn preset_browse_previews_inline_then_requires_current_target_to_apply() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"tone","kind":"analog_vco","params":{"frequency":220.0}}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        let captured = execute_shared(
+            &app.shared,
+            "capture_module_preset",
+            json!({
+                "id":"tone","expected_revision":app.revision
+            }),
+        )
+        .unwrap();
+        execute_shared(
+            &app.shared,
+            "save_module_preset",
+            json!({
+                "filename":"warm.opreset","preset":captured["preset"].clone()
+            }),
+        )
+        .unwrap();
+        assert!(app.command(
+            "set_parameter",
+            json!({
+                "id":"tone","parameter":"frequency","value":330.0
+            })
+        ));
+        let layout = app.rack.layout();
+        let mut dialog = PresetDialog::new(
+            "tone".into(),
+            "analog_vco".into(),
+            app.revision,
+            PresetMode::Browse,
+        );
+        dialog.await_release = false;
+        app.preset_dialog = Some(dialog);
+        let ctx = egui::Context::default();
+        preset_frame(&ctx, &mut app, 0.0, vec![]); // egui sizes a new modal invisibly.
+        let output = preset_frame(&ctx, &mut app, 0.2, vec![]);
+        let filename = preset_text(&output, "warm.opreset");
+        preset_click(&ctx, &mut app, filename, 1.0);
+        assert_eq!(
+            app.preset_dialog
+                .as_ref()
+                .unwrap()
+                .preview
+                .as_ref()
+                .unwrap(),
+            &captured["preset"]
+        );
+
+        assert!(app.command(
+            "set_parameter",
+            json!({
+                "id":"tone","parameter":"frequency","value":440.0
+            })
+        ));
+        let output = preset_frame(&ctx, &mut app, 2.0, vec![]);
+        let apply = preset_text(&output, "Apply preset");
+        preset_click(&ctx, &mut app, apply, 3.0);
+        assert!(
+            app.preset_dialog.is_some(),
+            "stale target must remain reviewable"
+        );
+        assert_eq!(app.patch.nodes[0].params["frequency"], 440.0);
+
+        let output = preset_frame(&ctx, &mut app, 4.0, vec![]);
+        let refresh = preset_text(&output, "Refresh target");
+        preset_click(&ctx, &mut app, refresh, 5.0);
+        let output = preset_frame(&ctx, &mut app, 6.0, vec![]);
+        let filename = preset_text(&output, "warm.opreset");
+        preset_click(&ctx, &mut app, filename, 7.0);
+        let output = preset_frame(&ctx, &mut app, 8.0, vec![]);
+        let apply = preset_text(&output, "Apply preset");
+        preset_click(&ctx, &mut app, apply, 9.0);
+        assert!(app.preset_dialog.is_none());
+        assert_eq!(app.patch.nodes[0].params["frequency"], 220.0);
+        assert_eq!(app.rack.layout(), layout);
+
+        app.preset_dialog = Some(PresetDialog::new(
+            "tone".into(),
+            "analog_vco".into(),
+            app.revision,
+            PresetMode::Browse,
+        ));
+        preset_frame(
+            &ctx,
+            &mut app,
+            10.0,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(app.preset_dialog.is_none());
+    }
+
+    #[test]
+    fn seq3_preset_capture_waits_for_live_state_instead_of_using_saved_run() {
+        use openpatch::control::LiveModuleEvents;
+        use std::sync::Arc;
+        struct MissingTelemetry;
+        impl LiveModuleEvents for MissingTelemetry {
+            fn trigger(&self, _: &str, _: openpatch_core::ModuleAction) -> Result<Value, String> {
+                Ok(json!({}))
+            }
+            fn snapshot(&self) -> Value {
+                json!({})
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"steps","kind":"seq3","params":{"running":1.0}}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(Arc::new(MissingTelemetry)));
+        let mut dialog = PresetDialog::new(
+            "steps".into(),
+            "seq3".into(),
+            app.revision,
+            PresetMode::Save,
+        );
+        app.load_preset_dialog(&mut dialog);
+        assert!(dialog.capture.is_none());
+        assert!(dialog.status.contains("unavailable"));
+        assert!(!dialog.pending);
+
+        app.shared.lock().unwrap().set_live_module_events(None);
+        dialog.pending = true;
+        app.load_preset_dialog(&mut dialog);
+        assert_eq!(dialog.capture.as_ref().unwrap()["params"]["running"], 1.0);
+        assert_eq!(dialog.source, "offline_reset");
+    }
+
+    #[test]
+    fn preset_search_finds_a_name_beyond_the_first_library_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"tone","kind":"analog_vco"}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        let captured =
+            execute_shared(&app.shared, "capture_module_preset", json!({"id":"tone"})).unwrap();
+        for index in 0..30 {
+            execute_shared(
+                &app.shared,
+                "save_module_preset",
+                json!({
+                    "filename":format!("item-{index:02}.opreset"),
+                    "preset":captured["preset"].clone()
+                }),
+            )
+            .unwrap();
+        }
+        execute_shared(
+            &app.shared,
+            "save_module_preset",
+            json!({
+                "filename":"z-needle.opreset","preset":captured["preset"].clone()
+            }),
+        )
+        .unwrap();
+        let mut dialog = PresetDialog::new(
+            "tone".into(),
+            "analog_vco".into(),
+            app.revision,
+            PresetMode::Browse,
+        );
+        dialog.await_release = false;
+        app.preset_dialog = Some(dialog);
+        let ctx = egui::Context::default();
+        preset_frame(&ctx, &mut app, 0.0, vec![]); // egui sizes a new modal invisibly.
+        let output = preset_frame(&ctx, &mut app, 0.2, vec![]);
+        assert_eq!(app.preset_dialog.as_ref().unwrap().total, 31);
+        assert_eq!(app.preset_dialog.as_ref().unwrap().entries.len(), 30);
+        app.preset_dialog.as_mut().unwrap().search = "needle".into();
+        let search = preset_text(&output, "Search");
+        preset_click(&ctx, &mut app, search, 1.0);
+        preset_frame(&ctx, &mut app, 2.0, vec![]);
+        let dialog = app.preset_dialog.as_ref().unwrap();
+        assert_eq!(dialog.query, "needle");
+        assert_eq!(dialog.total, 1);
+        assert_eq!(dialog.entries[0]["filename"], "z-needle.opreset");
     }
     #[test]
     fn browser_add_preserves_runtime_identities_and_sets_first_output_atomically() {

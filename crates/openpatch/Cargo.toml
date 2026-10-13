@@ -9,3 +9,6 @@ description = "An agent-controllable modular synthesizer in Rust"
 openpatch-core = { path = "../openpatch-core" }
 serde_json = "1"
 
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

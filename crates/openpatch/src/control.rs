@@ -1,9 +1,14 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod capture;
+mod preset_tools;
+mod running;
+use running::EditEffects;
 #[cfg(test)]
 mod duplicate_tests;
 #[cfg(test)]
 mod parameter_action_tests;
+#[cfg(test)]
+mod preset_tests;
 #[cfg(test)]
 mod sequence_tests;
 #[cfg(test)]
@@ -36,6 +41,10 @@ pub trait LiveModuleEvents: Send + Sync {
     /// Initialize final, synchronized module incarnations after a successful edit.
     /// This hook is not replayed by undo/redo.
     fn initialize_modules(&self, _ids: &[String]) {}
+    /// Assign saved SEQ3 Run after adoption, including equal-value loads/history.
+    fn load_module_running(&self, _states: &BTreeMap<String, bool>) {}
+    /// Release transient manual buttons without resetting DSP histories.
+    fn release_module_controls(&self, _ids: &[String]) {}
 }
 
 #[derive(Clone)]
@@ -59,6 +68,9 @@ struct HistoryEntry {
     // identically. Replay it whenever undo/redo crosses this boundary.
     retired_modules: Vec<String>,
     retired_cables: Vec<String>,
+    restore_running: BTreeMap<String, bool>,
+    return_running: BTreeMap<String, bool>,
+    release_controls: Vec<String>,
 }
 
 const HISTORY_LIMIT: usize = 128;
@@ -74,6 +86,7 @@ const EDIT_TOOLS: &[&str] = &[
     "invert_mutes",
     "initialize_modules",
     "randomize_modules",
+    "apply_module_preset",
     "set_output",
 ];
 
@@ -89,8 +102,15 @@ pub type Application = Session;
 pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     match name {
-        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" | "analyze_signal"
-        | "capture_signal" => {
+        "export_visualizer"
+        | "save_patch"
+        | "render_audio"
+        | "benchmark"
+        | "analyze_signal"
+        | "capture_signal"
+        | "save_module_preset"
+        | "read_module_preset"
+        | "list_module_presets" => {
             let mut snapshot = Session {
                 patch: live.patch.clone(),
                 revision: live.revision,
@@ -211,14 +231,10 @@ impl Session {
     ) -> Result<u64, String> {
         let retired = self.module_ids();
         let retired_cables = self.cable_ids();
-        self.commit(
-            candidate,
-            expected_revision,
-            None,
-            &retired,
-            &retired_cables,
-            &[],
-        )
+        let mut effects = EditEffects::default();
+        effects.retired = retired;
+        effects.retired_cables = retired_cables;
+        self.commit(candidate, expected_revision, None, &effects)
     }
 
     fn module_ids(&self) -> Vec<String> {
@@ -242,9 +258,7 @@ impl Session {
         mut candidate: Patch,
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
-        retired: &[String],
-        retired_cables: &[String],
-        initialized: &[String],
+        effects: &EditEffects,
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
@@ -253,6 +267,9 @@ impl Session {
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
         if group.is_some() && group == self.history_group {
             self.patch = candidate;
+            if let Some(entry) = self.undo.back_mut() {
+                entry.return_running.extend(effects.after_running.clone());
+            }
         } else {
             if self.undo.len() == HISTORY_LIMIT {
                 self.undo.pop_front();
@@ -260,28 +277,40 @@ impl Session {
             self.undo.push_back(HistoryEntry {
                 patch: std::mem::replace(&mut self.patch, candidate),
                 state_id: self.state_id,
-                retired_modules: retired.to_vec(),
-                retired_cables: retired_cables.to_vec(),
+                retired_modules: effects.retired.clone(),
+                retired_cables: effects.retired_cables.clone(),
+                restore_running: effects.before_running.clone(),
+                return_running: effects.after_running.clone(),
+                release_controls: effects.release_controls.iter().cloned().collect(),
             });
             self.state_id = revision;
         }
         self.history_group = group;
         self.redo.clear();
         self.revision = revision;
-        if !retired.is_empty() {
+        if !effects.retired.is_empty() {
             if let Some(backend) = &self.live_module_events {
-                backend.retire_modules(retired);
+                backend.retire_modules(&effects.retired);
             }
         }
-        if !retired_cables.is_empty() {
+        if !effects.retired_cables.is_empty() {
             if let Some(backend) = &self.live_module_events {
-                backend.retire_cables(retired_cables);
+                backend.retire_cables(&effects.retired_cables);
             }
         }
         self.sync_live_module_events();
-        if !initialized.is_empty() {
-            if let Some(backend) = &self.live_module_events {
-                backend.initialize_modules(initialized);
+        if let Some(backend) = &self.live_module_events {
+            if !effects.initialized.is_empty() {
+                backend
+                    .initialize_modules(&effects.initialized.iter().cloned().collect::<Vec<_>>());
+            }
+            if !effects.release_controls.is_empty() {
+                backend.release_module_controls(
+                    &effects.release_controls.iter().cloned().collect::<Vec<_>>(),
+                );
+            }
+            if !effects.load_running.is_empty() {
+                backend.load_module_running(&effects.load_running);
             }
         }
         Ok(revision)
@@ -312,6 +341,9 @@ impl Session {
             state_id: std::mem::replace(&mut self.state_id, entry.state_id),
             retired_modules: entry.retired_modules.clone(),
             retired_cables: entry.retired_cables.clone(),
+            restore_running: entry.return_running.clone(),
+            return_running: entry.restore_running.clone(),
+            release_controls: entry.release_controls.clone(),
         };
         if redo {
             self.undo.push_back(opposite);
@@ -329,6 +361,19 @@ impl Session {
             }
         }
         self.sync_live_module_events();
+        if let Some(backend) = &self.live_module_events {
+            let releases: Vec<_> = entry
+                .release_controls
+                .into_iter()
+                .filter(|id| self.patch.nodes.iter().any(|node| node.id == *id))
+                .collect();
+            if !releases.is_empty() {
+                backend.release_module_controls(&releases);
+            }
+            if !entry.restore_running.is_empty() {
+                backend.load_module_running(&entry.restore_running);
+            }
+        }
         Ok(self.snapshot())
     }
 
@@ -455,6 +500,10 @@ impl Session {
         validate_arguments(&schemas, name, &args)?;
         match name {
             "catalog" => return Ok(catalog()),
+            "capture_module_preset" => return self.capture_module_preset(&args),
+            "save_module_preset" | "read_module_preset" | "list_module_presets" => {
+                return self.preset_file_tool(name, &args)
+            }
             "inspect_patch" => return Ok(self.snapshot()),
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
@@ -601,19 +650,15 @@ impl Session {
             .transpose()?;
         self.check_revision(expected_revision)?;
         let mut candidate = self.patch.clone();
-        let mut retired = if matches!(name, "replace_patch" | "load_patch") {
-            self.module_ids()
-        } else {
-            Vec::new()
-        };
-        let mut retired_cables = if matches!(name, "replace_patch" | "load_patch") {
-            self.cable_ids()
-        } else {
-            Vec::new()
-        };
-        let mut initialized = BTreeSet::new();
+        let mut effects = EditEffects::default();
+        if matches!(name, "replace_patch" | "load_patch") {
+            effects.retired = self.module_ids();
+            effects.retired_cables = self.cable_ids();
+        }
         match name {
-            "rotate_sequence" => rotate_sequence(&mut candidate, &args)?,
+            "rotate_sequence" => {
+                self.apply_session_edit(&mut candidate, name, &args, &mut effects)?
+            }
             "replace_patch" => {
                 candidate =
                     serde_json::from_value(args.get("patch").ok_or("patch required")?.clone())
@@ -658,16 +703,7 @@ impl Session {
                                 "revision and history grouping belong to the transaction, not an edit".into(),
                             );
                         }
-                        apply_edit(
-                            &mut candidate,
-                            tool,
-                            arguments,
-                            &mut retired_cables,
-                            &mut initialized,
-                        )?;
-                        if tool == "remove_module" {
-                            retired.push(string(arguments, "id")?.to_owned());
-                        }
+                        self.apply_session_edit(&mut candidate, tool, arguments, &mut effects)?;
                         Ok(())
                     })();
                     result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
@@ -682,13 +718,9 @@ impl Session {
             }
             "undo" => return self.restore_history(false),
             "redo" => return self.restore_history(true),
-            name if EDIT_TOOLS.contains(&name) => apply_edit(
-                &mut candidate,
-                name,
-                &args,
-                &mut retired_cables,
-                &mut initialized,
-            )?,
+            name if EDIT_TOOLS.contains(&name) => {
+                self.apply_session_edit(&mut candidate, name, &args, &mut effects)?
+            }
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
@@ -705,17 +737,7 @@ impl Session {
         } else {
             None
         };
-        if name == "remove_module" {
-            retired.push(string(&args, "id")?.to_owned());
-        }
-        self.commit(
-            candidate,
-            expected_revision,
-            group,
-            &retired,
-            &retired_cables,
-            &initialized.into_iter().collect::<Vec<_>>(),
-        )?;
+        self.commit(candidate, expected_revision, group, &effects)?;
         Ok(self.snapshot())
     }
 }
@@ -1141,6 +1163,15 @@ fn apply_edit(
                 node.params.insert(key, 1.0 - value);
             }
         }
+        "apply_module_preset" => {
+            let id = string(args, "id")?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?;
+            crate::presets::apply(node, &args["preset"])?;
+        }
         "initialize_modules" | "randomize_modules" => {
             let ids = parameter_action_ids(candidate, args)?;
             let actions = ModuleParameterActions::new(candidate.sample_rate);
@@ -1344,8 +1375,13 @@ pub fn tools() -> Value {
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("initialize_modules","Initialize saved parameters for 1..256 unique module IDs using catalog policy, preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
-        tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Preview and apply agree; undo/redo restore values without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
+        tool("capture_module_preset","Capture a native module preset with effective parameter defaults and explicit bypass. SEQ3 captures actual current Run from revision-coherent live telemetry, or initial Run only without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev}),&["id"],true),
+        tool("save_module_preset","Save exactly the supplied, reviewed native preset to a new workspace .opreset file. Capture first with capture_module_preset. Never recaptures a module, overwrites a file, or changes graph/history. Files are bounded to 64 KiB; symlinks and directories are rejected.",json!({"filename":s,"preset":preset_tools::schema()}),&["filename","preset"],false),
+        tool("read_module_preset","Read and validate one bounded regular workspace .opreset file. Returns immutable preset contents for review and inline apply; no graph/history change and no .vcvm compatibility.",json!({"filename":s}),&["filename"],true),
+        tool("list_module_presets","Browse sorted workspace .opreset files, optionally filtering valid entries by module kind. Corrupt or unsafe entries remain visible with errors. Filename query matches case-insensitively before pagination. Paged results default to 50, maximum 100; library is bounded to 1024 files.",json!({"kind":s,"query":{"type":"string","maxLength":120},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50}}),&[],true),
+        tool("apply_module_preset","Merge reviewed native preset params and optional bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running assigns actual Run after adoption even if its saved value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured Run.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
+        tool("initialize_modules","Initialize saved parameters for 1..256 unique module IDs using catalog policy, preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values and captured SEQ3 Run without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
+        tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Preview and apply agree; undo/redo restore values and captured SEQ3 Run without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Modules start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),

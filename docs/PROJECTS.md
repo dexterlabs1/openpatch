@@ -104,7 +104,8 @@ projects through File. Project-level MCP operations remain a separate gate.
 
 Current native documents do not store running DSP state, external assets,
 custom GLSL, keyboard/device preferences, or the undo stack. Device preferences
-remain separate host settings. Module presets, asset packaging, portable paths,
+remain separate host settings. [Native module presets](MODULE_PRESETS.md) are
+available separately. Asset packaging, portable paths, factory templates,
 layout-move history, and broader platform/device qualification remain open.
 
 Tests cover malformed and oversized files, legacy imports, changed-file

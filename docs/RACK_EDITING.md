@@ -88,8 +88,8 @@ MIX6 retains its menu-based invert and average modes.
 SEQ-3's saved `running` setting retains both its value and its presence, so
 initializing a paused live sequence does not inadvertently start it.
 
-Undo and redo restore saved controls; they do not replay the runtime hook or
-rewind unsaved DSP state. If Initialize is immediately undone before the audio
+Undo and redo restore saved controls and captured SEQ-3 Run state; they do not
+replay the runtime hook or rewind unsaved DSP phase or step position. If Initialize is immediately undone before the audio
 callback receives a graph, its pending runtime hook still runs once. A
 per-incarnation generation prevents later graph edits and history traversal
 from repeating it. No control lock or allocation is needed in the callback.
@@ -122,8 +122,9 @@ sampled using SplitMix64. Thus changing the order of selected IDs does not
 change the result. The UI supplies a fresh seed for each invocation.
 
 The parameter policies for OpenPatch-specific modules are explicit product
-choices, not claims of identical random distributions to Rack. Module presets,
-Rack `.vcvm` import and factory templates remain separate unfinished workflows.
+choices, not claims of identical random distributions to Rack. The [native module preset library](MODULE_PRESETS.md) captures complete settings
+and current SEQ-3 Run state. Rack `.vcvm` import and factory templates remain
+unfinished.
 
 The reference for initialization/history behavior is Rack 2.6.4
 ([module actions](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/ModuleWidget.cpp),
@@ -154,8 +155,8 @@ behavior. Rack's hovered-single-module duplication with cables also copies
 outgoing cables, relying on stacked inputs. OpenPatch supports
 [stacked inputs](STACKED_CABLES.md), but continues to use selected-group
 duplication semantics for single and multiple selections. That hovered-module
-shortcut behavior remains explicit parity work, as do module presets and
-complete project-layout history.
+shortcut behavior remains explicit parity work, as do Rack preset conversion,
+factory templates and complete project-layout history.
 
 References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/app/RackWidget.cpp),
 [hovered-module cloning](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/app/ModuleWidget.cpp),

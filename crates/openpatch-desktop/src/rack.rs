@@ -29,6 +29,12 @@ const CABLES: [Color32; 6] = [
 pub enum RackAction {
     Command(&'static str, Value),
     OpenBrowser,
+    Preset {
+        id: String,
+        kind: String,
+        revision: u64,
+        mode: PresetMode,
+    },
     Duplicate {
         ids: Vec<String>,
         with_inputs: bool,
@@ -39,6 +45,12 @@ pub enum RackAction {
         id: String,
         port: String,
     },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PresetMode {
+    Save,
+    Browse,
 }
 
 struct ParameterEdit {
@@ -717,6 +729,13 @@ impl Rack {
                         }
                     }
                 }
+                preset_menu(
+                    ui,
+                    node,
+                    &self.context_ids(&node.id),
+                    self.observed_revision,
+                    &mut action,
+                );
                 selection_menu(
                     ui,
                     &self.context_ids(&node.id),
@@ -846,6 +865,13 @@ impl Rack {
                         }
                     }
                 }
+                preset_menu(
+                    ui,
+                    node,
+                    &self.context_ids(&node.id),
+                    self.observed_revision,
+                    &mut action,
+                );
                 selection_menu(
                     ui,
                     &self.context_ids(&node.id),
@@ -3107,6 +3133,53 @@ fn module_state_action(kind: ModuleStateAction, ids: &[String], revision: u64) -
     }
 }
 
+fn preset_menu(
+    ui: &mut egui::Ui,
+    node: &Node,
+    ids: &[String],
+    revision: u64,
+    action: &mut Option<RackAction>,
+) {
+    if ids.len() != 1 {
+        ui.add_enabled(false, egui::Button::new("Presets"))
+            .on_disabled_hover_text("Presets work with one module at a time. Select only this module to save or browse presets.");
+        return;
+    }
+    ui.menu_button("Presets", |ui| {
+        for (mode, label, help) in [
+            (
+                PresetMode::Save,
+                "Save preset…",
+                "Capture this module's current controls, then save a new .opreset file.",
+            ),
+            (
+                PresetMode::Browse,
+                "Browse presets…",
+                "Find and preview presets compatible with this module.",
+            ),
+        ] {
+            if ui.button(label).on_hover_text(help).clicked() {
+                *action = preset_action(node, ids, revision, mode);
+                ui.close();
+            }
+        }
+    });
+}
+
+fn preset_action(
+    node: &Node,
+    ids: &[String],
+    revision: u64,
+    mode: PresetMode,
+) -> Option<RackAction> {
+    (ids.len() == 1).then(|| RackAction::Preset {
+        id: node.id.clone(),
+        kind: node.kind.clone(),
+        revision,
+        mode,
+    })
+}
+
 fn selection_menu(
     ui: &mut egui::Ui,
     ids: &[String],
@@ -4055,7 +4128,7 @@ fn panel_width(kind: &str) -> f32 {
         _ => HP * 12.0,
     }
 }
-fn title(kind: &str) -> &str {
+pub(crate) fn title(kind: &str) -> &str {
     match kind {
         "vca_mix" => "VCA MIX",
         "fade" => "FADE",
@@ -4102,7 +4175,7 @@ fn title(kind: &str) -> &str {
         other => other,
     }
 }
-fn parameter_label(name: &str) -> &str {
+pub(crate) fn parameter_label(name: &str) -> &str {
     match name {
         "position" => "POSITION",
         "cv_amount" => "CV DEPTH",
@@ -4270,7 +4343,7 @@ fn quantize(value: f32, min: f32, max: f32, step: Option<f32>) -> f32 {
         (min + ((value - min) / step).round() * step).clamp(min, max)
     })
 }
-fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
+pub(crate) fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
     match name {
         "waveform" => {
             if value.round() == 0.0 {
@@ -6738,6 +6811,33 @@ mod tests {
             }
             assert_eq!(rack.selected_ids(), vec!["a", "b"]);
         }
+    }
+
+    #[test]
+    fn preset_menu_targets_context_module_and_disables_groups() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,
+            "nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"seq3"}]
+        }))
+        .unwrap();
+        let mut rack = Rack::default();
+        rack.select_only("a".into());
+        let ids = rack.context_ids("b");
+        let action = preset_action(&patch.nodes[1], &ids, 42, PresetMode::Browse);
+        assert!(
+            matches!(action, Some(RackAction::Preset { id, kind, revision: 42, mode: PresetMode::Browse })
+            if id == "b" && kind == "seq3")
+        );
+        assert_eq!(rack.selected_ids(), vec!["a"]);
+
+        rack.toggle_selection("b".into());
+        assert!(preset_action(
+            &patch.nodes[1],
+            &rack.context_ids("b"),
+            42,
+            PresetMode::Save
+        )
+        .is_none());
     }
 
     #[test]

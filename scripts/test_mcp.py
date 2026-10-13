@@ -562,6 +562,103 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
         self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
 
+    def test_native_module_preset_capture_exact_save_partial_apply_and_history(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "vco", "kind": "multi_vco", "bypassed": True,
+                 "params": {"frequency": 220, "pulse_width": 0.99}},
+                {"id": "seq", "kind": "seq3", "params": {"running": 0, "row1_1": 3}},
+            ], "cables": [{"id": "pitch", "from": "seq", "output": "cv1", "to": "vco", "input": "pitch"}],
+            "output": "vco", "output_port": "sine",
+        }})
+        before = self.patch_snapshot()
+        captured = self.payload(self.require_tool_success("capture_module_preset", {
+            "id": "vco", "expected_revision": before["revision"],
+        }))
+        self.assertEqual(captured["state_source"], "saved_parameters")
+        self.assertIsNone(captured["frame"])
+        self.assertEqual(captured["preset"]["params"]["frequency"], 220)
+        self.assertEqual(captured["preset"]["params"]["fm_amount"], 0)
+        self.assertTrue(captured["preset"]["bypassed"])
+        self.assertNotIn("id", captured["preset"])
+        self.assertEqual(self.patch_snapshot(), before)
+        offline = self.payload(self.require_tool_success("capture_module_preset", {"id": "seq"}))
+        self.assertEqual(offline["state_source"], "offline_reset")
+        self.assertEqual(offline["preset"]["params"]["running"], 0)
+        self.require_tool_success("set_parameter", {"id": "vco", "parameter": "frequency", "value": 440})
+        changed = self.patch_snapshot()
+        saved = self.payload(self.require_tool_success("save_module_preset", {
+            "filename": "reviewed-vco.opreset", "preset": captured["preset"],
+        }))
+        self.assertEqual(saved["preset"], captured["preset"])
+        self.assertEqual(self.patch_snapshot(), changed)
+        read = self.payload(self.require_tool_success("read_module_preset", {"filename": "reviewed-vco.opreset"}))
+        self.assertEqual(read["preset"], captured["preset"])
+        self.assertEqual(json.loads((self.workspace / "reviewed-vco.opreset").read_text()), captured["preset"])
+        # Later disk edits do not change the reviewed inline operation.
+        replacement = {"format": "openpatch-module-preset", "version": 1, "kind": "multi_vco", "params": {"frequency": 880}}
+        (self.workspace / "reviewed-vco.opreset").write_text(json.dumps(replacement))
+        request = {"edits": [{"tool": "apply_module_preset", "arguments": {"id": "vco", "preset": read["preset"]}}],
+                   "expected_revision": changed["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", request))
+        self.assertEqual(self.patch_snapshot(), changed)
+        applied = self.payload(self.require_tool_success("apply_edits", request))
+        self.assertEqual(applied["patch"], preview["patch"])
+        self.assertEqual(applied["patch"]["nodes"][0]["params"]["frequency"], 220)
+        self.assertEqual(applied["patch"]["cables"], before["patch"]["cables"])
+        self.assertEqual(applied["patch"]["output"], "vco")
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], changed["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], applied["patch"])
+        partial = {"format": "openpatch-module-preset", "version": 1, "kind": "seq3", "params": {"row2_1": 7}}
+        merged = self.payload(self.require_tool_success("apply_module_preset", {"id": "seq", "preset": partial}))
+        seq = next(node for node in merged["patch"]["nodes"] if node["id"] == "seq")
+        self.assertEqual(seq["params"]["row1_1"], 3)
+        self.assertEqual(seq["params"]["row2_1"], 7)
+        self.assertEqual(seq["params"]["running"], 0)
+
+    def test_native_preset_library_search_validation_and_file_safety(self) -> None:
+        value = {"format": "openpatch-module-preset", "version": 1, "kind": "multi_vco", "params": {"pulse_width": 0.01}}
+        for filename in ("a-vco.opreset", "z-vco.opreset"):
+            self.require_tool_success("save_module_preset", {"filename": filename, "preset": value})
+        (self.workspace / "broken.opreset").write_text("not json")
+        listing = self.payload(self.require_tool_success("list_module_presets", {"limit": 1}))
+        self.assertEqual(listing["total"], 3)
+        self.assertEqual(listing["presets"][0]["filename"], "a-vco.opreset")
+        searched = self.payload(self.require_tool_success("list_module_presets", {"query": "Z-VCO", "limit": 1, "kind": "multi_vco"}))
+        self.assertEqual(searched["total"], 1)
+        self.assertEqual(searched["presets"][0]["filename"], "z-vco.opreset")
+        broken = self.payload(self.require_tool_success("list_module_presets", {"query": "broken"}))
+        self.assertFalse(broken["presets"][0]["valid"])
+        self.assertIsNotNone(broken["presets"][0]["error"])
+        before = self.patch_snapshot()
+        for filename in ("a-vco.opreset", "../escape.opreset", ".hidden.opreset", "bad name.opreset", "wrong.json"):
+            self.require_tool_error("save_module_preset", {"filename": filename, "preset": value})
+        (self.workspace / "large.opreset").write_bytes(b" " * 65537)
+        self.require_tool_error("read_module_preset", {"filename": "large.opreset"})
+        (self.workspace / "directory.opreset").mkdir()
+        self.require_tool_error("read_module_preset", {"filename": "directory.opreset"})
+        if os.name != "nt":
+            (self.workspace / "link.opreset").symlink_to(self.workspace / "a-vco.opreset")
+            self.require_tool_error("read_module_preset", {"filename": "link.opreset"})
+            self.require_tool_error("save_module_preset", {"filename": "link.opreset", "preset": value})
+        for arguments in ({"limit": 0}, {"limit": 101}, {"offset": -1}, {"query": "x" * 121}, {"query": True}):
+            self.require_tool_error("list_module_presets", arguments)
+        for invalid in (
+            {**value, "version": 2}, {**value, "bypassed": 1}, {**value, "id": "forbidden"},
+            {**value, "params": {"soft_sync": 0.5}}, {**value, "params": {"pulse_width": 2}},
+            {**value, "params": {"unknown": 1}},
+        ):
+            self.require_tool_error("save_module_preset", {"filename": "invalid.opreset", "preset": invalid})
+            self.assertFalse((self.workspace / "invalid.opreset").exists())
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertFalse(any(path.name.startswith(".openpatch-preset-") for path in self.workspace.iterdir()))
+        schemas = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in schemas}
+        self.assertTrue({"capture_module_preset", "save_module_preset", "read_module_preset", "list_module_presets", "apply_module_preset"} <= names)
+        save_schema = next(tool["inputSchema"] for tool in schemas if tool["name"] == "save_module_preset")
+        self.assertNotIn("id", save_schema["properties"])
+        self.assertFalse(save_schema["properties"]["preset"]["additionalProperties"])
+
     def test_initialize_modules_atomic_preview_and_parameter_history(self) -> None:
         patch = {
             "version": 2,

@@ -99,6 +99,9 @@ struct StateEntry {
     kind: String,
     initialize_generation: u64,
     initialize_revision: u64,
+    running_generation: u64,
+    running_revision: u64,
+    desired_running: bool,
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -137,6 +140,7 @@ struct Control {
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
     revision: u64,
+    frame: u64,
     state: Option<ModuleTelemetry>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
@@ -145,6 +149,7 @@ struct Meter {
     serial: AtomicU64,
     token: AtomicU64,
     revision: AtomicU64,
+    frame: AtomicU64,
     value: AtomicU32,
     flags: AtomicU32,
     brightness: [AtomicU32; 16],
@@ -155,6 +160,7 @@ impl Meter {
             serial: AtomicU64::new(0),
             token: AtomicU64::new(0),
             revision: AtomicU64::new(0),
+            frame: AtomicU64::new(0),
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -164,6 +170,7 @@ impl Meter {
         self.serial.fetch_add(1, Ordering::SeqCst);
         self.token.store(token, Ordering::SeqCst);
         self.revision.store(snapshot.revision, Ordering::SeqCst);
+        self.frame.store(snapshot.frame, Ordering::SeqCst);
         let mut flags = 0;
         if let Some(state) = snapshot.state {
             flags |= 1;
@@ -194,6 +201,7 @@ impl Meter {
             }
             let token = self.token.load(Ordering::SeqCst);
             let actual_revision = self.revision.load(Ordering::SeqCst);
+            let frame = self.frame.load(Ordering::SeqCst);
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
@@ -208,6 +216,7 @@ impl Meter {
             return (token == entry.token && actual_revision >= revision).then_some(
                 ModuleSnapshot {
                     revision: actual_revision,
+                    frame,
                     state: (flags & 1 != 0).then_some(ModuleTelemetry {
                         step: value as u8,
                         length: (value >> 8) as u8,
@@ -265,6 +274,9 @@ pub(super) struct StateBinding {
     pub handle: ModuleHandle,
     initialize_generation: u64,
     applied_initialization: u64,
+    running_generation: u64,
+    applied_running: u64,
+    desired_running: bool,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -298,6 +310,26 @@ impl Default for ModulePlan {
     }
 }
 impl ModulePlan {
+    /// Saved custom state is assigned, never replayed as a button press. The
+    /// generation is independent of Initialize because history deliberately
+    /// reloads Run while leaving phase and step position alone.
+    pub(super) fn load_running_pending(&mut self, engine: &mut Engine, previous: Option<&Self>) {
+        for (slot, binding) in self.states.iter_mut().enumerate() {
+            let Some(binding) = binding else { continue };
+            if let Some(old) = previous
+                .and_then(|plan| plan.states[slot])
+                .filter(|old| old.token == binding.token)
+            {
+                binding.applied_running = binding.applied_running.max(old.applied_running);
+            }
+            if binding.running_generation > binding.applied_running
+                && engine.set_module_running(binding.handle, binding.desired_running)
+            {
+                binding.applied_running = binding.running_generation;
+            }
+        }
+    }
+
     /// Apply the control-thread fence only after normal DSP state adoption.
     /// The applied generation travels with the live instance, so history and
     /// stale prepared graphs cannot replay an initialization event.
@@ -457,6 +489,13 @@ impl Performance {
                         0
                     },
                     applied_initialization: 0,
+                    running_generation: if revision >= entry.running_revision {
+                        entry.running_generation
+                    } else {
+                        0
+                    },
+                    applied_running: 0,
+                    desired_running: entry.desired_running,
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
@@ -563,6 +602,46 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn load_module_running(&self, states: &BTreeMap<String, bool>) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        let revision = control.revision;
+        for (id, running) in states {
+            let Some(state) = control
+                .state_entries
+                .get_mut(id)
+                .filter(|state| state.kind == "seq3")
+            else {
+                continue;
+            };
+            state.running_generation = state.running_generation.saturating_add(1);
+            state.running_revision = revision;
+            state.desired_running = *running;
+            if let Some(entry) = control.entries.get_mut(id) {
+                entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
+            }
+        }
+    }
+
+    fn release_module_controls(&self, ids: &[String]) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        for id in ids {
+            if let Some(entry) = control
+                .entries
+                .get_mut(id)
+                .filter(|entry| entry.kind.manual())
+            {
+                self.request_release(entry);
+            }
+        }
+    }
+
     fn initialize_modules(&self, ids: &[String]) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if self.shared.closed.load(Ordering::Acquire) {
@@ -676,6 +755,9 @@ impl LiveModuleEvents for Performance {
                     kind: node.kind.clone(),
                     initialize_generation: 0,
                     initialize_revision: revision,
+                    running_generation: 0,
+                    running_revision: revision,
+                    desired_running: false,
                 },
             );
         }
@@ -812,7 +894,7 @@ impl LiveModuleEvents for Performance {
         let modules: serde_json::Map<String, Value> = control.entries.iter().map(|(id, entry)| {
             let actual = available.then(|| shared.meters[entry.slot].read(*entry, control.revision)).flatten();
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
-                "revision":actual.map(|snapshot| snapshot.revision),"state":actual.and_then(|snapshot|snapshot.state).map(|state|json!({"step":state.step,"length":state.length,"running":state.running})),
+                "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot|snapshot.state).map(|state|json!({"step":state.step,"length":state.length,"running":state.running})),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
         }).collect();
         json!({"available":available,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
@@ -967,6 +1049,7 @@ impl EventReader {
                     binding.token,
                     ModuleSnapshot {
                         revision,
+                        frame,
                         state: if binding.kind.sequential() {
                             engine.module_telemetry(binding.handle)
                         } else {
