@@ -998,6 +998,14 @@ impl OpenPatch {
                             self.replace_from_menu(patch, "Clocked random voice");
                             ui.close();
                         }
+                        if ui.button("Gate shaping voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/gate-shaping-voice.json"
+                            ))
+                            .expect("valid bundled gate shaping voice");
+                            self.replace_from_menu(patch, "Gate shaping voice");
+                            ui.close();
+                        }
                         if ui.button("Voltage utilities").clicked() {
                             let patch = serde_json::from_str(include_str!(
                                 "../../../examples/voltage-utilities.json"
@@ -1828,6 +1836,51 @@ impl OpenPatch {
             .expect("mute bypass fixture");
             self.title = "Voltage utilities · Mutes bypassed".into();
         }
+        if *frame == 244 || *frame == 260 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/gate-shaping-voice.json"))
+                    .expect("valid gate shaping fixture");
+            let mut engine = patch.compile().expect("gate shaping fixture compiles");
+            engine.process_block(&mut vec![0.0; 48_000]);
+            if *frame == 260 {
+                for (id, event) in [
+                    ("logic", openpatch_core::ModuleAction::BPress),
+                    ("process", openpatch_core::ModuleAction::GatePress),
+                ] {
+                    let handle = engine.resolve_module_event(id).unwrap();
+                    assert!(engine.handle_module_event(handle, event));
+                }
+                engine.process_block(&mut [0.0; 128]);
+            }
+            let mut lights = BTreeMap::new();
+            let mut controls = BTreeMap::new();
+            for id in ["logic", "compare", "process", "rescale"] {
+                if let Ok(handle) = engine.resolve_module_lights(id) {
+                    if let Some(state) = engine.module_lights(handle) {
+                        lights.insert(id.into(), state);
+                    }
+                }
+                if let Ok(handle) = engine.resolve_module_event(id) {
+                    if let Some(state) = engine.module_control_state(handle) {
+                        controls.insert(id.into(), state);
+                    }
+                }
+            }
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("gate shaping fixture publishes");
+            self.rack = Rack::default();
+            self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+                "logic":[0,0],"compare":[240,0],"process":[480,0],"rescale":[720,0],
+                "motion":[0,420],"clock":[300,420],"notes":[450,420],"vco":[690,420],"out":[900,420]
+            }})).expect("fixture layout");
+            self.rack.set_module_states(lights, controls);
+            self.title = if *frame == 260 {
+                "Manual gates · offline DSP snapshot"
+            } else {
+                "Gate shaping voice · offline preview"
+            }
+            .into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
@@ -1850,6 +1903,8 @@ impl OpenPatch {
                 | 200
                 | 216
                 | 232
+                | 256
+                | 272
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1885,7 +1940,9 @@ impl OpenPatch {
                 14 => path.with_file_name("rack-sequencer.png"),
                 15 => path.with_file_name("rack-switches.png"),
                 16 => path.with_file_name("rack-voltage-utilities.png"),
-                _ => path.with_file_name("rack-bypass.png"),
+                17 => path.with_file_name("rack-bypass.png"),
+                18 => path.with_file_name("rack-gate-shaping.png"),
+                _ => path.with_file_name("rack-manual-gates.png"),
             };
             image::save_buffer(
                 target,
@@ -1896,12 +1953,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 18 {
+            if *captures == 20 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 258, "Native screenshot timeout");
+        assert!(*frame < 298, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -1968,6 +2025,19 @@ impl eframe::App for OpenPatch {
                 })
                 .collect();
             self.rack.set_sequence_states(states, self.audio.is_some());
+            let mut lights = BTreeMap::new();
+            let mut controls = BTreeMap::new();
+            if let Some(audio) = self.audio.as_ref() {
+                for node in &self.patch.nodes {
+                    if let Some(state) = audio.module_lights(&node.id) {
+                        lights.insert(node.id.clone(), state);
+                    }
+                    if let Some(state) = audio.module_control_state(&node.id) {
+                        controls.insert(node.id.clone(), state);
+                    }
+                }
+            }
+            self.rack.set_module_states(lights, controls);
         }
         let mut action = None;
         egui::CentralPanel::default()

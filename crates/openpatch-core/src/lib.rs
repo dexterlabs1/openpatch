@@ -25,6 +25,8 @@ mod multi_lfo;
 mod poly;
 mod routing;
 mod sequence;
+mod signal;
+pub use signal::{ModuleControlState, ModuleLightState};
 mod switch;
 mod utility_bank;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
@@ -193,6 +195,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(utility_bank::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(signal::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -870,8 +876,72 @@ impl Engine {
             node,
         })
     }
+    /// Resolve and validate a particular action before queueing or rendering.
+    pub fn resolve_module_action(
+        &self,
+        id: &str,
+        action: ModuleAction,
+    ) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(e) => e.resolve_module_action(id, action)?,
+            _ => return Err("module actions require patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    /// Resolve runtime momentary controls, including while bypassed for release.
+    pub fn resolve_module_control(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(e) => e.resolve_module_control(id)?,
+            _ => return Err("module controls require patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    pub fn module_control_state(&self, handle: ModuleHandle) -> Option<ModuleControlState> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.module_control_state(handle.node),
+            _ => None,
+        }
+    }
+    /// Emergency release clears held/pending manual controls, not DSP history.
+    pub fn release_module_controls(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.release_module_controls(handle.node),
+            _ => false,
+        }
+    }
+    pub fn resolve_module_lights(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(e) => e.resolve_module_lights(id)?,
+            _ => return Err("module lights require patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    pub fn module_lights(&self, handle: ModuleHandle) -> Option<ModuleLightState> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.module_lights(handle.node),
+            _ => None,
+        }
+    }
     /// Queue an ordered action for the next sample, without allocation. Returns
-    /// false for stale handles or a full 64-action module queue. No action is lost
+    /// false for stale handles, unsupported actions or a full 64-action module queue. No action is lost
     /// silently: hosts must report/retry rejected events according to policy.
     pub fn handle_module_event(&mut self, handle: ModuleHandle, action: ModuleAction) -> bool {
         if handle.generation != self.identity {
@@ -1226,7 +1296,8 @@ pub fn render_audio_with_events(
 }
 /// Offline render from reset with two ordered traces. MIDI is dispatched before
 /// module actions at an equal frame; all queued module actions are applied in
-/// supplied order before that sample's CV run/reset/clock processing. Validate
+/// supplied order before that sample's CV processing; for momentary controls
+/// the final same-frame physical button state wins. Validate
 /// both traces and resolve every module ID before rendering any samples.
 pub fn render_audio_with_performance_events(
     patch: &Patch,
@@ -1246,7 +1317,7 @@ pub fn render_audio_with_performance_events(
         .enumerate()
         .map(|(index, event)| {
             engine
-                .resolve_module_event(&event.id)
+                .resolve_module_action(&event.id, event.action)
                 .map(|handle| (event.frame, handle, event.action))
                 .map_err(|error| format!("module event {index}: {error}"))
         })

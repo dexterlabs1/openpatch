@@ -621,3 +621,110 @@ fn invert_mutes_inverts_all_defaults_and_batches_with_bypass_in_one_undo() {
         );
     }
 }
+
+#[test]
+fn live_manual_actions_validate_kind_and_allow_releases_while_bypassed() {
+    let mut s = session();
+    for kind in ["logic", "compare", "process", "rescale"] {
+        s.execute("add_module", json!({"id":kind,"kind":kind}))
+            .unwrap();
+    }
+    let backend = Arc::new(MockLive::default());
+    s.set_live_module_events(Some(backend.clone()));
+    let before = s.snapshot();
+    for (id, action) in [
+        ("seq", "b_press"),
+        ("logic", "gate_press"),
+        ("process", "clock"),
+        ("compare", "b_press"),
+        ("rescale", "gate_release"),
+    ] {
+        assert!(s
+            .execute("trigger_module", json!({"id":id,"action":action}))
+            .is_err());
+    }
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 0);
+    for (id, action) in [
+        ("logic", "b_press"),
+        ("logic", "b_release"),
+        ("process", "gate_press"),
+        ("process", "gate_release"),
+    ] {
+        s.execute("trigger_module", json!({"id":id,"action":action}))
+            .unwrap();
+    }
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 4);
+    assert_eq!(s.snapshot(), before);
+    for (id, press, release) in [
+        ("logic", "b_press", "b_release"),
+        ("process", "gate_press", "gate_release"),
+    ] {
+        s.execute("set_bypass", json!({"id":id,"bypassed":true}))
+            .unwrap();
+        let bypassed = s.snapshot();
+        assert!(s
+            .execute("trigger_module", json!({"id":id,"action":press}))
+            .unwrap_err()
+            .contains("bypassed"));
+        s.execute("trigger_module", json!({"id":id,"action":release}))
+            .unwrap();
+        assert_eq!(s.snapshot(), bypassed);
+    }
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 6);
+    let patch = s.patch.clone();
+    s.replace_patch(patch, None).unwrap();
+    assert_eq!(
+        *backend.retired.lock().unwrap(),
+        vec!["seq", "logic", "compare", "process", "rescale"]
+    );
+}
+
+#[test]
+fn offline_manual_actions_preserve_string_wire_format_and_reject_wrong_target_before_writes() {
+    let path = std::env::temp_dir().join(format!(
+        "openpatch-manual-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let mut s = Session::new(&path).unwrap();
+    s.execute("add_module", json!({"id":"logic","kind":"logic"}))
+        .unwrap();
+    s.execute("add_module", json!({"id":"process","kind":"process"}))
+        .unwrap();
+    let before = s.snapshot();
+    let capture = s
+        .execute(
+            "capture_signal",
+            json!({"id":"logic","port":"or","seconds":0.001,
+        "module_events":[{"frame":3,"id":"logic","action":"b_press"},
+            {"frame":7,"id":"logic","action":"b_release"}]}),
+        )
+        .unwrap();
+    assert_eq!(capture["module_event_count"], 2);
+    for (frame, bin) in capture["bins"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(
+            bin["mean"].as_f64(),
+            Some(if (3..7).contains(&frame) { 10.0 } else { 0.0 })
+        );
+    }
+    for (id, action) in [
+        ("logic", json!("clock")),
+        ("process", json!("b_press")),
+        ("logic", json!({"b_press":null})),
+        ("process", json!("gate_toggle")),
+    ] {
+        assert!(s
+            .execute(
+                "render_audio",
+                json!({"filename":"invalid-manual.wav","seconds":0.001,
+            "module_events":[{"frame":0,"id":id,"action":action}]})
+            )
+            .is_err());
+        assert!(!path.join("invalid-manual.wav").exists());
+    }
+    assert_eq!(s.snapshot(), before);
+    fs::remove_dir_all(path).unwrap();
+}

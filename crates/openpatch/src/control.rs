@@ -199,7 +199,18 @@ impl Session {
         self.patch
             .nodes
             .iter()
-            .filter(|node| matches!(node.kind.as_str(), "seq3" | "switch_1to4" | "switch_4to1"))
+            .filter(|node| {
+                matches!(
+                    node.kind.as_str(),
+                    "seq3"
+                        | "switch_1to4"
+                        | "switch_4to1"
+                        | "logic"
+                        | "compare"
+                        | "process"
+                        | "rescale"
+                )
+            })
             .map(|node| node.id.clone())
             .collect()
     }
@@ -403,11 +414,33 @@ impl Session {
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
                 let id = string(&args, "id")?;
-                if sequence_node(&self.patch, id)?.bypassed {
-                    return Err("module actions are unavailable while seq3 is bypassed".into());
-                }
                 let action: ModuleAction = serde_json::from_value(args["action"].clone())
                     .map_err(|error| format!("invalid action: {error}"))?;
+                let node = self
+                    .patch
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == id)
+                    .ok_or("module not found")?;
+                let supported = match node.kind.as_str() {
+                    "seq3" => matches!(
+                        action,
+                        ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
+                    ),
+                    "logic" => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
+                    "process" => {
+                        matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease)
+                    }
+                    _ => false,
+                };
+                if !supported {
+                    return Err("module action requires a seq3 module for clock/run/reset, logic for b_press/b_release, or process for gate_press/gate_release".into());
+                }
+                if node.bypassed
+                    && !matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
+                {
+                    return Err("module actions are unavailable while module is bypassed".into());
+                }
                 let backend = self
                     .live_module_events
                     .as_ref()
@@ -691,7 +724,7 @@ impl PerformanceEvents {
         let modules = module_events(args, frames)?;
         let handles = modules
             .iter()
-            .map(|event| engine.resolve_module_event(&event.id))
+            .map(|event| engine.resolve_module_action(&event.id, event.action))
             .collect::<Result<_, _>>()?;
         Ok(Self {
             midi,
@@ -737,8 +770,8 @@ impl PerformanceEvents {
 
 fn module_events_schema() -> Value {
     json!({"type":"array","maxItems":65536,
-        "description":"Offline seq3 actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
-        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":["clock","run","reset"]}},"required":["frame","id","action"],"additionalProperties":false}})
+        "description":"Offline seq3, logic, and process actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
+        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":["clock","run","reset","b_press","b_release","gate_press","gate_release"]}},"required":["frame","id","action"],"additionalProperties":false}})
 }
 
 fn midi_events(args: &Value, frames: usize) -> Result<Vec<TimedMidiEvent>, String> {
@@ -983,8 +1016,8 @@ pub fn tools() -> Value {
         "required":["tool","arguments"],"additionalProperties":false
     }});
     json!([
-        tool("trigger_module","Queue a live seq3 clock, run toggle, or reset action. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":["clock","run","reset"]},"expected_revision":rev}),&["id","action"],false),
-        tool("inspect_performance","Read live module-event queue and callback counters. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
+        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, or process gate_press/gate_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":["clock","run","reset","b_press","b_release","gate_press","gate_release"]},"expected_revision":rev}),&["id","action"],false),
+        tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits; layouts and files are not included.",json!({}),&[],true),
         tool("apply_edits","Atomically apply 1..256 graph edits, validate the final graph, and commit one revision and undo step. Any error leaves state unchanged. Each edit has tool and arguments; revisions belong on this outer transaction.",json!({"edits":edits,"expected_revision":rev}),&["edits"],false),

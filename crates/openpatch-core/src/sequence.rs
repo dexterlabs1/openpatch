@@ -13,6 +13,10 @@ pub enum ModuleAction {
     Clock,
     Run,
     Reset,
+    BPress,
+    BRelease,
+    GatePress,
+    GateRelease,
 }
 impl<'de> Deserialize<'de> for ModuleAction {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -23,9 +27,21 @@ impl<'de> Deserialize<'de> for ModuleAction {
             "clock" => Ok(Self::Clock),
             "run" => Ok(Self::Run),
             "reset" => Ok(Self::Reset),
+            "b_press" => Ok(Self::BPress),
+            "b_release" => Ok(Self::BRelease),
+            "gate_press" => Ok(Self::GatePress),
+            "gate_release" => Ok(Self::GateRelease),
             _ => Err(serde::de::Error::unknown_variant(
                 &value,
-                &["clock", "run", "reset"],
+                &[
+                    "clock",
+                    "run",
+                    "reset",
+                    "b_press",
+                    "b_release",
+                    "gate_press",
+                    "gate_release",
+                ],
             )),
         }
     }
@@ -123,6 +139,7 @@ pub(crate) fn catalog() -> Value {
     module
 }
 pub(crate) fn annotate(module: &mut Value) {
+    module["runtime_actions"] = json!(["clock", "run", "reset"]);
     module["polyphony"]["version_2"]=json!("all outputs mono; every input reads only channel one; missing and zero-channel inputs are zero");
     module["polyphony"]["primary_input"] = Value::Null;
     for output in module["output_metadata"].as_array_mut().unwrap() {
@@ -283,6 +300,12 @@ impl Seq3 {
         })
     }
     pub(crate) fn enqueue(&mut self, action: ModuleAction) -> bool {
+        if !matches!(
+            action,
+            ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
+        ) {
+            return false;
+        }
         if self.action_count == self.actions.len() {
             return false;
         }
@@ -383,6 +406,7 @@ impl Seq3 {
                 }
                 ModuleAction::Run => self.run(),
                 ModuleAction::Reset => self.reset(),
+                _ => {}
             }
         }
         self.action_count = 0;

@@ -756,3 +756,67 @@ fn utility_banks_and_bypass_transitions_midi_scratch_and_callbacks_do_not_alloca
     TRACK_MEMORY.with(|tracking| tracking.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn signal_utilities_manual_controls_lights_and_adoption_are_allocation_free() {
+    use openpatch_core::ModuleAction;
+    let mut p = patch(
+        vec![
+            node("v", "poly_constant", &[("channels", 16.0)]),
+            node("logic", "logic", &[]),
+            node("compare", "compare", &[]),
+            node("process", "process", &[("slew", 0.0)]),
+            node("rescale", "rescale", &[("gain", 1.0)]),
+            node("out", "audio_stereo", &[]),
+        ],
+        vec![
+            cable("v", "out", "logic", "a"),
+            cable("v", "out", "compare", "a"),
+            cable("v", "out", "process", "signal"),
+            cable("logic", "or", "process", "gate"),
+            cable("process", "slew", "rescale", "signal"),
+            cable("rescale", "out", "out", "left"),
+        ],
+        "out",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let logic = old.resolve_module_control("logic").unwrap();
+    let process = old.resolve_module_control("process").unwrap();
+    let lights = [
+        old.resolve_module_lights("logic").unwrap(),
+        old.resolve_module_lights("compare").unwrap(),
+        old.resolve_module_lights("process").unwrap(),
+        old.resolve_module_lights("rescale").unwrap(),
+    ];
+    for node in &mut p.nodes {
+        node.bypassed = true;
+    }
+    let mut bypassed = p.compile().unwrap();
+    let bp = bypassed.resolve_module_control("process").unwrap();
+    let mut audio = [[0.0; 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            assert!(old.handle_module_event(logic, ModuleAction::BPress));
+            assert!(old.handle_module_event(process, ModuleAction::GatePress));
+            old.process_audio_block(&mut audio[..count]);
+            new.adopt_state_from(&old);
+            bypassed.adopt_state_from(&old);
+            assert!(bypassed.handle_module_event(bp, ModuleAction::GateRelease));
+            bypassed.process_poly_block(&mut frames[..count]);
+            for h in lights {
+                assert!(old.module_lights(h).is_some());
+            }
+            assert!(old.module_control_state(logic).is_some());
+            assert!(old.module_control_state(process).is_some());
+            assert!(old.release_module_controls(logic));
+            assert!(old.release_module_controls(process));
+            new.process_poly_block(&mut frames[..count]);
+        }
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

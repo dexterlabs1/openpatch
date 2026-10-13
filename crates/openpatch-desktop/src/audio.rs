@@ -550,6 +550,13 @@ impl Audio {
         self.performance.sequence_state(id)
     }
 
+    pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
+        self.performance.module_control_state(id)
+    }
+    pub fn module_lights(&self, id: &str) -> Option<openpatch_core::ModuleLightState> {
+        self.performance.module_lights(id)
+    }
+
     /// Resolve two raw module taps on the UI thread. A failed selection leaves
     /// playback and requested generation unchanged. Closing disables capture.
     pub fn set_scope(
@@ -839,11 +846,14 @@ impl Callback {
             if let Some(previous) = self.graphs.previous.as_ref() {
                 let active = &mut self.graphs.active;
                 active.engine.adopt_state_from(&previous.engine);
-                for (slot, binding) in active.modules.bindings.iter().enumerate() {
+                for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]
                             .is_some_and(|old| old.token == binding.token);
-                        if !same_instance {
+                        if same_instance {
+                            binding.release_epoch =
+                                previous.modules.bindings[slot].unwrap().release_epoch;
+                        } else {
                             active.engine.reset_module_state(binding.handle);
                         }
                     }
@@ -878,8 +888,10 @@ impl Callback {
                         active, previous, ..
                     } = &mut self.graphs;
                     self.module_events.apply(
-                        (&mut active.engine, &active.modules, active.revision),
-                        previous.as_mut().map(|old| (&mut old.engine, &old.modules)),
+                        (&mut active.engine, &mut active.modules, active.revision),
+                        previous
+                            .as_mut()
+                            .map(|old| (&mut old.engine, &mut old.modules)),
                         self.frame_clock,
                         &mut module_budget,
                     )
@@ -2236,6 +2248,276 @@ mod tests {
         assert_eq!(status["rejected"], 1);
         assert_eq!(status["obsolete"], 0);
         assert_eq!(status["pending"], 0);
+    }
+
+    fn manual_patch(kind: &str) -> Patch {
+        serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
+                {"id":"manual","kind":kind}],
+            "cables":[{"from":"signal","to":"manual","input":if kind=="logic" {"a"} else {"signal"}}],
+            "output":"manual","output_port":if kind=="logic" {"or"} else {"track_hold"}})).unwrap()
+    }
+    fn manual_actions(kind: &str) -> (ModuleAction, ModuleAction) {
+        if kind == "logic" {
+            (ModuleAction::BPress, ModuleAction::BRelease)
+        } else {
+            (ModuleAction::GatePress, ModuleAction::GateRelease)
+        }
+    }
+
+    #[test]
+    fn manual_controls_publish_coherent_actual_lights_and_preserve_ordered_releases() {
+        for kind in ["logic", "process"] {
+            let patch = manual_patch(kind);
+            let (mut callback, _, _) = sequence_callback(&patch);
+            let (press, release) = manual_actions(kind);
+            assert!(callback
+                .performance
+                .module_control_state("manual")
+                .is_none());
+            let before = callback.performance.snapshot();
+            assert_eq!(before["modules"]["manual"]["available"], false);
+            assert_eq!(
+                before["modules"]["manual"]["revision"],
+                serde_json::Value::Null
+            );
+            for action in [press, release, press] {
+                callback.performance.trigger("manual", action).unwrap();
+            }
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let lights = callback.performance.module_lights("manual").unwrap();
+            assert!(lights.manual);
+            assert_eq!(lights.count, if kind == "logic" { 8 } else { 0 });
+            assert!(callback.performance.sequence_state("manual").is_none());
+            let actual = callback.performance.snapshot();
+            assert_eq!(actual["modules"]["manual"]["available"], true);
+            assert_eq!(actual["modules"]["manual"]["revision"], 1);
+            assert_eq!(actual["modules"]["manual"]["controls"]["pressed"], true);
+            assert_eq!(actual["modules"]["manual"]["lights"]["manual"], true);
+            assert_eq!(
+                actual["modules"]["manual"]["state"],
+                serde_json::Value::Null
+            );
+            callback.performance.trigger("manual", release).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            assert!(!callback.performance.module_lights("manual").unwrap().manual);
+            assert_eq!(callback.performance.snapshot()["applied"], 4);
+        }
+    }
+
+    #[test]
+    fn full_manual_queue_uses_emergency_release_and_cancels_old_presses() {
+        for kind in ["logic", "process"] {
+            let mut patch = manual_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let (press, release) = manual_actions(kind);
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            for _ in 0..EVENT_CAPACITY {
+                callback.performance.trigger("manual", press).unwrap();
+            }
+            let receipt = callback.performance.trigger("manual", release).unwrap();
+            assert_eq!(receipt["queued"], false);
+            assert_eq!(receipt["emergency_release"], true);
+            assert_eq!(receipt["applied"], false);
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let status = callback.performance.snapshot();
+            assert_eq!(status["queued"], EVENT_CAPACITY + 1);
+            assert_eq!(status["applied"], 1);
+            assert_eq!(status["dropped"], EVENT_CAPACITY);
+            assert_eq!(status["pending"], 0);
+            assert_eq!(status["backpressure"], 1);
+            assert_eq!(status["emergency_release_requests"], 1);
+            assert_eq!(status["emergency_release_applied"], 1);
+            // New presses after the safety epoch remain valid across an edit.
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            patch.nodes[0].params.insert("value".into(), 3.0);
+            callback.performance.sync_patch(&patch, 2);
+            assert!(callback.performance.module_lights("manual").is_none());
+            assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let old = callback.graphs.previous.as_ref().unwrap();
+            let handle = old.modules.bindings[0].unwrap().handle;
+            assert!(old.engine.module_control_state(handle).unwrap().pressed);
+            assert_eq!(
+                callback.performance.snapshot()["emergency_release_applied"],
+                1
+            );
+            for _ in 0..EVENT_CAPACITY {
+                callback.performance.trigger("manual", press).unwrap();
+            }
+            assert_eq!(
+                callback.performance.trigger("manual", release).unwrap()["emergency_release"],
+                true
+            );
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let old = callback.graphs.previous.as_ref().unwrap();
+            assert!(
+                !old.engine
+                    .module_control_state(old.modules.bindings[0].unwrap().handle)
+                    .unwrap()
+                    .pressed
+            );
+            assert_eq!(
+                callback.performance.snapshot()["emergency_release_applied"],
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn coalesced_manual_bypass_releases_held_controls_and_allows_bypassed_release() {
+        for kind in ["logic", "process"] {
+            let patch = manual_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(patch.clone(), Some(0)).unwrap();
+            session.set_live_module_events(Some(callback.performance.clone()));
+            let (press, release) = manual_actions(kind);
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+            callback.performance.trigger("manual", press).unwrap();
+            session
+                .execute(
+                    "set_bypass",
+                    serde_json::json!({"id":"manual","bypassed":true}),
+                )
+                .unwrap();
+            assert!(callback
+                .performance
+                .trigger("manual", press)
+                .unwrap_err()
+                .contains("bypassed"));
+            callback.performance.trigger("manual", release).unwrap();
+            session
+                .execute(
+                    "set_bypass",
+                    serde_json::json!({"id":"manual","bypassed":false}),
+                )
+                .unwrap();
+            let resumed = sequence_graph(&callback, session.patch(), session.revision());
+            assert_eq!(resumed.modules.bindings[0].unwrap().token, token);
+            assert!(updates.push(resumed).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            assert!(!callback.performance.module_lights("manual").unwrap().manual);
+            let old = callback.graphs.previous.as_ref().unwrap();
+            assert!(
+                !old.engine
+                    .module_control_state(old.modules.bindings[0].unwrap().handle)
+                    .unwrap()
+                    .pressed
+            );
+            let status = callback.performance.snapshot();
+            assert_eq!(status["applied"], 2);
+            assert_eq!(status["dropped"], 1);
+            assert_eq!(status["emergency_release_applied"], 1);
+        }
+    }
+
+    #[test]
+    fn removed_manual_module_reappears_with_fresh_controls_and_lights() {
+        for kind in ["logic", "process"] {
+            let patch = manual_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let (press, _) = manual_actions(kind);
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+            let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+            callback.performance.trigger("manual", press).unwrap();
+            callback.performance.sync_patch(&Patch::new_v2(), 2);
+            callback.performance.sync_patch(&patch, 3);
+            let recreated = sequence_graph(&callback, &patch, 3);
+            assert_ne!(recreated.modules.bindings[0].unwrap().token, token);
+            assert!(updates.push(recreated).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            assert!(!callback.performance.module_lights("manual").unwrap().manual);
+            assert_eq!(callback.performance.snapshot()["obsolete"], 1);
+        }
+    }
+
+    #[test]
+    fn read_only_signal_module_lights_are_published_without_sequence_state() {
+        for (kind, count) in [("compare", 4), ("rescale", 2)] {
+            let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+                "nodes":[{"id":"meter","kind":kind}],"output":"meter",
+                "output_port":if kind=="compare" {"max"} else {"out"}}))
+            .unwrap();
+            let (mut callback, _, _) = sequence_callback(&patch);
+            assert!(callback
+                .performance
+                .trigger("meter", ModuleAction::BPress)
+                .is_err());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+            assert_eq!(
+                callback.performance.module_lights("meter").unwrap().count,
+                count
+            );
+            assert!(callback.performance.module_control_state("meter").is_none());
+            assert!(callback.performance.sequence_state("meter").is_none());
+            assert_eq!(
+                callback.performance.snapshot()["modules"]["meter"]["kind"],
+                kind
+            );
+        }
     }
 
     #[test]

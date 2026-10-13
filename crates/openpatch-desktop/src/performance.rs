@@ -1,7 +1,10 @@
 //! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use openpatch::control::LiveModuleEvents;
-use openpatch_core::{Engine, ModuleAction, ModuleHandle, ModuleTelemetry, Patch, MAX_NODES};
+use openpatch_core::{
+    Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState, ModuleTelemetry,
+    Patch, MAX_NODES,
+};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -27,6 +30,10 @@ enum ModuleKind {
     Sequence,
     Switch1To4,
     Switch4To1,
+    Logic,
+    Compare,
+    Process,
+    Rescale,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -34,9 +41,44 @@ impl ModuleKind {
             "seq3" => Some(Self::Sequence),
             "switch_1to4" => Some(Self::Switch1To4),
             "switch_4to1" => Some(Self::Switch4To1),
+            "logic" => Some(Self::Logic),
+            "compare" => Some(Self::Compare),
+            "process" => Some(Self::Process),
+            "rescale" => Some(Self::Rescale),
             _ => None,
         }
     }
+    fn name(self) -> &'static str {
+        match self {
+            Self::Sequence => "seq3",
+            Self::Switch1To4 => "switch_1to4",
+            Self::Switch4To1 => "switch_4to1",
+            Self::Logic => "logic",
+            Self::Compare => "compare",
+            Self::Process => "process",
+            Self::Rescale => "rescale",
+        }
+    }
+    fn manual(self) -> bool {
+        matches!(self, Self::Logic | Self::Process)
+    }
+    fn sequential(self) -> bool {
+        matches!(self, Self::Sequence | Self::Switch1To4 | Self::Switch4To1)
+    }
+    fn accepts(self, action: ModuleAction) -> bool {
+        match self {
+            Self::Sequence => matches!(
+                action,
+                ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
+            ),
+            Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
+            Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
+            _ => false,
+        }
+    }
+}
+fn is_release(action: ModuleAction) -> bool {
+    matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
 }
 #[derive(Clone, Copy)]
 struct Entry {
@@ -54,11 +96,20 @@ struct Control {
     next_token: u64,
     next_sequence: u64,
 }
+#[derive(Clone, Copy)]
+struct ModuleSnapshot {
+    revision: u64,
+    state: Option<ModuleTelemetry>,
+    controls: Option<ModuleControlState>,
+    lights: Option<ModuleLightState>,
+}
 struct Meter {
     serial: AtomicU64,
     token: AtomicU64,
     revision: AtomicU64,
     value: AtomicU32,
+    flags: AtomicU32,
+    brightness: [AtomicU32; 16],
 }
 impl Meter {
     fn new() -> Self {
@@ -67,21 +118,37 @@ impl Meter {
             token: AtomicU64::new(0),
             revision: AtomicU64::new(0),
             value: AtomicU32::new(0),
+            flags: AtomicU32::new(0),
+            brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
-    fn write(&self, token: u64, revision: u64, state: ModuleTelemetry) {
+    fn write(&self, token: u64, snapshot: ModuleSnapshot) {
         self.serial.fetch_add(1, Ordering::SeqCst);
         self.token.store(token, Ordering::SeqCst);
-        self.revision.store(revision, Ordering::SeqCst);
-        self.value.store(
-            u32::from(state.step)
-                | (u32::from(state.length) << 8)
-                | (u32::from(state.running) << 16),
-            Ordering::SeqCst,
-        );
+        self.revision.store(snapshot.revision, Ordering::SeqCst);
+        let mut flags = 0;
+        if let Some(state) = snapshot.state {
+            flags |= 1;
+            self.value.store(
+                u32::from(state.step)
+                    | (u32::from(state.length) << 8)
+                    | (u32::from(state.running) << 16),
+                Ordering::SeqCst,
+            );
+        }
+        if let Some(controls) = snapshot.controls {
+            flags |= 2 | (u32::from(controls.pressed) << 3);
+        }
+        if let Some(lights) = snapshot.lights {
+            flags |= 4 | (u32::from(lights.manual) << 4) | (u32::from(lights.count) << 8);
+            for (index, value) in lights.brightness.iter().flatten().enumerate() {
+                self.brightness[index].store(value.to_bits(), Ordering::SeqCst);
+            }
+        }
+        self.flags.store(flags, Ordering::SeqCst);
         self.serial.fetch_add(1, Ordering::SeqCst);
     }
-    fn read(&self, entry: Entry, revision: u64) -> Option<ModuleTelemetry> {
+    fn read(&self, entry: Entry, revision: u64) -> Option<ModuleSnapshot> {
         for _ in 0..4 {
             let before = self.serial.load(Ordering::SeqCst);
             if before & 1 != 0 {
@@ -90,15 +157,32 @@ impl Meter {
             let token = self.token.load(Ordering::SeqCst);
             let actual_revision = self.revision.load(Ordering::SeqCst);
             let value = self.value.load(Ordering::SeqCst);
+            let flags = self.flags.load(Ordering::SeqCst);
+            let brightness = std::array::from_fn(|row| {
+                std::array::from_fn(|col| {
+                    f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
+                })
+            });
             let after = self.serial.load(Ordering::SeqCst);
             if before != after {
                 continue;
             }
             return (token == entry.token && actual_revision >= revision).then_some(
-                ModuleTelemetry {
-                    step: value as u8,
-                    length: (value >> 8) as u8,
-                    running: value & (1 << 16) != 0,
+                ModuleSnapshot {
+                    revision: actual_revision,
+                    state: (flags & 1 != 0).then_some(ModuleTelemetry {
+                        step: value as u8,
+                        length: (value >> 8) as u8,
+                        running: value & (1 << 16) != 0,
+                    }),
+                    controls: (flags & 2 != 0).then_some(ModuleControlState {
+                        pressed: flags & 8 != 0,
+                    }),
+                    lights: (flags & 4 != 0).then_some(ModuleLightState {
+                        count: (flags >> 8) as u8,
+                        brightness,
+                        manual: flags & 16 != 0,
+                    }),
                 },
             );
         }
@@ -108,6 +192,9 @@ impl Meter {
 struct Shared {
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
+    emergency_release_epochs: [AtomicU64; MAX_NODES],
+    emergency_release_requests: AtomicU64,
+    emergency_release_applied: AtomicU64,
     meters: [Meter; MAX_NODES],
     closed: AtomicBool,
     frame: AtomicU64,
@@ -131,6 +218,8 @@ pub(super) struct Performance {
 pub(super) struct Binding {
     pub token: u64,
     pub handle: ModuleHandle,
+    kind: ModuleKind,
+    pub release_epoch: u64,
 }
 #[derive(Clone)]
 pub(super) struct ModulePlan {
@@ -155,6 +244,9 @@ impl Performance {
         let shared = Arc::new(Shared {
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
             action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
+            emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
+            emergency_release_requests: AtomicU64::new(0),
+            emergency_release_applied: AtomicU64::new(0),
             meters: std::array::from_fn(|_| Meter::new()),
             closed: AtomicBool::new(false),
             frame: AtomicU64::new(0),
@@ -212,7 +304,15 @@ impl Performance {
             }
             plan.bindings[entry.slot] = Some(Binding {
                 token: entry.token,
-                handle: engine.resolve_module_telemetry(id)?,
+                handle: if entry.kind.sequential() {
+                    engine.resolve_module_telemetry(id)?
+                } else if entry.kind.manual() {
+                    engine.resolve_module_control(id)?
+                } else {
+                    engine.resolve_module_lights(id)?
+                },
+                kind: entry.kind,
+                release_epoch: 0,
             });
         }
         Ok(plan)
@@ -223,7 +323,37 @@ impl Performance {
             return None;
         }
         let entry = *control.entries.get(id)?;
-        self.shared.meters[entry.slot].read(entry, control.revision)
+        self.shared.meters[entry.slot]
+            .read(entry, control.revision)?
+            .state
+    }
+    pub(super) fn module_control_state(&self, id: &str) -> Option<ModuleControlState> {
+        let control = self.control.lock().ok()?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        let entry = *control.entries.get(id)?;
+        self.shared.meters[entry.slot]
+            .read(entry, control.revision)?
+            .controls
+    }
+    pub(super) fn module_lights(&self, id: &str) -> Option<ModuleLightState> {
+        let control = self.control.lock().ok()?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        let entry = *control.entries.get(id)?;
+        self.shared.meters[entry.slot]
+            .read(entry, control.revision)?
+            .lights
+    }
+    fn request_release(&self, entry: &mut Entry) {
+        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+        self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
+        self.shared.emergency_release_epochs[entry.slot].fetch_add(1, Ordering::Release);
+        self.shared
+            .emergency_release_requests
+            .fetch_add(1, Ordering::Relaxed);
     }
     pub(super) fn close(&self) {
         // Serialize against producer acceptance. This mutex never reaches audio.
@@ -288,6 +418,13 @@ impl LiveModuleEvents for Performance {
                         entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
                         self.shared.action_epochs[entry.slot]
                             .store(entry.action_epoch, Ordering::Release);
+                        if entry.kind.manual() {
+                            self.shared.emergency_release_epochs[entry.slot]
+                                .fetch_add(1, Ordering::Release);
+                            self.shared
+                                .emergency_release_requests
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                     entry.bypassed = node.bypassed;
                     continue;
@@ -309,6 +446,7 @@ impl LiveModuleEvents for Performance {
                         action_epoch: 1,
                     },
                 );
+                self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
                 self.shared.action_epochs[slot].store(1, Ordering::Release);
                 self.shared.desired[slot].store(token, Ordering::Release);
             }
@@ -328,13 +466,14 @@ impl LiveModuleEvents for Performance {
             self.shared.rejected.fetch_add(1, Ordering::Relaxed);
             return Err(format!("Module '{id}' has no live sequencer instance"));
         };
-        if entry.kind != ModuleKind::Sequence {
+        if !entry.kind.accepts(action) {
             self.shared.rejected.fetch_add(1, Ordering::Relaxed);
             return Err(format!(
-                "Module '{id}' is a sequential switch with read-only telemetry; module actions require seq3"
+                "Module '{id}' ({}) has read-only telemetry or does not support this module action",
+                entry.kind.name()
             ));
         }
-        if entry.bypassed {
+        if entry.bypassed && !is_release(action) {
             self.shared.rejected.fetch_add(1, Ordering::Relaxed);
             return Err(format!(
                 "Module '{id}' is bypassed; module action was not queued"
@@ -362,6 +501,13 @@ impl LiveModuleEvents for Performance {
         if control.queue.push(event).is_err() {
             self.shared.queued.fetch_sub(1, Ordering::Release);
             self.shared.backpressure.fetch_add(1, Ordering::Relaxed);
+            if is_release(action) {
+                self.request_release(control.entries.get_mut(id).unwrap());
+                return Ok(
+                    json!({"queued":false,"applied":false,"safety_pending":true,"emergency_release":true,"sequence":sequence,
+                    "id":id,"action":action,"minimum_revision":revision}),
+                );
+            }
             return Err("Module action queue is full; action was not queued".into());
         }
         Ok(
@@ -369,12 +515,19 @@ impl LiveModuleEvents for Performance {
         )
     }
     fn snapshot(&self) -> Value {
-        let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        let control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         let shared = &self.shared;
         let queued = shared.queued.load(Ordering::Acquire);
         let applied = shared.applied.load(Ordering::Acquire);
         let dropped = shared.dropped.load(Ordering::Acquire);
-        json!({"available":!shared.closed.load(Ordering::Acquire),"queued":queued,"applied":applied,"dropped":dropped,
+        let available = !shared.closed.load(Ordering::Acquire);
+        let modules: serde_json::Map<String, Value> = control.entries.iter().map(|(id, entry)| {
+            let actual = available.then(|| shared.meters[entry.slot].read(*entry, control.revision)).flatten();
+            (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
+                "revision":actual.map(|snapshot| snapshot.revision),"state":actual.and_then(|snapshot|snapshot.state).map(|state|json!({"step":state.step,"length":state.length,"running":state.running})),
+                "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
+        }).collect();
+        json!({"available":available,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
             "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
             "closed_dropped":shared.closed_dropped.load(Ordering::Relaxed),"crossfade_rejected":shared.crossfade_rejected.load(Ordering::Relaxed),
@@ -386,12 +539,16 @@ impl EventReader {
     /// current target already has 64 core actions. Total budget spans callback.
     pub(super) fn apply(
         &mut self,
-        active: (&mut Engine, &ModulePlan, u64),
-        mut previous: Option<(&mut Engine, &ModulePlan)>,
+        active: (&mut Engine, &mut ModulePlan, u64),
+        mut previous: Option<(&mut Engine, &mut ModulePlan)>,
         frame: u64,
         budget: &mut usize,
     ) -> bool {
         let (active, plan, revision) = active;
+        self.release_pending(active, plan, true);
+        if let Some((engine, plan)) = previous.as_mut() {
+            self.release_pending(engine, plan, false);
+        }
         let mut per_node = [0_u8; MAX_NODES];
         while *budget > 0 {
             if self.head.is_none() {
@@ -438,6 +595,24 @@ impl EventReader {
                 *budget -= 1;
                 continue;
             };
+            // A producer may request a safety release while this callback is
+            // draining. Observe it before accepting any post-epoch press.
+            self.release_binding(active, &mut plan.bindings[event.slot], event.slot, true);
+            if let Some((engine, old_plan)) = previous.as_mut() {
+                self.release_binding(
+                    engine,
+                    &mut old_plan.bindings[event.slot],
+                    event.slot,
+                    false,
+                );
+            }
+            if self.shared.action_epochs[event.slot].load(Ordering::Acquire) != event.action_epoch {
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
             if per_node[event.slot] == 64 {
                 return true;
             }
@@ -467,13 +642,60 @@ impl EventReader {
         }
         false
     }
+    fn release_pending(&self, engine: &mut Engine, plan: &mut ModulePlan, active: bool) {
+        for (slot, binding) in plan.bindings.iter_mut().enumerate() {
+            self.release_binding(engine, binding, slot, active);
+        }
+    }
+    fn release_binding(
+        &self,
+        engine: &mut Engine,
+        binding: &mut Option<Binding>,
+        slot: usize,
+        active: bool,
+    ) {
+        let Some(binding) = binding else { return };
+        if !binding.kind.manual()
+            || self.shared.desired[slot].load(Ordering::Acquire) != binding.token
+        {
+            return;
+        }
+        let epoch = self.shared.emergency_release_epochs[slot].load(Ordering::Acquire);
+        if binding.release_epoch != epoch && engine.release_module_controls(binding.handle) {
+            if active {
+                self.shared.emergency_release_applied.fetch_add(
+                    epoch.saturating_sub(binding.release_epoch),
+                    Ordering::Relaxed,
+                );
+            }
+            binding.release_epoch = epoch;
+        }
+    }
     pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
         self.shared.frame.store(frame, Ordering::Release);
         for (slot, binding) in plan.bindings.iter().enumerate() {
             if let Some(binding) = binding {
-                if let Some(state) = engine.module_telemetry(binding.handle) {
-                    self.shared.meters[slot].write(binding.token, revision, state);
-                }
+                self.shared.meters[slot].write(
+                    binding.token,
+                    ModuleSnapshot {
+                        revision,
+                        state: if binding.kind.sequential() {
+                            engine.module_telemetry(binding.handle)
+                        } else {
+                            None
+                        },
+                        controls: if binding.kind.manual() {
+                            engine.module_control_state(binding.handle)
+                        } else {
+                            None
+                        },
+                        lights: if !binding.kind.sequential() {
+                            engine.module_lights(binding.handle)
+                        } else {
+                            None
+                        },
+                    },
+                );
             }
         }
     }

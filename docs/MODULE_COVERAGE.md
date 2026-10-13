@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **35 built-in kinds**: seven legacy utilities, six reference-voice
+There are **39 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, and three voltage/mute banks. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, and four gate/voltage processors. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -79,6 +79,15 @@ routes, silent fallbacks, preserved DSP state, and bounded action cancellation.
 See [VOLTAGE_UTILITIES.md](VOLTAGE_UTILITIES.md) for normaling, polyphony, MIDI
 behavior, MCP operations, examples, and remaining compatibility work.
 
+## Gate and voltage processing
+
+`logic`, `compare`, `process`, and `rescale` implement their documented complete
+signal interfaces, including momentary controls, dedicated native panels, and
+actual engine indicator telemetry. Live MCP inspection exposes coherent
+per-module states and controls; offline actions support repeatable manual gates.
+See [SIGNAL_PROCESSING.md](SIGNAL_PROCESSING.md) for numerical differences, state
+policies, and the connected gate-shaping example.
+
 ## Core inventory
 
 Names follow the Core library; parenthesized aliases match the manual. The Audio family contains three distinct modules. [Official Core inventory](https://library.vcvrack.com/Core)
@@ -132,12 +141,12 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Random | Modulation | Planned | Trigger timing, distribution and repeatability |
 | CV Mix | Mixing | Implemented signal role: `cv_mix`, three bipolar gains and independent 10 V normals | Direct reference traces, Rack import and native qualification; [contract](VOLTAGE_UTILITIES.md) |
 | Fade | Mixing | Partial: `crossfade`, linear/square-root laws and v2 voices | CV modulation and complementary output |
-| Logic | Gate processing | Planned | Truth tables and threshold hysteresis |
-| Compare | Voltage processing | Planned | Boundary comparisons and simultaneous events |
+| Logic | Gate processing | Implemented signal role: `logic`, eight Boolean outputs, 1 V threshold, manual B and mono/poly indicators | Direct reference traces, native qualification; no hysteresis in this reference role; [contract](SIGNAL_PROCESSING.md) |
+| Compare | Voltage processing | Implemented signal role: `compare`, eight outputs, B offset, raw mono zero-padding and strict comparisons | Direct reference traces and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Gates | Gate processing | Planned | Timing, retrigger and overlapping-event cases |
-| Process | Voltage processing | Planned | Transfer curves, endpoints and operation order |
+| Process | Voltage processing | Implemented signal role: `process`, two held samples, track/hold pairs, slew, glide and manual gate | Reference exponential/timing differences, direct traces, runtime state import and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
-| Rescale | Voltage processing | Partial: affine `attenuverter` only | Configurable range limiting and remaining transfer behavior |
+| Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Random Values | Source | Planned | Sampling events, statistics and repeatability |
 | Push | Gate utility | Clock-gate interface implemented; not equivalent | Press/release/latch state and persistence |
 | Sample & Hold Analog Shift Register | Sampling | Partial: single `sample_hold`, hysteresis and live-state continuity | Eight rows, shift ordering, clear/random modes and runtime JSON persistence |

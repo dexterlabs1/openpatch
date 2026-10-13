@@ -193,7 +193,9 @@ For reproducible offline actions, supply `module_events` to `render_audio`,
 ```
 
 Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
-module), and `action` (`clock`, `run`, or `reset`). Frames index the stored patch
+module for sequence actions, or `logic`/`process` for manual controls), and `action`
+(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, or `gate_release`).
+Each action must match its module kind. Frames index the stored patch
 sample rate, must be less than the rounded render frame count, and must be
 nondecreasing. The list is capped at 65,536 events and at 64 actions for one
 module at one frame. Equal-frame actions preserve array order. MIDI events run
@@ -214,6 +216,45 @@ clock/reset inputs; they do not accept sequencer `module_events` or
 `trigger_module` actions. Their native route indicators use read-only engine
 telemetry. See [clocked routing](SWITCHING.md) for mode-specific polyphony,
 timing and the stereo example.
+
+## Momentary controls and live module observations
+
+Logic accepts `b_press` and `b_release`; Process accepts `gate_press` and
+`gate_release`. Use these with `trigger_module` for live controls, or as
+sample-timed `module_events` for offline render/analysis/capture. Sequence
+clock/run/reset actions still require `seq3`. A manual press remains held until
+release; it is not a one-sample pulse and is not saved as a parameter or undo
+entry. At one sample, the last ordered button state wins before CV evaluation.
+
+```json
+{"id":"logic","action":"b_press","expected_revision":7}
+```
+
+Send the matching release to end a hold. Releases remain valid during bypass.
+A full live queue can return `queued: false`, `emergency_release: true`, and
+`safety_pending: true` in the receipt: a separate bounded path clears the hold
+and invalidates older queued presses. It does not reset held voltages or DSP
+histories. `emergency_release_requests` and `emergency_release_applied` are
+separate from ordinary queued/applied/dropped counters. A receipt is acceptance,
+not proof that audio has processed it. No live backend means these requests are
+unsupported; offline event traces remain available.
+
+`inspect_performance.performance.modules` is keyed by module ID for the
+sequencer, sequential switches, and the four signal processors. Each entry has
+`kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
+`state`, `controls`, and `lights`. Sequence state retains step/running/length.
+Manual `controls` reports `pressed`; indicator `lights` provides `count`, eight
+fixed-capacity mono/poly brightness pairs, and a `manual` flag. Only the first
+`count` pairs are meaningful; names and interpretation come from the catalog's
+`light_names` and `light_policy`. Unsupported fields are null.
+
+Each module snapshot is coherent and must meet the current requested revision.
+An unavailable snapshot is not a zero voltage or a released button. Availability
+also does not mean playback is running. Values observe the live backend; they
+do not provide arbitrary raw waveforms. Use the native scope for live waveforms,
+or `capture_signal` for an offline trace from reset.
+
+[Signal processor equations and state policies →](SIGNAL_PROCESSING.md)
 
 ## Saved bypass and mute inversion
 

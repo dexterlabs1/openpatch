@@ -3,7 +3,7 @@
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, FontId, PointerButton, Pos2, Rect, Sense, Stroke, Vec2,
 };
-use openpatch_core::{Cable, ModuleTelemetry, Node, Patch};
+use openpatch_core::{Cable, ModuleControlState, ModuleLightState, ModuleTelemetry, Node, Patch};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -41,6 +41,7 @@ struct ParameterEdit {
     max: f32,
     step: Option<f32>,
     display_scale: f32,
+    slew_min: Option<f32>,
     focus: bool,
 }
 
@@ -71,6 +72,12 @@ impl PendingCable {
     }
 }
 
+struct HeldManual {
+    id: String,
+    kind: String,
+    release: &'static str,
+}
+
 pub struct Rack {
     pub selected: Option<String>,
     positions: BTreeMap<String, Pos2>,
@@ -84,6 +91,9 @@ pub struct Rack {
     layout_revision: u64,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     performance_available: bool,
+    module_lights: BTreeMap<String, ModuleLightState>,
+    module_controls: BTreeMap<String, ModuleControlState>,
+    held_manual: Option<HeldManual>,
 }
 
 impl Default for Rack {
@@ -101,6 +111,9 @@ impl Default for Rack {
             layout_revision: 0,
             sequence_states: BTreeMap::new(),
             performance_available: false,
+            module_lights: BTreeMap::new(),
+            module_controls: BTreeMap::new(),
+            held_manual: None,
         }
     }
 }
@@ -113,6 +126,44 @@ impl Rack {
     ) {
         self.sequence_states = states;
         self.performance_available = available;
+    }
+
+    pub fn set_module_states(
+        &mut self,
+        lights: BTreeMap<String, ModuleLightState>,
+        controls: BTreeMap<String, ModuleControlState>,
+    ) {
+        self.module_lights = lights;
+        self.module_controls = controls;
+    }
+
+    fn release_manual_if_needed(&mut self, ui: &egui::Ui, patch: &Patch) -> Option<RackAction> {
+        let held = self.held_manual.as_ref()?;
+        let eligible = ui.is_enabled()
+            && self.performance_available
+            && self.editing.is_none()
+            && ui.input(|i| {
+                i.focused
+                    && i.pointer.primary_down()
+                    && !i.pointer.button_released(PointerButton::Primary)
+                    && !i
+                        .raw
+                        .events
+                        .iter()
+                        .any(|event| matches!(event, egui::Event::WindowFocused(false)))
+            })
+            && patch
+                .nodes
+                .iter()
+                .any(|n| n.id == held.id && n.kind == held.kind && !n.bypassed);
+        if eligible {
+            return None;
+        }
+        let held = self.held_manual.take().unwrap();
+        Some(RackAction::Command(
+            "trigger_module",
+            json!({"id":held.id,"action":held.release}),
+        ))
     }
 
     pub fn layout_revision(&self) -> u64 {
@@ -185,6 +236,7 @@ impl Rack {
         catalog: &Value,
         device_rate: u32,
     ) -> Option<RackAction> {
+        let released_manual = self.release_manual_if_needed(ui, patch);
         let interactive = ui.is_enabled();
         if !interactive {
             self.pending = None;
@@ -460,6 +512,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if is_signal_utility(&node.kind) {
+                if let Some(edit) = self.signal_panel(ui, node, rect, released_manual.is_none()) {
+                    action = Some(edit);
+                }
+            }
             if is_voltage_utility(&node.kind) {
                 if let Some(edit) = self.utility_panel(ui, node, module, patch, rect) {
                     action = Some(edit);
@@ -586,6 +643,8 @@ impl Rack {
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if is_voltage_utility(&node.kind)
+                    || (node.kind == "rescale"
+                        && matches!(*name, "multiplier" | "reflect_min" | "reflect_max"))
                     || is_sequential_switch(&node.kind)
                     || (node.kind == "seq3" && sequence_cell(name).is_none())
                 {
@@ -771,6 +830,20 @@ impl Rack {
                         pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
                         17.0,
                     )
+                } else if node.kind == "compare" {
+                    (pos2(width * 0.5, 125.0), 27.0)
+                } else if node.kind == "process" {
+                    (pos2(width * 0.5, 118.0), 25.0)
+                } else if node.kind == "rescale" {
+                    let column = usize::from(matches!(*name, "offset" | "max"));
+                    let row = usize::from(matches!(*name, "min" | "max"));
+                    (
+                        pos2(
+                            width * (0.25 + column as f32 * 0.5),
+                            127.0 + row as f32 * 116.0,
+                        ),
+                        25.0,
+                    )
                 } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
                 } else if node.kind == "multi_lfo" {
@@ -807,9 +880,30 @@ impl Rack {
                         .cables
                         .iter()
                         .any(|c| c.to == node.id && c.input == "clock");
-                let display_scale = if clock_ratio { 0.5 } else { 1.0 };
+                let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
+                let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
+                let scaled_gain = node.kind == "rescale" && *name == "gain";
+                let display_scale = if clock_ratio {
+                    0.5
+                } else if scaled_gain {
+                    if multiplier == 1.0 {
+                        100.0
+                    } else {
+                        multiplier
+                    }
+                } else {
+                    1.0
+                };
                 let display_value = if clock_ratio {
                     format!("{:.4}x", value * display_scale)
+                } else if let Some(min) = slew_min {
+                    format!("{:.2} ms/V", slew_display(value, min))
+                } else if scaled_gain {
+                    format!(
+                        "{:.2}{}",
+                        value * display_scale,
+                        if multiplier == 1.0 { "%" } else { "x" }
+                    )
                 } else {
                     parameter_value(name, value, spec)
                 };
@@ -953,11 +1047,22 @@ impl Rack {
                     self.editing = Some(ParameterEdit {
                         id: node.id.clone(),
                         parameter: name.to_string(),
-                        text: (value * display_scale).to_string(),
-                        min: min * display_scale,
-                        max: max * display_scale,
+                        text: slew_min
+                            .map_or(value * display_scale, |min| slew_display(value, min))
+                            .to_string(),
+                        min: if slew_min.is_some() {
+                            0.0
+                        } else {
+                            min * display_scale
+                        },
+                        max: if slew_min.is_some() {
+                            max.exp2() * 1000.0
+                        } else {
+                            max * display_scale
+                        },
                         step: step.map(|step| step * display_scale),
                         display_scale,
+                        slew_min,
                         focus: true,
                     });
                 }
@@ -1014,7 +1119,7 @@ impl Rack {
                     ));
                 }
             }
-            for port in &output_ports {
+            for (port_index, port) in output_ports.iter().enumerate() {
                 let output_point = outputs[&(node.id.clone(), port.to_string())];
                 let connected = patch
                     .cables
@@ -1041,6 +1146,24 @@ impl Rack {
                     catalog,
                     &mut action,
                 );
+                let light_index = match node.kind.as_str() {
+                    "logic" => Some(port_index),
+                    "compare" if port_index >= 4 => Some(port_index - 4),
+                    _ => None,
+                };
+                if let Some(index) = light_index {
+                    let brightness = self
+                        .module_lights
+                        .get(&node.id)
+                        .filter(|s| index < usize::from(s.count))
+                        .map_or([0.0; 2], |s| s.brightness[index]);
+                    paint_signal_light(
+                        &painter,
+                        output_point + vec2(0.0, 17.0) * self.zoom,
+                        brightness,
+                        self.zoom,
+                    );
+                }
                 if patch.output.as_ref() == Some(&node.id) && patch.output_port == *port {
                     paint_jack_light(
                         &painter,
@@ -1258,11 +1381,165 @@ impl Rack {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
         self.parameter_editor(ui.ctx(), &mut action);
-        if interactive {
-            action
-        } else {
-            None
+        released_manual.or(if interactive { action } else { None })
+    }
+
+    fn signal_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        rect: Rect,
+        allow_press: bool,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let mut action = None;
+        if matches!(node.kind.as_str(), "logic" | "process") {
+            let (x, y, label, press, release) = if node.kind == "logic" {
+                (180.0, 170.0, "MANUAL B", "b_press", "b_release")
+            } else {
+                (120.0, 185.0, "MANUAL GATE", "gate_press", "gate_release")
+            };
+            let button_rect = Rect::from_center_size(point(x, y), vec2(100.0, 27.0) * zoom);
+            let enabled = ui.is_enabled()
+                && self.performance_available
+                && !node.bypassed
+                && ui.input(|i| i.focused);
+            let observed = self
+                .module_controls
+                .get(&node.id)
+                .map(|s| s.pressed)
+                .or_else(|| self.module_lights.get(&node.id).map(|s| s.manual));
+            let actual = observed.unwrap_or(false);
+            let label = if observed.is_none() {
+                if enabled {
+                    if node.kind == "logic" {
+                        "B: WAITING"
+                    } else {
+                        "GATE: WAITING"
+                    }
+                } else if node.kind == "logic" {
+                    "B: OFFLINE"
+                } else {
+                    "GATE: OFFLINE"
+                }
+            } else {
+                label
+            };
+            let response = ui.interact(
+                button_rect,
+                ui.id().with((&node.id, "manual-button")),
+                Sense::click_and_drag(),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    enabled,
+                    format!("{} {} momentary", node.id, label),
+                )
+            });
+            painter.rect_filled(
+                button_rect,
+                3.0,
+                if actual {
+                    Color32::from_rgb(224, 195, 104)
+                } else if enabled && response.hovered() {
+                    Color32::from_rgb(239, 241, 232)
+                } else {
+                    Color32::from_rgb(193, 196, 187)
+                },
+            );
+            painter.rect_stroke(
+                button_rect,
+                3.0,
+                Stroke::new(zoom, Color32::from_gray(129)),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                button_rect.center() - vec2(5.0, 0.0) * zoom,
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(9.0 * zoom),
+                if enabled { INK } else { MUTED },
+            );
+            paint_signal_light(
+                &painter,
+                button_rect.right_center() - vec2(10.0, 0.0) * zoom,
+                [if actual { 1.0 } else { 0.0 }, 0.0],
+                zoom,
+            );
+            if enabled
+                && allow_press
+                && self.held_manual.is_none()
+                && response.is_pointer_button_down_on()
+                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+            {
+                self.held_manual = Some(HeldManual {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                    release,
+                });
+                self.selected = Some(node.id.clone());
+                action = Some(RackAction::Command(
+                    "trigger_module",
+                    json!({"id":node.id,"action":press}),
+                ));
+            }
+            response.on_hover_text(if enabled {"Hold to force the gate high. Releasing anywhere restores the patched gate. Indicator follows the audio engine."} else {"Momentary control requires a live audio engine and an active module."});
         }
+        if matches!(node.kind.as_str(), "logic" | "compare") {
+            painter.text(
+                point(120.0, if node.kind == "logic" { 207.0 } else { 246.0 }),
+                Align2::CENTER_CENTER,
+                if self.module_lights.contains_key(&node.id) {
+                    "YELLOW: MONO   BLUE: POLY"
+                } else {
+                    "LIGHTS UNAVAILABLE"
+                },
+                FontId::proportional(7.5 * zoom),
+                MUTED,
+            );
+        }
+        if node.kind == "rescale" {
+            let states = self.module_lights.get(&node.id);
+            for (index, x, name) in [(0, 180.0, "max"), (1, 60.0, "min")] {
+                let brightness = states
+                    .filter(|s| index < usize::from(s.count))
+                    .map_or([0.0; 2], |s| s.brightness[index]);
+                let center = point(x, 294.0);
+                paint_signal_light(&painter, center, brightness, zoom);
+                ui.interact(Rect::from_center_size(center,vec2(30.0,14.0)*zoom),ui.id().with((&node.id,"bound-light",index)),Sense::hover()).on_hover_text(format!("Pre-bound {name} crossing: yellow mono, blue poly. Brightness follows DSP, before clipping or reflection."));
+                let reflect = node
+                    .params
+                    .get(&format!("reflect_{name}"))
+                    .copied()
+                    .unwrap_or(0.0)
+                    >= 0.5;
+                painter.text(
+                    point(x, 311.0),
+                    Align2::CENTER_CENTER,
+                    if reflect { "REFLECT" } else { "CLIP" },
+                    FontId::proportional(8.0 * zoom),
+                    MUTED,
+                );
+            }
+            painter.text(
+                point(120.0, 331.0),
+                Align2::CENTER_CENTER,
+                if self.module_lights.contains_key(&node.id) {
+                    format!(
+                        "Multiplier {}x · right-click to set",
+                        node.params.get("multiplier").copied().unwrap_or(1.0) as u32
+                    )
+                } else {
+                    "Lights unavailable · right-click settings".into()
+                },
+                FontId::proportional(8.0 * zoom),
+                MUTED,
+            );
+        }
+        action
     }
 
     fn utility_panel(
@@ -1948,6 +2225,7 @@ impl Rack {
             let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
             if edit.focus { input.request_focus(); edit.focus = false; }
             let parsed = edit.text.parse::<f32>().ok().filter(|value| value.is_finite() && *value >= edit.min && *value <= edit.max && edit.step.is_none_or(|step| ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01));
+            if edit.slew_min.is_some() { ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored)."); }
             if edit.display_scale == 0.5 { ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive."); }
             if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
             if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
@@ -1955,7 +2233,7 @@ impl Rack {
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
                 if ui.add_enabled(parsed.is_some(), egui::Button::new("Apply")).clicked() || (enter && parsed.is_some()) {
-                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":parsed.unwrap() / edit.display_scale}))); close = true;
+                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":edit.slew_min.map_or(parsed.unwrap() / edit.display_scale, |min| if parsed.unwrap() == 0.0 {min} else {(parsed.unwrap()/1000.0).log2().max(min)})}))); close = true;
                 }
                 if ui.button("Cancel").clicked() { close = true; }
             });
@@ -2015,6 +2293,37 @@ fn monitor_menu(
     }
 }
 
+fn paint_signal_light(painter: &egui::Painter, center: Pos2, brightness: [f32; 2], zoom: f32) {
+    for (index, base) in [
+        Color32::from_rgb(242, 199, 59),
+        Color32::from_rgb(62, 155, 238),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let strength = brightness[index].clamp(0.0, 1.0);
+        let point = center + vec2(if index == 0 { -3.5 } else { 3.5 }, 0.0) * zoom;
+        painter.circle_filled(point, 3.0 * zoom, Color32::from_gray(78));
+        painter.circle_filled(
+            point,
+            2.2 * zoom,
+            base.gamma_multiply(0.12 + strength * 0.88),
+        );
+    }
+}
+
+fn is_signal_utility(kind: &str) -> bool {
+    matches!(kind, "logic" | "compare" | "process" | "rescale")
+}
+
+fn slew_display(value: f32, min: f32) -> f32 {
+    if value <= min {
+        0.0
+    } else {
+        value.exp2() * 1000.0
+    }
+}
+
 fn is_voltage_utility(kind: &str) -> bool {
     matches!(kind, "attenuverter8" | "mutes10" | "cv_mix")
 }
@@ -2053,6 +2362,37 @@ fn utility_menu(ui: &mut egui::Ui, node: &Node, action: &mut Option<RackAction>)
         ));
         ui.close();
     }
+    if node.kind == "rescale" {
+        ui.separator();
+        ui.label("Gain multiplier");
+        let current = node.params.get("multiplier").copied().unwrap_or(1.0);
+        for multiplier in [1, 10, 100, 1000] {
+            if ui
+                .selectable_label(current == multiplier as f32, format!("{multiplier}x"))
+                .clicked()
+            {
+                *action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":"multiplier","value":multiplier}),
+                ));
+                ui.close();
+            }
+        }
+        ui.separator();
+        for (parameter, label) in [
+            ("reflect_min", "Reflect minimum"),
+            ("reflect_max", "Reflect maximum"),
+        ] {
+            let enabled = node.params.get(parameter).copied().unwrap_or(0.0) >= 0.5;
+            if ui.selectable_label(enabled, label).clicked() {
+                *action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":parameter,"value":if enabled{0.0}else{1.0}}),
+                ));
+                ui.close();
+            }
+        }
+    }
     if node.kind == "mutes10" && ui.button("Invert all mutes").clicked() {
         *action = Some(RackAction::Command("invert_mutes", json!({"id":node.id})));
         ui.close();
@@ -2064,6 +2404,31 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    match kind {
+        "logic" if input => return pos2(width * (0.25 + index as f32 * 0.5), 115.0),
+        "logic" => {
+            return pos2(
+                width * ((index % 4) as f32 + 0.5) / 4.0,
+                265.0 + (index / 4) as f32 * 88.0,
+            )
+        }
+        "compare" if input => return pos2(width * (0.25 + index as f32 * 0.5), 214.0),
+        "compare" => {
+            return pos2(
+                width * ((index % 4) as f32 + 0.5) / 4.0,
+                285.0 + (index / 4) as f32 * 76.0,
+            )
+        }
+        "process" if input => return pos2(width * (index as f32 + 1.0) / 4.0, 226.0),
+        "process" => {
+            return pos2(
+                width * ((index % 3) as f32 + 1.0) / 4.0,
+                286.0 + (index / 3) as f32 * 74.0,
+            )
+        }
+        "rescale" => return pos2(width * if input { 0.25 } else { 0.75 }, 360.0),
+        _ => {}
+    }
     if is_voltage_utility(kind) {
         return if kind == "cv_mix" && !input {
             pos2(width * 0.5, 366.0)
@@ -2574,6 +2939,7 @@ fn panel_button(
 
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "logic" | "compare" | "process" | "rescale" => HP * 16.0,
         "attenuverter8" | "mutes10" | "cv_mix" => HP * 16.0,
         "seq3" => HP * 52.0,
         "switch_1to4" | "switch_4to1" => HP * 12.0,
@@ -2600,6 +2966,10 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "logic" => "LOGIC",
+        "compare" => "COMPARE",
+        "process" => "PROCESS",
+        "rescale" => "RESCALE",
         "switch_1to4" => "SWITCH 1:4",
         "switch_4to1" => "SWITCH 4:1",
         "poly_constant" => "POLY VOLTAGE",
@@ -2640,6 +3010,10 @@ fn title(kind: &str) -> &str {
 }
 fn parameter_label(name: &str) -> &str {
     match name {
+        "b_offset" => "B OFFSET",
+        "slew" => "SLEW",
+        "min" => "MINIMUM",
+        "max" => "MAXIMUM",
         "frequency" => "FREQUENCY",
         "amplitude" => "LEVEL",
         "offset" => "OFFSET",
@@ -2673,6 +3047,17 @@ fn parameter_label(name: &str) -> &str {
 }
 fn port_label(name: &str) -> &str {
     match name {
+        "not_a" => "NOT A",
+        "not_b" => "NOT B",
+        "clip_gate" => "CLIP G",
+        "lim_gate" => "LIM G",
+        "greater" => "A > B",
+        "less" => "A < B",
+        "sh1" => "S&H 1",
+        "sh2" => "S&H 2",
+        "track_hold" => "T&H",
+        "hold_track" => "H&T",
+        "slew_cv" => "SLEW CV",
         "pitch" | "cutoff_cv" => "V/OCT",
         "retrigger" => "RETRIG",
         "offset_cv" => "OFFSET",
@@ -2699,6 +3084,17 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "rescale" => &[
+            "gain",
+            "offset",
+            "min",
+            "max",
+            "multiplier",
+            "reflect_min",
+            "reflect_max",
+        ],
+        "compare" => &["b_offset"],
+        "process" => &["slew"],
         "quantizer" => &["scale_mask", "offset"],
         "midi_cv" => &["channels", "channel", "allocation", "clock_div"],
         "mid_side" => &["encode_width", "decode_width"],
@@ -3264,10 +3660,24 @@ mod tests {
         time: f64,
         events: Vec<egui::Event>,
     ) -> (Option<RackAction>, egui::FullOutput) {
+        frame_state(ctx, rack, patch, time, events, true, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn frame_state(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        events: Vec<egui::Event>,
+        focused: bool,
+        enabled: bool,
+    ) -> (Option<RackAction>, egui::FullOutput) {
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
             time: Some(time),
             events,
+            focused,
             ..Default::default()
         };
         let mut action = None;
@@ -3275,7 +3685,9 @@ mod tests {
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                    action = rack.show(ui, patch, &openpatch_core::catalog(), 48000);
+                    ui.add_enabled_ui(enabled, |ui| {
+                        action = rack.show(ui, patch, &openpatch_core::catalog(), 48000);
+                    });
                 });
         });
         (action, output)
@@ -3313,6 +3725,274 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn signal_utility_first_last_ports_and_knobs_have_distinct_targets() {
+        let catalog = openpatch_core::catalog();
+        for kind in ["logic", "compare", "process", "rescale"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"utility","kind":kind},{"id":"source","kind":"constant"},{"id":"sink","kind":"audio_out"}]})).unwrap();
+            let module = catalog["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["kind"] == kind)
+                .unwrap();
+            let inputs = module["inputs"].as_array().unwrap();
+            let outputs = module["outputs"].as_array().unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            for (iteration, index) in [0, inputs.len() - 1].into_iter().enumerate() {
+                let target = pos2(24.0, 12.0)
+                    + port_position(kind, true, index, inputs.len(), 240.0).to_vec2();
+                let action = drag(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.0 + iteration as f64,
+                    pos2(324.0, 386.0),
+                    target,
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("connect",ref args)) if args["input"] == inputs[index]),
+                    "{kind} input {index}"
+                );
+            }
+            for (iteration, index) in [0, outputs.len() - 1].into_iter().enumerate() {
+                let target = pos2(24.0, 12.0)
+                    + port_position(kind, false, index, outputs.len(), 240.0).to_vec2();
+                let action = drag(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    4.0 + iteration as f64,
+                    target,
+                    pos2(444.0, 344.0),
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("connect",ref args)) if args["output"] == outputs[index]),
+                    "{kind} output {index}"
+                );
+            }
+            if kind != "logic" {
+                let (knob, parameter) = match kind {
+                    "compare" => (pos2(144.0, 137.0), "b_offset"),
+                    "process" => (pos2(144.0, 130.0), "slew"),
+                    _ => (pos2(84.0, 139.0), "gain"),
+                };
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    8.0,
+                    vec![egui::Event::PointerMoved(knob), button(knob, true)],
+                );
+                let action = frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    8.1,
+                    vec![egui::Event::PointerMoved(knob - vec2(0.0, 12.0))],
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==parameter),
+                    "{kind} knob"
+                );
+            }
+            let points: Vec<_> = (0..inputs.len())
+                .map(|i| port_position(kind, true, i, inputs.len(), 240.0))
+                .chain(
+                    (0..outputs.len()).map(|i| port_position(kind, false, i, outputs.len(), 240.0)),
+                )
+                .collect();
+            for (index, a) in points.iter().enumerate() {
+                assert!((20.0..=376.0).contains(&a.y));
+                for b in &points[index + 1..] {
+                    assert!(a.distance(*b) >= 29.0, "{kind} overlapping ports");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn momentary_buttons_release_outside_focus_modal_bypass_removal_and_engine_loss() {
+        for kind in ["logic", "process"] {
+            for cause in [
+                "outside",
+                "focus",
+                "modal",
+                "bypass",
+                "removal",
+                "engine",
+                "retype",
+                "up-and-down",
+            ] {
+                let ctx = egui::Context::default();
+                let mut rack = Rack::default();
+                rack.set_sequence_states(BTreeMap::new(), true);
+                let mut patch: Patch = serde_json::from_value(
+                    json!({"version":2,"nodes":[{"id":"manual","kind":kind}]}),
+                )
+                .unwrap();
+                let target = pos2(24.0, 12.0)
+                    + if kind == "logic" {
+                        vec2(180.0, 170.0)
+                    } else {
+                        vec2(120.0, 185.0)
+                    };
+                frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+                let action = frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.0,
+                    vec![egui::Event::PointerMoved(target), button(target, true)],
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("trigger_module",ref args)) if args["action"]==if kind=="logic"{"b_press"}else{"gate_press"}),
+                    "{kind} {cause} press"
+                );
+                assert!(rack.held_manual.is_some());
+                assert!(patch.nodes[0].params.is_empty());
+                assert!(
+                    frame(&ctx, &mut rack, &patch, 1.1, vec![]).is_none(),
+                    "Holding never repeats presses"
+                );
+                let mut events = vec![];
+                let (focused, enabled) = match cause {
+                    "outside" => {
+                        let outside = pos2(1250.0, 850.0);
+                        events = vec![egui::Event::PointerMoved(outside), button(outside, false)];
+                        (true, true)
+                    }
+                    "focus" => {
+                        events.push(egui::Event::WindowFocused(false));
+                        (false, true)
+                    }
+                    "modal" => (true, false),
+                    "bypass" => {
+                        patch.nodes[0].bypassed = true;
+                        (true, true)
+                    }
+                    "removal" => {
+                        patch.nodes.clear();
+                        (true, true)
+                    }
+                    "engine" => {
+                        rack.set_sequence_states(BTreeMap::new(), false);
+                        (true, true)
+                    }
+                    "retype" => {
+                        patch.nodes[0].kind = "rescale".into();
+                        (true, true)
+                    }
+                    _ => {
+                        events = vec![button(target, false), button(target, true)];
+                        (true, true)
+                    }
+                };
+                let action = frame_state(&ctx, &mut rack, &patch, 1.2, events, focused, enabled).0;
+                assert!(
+                    matches!(action,Some(RackAction::Command("trigger_module",ref args)) if args["id"]=="manual" && args["action"]==if kind=="logic"{"b_release"}else{"gate_release"}),
+                    "{kind} {cause} release"
+                );
+                assert!(rack.held_manual.is_none(), "{kind} {cause}");
+                assert!(
+                    frame_state(&ctx, &mut rack, &patch, 1.3, vec![], focused, enabled)
+                        .0
+                        .is_none(),
+                    "Release is emitted once"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unavailable_or_bypassed_momentary_buttons_do_not_press_and_show_status() {
+        for (available, bypassed) in [(false, false), (true, true)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), available);
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"logic","kind":"logic","bypassed":bypassed}]}),
+            )
+            .unwrap();
+            let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
+            assert!(output.shapes.iter().any(
+                |s| matches!(&s.shape,egui::epaint::Shape::Text(t) if t.galley.text()=="B: OFFLINE")
+            ));
+            let target = pos2(204.0, 182.0);
+            assert!(frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(target), button(target, true)]
+            )
+            .is_none());
+            assert!(rack.held_manual.is_none());
+        }
+    }
+
+    #[test]
+    fn process_and_rescale_numeric_editors_convert_display_units() {
+        for (kind, multiplier, scale, initial, typed, expected) in [
+            ("process", 1.0, 1.0, 0.0, "2000", 1.0),
+            ("rescale", 1.0, 100.0, 10.0, "20", 0.2),
+            ("rescale", 10.0, 10.0, 1.0, "2", 0.2),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let params = if kind == "rescale" {
+                json!({"gain":0.1,"multiplier":multiplier})
+            } else {
+                json!({})
+            };
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"utility","kind":kind,"params":params}]}),
+            )
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = if kind == "process" {
+                pos2(144.0, 170.0)
+            } else {
+                pos2(84.0, 173.0)
+            };
+            for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![egui::Event::PointerMoved(target), button(target, pressed)],
+                );
+            }
+            let edit = rack.editing.as_mut().expect("value opens numeric editor");
+            assert_eq!(edit.display_scale, scale);
+            assert!((edit.text.parse::<f32>().unwrap() - initial).abs() < 0.0001);
+            if kind == "process" {
+                assert_eq!(edit.min, 0.0);
+                assert!(edit.slew_min.is_some());
+            }
+            edit.text = typed.into();
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if (args["value"].as_f64().unwrap()-expected).abs()<0.0001)
+            );
+        }
     }
 
     #[test]

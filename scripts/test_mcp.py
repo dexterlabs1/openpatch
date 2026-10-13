@@ -701,6 +701,57 @@ class OpenPatchMCPTests(unittest.TestCase):
             "module_events": [{"frame": 0, "id": "seq", "action": "clock"}]})
         self.assertFalse((self.workspace / "bypassed-event.wav").exists())
 
+    def test_manual_action_wire_format_catalog_and_json_roundtrip(self) -> None:
+        modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}
+        self.assertEqual(modules["logic"]["runtime_actions"], ["b_press", "b_release"])
+        self.assertEqual(modules["process"]["runtime_actions"], ["gate_press", "gate_release"])
+        self.assertEqual(modules["compare"]["runtime_actions"], [])
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "add_module", "arguments": {"id": "logic", "kind": "logic"}},
+            {"tool": "add_module", "arguments": {"id": "process", "kind": "process"}},
+            {"tool": "add_module", "arguments": {"id": "rescale", "kind": "rescale"}},
+            {"tool": "add_module", "arguments": {"id": "seq", "kind": "seq3"}},
+        ]})
+        before = self.patch_snapshot()
+        trace = [{"frame": 3, "id": "logic", "action": "b_press"},
+                 {"frame": 7, "id": "logic", "action": "b_release"}]
+        capture = self.payload(self.require_tool_success("capture_signal", {
+            "id": "logic", "port": "or", "seconds": 0.001, "module_events": trace,
+        }))
+        self.assertEqual(capture["module_event_count"], 2)
+        self.assertEqual([point["mean"] for point in capture["bins"]],
+                         [10 if 3 <= frame < 7 else 0 for frame in range(48)])
+        for id_, action in [("seq", "b_press"), ("logic", "clock"), ("logic", "gate_press"), ("process", "b_press"), ("rescale", "gate_release"),
+                            ("logic", {"b_press": None}), ("process", "gate_toggle")]:
+            self.require_tool_error("render_audio", {"filename": "invalid-manual.wav", "seconds": 0.001,
+                "module_events": [{"frame": 0, "id": id_, "action": action}]})
+            self.assertFalse((self.workspace / "invalid-manual.wav").exists())
+        process_capture = self.payload(self.require_tool_success("capture_signal", {
+            "id": "process", "port": "sh1", "seconds": 0.001, "module_events": [
+                {"frame": 3, "id": "process", "action": "gate_press"},
+                {"frame": 7, "id": "process", "action": "gate_release"},
+            ],
+        }))
+        self.assertEqual(process_capture["module_event_count"], 2)
+        for id_, action in [("logic", "b_release"), ("process", "gate_release")]:
+            self.require_tool_error("trigger_module", {"id": id_, "action": action})  # Headless backend.
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("save_patch", {"filename": "manual-utilities.json"})
+        serialized = json.loads((self.workspace / "manual-utilities.json").read_text())
+        self.assertEqual(serialized, before["patch"])
+        for node in serialized["nodes"]:
+            self.assertNotIn("pressed", node)
+            self.assertNotIn("bypassed", node)
+            self.assertEqual(node["params"], {})
+        self.require_tool_success("set_bypass", {"id": "process", "bypassed": True})
+        self.require_tool_error("render_audio", {"filename": "invalid-bypassed-press.wav", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "process", "action": "gate_press"}]})
+        self.assertFalse((self.workspace / "invalid-bypassed-press.wav").exists())
+        self.require_tool_success("capture_signal", {"id": "process", "port": "sh1", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "process", "action": "gate_release"}]})
+        self.require_tool_success("load_patch", {"filename": "manual-utilities.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

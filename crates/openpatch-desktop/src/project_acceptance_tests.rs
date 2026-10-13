@@ -452,3 +452,48 @@ fn voltage_utility_parameters_cables_and_bypass_survive_native_and_recovery_roun
     assert!(!imported.document.patch.nodes[0].bypassed);
     assert_eq!(read(&directory, "old.json"), legacy);
 }
+
+#[test]
+fn gate_shaping_settings_and_bypass_roundtrip_without_saved_manual_button_state() {
+    let (_directory, store) = store();
+    let mut patch: Patch =
+        serde_json::from_str(include_str!("../../../examples/gate-shaping-voice.json")).unwrap();
+    let rescale = patch
+        .nodes
+        .iter_mut()
+        .find(|n| n.kind == "rescale")
+        .unwrap();
+    rescale.bypassed = true;
+    rescale.params.extend([
+        ("multiplier".into(), 100.0),
+        ("reflect_min".into(), 1.0),
+        ("reflect_max".into(), 1.0),
+        ("min".into(), -2.0),
+        ("max".into(), 3.0),
+    ]);
+    patch
+        .nodes
+        .iter_mut()
+        .find(|n| n.kind == "process")
+        .unwrap()
+        .params
+        .insert("slew".into(), -3.0);
+    let document = Document::new(
+        patch,
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{}}),
+    )
+    .unwrap();
+    store.save_new("gates.openpatch", &document).unwrap();
+    let loaded = store.load("gates.openpatch").unwrap().document;
+    assert!(document.equivalent(&loaded));
+    let value: Value = serde_json::from_slice(&document.encode().unwrap()).unwrap();
+    for node in value["patch"]["nodes"].as_array().unwrap() {
+        assert!(node.get("pressed").is_none());
+        assert!(node.get("manual").is_none());
+        if node["kind"] == "logic" {
+            assert!(node
+                .get("params")
+                .is_none_or(|p| p.as_object().unwrap().is_empty()));
+        }
+    }
+}

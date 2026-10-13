@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "logic",
+      "kind": "logic"
+    },
+    {
+      "id": "compare",
+      "kind": "compare"
+    },
+    {
+      "id": "process",
+      "kind": "process"
+    },
+    {
+      "id": "rescale",
+      "kind": "rescale",
+      "params": {
+        "gain": 0.1,
+        "offset": 0.5,
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 0.25
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 2,
+        "duty": 0.5
+      }
+    },
+    {
+      "id": "notes",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "motion",
+      "output": "sine",
+      "to": "process",
+      "input": "signal"
+    },
+    {
+      "from": "motion",
+      "output": "saw",
+      "to": "compare",
+      "input": "a"
+    },
+    {
+      "from": "compare",
+      "output": "greater",
+      "to": "logic",
+      "input": "a"
+    },
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "logic",
+      "input": "b"
+    },
+    {
+      "from": "logic",
+      "output": "and",
+      "to": "process",
+      "input": "gate"
+    },
+    {
+      "from": "process",
+      "output": "sh1",
+      "to": "rescale",
+      "input": "signal"
+    },
+    {
+      "from": "rescale",
+      "output": "out",
+      "to": "notes",
+      "input": "pitch"
+    },
+    {
+      "from": "notes",
+      "output": "out",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}
