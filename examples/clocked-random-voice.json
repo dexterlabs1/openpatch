@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "noise",
+      "kind": "white_noise",
+      "params": {
+        "seed": 42,
+        "level": 0.4
+      }
+    },
+    {
+      "id": "hold",
+      "kind": "sample_hold"
+    },
+    {
+      "id": "pitch",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661,
+        "offset": 0.0
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 1800,
+        "resonance": 0.45
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 3.0,
+        "duty": 0.45
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.005,
+        "decay": 0.12,
+        "sustain": 0.2,
+        "release": 0.15
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca"
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "vco",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "to": "vca",
+      "input": "signal"
+    },
+    {
+      "from": "clock",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "envelope",
+      "to": "vca",
+      "input": "cv"
+    },
+    {
+      "from": "vca",
+      "to": "out",
+      "input": "signal"
+    },
+    {
+      "from": "noise",
+      "to": "hold",
+      "input": "signal"
+    },
+    {
+      "from": "clock",
+      "to": "hold",
+      "input": "trigger"
+    },
+    {
+      "from": "hold",
+      "to": "pitch",
+      "input": "pitch"
+    },
+    {
+      "from": "pitch",
+      "to": "vco",
+      "input": "pitch"
+    }
+  ],
+  "output": "out"
+}

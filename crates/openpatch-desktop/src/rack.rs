@@ -3,7 +3,7 @@
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, FontId, PointerButton, Pos2, Rect, Sense, Stroke, Vec2,
 };
-use openpatch_core::{Node, Patch};
+use openpatch_core::{Cable, Node, Patch};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -38,15 +38,43 @@ struct ParameterEdit {
     focus: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum CableEnd {
+    Output(String),
+    Input { node: String, port: String },
+}
+
+#[derive(Clone, Debug)]
+struct PendingCable {
+    origin: CableEnd,
+    // The original stays in the patch until the complete replacement validates.
+    original: Option<Cable>,
+}
+
+impl PendingCable {
+    fn new(origin: CableEnd, patch: &Patch) -> Self {
+        let original = match &origin {
+            CableEnd::Input { node, port } => patch
+                .cables
+                .iter()
+                .find(|cable| cable.to == *node && cable.input == *port)
+                .cloned(),
+            CableEnd::Output(_) => None,
+        };
+        Self { origin, original }
+    }
+}
+
 pub struct Rack {
     pub selected: Option<String>,
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
     zoom: f32,
-    pending: Option<String>,
+    pending: Option<PendingCable>,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
     suppress_reveal_once: bool,
+    gesture: u64,
 }
 
 impl Default for Rack {
@@ -60,6 +88,7 @@ impl Default for Rack {
             dragging_cable: false,
             editing: None,
             suppress_reveal_once: false,
+            gesture: 0,
         }
     }
 }
@@ -192,7 +221,7 @@ impl Rack {
 
         let mut outputs = BTreeMap::<String, Pos2>::new();
         let mut inputs = BTreeMap::<(String, String), Pos2>::new();
-        let mut input_targets = Vec::new();
+        let mut jack_targets = Vec::new();
         let mut pointer_on_module = false;
         for node in &patch.nodes {
             let position = self.positions[&node.id];
@@ -211,10 +240,17 @@ impl Rack {
                 .unwrap_or(&[]);
             let output_point = point(width * 0.5, 374.0);
             outputs.insert(node.id.clone(), output_point);
+            jack_targets.push((CableEnd::Output(node.id.clone()), output_point));
             for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
                 let location = point(width * (index + 1) as f32 / (ports.len() + 1) as f32, 332.0);
                 inputs.insert((node.id.clone(), port.to_string()), location);
-                input_targets.push((node.id.clone(), port.to_string(), location));
+                jack_targets.push((
+                    CableEnd::Input {
+                        node: node.id.clone(),
+                        port: port.to_string(),
+                    },
+                    location,
+                ));
             }
             pointer_on_module |=
                 ui.input(|i| i.pointer.hover_pos().is_some_and(|p| rect.contains(p)));
@@ -328,7 +364,29 @@ impl Rack {
                     .copied()
                     .unwrap_or(default)
                     .clamp(min, max);
-                let (knob_position, radius) = parameter_position(count, index, width);
+                if *name == "scale_mask" {
+                    if let Some(mask) = scale_keyboard(
+                        ui,
+                        &painter,
+                        point(0.0, 0.0),
+                        width,
+                        self.zoom,
+                        ui.id().with((&node.id, "scale")),
+                        value as u16,
+                    ) {
+                        self.selected = Some(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":mask}),
+                        ));
+                    }
+                    continue;
+                }
+                let (knob_position, radius) = if node.kind == "quantizer" {
+                    (pos2(width * 0.5, 260.0), 23.0)
+                } else {
+                    parameter_position(count, index, width)
+                };
                 let center = point(knob_position.x, knob_position.y);
                 let logarithmic = matches!(
                     *name,
@@ -355,6 +413,10 @@ impl Rack {
                 });
                 if knob.drag_started() {
                     self.selected = Some(node.id.clone());
+                    self.gesture = self.gesture.wrapping_add(1);
+                    ui.data_mut(|data| {
+                        data.insert_temp(knob.id, format!("rack-knob-{}", self.gesture))
+                    });
                     if step.is_some() {
                         ui.data_mut(|data| data.insert_temp(knob.id, normalized));
                     }
@@ -395,13 +457,19 @@ impl Rack {
                     None
                 };
                 if knob.drag_stopped() {
-                    ui.data_mut(|data| data.remove::<f32>(knob.id));
+                    ui.data_mut(|data| {
+                        data.remove::<f32>(knob.id);
+                        data.remove::<String>(knob.id);
+                    });
                 }
                 if let Some(new_value) = new_value.filter(|new_value| *new_value != value) {
-                    action = Some(RackAction::Command(
-                        "set_parameter",
-                        json!({"id":node.id,"parameter":name,"value":new_value}),
-                    ));
+                    let mut args = json!({"id":node.id,"parameter":name,"value":new_value});
+                    if knob.dragged() && !knob.double_clicked() {
+                        if let Some(group) = ui.data(|data| data.get_temp::<String>(knob.id)) {
+                            args["history_group"] = json!(group);
+                        }
+                    }
+                    action = Some(RackAction::Command("set_parameter", args));
                 }
                 if knob.hovered() || knob.dragged() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -496,17 +564,18 @@ impl Rack {
                     false,
                     self.zoom,
                 );
-                if jack.clicked() {
-                    self.selected = Some(node.id.clone());
-                    if let Some(from) = self.pending.take() {
-                        action = Some(RackAction::Command(
-                            "connect",
-                            json!({"from":from,"to":node.id,"input":port}),
-                        ));
-                        self.dragging_cable = false;
-                    }
-                }
+                self.cable_jack(
+                    &jack,
+                    CableEnd::Input {
+                        node: node.id.clone(),
+                        port: port.to_string(),
+                    },
+                    patch,
+                    &mut action,
+                );
                 if jack.secondary_clicked() && connected {
+                    self.pending = None;
+                    self.dragging_cable = false;
                     action = Some(RackAction::Command(
                         "disconnect",
                         json!({"to":node.id,"input":port}),
@@ -524,72 +593,135 @@ impl Rack {
                 true,
                 self.zoom,
             );
-            if jack.clicked() {
-                self.pending = if self.pending.as_ref() == Some(&node.id) {
-                    None
-                } else {
-                    Some(node.id.clone())
-                };
-                self.selected = Some(node.id.clone());
-            }
-            if jack.drag_started_by(PointerButton::Primary) {
-                self.pending = Some(node.id.clone());
-                self.dragging_cable = true;
-                self.selected = Some(node.id.clone());
-            }
+            self.cable_jack(&jack, CableEnd::Output(node.id.clone()), patch, &mut action);
         }
 
-        // Cables intentionally paint after every module, including their plug caps.
-        for (index, cable) in patch.cables.iter().enumerate() {
+        let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
+        let nearest = pointer.filter(|p| canvas.contains(*p)).and_then(|pointer| {
+            jack_targets
+                .iter()
+                .filter(|(_, point)| canvas.contains(*point))
+                .filter(|(_, point)| pointer.distance(*point) <= (19.0 * self.zoom).max(10.0))
+                .min_by(|(_, a), (_, b)| pointer.distance(*a).total_cmp(&pointer.distance(*b)))
+        });
+        let target_valid =
+            self.pending
+                .as_ref()
+                .zip(nearest)
+                .is_some_and(|(pending, (target, _))| {
+                    cable_plan(pending, target)
+                        .is_some_and(|(cable, old)| connection_allowed(patch, &cable, old))
+                });
+        if self.dragging_cable && ui.input(|i| i.pointer.button_released(PointerButton::Primary)) {
+            if let Some(pending) = self.pending.take() {
+                if let Some((target, _)) = nearest {
+                    action = cable_action(patch, &pending, target);
+                }
+            }
+            self.dragging_cable = false;
+        }
+        // Connected plugs remain visible until an atomic edit succeeds. The
+        // picked-up cable becomes a ghost so cancellation never loses a route.
+        for cable in &patch.cables {
             if let (Some(&from), Some(&to)) = (
                 outputs.get(&cable.from),
                 inputs.get(&(cable.to.clone(), cable.input.clone())),
             ) {
-                paint_cable(
-                    &painter,
-                    from,
-                    to,
-                    CABLES[index % CABLES.len()],
-                    self.zoom,
-                    true,
-                );
-            }
-        }
-        if self.dragging_cable && ui.input(|i| i.pointer.button_released(PointerButton::Primary)) {
-            let pointer = ui.input(|i| i.pointer.interact_pos());
-            if let Some((to, input, _)) = input_targets.iter().find(|(_, _, location)| {
-                pointer.is_some_and(|p| {
-                    canvas.contains(p) && p.distance(*location) <= 17.0 * self.zoom
-                })
-            }) {
-                if let Some(from) = self.pending.take() {
-                    action = Some(RackAction::Command(
-                        "connect",
-                        json!({"from":from,"to":to,"input":input}),
-                    ));
+                let picked_up = self
+                    .pending
+                    .as_ref()
+                    .and_then(|pending| pending.original.as_ref())
+                    .is_some_and(|old| same_cable(old, cable));
+                let traced = nearest.is_some_and(|(end, _)| match end {
+                    CableEnd::Output(source) => *source == cable.from,
+                    CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
+                });
+                let color = cable_color(&cable.from).gamma_multiply(if picked_up {
+                    0.24
+                } else if nearest.is_some() && !traced && self.pending.is_none() {
+                    0.48
+                } else {
+                    1.0
+                });
+                paint_cable(&painter, from, to, color, self.zoom, true);
+                if traced && !picked_up {
+                    paint_jack_light(&painter, to, self.zoom, cable_color(&cable.from));
                 }
-            } else {
-                self.pending = None;
             }
-            self.dragging_cable = false;
         }
-        if let Some(source) = &self.pending {
-            if let (Some(&from), Some(pointer)) =
-                (outputs.get(source), ui.input(|i| i.pointer.hover_pos()))
-            {
-                paint_cable(
-                    &painter,
-                    from,
-                    pointer,
-                    CABLES[patch.cables.len() % CABLES.len()],
-                    self.zoom,
-                    false,
+        if let Some(pending) = &self.pending {
+            if let Some(pointer) = pointer {
+                let original_source = pending
+                    .original
+                    .as_ref()
+                    .and_then(|old| outputs.get(&old.from).copied());
+                let origin = match &pending.origin {
+                    CableEnd::Output(node) => outputs.get(node).copied(),
+                    CableEnd::Input { node, port } => {
+                        inputs.get(&(node.clone(), port.clone())).copied()
+                    }
+                };
+                let changing_source =
+                    nearest.is_some_and(|(end, _)| matches!(end, CableEnd::Output(_)));
+                let anchor = if changing_source {
+                    origin
+                } else {
+                    original_source.or(origin)
+                };
+                let color = match &pending.origin {
+                    CableEnd::Output(source) => cable_color(source),
+                    _ => pending
+                        .original
+                        .as_ref()
+                        .map_or(CABLES[2], |old| cable_color(&old.from)),
+                };
+                if let Some(anchor) = anchor {
+                    let endpoint = nearest.map_or(pointer, |(_, point)| *point);
+                    paint_cable(&painter, anchor, endpoint, color, self.zoom, false);
+                    paint_jack_light(&painter, anchor, self.zoom, color);
+                }
+                if let Some((_, target)) = nearest {
+                    let light = if target_valid {
+                        Color32::from_rgb(71, 195, 139)
+                    } else {
+                        Color32::from_rgb(229, 88, 75)
+                    };
+                    paint_jack_light(&painter, *target, self.zoom, light);
+                    ui.ctx().set_cursor_icon(if target_valid {
+                        egui::CursorIcon::PointingHand
+                    } else {
+                        egui::CursorIcon::NotAllowed
+                    });
+                }
+                let message = if nearest.is_some() && !target_valid {
+                    "Cannot connect here. Original cable is kept. Esc cancels."
+                } else if pending.original.is_some() {
+                    "Move to an input, or choose a new OUT. Esc cancels."
+                } else if matches!(pending.origin, CableEnd::Input { .. }) {
+                    "Choose an OUT to connect this input. Esc cancels."
+                } else {
+                    "Choose an input. Occupied inputs will be replaced. Esc cancels."
+                };
+                let galley = painter.layout_no_wrap(
+                    message.into(),
+                    FontId::proportional(11.0),
+                    Color32::from_gray(225),
                 );
+                let rect = Rect::from_min_size(
+                    canvas.left_bottom() + vec2(14.0, -38.0),
+                    galley.size() + vec2(20.0, 12.0),
+                );
+                painter.rect_filled(rect, 4.0, Color32::from_black_alpha(220));
+                painter.galley(rect.min + vec2(10.0, 6.0), galley, Color32::from_gray(225));
             }
         }
+
         if !pointer_on_module {
             if response.secondary_clicked() || response.double_clicked() {
-                action = Some(RackAction::OpenBrowser);
+                if self.pending.take().is_none() {
+                    action = Some(RackAction::OpenBrowser);
+                }
+                self.dragging_cable = false;
             }
             if response.clicked() {
                 self.selected = None;
@@ -616,6 +748,39 @@ impl Rack {
         action
     }
 
+    fn cable_jack(
+        &mut self,
+        response: &egui::Response,
+        end: CableEnd,
+        patch: &Patch,
+        action: &mut Option<RackAction>,
+    ) {
+        if response.clicked() {
+            if let Some(pending) = self.pending.take() {
+                if pending.origin != end {
+                    if cable_plan(&pending, &end).is_some() {
+                        *action = cable_action(patch, &pending, &end);
+                    } else {
+                        self.pending = Some(PendingCable::new(end.clone(), patch));
+                    }
+                }
+            } else {
+                self.pending = Some(PendingCable::new(end.clone(), patch));
+            }
+            self.dragging_cable = false;
+            self.selected = Some(match &end {
+                CableEnd::Output(node) | CableEnd::Input { node, .. } => node.clone(),
+            });
+        }
+        if response.drag_started_by(PointerButton::Primary) {
+            self.pending = Some(PendingCable::new(end.clone(), patch));
+            self.dragging_cable = true;
+            self.selected = Some(match end {
+                CableEnd::Output(node) | CableEnd::Input { node, .. } => node,
+            });
+        }
+    }
+
     fn reconcile(&mut self, patch: &Patch) {
         self.positions
             .retain(|id, _| patch.nodes.iter().any(|node| &node.id == id));
@@ -626,11 +791,17 @@ impl Rack {
         {
             self.selected = None;
         }
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|id| !patch.nodes.iter().any(|node| &node.id == id))
-        {
+        if self.pending.as_ref().is_some_and(|pending| {
+            let origin_exists = match &pending.origin {
+                CableEnd::Output(id) => patch.nodes.iter().any(|node| &node.id == id),
+                CableEnd::Input { node: id, .. } => patch.nodes.iter().any(|node| &node.id == id),
+            };
+            !origin_exists
+                || pending
+                    .original
+                    .as_ref()
+                    .is_some_and(|old| !patch.cables.iter().any(|cable| same_cable(old, cable)))
+        }) {
             self.pending = None;
             self.dragging_cable = false;
         }
@@ -704,6 +875,275 @@ impl Rack {
     }
 }
 
+fn same_cable(a: &Cable, b: &Cable) -> bool {
+    a.from == b.from && a.to == b.to && a.input == b.input
+}
+
+fn cable_plan<'a>(
+    pending: &'a PendingCable,
+    target: &CableEnd,
+) -> Option<(Cable, Option<&'a Cable>)> {
+    if pending.origin == *target {
+        return None;
+    }
+    let cable = match (&pending.origin, target) {
+        (CableEnd::Output(from), CableEnd::Input { node, port }) => Cable {
+            from: from.clone(),
+            to: node.clone(),
+            input: port.clone(),
+        },
+        (CableEnd::Input { node, port }, CableEnd::Output(from)) => Cable {
+            from: from.clone(),
+            to: node.clone(),
+            input: port.clone(),
+        },
+        (CableEnd::Input { .. }, CableEnd::Input { node, port }) => Cable {
+            from: pending.original.as_ref()?.from.clone(),
+            to: node.clone(),
+            input: port.clone(),
+        },
+        _ => return None,
+    };
+    Some((cable, pending.original.as_ref()))
+}
+
+fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>) -> bool {
+    if cable.from == cable.to {
+        return false;
+    }
+    let retained = |existing: &&Cable| {
+        !(existing.to == cable.to && existing.input == cable.input)
+            && !old.is_some_and(|old| same_cable(old, existing))
+    };
+    if patch.cables.iter().filter(retained).count() >= openpatch_core::MAX_CABLES {
+        return false;
+    }
+    // A candidate creates feedback exactly when its destination can reach its
+    // source after removing the routes this atomic edit will replace.
+    let mut stack = vec![cable.to.as_str()];
+    let mut visited = std::collections::BTreeSet::new();
+    while let Some(node) = stack.pop() {
+        if node == cable.from {
+            return false;
+        }
+        if !visited.insert(node) {
+            continue;
+        }
+        stack.extend(
+            patch
+                .cables
+                .iter()
+                .filter(retained)
+                .filter(|edge| edge.from == node)
+                .map(|edge| edge.to.as_str()),
+        );
+    }
+    true
+}
+
+fn cable_action(patch: &Patch, pending: &PendingCable, target: &CableEnd) -> Option<RackAction> {
+    let (cable, old) = cable_plan(pending, target)?;
+    if !connection_allowed(patch, &cable, old) {
+        return None;
+    }
+    if patch
+        .cables
+        .iter()
+        .any(|existing| same_cable(existing, &cable))
+        && old.is_none_or(|old| same_cable(old, &cable))
+    {
+        return None;
+    }
+    if old.is_none()
+        && !patch
+            .cables
+            .iter()
+            .any(|existing| existing.to == cable.to && existing.input == cable.input)
+    {
+        return Some(RackAction::Command(
+            "connect",
+            json!({"from":cable.from,"to":cable.to,"input":cable.input}),
+        ));
+    }
+    let mut candidate = patch.clone();
+    candidate.cables.retain(|existing| {
+        !(existing.to == cable.to && existing.input == cable.input)
+            && !old.is_some_and(|old| same_cable(old, existing))
+    });
+    candidate.cables.push(cable);
+    Some(RackAction::Command(
+        "replace_patch",
+        json!({"patch":candidate}),
+    ))
+}
+
+fn cable_color(source: &str) -> Color32 {
+    let hash = source.bytes().fold(2166136261_u32, |hash, byte| {
+        (hash ^ byte as u32).wrapping_mul(16777619)
+    });
+    CABLES[hash as usize % CABLES.len()]
+}
+
+fn paint_jack_light(painter: &egui::Painter, center: Pos2, zoom: f32, color: Color32) {
+    for (radius, alpha) in [(17.0, 18), (14.0, 35)] {
+        painter.circle_filled(
+            center,
+            radius * zoom,
+            color.to_opaque().gamma_multiply(alpha as f32 / 255.0),
+        );
+    }
+    painter.circle_stroke(center, 11.4 * zoom, Stroke::new(1.6 * zoom, color));
+}
+
+fn scale_keyboard(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    origin: Pos2,
+    width: f32,
+    zoom: f32,
+    id: egui::Id,
+    mask: u16,
+) -> Option<u16> {
+    let key_width = (width - 40.0) / 7.0;
+    let mut changed = None;
+    painter.text(
+        origin + vec2(width * 0.5, 86.0) * zoom,
+        Align2::CENTER_CENTER,
+        "SCALE",
+        FontId::proportional(10.0 * zoom),
+        INK,
+    );
+    for (white_index, (note, label)) in [
+        (0, "C"),
+        (2, "D"),
+        (4, "E"),
+        (5, "F"),
+        (7, "G"),
+        (9, "A"),
+        (11, "B"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let rect = Rect::from_min_size(
+            origin + vec2(20.0 + white_index as f32 * key_width, 101.0) * zoom,
+            vec2(key_width - 1.0, 76.0) * zoom,
+        );
+        let enabled = mask & (1 << note) != 0;
+        let response = ui.interact(rect, id.with(note), Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                true,
+                enabled,
+                format!("Scale note {label}"),
+            )
+        });
+        painter.rect_filled(
+            rect,
+            1.0,
+            if enabled {
+                Color32::from_rgb(167, 205, 180)
+            } else {
+                Color32::from_gray(236)
+            },
+        );
+        painter.rect_stroke(
+            rect,
+            1.0,
+            Stroke::new(0.8 * zoom, Color32::from_gray(109)),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            rect.center_bottom() - vec2(0.0, 10.0) * zoom,
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(10.0 * zoom),
+            INK,
+        );
+        if response.clicked() {
+            changed = Some(mask ^ (1 << note));
+        }
+        response.on_hover_text(format!("Toggle {label} in the quantizer scale"));
+    }
+    for (boundary, note, label) in [
+        (1, 1, "C#"),
+        (2, 3, "D#"),
+        (4, 6, "F#"),
+        (5, 8, "G#"),
+        (6, 10, "A#"),
+    ] {
+        let rect = Rect::from_min_size(
+            origin + vec2(20.0 + boundary as f32 * key_width - key_width * 0.3, 101.0) * zoom,
+            vec2(key_width * 0.6, 46.0) * zoom,
+        );
+        let enabled = mask & (1 << note) != 0;
+        let response = ui.interact(rect, id.with(note), Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                true,
+                enabled,
+                format!("Scale note {label}"),
+            )
+        });
+        painter.rect_filled(
+            rect,
+            1.0,
+            if enabled {
+                Color32::from_rgb(58, 126, 86)
+            } else {
+                Color32::from_rgb(35, 39, 39)
+            },
+        );
+        painter.text(
+            rect.center_bottom() - vec2(0.0, 10.0) * zoom,
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(7.0 * zoom),
+            Color32::from_gray(236),
+        );
+        if response.clicked() {
+            changed = Some(mask ^ (1 << note));
+        }
+        response.on_hover_text(format!("Toggle {label} in the quantizer scale"));
+    }
+    for (x, label, value) in [
+        (width * 0.5 - 28.0, "All", 4095),
+        (width * 0.5 + 28.0, "None", 0),
+    ] {
+        let rect = Rect::from_center_size(origin + vec2(x, 194.0) * zoom, vec2(44.0, 18.0) * zoom);
+        let response = ui.interact(rect, id.with(label), Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                true,
+                format!("{label} scale notes"),
+            )
+        });
+        painter.rect_filled(
+            rect,
+            2.0,
+            if response.hovered() {
+                Color32::from_gray(175)
+            } else {
+                Color32::from_gray(191)
+            },
+        );
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(10.0 * zoom),
+            INK,
+        );
+        if response.clicked() {
+            changed = Some(value);
+        }
+    }
+    changed
+}
+
 fn finite_number(value: &Value, min: f32, max: f32) -> Result<f32, String> {
     let value = value
         .as_f64()
@@ -725,6 +1165,9 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
 }
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "quantizer" => HP * 16.0,
+        "white_noise" | "attenuverter" | "crossfade" => HP * 12.0,
+        "sample_hold" => HP * 10.0,
         "adsr" => HP * 16.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
@@ -738,6 +1181,11 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "quantizer" => "QUANTIZER",
+        "white_noise" => "WHITE NOISE",
+        "sample_hold" => "S&H",
+        "attenuverter" => "ATTENUVERTER",
+        "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
         "analog_vca" => "OTA VCA",
@@ -771,6 +1219,11 @@ fn parameter_label(name: &str) -> &str {
         "sustain" => "SUSTAIN",
         "release" => "RELEASE",
         "duty" => "DUTY",
+        "initial" => "INITIAL",
+        "seed" => "SEED",
+        "level" => "LEVEL",
+        "mix" => "MIX",
+        "law" => "CURVE",
         name => name,
     }
 }
@@ -778,6 +1231,8 @@ fn port_label(name: &str) -> &str {
     match name {
         "pitch" | "cutoff_cv" => "V/OCT",
         "retrigger" => "RETRIG",
+        "offset_cv" => "OFFSET",
+        "trigger" => "TRIG",
         "signal" => "IN",
         other => other,
     }
@@ -787,6 +1242,10 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "quantizer" => &["scale_mask", "offset"],
+        "white_noise" => &["level", "seed"],
+        "attenuverter" => &["gain", "offset"],
+        "crossfade" => &["mix", "law"],
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
         "adsr" => &["attack", "decay", "sustain", "release"],
@@ -839,7 +1298,15 @@ fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
                 "Pulse".into()
             }
         }
-        "pulse_width" | "duty" | "sustain" => format!("{:.1}%", value * 100.0),
+        "pulse_width" | "duty" | "sustain" | "mix" => format!("{:.1}%", value * 100.0),
+        "seed" => format!("{value:.0}"),
+        "law" => {
+            if value.round() == 0.0 {
+                "Linear".into()
+            } else {
+                "Power".into()
+            }
+        }
         "gain" => format!("{value:.2}x"),
         _ => format_value(value, spec["unit"].as_str().unwrap_or("")),
     }
@@ -964,6 +1431,13 @@ fn paint_panel(
         Color32::from_black_alpha(95),
     );
     painter.rect_filled(rect, 0, PAPER);
+    for band in 0..8 {
+        let shine = Rect::from_min_size(
+            rect.min + vec2(0.0, rect.height() * band as f32 / 16.0),
+            vec2(rect.width(), rect.height() / 16.0),
+        );
+        painter.rect_filled(shine, 0, Color32::from_white_alpha(16 - band * 2));
+    }
     painter.line_segment(
         [rect.left_top(), rect.left_bottom()],
         Stroke::new(1.0_f32, Color32::from_gray(245)),
@@ -1026,6 +1500,12 @@ fn paint_panel(
         MUTED,
     );
     if master {
+        paint_jack_light(
+            painter,
+            point(width - 19.0, 20.0),
+            zoom * 0.45,
+            Color32::from_rgb(70, 180, 120),
+        );
         painter.circle_filled(
             point(width - 19.0, 20.0),
             3.1 * zoom,
@@ -1159,7 +1639,7 @@ fn jack(
     zoom: f32,
 ) -> egui::Response {
     let response = ui.interact(
-        Rect::from_center_size(center, Vec2::splat(29.0 * zoom)),
+        Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(18.0))),
         id,
         Sense::click_and_drag(),
     );
@@ -1209,9 +1689,9 @@ fn jack(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     response.on_hover_text(if output {
-        "Drag to an input, or click OUT then click an input."
+        "Drag to an input, or click either jack first. Occupied inputs are replaced atomically."
     } else {
-        "Connect a cable here. Right-click to unplug."
+        "Drag to OUT to connect. Drag a connected input to another input to move its cable. Right-click to unplug; Esc cancels."
     })
 }
 
@@ -1253,6 +1733,12 @@ fn paint_cable(
             7.0 * zoom,
             Color32::from_black_alpha(110),
         );
+        painter.rect_filled(
+            Rect::from_center_size(*point + vec2(0.0, 5.0) * zoom, vec2(7.0, 12.0) * zoom),
+            2.0 * zoom,
+            color.gamma_multiply(0.65),
+        );
+        painter.circle_filled(*point, 7.1 * zoom, Color32::from_gray(128));
         painter.circle_filled(*point, 6.1 * zoom, color.gamma_multiply(0.65));
         painter.circle_stroke(*point, 5.3 * zoom, Stroke::new(1.4 * zoom, color));
         painter.circle_filled(*point, 2.0 * zoom, Color32::from_gray(33));
@@ -1296,6 +1782,251 @@ mod tests {
         }
     }
 
+    fn drag(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        from: Pos2,
+        to: Pos2,
+    ) -> Option<RackAction> {
+        frame(
+            ctx,
+            rack,
+            patch,
+            time,
+            vec![egui::Event::PointerMoved(from), button(from, true)],
+        );
+        frame(
+            ctx,
+            rack,
+            patch,
+            time + 0.1,
+            vec![egui::Event::PointerMoved(to)],
+        );
+        frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn input_origin_connects_and_replug_replaces_atomically_without_losing_original() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let mut patch = openpatch_core::demo_patch();
+        patch.cables.clear();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let tone_out = pos2(129.0, 386.0);
+        let vca_input = pos2(464.0, 344.0);
+        let action = drag(&ctx, &mut rack, &patch, 1.0, vca_input, tone_out);
+        assert!(
+            matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "tone" && args["to"] == "vca")
+        );
+
+        patch = openpatch_core::demo_patch();
+        let original = serde_json::to_value(&patch).unwrap();
+        // Drop within the snap zone, beyond the actual socket's painted edge.
+        let filter_input = pos2(654.0 + 16.0, 344.0);
+        let action = drag(&ctx, &mut rack, &patch, 2.0, vca_input, filter_input);
+        let Some(RackAction::Command("replace_patch", args)) = action else {
+            panic!("expected one atomic replacement");
+        };
+        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        candidate.validate().unwrap();
+        assert!(!candidate
+            .cables
+            .iter()
+            .any(|cable| cable.to == "vca" && cable.input == "signal"));
+        assert!(candidate
+            .cables
+            .iter()
+            .any(|cable| cable.from == "tone" && cable.to == "filter" && cable.input == "signal"));
+        assert_eq!(candidate.cables.len(), patch.cables.len() - 1);
+        assert_eq!(
+            serde_json::to_value(&patch).unwrap(),
+            original,
+            "dragging must never mutate the live graph before validation"
+        );
+
+        let action = drag(&ctx, &mut rack, &patch, 3.0, tone_out, pos2(654.0, 344.0));
+        assert!(
+            matches!(action, Some(RackAction::Command("replace_patch", _))),
+            "dropping onto an occupied input should replace its cable"
+        );
+    }
+
+    #[test]
+    fn invalid_or_cancelled_drag_keeps_routes_and_clears_gesture() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = openpatch_core::demo_patch();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let before = serde_json::to_value(&patch).unwrap();
+        // Output feeds back into its own upstream VCA: rejected before dispatch.
+        assert!(drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            pos2(804.0, 386.0),
+            pos2(464.0, 344.0)
+        )
+        .is_none());
+        assert!(rack.pending.is_none());
+        assert!(drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            pos2(464.0, 344.0),
+            pos2(600.0, 600.0)
+        )
+        .is_none());
+        assert!(rack.pending.is_none());
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.0,
+            vec![
+                egui::Event::PointerMoved(pos2(464.0, 344.0)),
+                button(pos2(464.0, 344.0), true),
+            ],
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.1,
+            vec![egui::Event::PointerMoved(pos2(500.0, 400.0))],
+        );
+        assert!(rack.pending.is_some());
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.2,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(rack.pending.is_none());
+        assert!(!rack.dragging_cable);
+        assert!(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.3,
+            vec![button(pos2(654.0, 344.0), false)]
+        )
+        .is_none());
+        assert_eq!(serde_json::to_value(&patch).unwrap(), before);
+    }
+
+    #[test]
+    fn knob_history_group_spans_one_drag_only() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = openpatch_core::demo_patch();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let knob = pos2(129.0, 147.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(knob), button(knob, true)],
+        );
+        let group = |action| match action {
+            Some(RackAction::Command("set_parameter", args)) => {
+                args["history_group"].as_str().unwrap().to_string()
+            }
+            _ => panic!("expected grouped parameter edit"),
+        };
+        let first = group(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::PointerMoved(knob - vec2(0.0, 10.0))],
+        ));
+        let second = group(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![egui::Event::PointerMoved(knob - vec2(0.0, 20.0))],
+        ));
+        assert_eq!(first, second);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.3,
+            vec![button(knob - vec2(0.0, 20.0), false)],
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            vec![egui::Event::PointerMoved(knob), button(knob, true)],
+        );
+        let next = group(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.1,
+            vec![egui::Event::PointerMoved(knob - vec2(0.0, 10.0))],
+        ));
+        assert_ne!(first, next);
+    }
+
+    #[test]
+    fn quantizer_keyboard_toggles_white_and_black_notes_by_their_bits() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let mut patch = Patch {
+            nodes: vec![Node {
+                id: "q".into(),
+                kind: "quantizer".into(),
+                params: Default::default(),
+            }],
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        for (time, position, expected) in [
+            (1.0, pos2(58.0, 180.0), 4094),
+            (2.0, pos2(72.5, 136.0), 4092),
+            (3.0, pos2(172.0, 206.0), 0),
+        ] {
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(position), button(position, true)],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![button(position, false)],
+            );
+            let Some(RackAction::Command("set_parameter", args)) = action else {
+                panic!("expected scale change");
+            };
+            assert_eq!(args["parameter"], "scale_mask");
+            assert_eq!(args["value"].as_u64().unwrap(), expected);
+            patch.nodes[0]
+                .params
+                .insert("scale_mask".into(), expected as f32);
+        }
+    }
+
     #[test]
     fn pointer_gestures_patch_jacks_adjust_knobs_and_snap_modules() {
         let ctx = egui::Context::default();
@@ -1312,7 +2043,9 @@ mod tests {
             vec![egui::Event::PointerMoved(output), button(output, true)],
         );
         frame(&ctx, &mut rack, &patch, 1.1, vec![button(output, false)]);
-        assert_eq!(rack.pending.as_deref(), Some("tone"));
+        assert!(
+            matches!(rack.pending.as_ref().map(|pending| &pending.origin), Some(CableEnd::Output(source)) if source == "tone")
+        );
         let input = pos2(464.0, 344.0);
         frame(
             &ctx,

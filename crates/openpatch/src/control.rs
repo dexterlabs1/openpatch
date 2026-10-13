@@ -2,7 +2,7 @@
 use openpatch_core::{catalog, render, write_wav, Cable, Node, Patch};
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -14,8 +14,29 @@ use std::{
 pub struct Session {
     patch: Patch,
     revision: u64,
+    state_id: u64,
     workspace: PathBuf,
+    undo: VecDeque<HistoryEntry>,
+    redo: Vec<HistoryEntry>,
+    history_group: Option<(String, String, String)>,
 }
+
+#[derive(Clone)]
+struct HistoryEntry {
+    patch: Patch,
+    state_id: u64,
+}
+
+const HISTORY_LIMIT: usize = 128;
+const MAX_EDITS: usize = 256;
+const EDIT_TOOLS: &[&str] = &[
+    "add_module",
+    "remove_module",
+    "connect",
+    "disconnect",
+    "set_parameter",
+    "set_output",
+];
 
 /// Shared only by control threads; never acquire this mutex in an audio callback.
 pub type SharedSession = Arc<Mutex<Session>>;
@@ -30,7 +51,15 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     match name {
         "export_visualizer" | "save_patch" | "render_audio" | "benchmark" => {
-            let mut snapshot = live.clone();
+            let mut snapshot = Session {
+                patch: live.patch.clone(),
+                revision: live.revision,
+                state_id: live.state_id,
+                workspace: live.workspace.clone(),
+                undo: VecDeque::new(),
+                redo: Vec::new(),
+                history_group: None,
+            };
             drop(live);
             snapshot.execute(name, args)
         }
@@ -50,6 +79,10 @@ impl Session {
         Ok(Self {
             patch: Patch::default(),
             revision: 0,
+            state_id: 0,
+            undo: VecDeque::new(),
+            redo: Vec::new(),
+            history_group: None,
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -62,6 +95,18 @@ impl Session {
         self.revision
     }
 
+    /// Stable identity of a retained graph state; undo restores this identity
+    /// while the concurrency revision always increases.
+    pub fn state_id(&self) -> u64 {
+        self.state_id
+    }
+
+    pub fn history_state_ids(&self) -> impl Iterator<Item = u64> + '_ {
+        std::iter::once(self.state_id)
+            .chain(self.undo.iter().map(|entry| entry.state_id))
+            .chain(self.redo.iter().map(|entry| entry.state_id))
+    }
+
     pub fn workspace(&self) -> &Path {
         &self.workspace
     }
@@ -71,7 +116,7 @@ impl Session {
     }
 
     pub fn snapshot(&self) -> Value {
-        json!({"revision":self.revision,"patch":self.patch})
+        json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch,"history":self.history()})
     }
 
     /// Commit a GUI or agent edit through the same validation and revision boundary.
@@ -81,12 +126,66 @@ impl Session {
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
+        self.commit(candidate, expected_revision, None)
+    }
+
+    fn commit(
+        &mut self,
+        candidate: Patch,
+        expected_revision: Option<u64>,
+        group: Option<(String, String, String)>,
+    ) -> Result<u64, String> {
         self.check_revision(expected_revision)?;
         candidate.compile()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
-        self.patch = candidate;
+        if group.is_some() && group == self.history_group {
+            self.patch = candidate;
+        } else {
+            if self.undo.len() == HISTORY_LIMIT {
+                self.undo.pop_front();
+            }
+            self.undo.push_back(HistoryEntry {
+                patch: std::mem::replace(&mut self.patch, candidate),
+                state_id: self.state_id,
+            });
+            self.state_id = revision;
+        }
+        self.history_group = group;
+        self.redo.clear();
         self.revision = revision;
         Ok(revision)
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    fn history(&self) -> Value {
+        json!({"undo_steps":self.undo.len(),"redo_steps":self.redo.len(),"limit":HISTORY_LIMIT})
+    }
+
+    fn restore_history(&mut self, redo: bool) -> Result<Value, String> {
+        let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        if redo {
+            let entry = self.redo.pop().ok_or("nothing to redo")?;
+            self.undo.push_back(HistoryEntry {
+                patch: std::mem::replace(&mut self.patch, entry.patch),
+                state_id: std::mem::replace(&mut self.state_id, entry.state_id),
+            });
+        } else {
+            let entry = self.undo.pop_back().ok_or("nothing to undo")?;
+            self.redo.push(HistoryEntry {
+                patch: std::mem::replace(&mut self.patch, entry.patch),
+                state_id: std::mem::replace(&mut self.state_id, entry.state_id),
+            });
+        }
+        self.revision = revision;
+        self.history_group = None;
+        Ok(self.snapshot())
     }
 
     fn check_revision(&self, expected: Option<u64>) -> Result<(), String> {
@@ -125,25 +224,14 @@ impl Session {
     }
 
     pub fn execute(&mut self, name: &str, args: Value) -> Result<Value, String> {
-        if !args.is_object() {
-            return Err("arguments must be an object".into());
-        }
         let schemas = tools();
-        let schema = schemas
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|s| s["name"] == name)
-            .ok_or_else(|| format!("unknown tool: {name}"))?;
-        let allowed = schema["inputSchema"]["properties"].as_object().unwrap();
-        for key in args.as_object().unwrap().keys() {
-            if !allowed.contains_key(key) {
-                return Err(format!("unknown argument: {key}"));
-            }
-        }
+        validate_arguments(&schemas, name, &args)?;
         match name {
             "catalog" => return Ok(catalog()),
             "inspect_patch" => return Ok(self.snapshot()),
+            "inspect_history" => {
+                return Ok(json!({"revision":self.revision,"history":self.history()}))
+            }
             "export_visualizer" => {
                 let path = self.file(string(&args, "filename")?, ".html")?;
                 crate::visualizer::export(&path).map_err(|e| e.to_string())?;
@@ -245,68 +333,192 @@ impl Session {
                 }
                 candidate = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             }
-            "add_module" => {
-                let params: BTreeMap<String, f32> =
-                    serde_json::from_value(args.get("params").cloned().unwrap_or(json!({})))
-                        .map_err(|e| e.to_string())?;
-                candidate.nodes.push(Node {
-                    id: string(&args, "id")?.into(),
-                    kind: string(&args, "kind")?.into(),
-                    params,
-                });
-            }
-            "remove_module" => {
-                let id = string(&args, "id")?;
-                if !candidate.nodes.iter().any(|n| n.id == id) {
-                    return Err("module not found".into());
+            "apply_edits" | "preview_edits" => {
+                let edits = args
+                    .get("edits")
+                    .and_then(Value::as_array)
+                    .ok_or("edits must be an array")?;
+                if edits.is_empty() || edits.len() > MAX_EDITS {
+                    return Err(format!("edits must contain 1..{MAX_EDITS} operations"));
                 }
-                candidate.nodes.retain(|n| n.id != id);
-                candidate.cables.retain(|c| c.from != id && c.to != id);
-                if candidate.output.as_deref() == Some(id) {
-                    candidate.output = None;
+                for (index, edit) in edits.iter().enumerate() {
+                    let result = (|| {
+                        let object = edit.as_object().ok_or("edit must be an object")?;
+                        if object.keys().any(|key| key != "tool" && key != "arguments") {
+                            return Err("edit accepts only tool and arguments".into());
+                        }
+                        let tool = string(edit, "tool")?;
+                        if !EDIT_TOOLS.contains(&tool) {
+                            return Err(format!("tool is not a graph edit: {tool}"));
+                        }
+                        let arguments = edit.get("arguments").ok_or("arguments required")?;
+                        validate_arguments(&schemas, tool, arguments)?;
+                        if arguments.get("expected_revision").is_some()
+                            || arguments.get("history_group").is_some()
+                        {
+                            return Err(
+                                "revision and history grouping belong to the transaction, not an edit".into(),
+                            );
+                        }
+                        apply_edit(&mut candidate, tool, arguments)
+                    })();
+                    result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
+                }
+                if name == "preview_edits" {
+                    candidate.compile()?;
+                    return Ok(
+                        json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate,"committed":false,"edit_count":edits.len()}),
+                    );
                 }
             }
-            "connect" => {
-                candidate.cables.push(Cable {
-                    from: string(&args, "from")?.into(),
-                    to: string(&args, "to")?.into(),
-                    input: string(&args, "input")?.into(),
-                });
-            }
-            "disconnect" => {
-                let to = string(&args, "to")?;
-                let input = string(&args, "input")?;
-                let before = candidate.cables.len();
-                candidate
-                    .cables
-                    .retain(|c| !(c.to == to && c.input == input));
-                if before == candidate.cables.len() {
-                    return Err("cable not found".into());
-                }
-            }
-            "set_parameter" => {
-                let id = string(&args, "id")?;
-                let node = candidate
-                    .nodes
-                    .iter_mut()
-                    .find(|n| n.id == id)
-                    .ok_or("module not found")?;
-                let value = args
-                    .get("value")
-                    .and_then(Value::as_f64)
-                    .ok_or("value must be a number")? as f32;
-                node.params
-                    .insert(string(&args, "parameter")?.into(), value);
-            }
-            "set_output" => {
-                candidate.output = Some(string(&args, "id")?.into());
-            }
+            "undo" => return self.restore_history(false),
+            "redo" => return self.restore_history(true),
+            name if EDIT_TOOLS.contains(&name) => apply_edit(&mut candidate, name, &args)?,
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
-        self.replace_patch(candidate, expected_revision)?;
+        let group = if name == "set_parameter" && args.get("history_group").is_some() {
+            let group = string(&args, "history_group")?;
+            if group.is_empty() || group.len() > 128 {
+                return Err("history_group must contain 1..128 bytes".into());
+            }
+            Some((
+                group.into(),
+                string(&args, "id")?.into(),
+                string(&args, "parameter")?.into(),
+            ))
+        } else {
+            None
+        };
+        self.commit(candidate, expected_revision, group)?;
         Ok(self.snapshot())
     }
+}
+
+fn patch_changes(before: &Patch, after: &Patch) -> Value {
+    let old: BTreeMap<_, _> = before.nodes.iter().map(|node| (&node.id, node)).collect();
+    let new: BTreeMap<_, _> = after.nodes.iter().map(|node| (&node.id, node)).collect();
+    let added: Vec<_> = new
+        .iter()
+        .filter(|(id, _)| !old.contains_key(*id))
+        .map(|(_, node)| node)
+        .collect();
+    let removed: Vec<_> = old
+        .iter()
+        .filter(|(id, _)| !new.contains_key(*id))
+        .map(|(_, node)| node)
+        .collect();
+    let changed: Vec<_> = new
+        .iter()
+        .filter_map(|(id, node)| {
+            let previous = old.get(id)?;
+            (previous.kind != node.kind || previous.params != node.params)
+                .then(|| json!({"id":id,"before":previous,"after":node}))
+        })
+        .collect();
+    let endpoints = |cable: &Cable| (cable.from.clone(), cable.to.clone(), cable.input.clone());
+    let old_cables: BTreeSet<_> = before.cables.iter().map(endpoints).collect();
+    let new_cables: BTreeSet<_> = after.cables.iter().map(endpoints).collect();
+    let added_cables: Vec<_> = after
+        .cables
+        .iter()
+        .filter(|cable| !old_cables.contains(&endpoints(cable)))
+        .collect();
+    let removed_cables: Vec<_> = before
+        .cables
+        .iter()
+        .filter(|cable| !new_cables.contains(&endpoints(cable)))
+        .collect();
+    json!({"added_modules":added,"removed_modules":removed,"changed_modules":changed,
+        "added_cables":added_cables,"removed_cables":removed_cables,
+        "output":{"before":before.output,"after":after.output}})
+}
+
+fn validate_arguments(schemas: &Value, name: &str, args: &Value) -> Result<(), String> {
+    if !args.is_object() {
+        return Err("arguments must be an object".into());
+    }
+    let schema = schemas
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == name)
+        .ok_or_else(|| format!("unknown tool: {name}"))?;
+    let allowed = schema["inputSchema"]["properties"].as_object().unwrap();
+    for key in args.as_object().unwrap().keys() {
+        if !allowed.contains_key(key) {
+            return Err(format!("unknown argument: {key}"));
+        }
+    }
+    for field in schema["inputSchema"]["required"].as_array().unwrap() {
+        let field = field.as_str().unwrap();
+        if args.get(field).is_none() {
+            return Err(format!("missing argument: {field}"));
+        }
+    }
+    Ok(())
+}
+
+fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), String> {
+    match name {
+        "add_module" => {
+            let params: BTreeMap<String, f32> =
+                serde_json::from_value(args.get("params").cloned().unwrap_or(json!({})))
+                    .map_err(|e| e.to_string())?;
+            candidate.nodes.push(Node {
+                id: string(args, "id")?.into(),
+                kind: string(args, "kind")?.into(),
+                params,
+            });
+        }
+        "remove_module" => {
+            let id = string(args, "id")?;
+            if !candidate.nodes.iter().any(|n| n.id == id) {
+                return Err("module not found".into());
+            }
+            candidate.nodes.retain(|n| n.id != id);
+            candidate.cables.retain(|c| c.from != id && c.to != id);
+            if candidate.output.as_deref() == Some(id) {
+                candidate.output = None;
+            }
+        }
+        "connect" => {
+            candidate.cables.push(Cable {
+                from: string(args, "from")?.into(),
+                to: string(args, "to")?.into(),
+                input: string(args, "input")?.into(),
+            });
+        }
+        "disconnect" => {
+            let to = string(args, "to")?;
+            let input = string(args, "input")?;
+            let before = candidate.cables.len();
+            candidate
+                .cables
+                .retain(|c| !(c.to == to && c.input == input));
+            if before == candidate.cables.len() {
+                return Err("cable not found".into());
+            }
+        }
+        "set_parameter" => {
+            let id = string(args, "id")?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|n| n.id == id)
+                .ok_or("module not found")?;
+            let value = args
+                .get("value")
+                .and_then(Value::as_f64)
+                .ok_or("value must be a number")? as f32;
+            node.params.insert(string(args, "parameter")?.into(), value);
+        }
+        "set_output" => {
+            candidate.output = Some(string(args, "id")?.into());
+        }
+        _ => return Err(format!("unknown graph edit: {name}")),
+    }
+    Ok(())
 }
 
 fn tool(
@@ -322,7 +534,16 @@ fn tool(
 pub fn tools() -> Value {
     let s = json!({"type":"string"});
     let rev = json!({"type":"integer","minimum":0});
+    let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
+        "type":"object","properties":{"tool":{"type":"string","enum":EDIT_TOOLS},"arguments":{"type":"object"}},
+        "required":["tool","arguments"],"additionalProperties":false
+    }});
     json!([
+        tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits; layouts and files are not included.",json!({}),&[],true),
+        tool("apply_edits","Atomically apply 1..256 graph edits, validate the final graph, and commit one revision and undo step. Any error leaves state unchanged. Each edit has tool and arguments; revisions belong on this outer transaction.",json!({"edits":edits,"expected_revision":rev}),&["edits"],false),
+        tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
+        tool("undo","Undo one shared GUI/MCP graph edit. Revision increases; file writes and rack layout are not undone.",json!({"expected_revision":rev}),&[],false),
+        tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
         tool("catalog","List built-in modules, input ports, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
@@ -331,11 +552,178 @@ pub fn tools() -> Value {
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect a source to a named input. Cycles and occupied inputs are rejected.",json!({"from":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
         tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
-        tool("set_parameter","Set a finite parameter within catalog limits.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev}),&["id","parameter","value"],false),
+        tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_output","Select a module as the mono rendering output.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
         tool("render_audio","Render offline from reset to mono 16-bit WAV in workspace. Does not play speakers. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30}}),&["filename","seconds"],false),
         tool("benchmark","Measure this patch's offline DSP throughput, excluding compilation. Release builds recommended. No VCV Rack comparison.",json!({"seconds":{"type":"number","minimum":0.01,"maximum":5}}),&[],true)
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session() -> Session {
+        Session::new(&std::env::temp_dir()).unwrap()
+    }
+
+    fn edits() -> Value {
+        json!({"expected_revision":0,"edits":[
+            {"tool":"connect","arguments":{"from":"source","to":"out","input":"signal"}},
+            {"tool":"add_module","arguments":{"id":"source","kind":"constant","params":{"value":0.25}}},
+            {"tool":"add_module","arguments":{"id":"out","kind":"output"}},
+            {"tool":"set_output","arguments":{"id":"out"}}
+        ]})
+    }
+
+    #[test]
+    fn preview_and_batch_validate_final_graph_and_commit_once() {
+        let mut s = session();
+        let before = s.snapshot();
+        let preview = s.execute("preview_edits", edits()).unwrap();
+        assert_eq!(s.snapshot(), before);
+        assert_eq!(preview["committed"], false);
+        assert_eq!(
+            preview["changes"]["added_modules"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            preview["changes"]["added_cables"].as_array().unwrap().len(),
+            1
+        );
+        let result = s.execute("apply_edits", edits()).unwrap();
+        assert_eq!(result["patch"], preview["patch"]);
+        assert_eq!(result["revision"], 1);
+        assert_eq!(result["history"]["undo_steps"], 1);
+        assert_eq!(render(s.patch(), 0.001).unwrap()[0], 0.25);
+        let undone = s.execute("undo", json!({"expected_revision":1})).unwrap();
+        assert_eq!(undone["patch"], before["patch"]);
+        assert_eq!(undone["revision"], 2);
+        assert_eq!(undone["state_id"], before["state_id"]);
+        let redone = s.execute("redo", json!({"expected_revision":2})).unwrap();
+        assert_eq!(redone["patch"], preview["patch"]);
+        assert_eq!(redone["revision"], 3);
+        assert_eq!(redone["state_id"], result["state_id"]);
+    }
+
+    #[test]
+    fn failed_batch_and_stale_edits_preserve_graph_history_and_revision() {
+        let mut s = session();
+        s.execute("apply_edits", edits()).unwrap();
+        s.execute("undo", json!({})).unwrap();
+        let before = s.snapshot();
+        let mut invalid = edits();
+        invalid["expected_revision"] = json!(2);
+        invalid["edits"][3]["arguments"]["id"] = json!("missing");
+        for tool in ["apply_edits", "preview_edits"] {
+            assert!(s.execute(tool, invalid.clone()).is_err());
+            assert_eq!(s.snapshot(), before);
+            assert!(s
+                .execute(tool, edits())
+                .unwrap_err()
+                .contains("revision conflict"));
+            assert_eq!(s.snapshot(), before);
+        }
+        assert!(s.execute("redo", json!({"expected_revision":0})).is_err());
+        assert_eq!(s.snapshot(), before);
+        s.execute("redo", json!({"expected_revision":2})).unwrap();
+    }
+
+    #[test]
+    fn transaction_rejects_io_nested_transactions_and_malformed_edits() {
+        let mut s = session();
+        let before = s.snapshot();
+        for edit in [
+            json!({"tool":"save_patch","arguments":{"filename":"forbidden.json"}}),
+            json!({"tool":"apply_edits","arguments":{"edits":[]}}),
+            json!({"tool":"add_module","arguments":{"id":"a","kind":"constant","typo":0}}),
+            json!({"tool":"add_module","arguments":{"id":"a"}}),
+            json!({"tool":"add_module","arguments":{"id":"a","kind":"constant","expected_revision":0}}),
+            json!({"tool":"add_module","arguments":{"id":"a","kind":"constant"},"extra":true}),
+        ] {
+            let error = s
+                .execute("apply_edits", json!({"edits":[edit]}))
+                .unwrap_err();
+            assert!(error.starts_with("edit 1:"), "{error}");
+            assert_eq!(s.snapshot(), before);
+        }
+        for edits in [vec![], vec![json!({}); MAX_EDITS + 1]] {
+            assert!(s.execute("apply_edits", json!({"edits":edits})).is_err());
+        }
+        assert_eq!(s.snapshot(), before);
+    }
+
+    #[test]
+    fn new_edit_clears_redo_and_history_is_bounded() {
+        let mut s = session();
+        s.execute("add_module", json!({"id":"a","kind":"constant"}))
+            .unwrap();
+        for i in 0..150 {
+            s.execute(
+                "set_parameter",
+                json!({"id":"a","parameter":"value","value":i as f32 / 100.0}),
+            )
+            .unwrap();
+        }
+        assert_eq!(s.undo.len(), HISTORY_LIMIT);
+        for _ in 0..HISTORY_LIMIT {
+            s.execute("undo", json!({})).unwrap();
+        }
+        assert!(!s.can_undo());
+        assert!(s.can_redo());
+        let before = s.snapshot();
+        assert!(s.execute("undo", json!({})).is_err());
+        assert_eq!(s.snapshot(), before);
+        s.execute(
+            "set_parameter",
+            json!({"id":"a","parameter":"value","value":-0.5}),
+        )
+        .unwrap();
+        assert!(!s.can_redo());
+        assert!(s.execute("redo", json!({})).is_err());
+    }
+
+    #[test]
+    fn knob_gesture_groups_only_consecutive_changes_to_same_parameter() {
+        let mut s = session();
+        s.execute(
+            "add_module",
+            json!({"id":"a","kind":"constant","params":{"value":0.0}}),
+        )
+        .unwrap();
+        for value in [0.2, 0.4, 0.8] {
+            s.execute(
+                "set_parameter",
+                json!({"id":"a","parameter":"value","value":value,"history_group":"gesture1"}),
+            )
+            .unwrap();
+        }
+        assert_eq!(s.undo.len(), 2);
+        assert_eq!(s.revision(), 4);
+        assert_eq!(s.state_id(), 2, "one gesture retains its history identity");
+        assert_eq!(s.history_state_ids().count(), 3);
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(s.patch.nodes[0].params["value"], 0.0);
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(s.patch.nodes[0].params["value"], 0.8);
+        s.execute(
+            "set_parameter",
+            json!({"id":"a","parameter":"value","value":1.0,"history_group":"gesture1"}),
+        )
+        .unwrap();
+        assert_eq!(s.undo.len(), 3, "undo/redo must break grouping");
+        let before = s.snapshot();
+        assert!(s
+            .execute(
+                "set_parameter",
+                json!({"id":"a","parameter":"value","value":1.0,"history_group":false})
+            )
+            .is_err());
+        assert_eq!(s.snapshot(), before);
+    }
 }

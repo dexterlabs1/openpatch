@@ -3,8 +3,9 @@
 //!
 //! Compile on a control thread, then move the engine to the audio thread.
 //! `process_block` performs no allocation, locking, or I/O. Unpatched inputs
-//! are zero, except gain.cv defaults to 1 and analog_vca.cv to 10 V. Signals are unclipped in normal use, with a ±1,000,000
-//! safety bound on arithmetic modules; WAV export clips to ±1.
+//! are zero, except gain.cv defaults to 1, analog_vca.cv to 10 V, and
+//! attenuverter.signal to 10 V. Signals are unclipped in normal use, with a
+//! ±1,000,000 safety bound on arithmetic modules; WAV export clips to ±1.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,6 +17,7 @@ use std::path::Path;
 
 mod analog;
 pub mod ladder;
+mod utilities;
 
 pub const BLOCK_SIZE: usize = 128;
 pub const MAX_NODES: usize = 256;
@@ -81,7 +83,7 @@ pub fn catalog() -> Value {
         "version": 1,
         "sample_rate": {"min": 8000, "max": 192000, "default": 48000},
         "limits": {"nodes": MAX_NODES, "cables": MAX_CABLES, "block_size": BLOCK_SIZE},
-        "unpatched_inputs": "zero except gain.cv defaults to 1 and analog_vca.cv defaults to 10 V", "cycles": "rejected", "channels": 1,
+        "unpatched_inputs": "zero except gain.cv defaults to 1, analog_vca.cv defaults to 10 V, and attenuverter.signal defaults to 10 V", "cycles": "rejected", "channels": 1,
         "modules": [
             {"kind":"oscillator", "description":"Sine oscillator; FM is additive Hz, instantaneous frequency clamped to 0..0.45 × sample rate", "inputs":["fm"], "params":{
                 "frequency":{"default":220.0,"min":0.0,"max":20000.0,"unit":"Hz","sample_rate_max_ratio":0.45},
@@ -116,17 +118,22 @@ pub fn catalog() -> Value {
             {"kind":"audio_out", "title":"AUDIO", "model":"idealized", "description":"Voltage-to-audio interface: 10 V = digital full scale (1.0). Select this module as rack output for voltage patches.", "inputs":["signal"], "params":{}}
         ]
     });
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(utilities::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
         }
     }
-    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
+    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
     result
 }
 
 #[derive(Debug)]
 enum Dsp {
+    Utility(utilities::Utility),
     Vco(analog::Vco),
     Ladder(Box<ladder::Ladder>),
     Vca(Box<analog::Vca>),
@@ -151,6 +158,9 @@ enum Dsp {
 
 impl Dsp {
     fn port(&self, name: &str) -> Option<usize> {
+        if let Self::Utility(utility) = self {
+            return utility.port(name);
+        }
         match (self, name) {
             (Self::Vco(_), "pitch") | (Self::Adsr(_), "gate") => Some(0),
             (Self::Vco(_), "fm") | (Self::Adsr(_), "retrigger") => Some(1),
@@ -215,12 +225,8 @@ fn build_dsp(node: &Node, rate: u32) -> Result<Dsp, String> {
         "gain" => &["gain"],
         "mixer" | "output" => &[],
         "lowpass" => &["cutoff"],
-        _ => {
-            return Err(format!(
-                "node '{}': unknown module kind '{}'",
-                node.id, node.kind
-            ))
-        }
+        _ => utilities::allowed(&node.kind)
+            .ok_or_else(|| format!("node '{}': unknown module kind '{}'", node.id, node.kind))?,
     };
     for name in node.params.keys() {
         if !allowed.contains(&name.as_str()) {
@@ -316,6 +322,9 @@ fn build_dsp(node: &Node, rate: u32) -> Result<Dsp, String> {
             }
         }
         "output" => Dsp::Output,
+        kind if utilities::allowed(kind).is_some() => {
+            Dsp::Utility(utilities::Utility::build(node)?)
+        }
         _ => unreachable!(),
     })
 }
@@ -471,6 +480,7 @@ impl Engine {
                 continue;
             }
             match (&mut node.dsp, &old_node.dsp) {
+                (Dsp::Utility(current), Dsp::Utility(old)) => current.copy_state_from(old),
                 (Dsp::Vco(current), Dsp::Vco(old)) => current.phase = old.phase,
                 (Dsp::Gate(current), Dsp::Gate(old)) => current.phase = old.phase,
                 (Dsp::Ladder(current), Dsp::Ladder(old)) => current.copy_state_from(old),
@@ -513,6 +523,12 @@ impl Engine {
                     .unwrap_or(&zero);
                 let buffer = &mut current[0];
                 match &mut node.dsp {
+                    Dsp::Utility(utility) => {
+                        for sample in 0..length {
+                            buffer[sample] =
+                                utility.process(a[sample], b[sample], node.inputs[0].is_some());
+                        }
+                    }
                     Dsp::Vco(vco) => {
                         for sample in 0..length {
                             buffer[sample] = vco.process(a[sample], b[sample]);

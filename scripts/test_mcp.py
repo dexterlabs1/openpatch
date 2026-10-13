@@ -237,6 +237,32 @@ class OpenPatchMCPTests(unittest.TestCase):
              "expected_revision": revision},
         )
 
+    def test_atomic_preview_commit_and_shared_history(self) -> None:
+        before = self.patch_snapshot()
+        arguments = {"expected_revision": before["revision"], "edits": [
+            {"tool": "add_module", "arguments": {"id": "constant", "kind": "constant", "params": {"value": 0.25}}},
+            {"tool": "set_output", "arguments": {"id": "constant"}},
+        ]}
+        preview = self.payload(self.require_tool_success("preview_edits", arguments))
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertFalse(preview["committed"])
+        committed = self.payload(self.require_tool_success("apply_edits", arguments))
+        self.assertEqual(committed["revision"], before["revision"] + 1)
+        self.assertEqual(committed["patch"], preview["patch"])
+        self.assertEqual(committed["history"]["undo_steps"], 1)
+        self.require_tool_error("apply_edits", arguments)
+        self.assertEqual(self.patch_snapshot(), committed)
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "remove_module", "arguments": {"id": "constant"}},
+            {"tool": "set_output", "arguments": {"id": "missing"}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), committed)
+        undone = self.payload(self.require_tool_success("undo", {"expected_revision": committed["revision"]}))
+        self.assertEqual(undone["patch"], before["patch"])
+        redone = self.payload(self.require_tool_success("redo", {"expected_revision": undone["revision"]}))
+        self.assertEqual(redone["patch"], committed["patch"])
+        self.assertEqual(redone["revision"], committed["revision"] + 2)
+
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")
         self.assertIn("result", listed, f"tools/list failed: {listed}")
@@ -246,7 +272,8 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertTrue(
             {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
              "connect", "disconnect", "set_parameter", "set_output", "save_patch",
-             "load_patch", "render_audio", "benchmark"}.issubset(names),
+             "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
+             "inspect_history", "undo", "redo"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         catalog = self.require_tool_success("catalog")

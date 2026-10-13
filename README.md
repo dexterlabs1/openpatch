@@ -27,7 +27,7 @@
 - **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
-- **A rack agents can work with.** Claude and Codex can inspect, patch, tune, save, and render through a local MCP server using the same validated controls as the UI.
+- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, tune, save, and render through a local MCP server using the same validated controls as the UI.
 
 ## Get started on macOS
 
@@ -51,12 +51,14 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 |---|---|
 | Play / pause | **Space** |
 | Add a module | **Enter**, **+ Add module**, or right-click empty rack space |
-| Patch / unplug | Drag **OUT** to an input, or click the two jacks; right-click an input to unplug |
+| Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value | Double-click the displayed value |
 | Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
-| Save / open / undo | **Cmd-S** / **Cmd-O** / **Cmd-Z** |
+| Save / open / undo / redo | **Cmd-S** / **Cmd-O** / **Cmd-Z** / **Shift-Cmd-Z** |
+
+Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
@@ -81,7 +83,9 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 ## Where it stands
 
-**Thirteen built-in kinds:** six reference-voice modules and seven legacy utilities. The browser labels circuit-derived, idealized, and legacy models. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
+
+**Eighteen built-in kinds:** six reference-voice modules, five voltage utilities, and seven legacy modules. The new utilities are quantizer, sample-and-hold, seeded white noise, attenuverter, and crossfade. Try **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
@@ -94,6 +98,7 @@ The current engine is mono, uses the default output device, and rejects feedback
 | Guide | What it covers |
 |---|---|
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
+| [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |
 | [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
 | [MCP integration](docs/MCP.md) | Client configuration, tools, revision checks, and file safety |
 | [Visualizers](docs/VISUALIZERS.md) | Native rendering, shader uniforms, and optional HTML export |

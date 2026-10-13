@@ -11,6 +11,7 @@ use openpatch::control::{execute_shared, SharedSession};
 use openpatch_core::{catalog, Patch};
 use serde_json::{json, Value};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     io::Write,
     path::PathBuf,
     time::{Duration, Instant},
@@ -36,6 +37,8 @@ pub struct OpenPatch {
     shared: SharedSession,
     patch: Patch,
     revision: u64,
+    state_id: u64,
+    history_layouts: BTreeMap<u64, Value>,
     audio_revision: Option<u64>,
     audio: Option<Audio>,
     device: String,
@@ -61,8 +64,8 @@ pub struct OpenPatch {
     start: Instant,
     mcp: bool,
     saved_revision: u64,
-    undo_patch: Option<Patch>,
-    undo_layout: Option<Value>,
+    can_undo: bool,
+    can_redo: bool,
     confirm_close: bool,
     confirm_discard: Option<PendingAction>,
     layout_dirty: bool,
@@ -89,11 +92,12 @@ impl OpenPatch {
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
-        let (patch, revision, workspace) = {
+        let (patch, revision, state_id, workspace) = {
             let s = shared.lock().unwrap();
             (
                 s.patch().clone(),
                 s.revision(),
+                s.state_id(),
                 s.workspace().display().to_string(),
             )
         };
@@ -109,6 +113,8 @@ impl OpenPatch {
             shared,
             patch,
             revision,
+            state_id,
+            history_layouts: BTreeMap::new(),
             audio_revision,
             audio,
             device,
@@ -134,8 +140,8 @@ impl OpenPatch {
             start: Instant::now(),
             mcp,
             saved_revision: revision,
-            undo_patch: None,
-            undo_layout: None,
+            can_undo: false,
+            can_redo: false,
             confirm_close: false,
             confirm_discard: None,
             layout_dirty: false,
@@ -198,9 +204,19 @@ impl OpenPatch {
     }
     fn sync(&mut self) {
         if let Ok(s) = self.shared.try_lock() {
+            self.can_undo = s.can_undo();
+            self.can_redo = s.can_redo();
             if s.revision() != self.revision {
-                self.undo_patch = Some(self.patch.clone());
-                self.undo_layout = Some(self.rack.layout());
+                self.history_layouts
+                    .insert(self.state_id, self.rack.layout());
+                if self.state_id != s.state_id() {
+                    self.state_id = s.state_id();
+                    if let Some(layout) = self.history_layouts.get(&self.state_id) {
+                        let _ = self.rack.restore_layout(layout);
+                    }
+                }
+                let retained: BTreeSet<_> = s.history_state_ids().collect();
+                self.history_layouts.retain(|id, _| retained.contains(id));
                 self.patch = s.patch().clone();
                 self.revision = s.revision();
             }
@@ -231,15 +247,15 @@ impl OpenPatch {
             self.status = "Audio stopped".into();
         }
     }
-    fn undo(&mut self) {
-        let layout = self.undo_layout.take();
-        if let Some(patch) = self.undo_patch.take() {
-            if self.command("replace_patch", json!({"patch":patch})) {
-                if let Some(layout) = layout {
-                    let _ = self.rack.restore_layout(&layout);
-                }
-                self.status = "Previous patch restored".into();
+    fn history(&mut self, redo: bool) {
+        let tool = if redo { "redo" } else { "undo" };
+        if self.command(tool, json!({})) {
+            self.status = if redo {
+                "Patch edit redone"
+            } else {
+                "Patch edit undone"
             }
+            .into();
         }
     }
     fn toggle_play(&mut self) {
@@ -383,6 +399,14 @@ impl OpenPatch {
                             );
                             ui.close();
                         }
+                        if ui.button("Clocked random voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/clocked-random-voice.json"
+                            ))
+                            .expect("valid bundled random voice");
+                            self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
                         if ui.button("Tremolo study").clicked() {
                             self.replace_from_menu(openpatch_core::demo_patch(), "Tremolo study");
                             ui.close();
@@ -390,15 +414,20 @@ impl OpenPatch {
                     });
                     ui.menu_button("Edit", |ui| {
                         if ui
-                            .add_enabled(
-                                self.undo_patch.is_some(),
-                                egui::Button::new("Undo last patch edit   ⌘Z"),
-                            )
+                            .add_enabled(self.can_undo, egui::Button::new("Undo patch edit   ⌘Z"))
                             .clicked()
                         {
-                            self.undo();
+                            self.history(false);
                             ui.close();
                         }
+                        if ui
+                            .add_enabled(self.can_redo, egui::Button::new("Redo patch edit   ⇧⌘Z"))
+                            .clicked()
+                        {
+                            self.history(true);
+                            ui.close();
+                        }
+                        ui.separator();
                         if ui.button("Add module…   Enter").clicked() {
                             self.browse();
                             ui.close();
@@ -660,6 +689,7 @@ impl OpenPatch {
                                     "circuit-derived" => "Circuit-derived models",
                                     "idealized" => "Idealized utilities",
                                     "legacy" => "Legacy modules",
+                                    "functional" => "Voltage utilities",
                                     other => other,
                                 })
                                 .strong()
@@ -890,13 +920,23 @@ impl OpenPatch {
             assert!(v.compile(gl, "this is not GLSL").is_err());
             v.compile(gl, DEFAULT_SHADER).expect("Shader recovery");
         }
-        self.visuals_open = (*frame >= 2 && *frame <= 8) || *captures >= 1;
+        self.visuals_open = (*frame >= 2 && *frame <= 8) || *captures == 1;
         self.visual_mode = match *frame {
             2..=4 => 1,
             5..=7 => 2,
             _ => 0,
         };
-        if *frame == 12 || *frame == 24 {
+        if *frame == 28 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/clocked-random-voice.json"))
+                    .expect("valid bundled random voice");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("random voice compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(0.75);
+            self.title = "Clocked random voice".into();
+        }
+        if *frame == 12 || *frame == 24 || *frame == 36 {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -913,10 +953,10 @@ impl OpenPatch {
                 image.pixels.windows(2).filter(|p| p[0] != p[1]).count() > 1000,
                 "Blank window"
             );
-            let target = if *captures == 0 {
-                path.clone()
-            } else {
-                path.with_file_name("rack-visuals.png")
+            let target = match *captures {
+                0 => path.clone(),
+                1 => path.with_file_name("rack-visuals.png"),
+                _ => path.with_file_name("rack-utilities.png"),
             };
             image::save_buffer(
                 target,
@@ -927,7 +967,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 2 {
+            if *captures == 3 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -952,7 +992,7 @@ impl eframe::App for OpenPatch {
                 self.file_dialog(FileMode::Open);
             }
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
-                self.undo();
+                self.history(ctx.input(|i| i.modifiers.shift));
             }
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Num0)) {
                 self.rack.reset_view();

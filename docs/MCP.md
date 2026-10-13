@@ -78,7 +78,7 @@ configuration is changed by this repository.
 
 1. Call `catalog` to discover modules, port names, parameters, and limits.
 2. Call `inspect_patch` for the patch and current revision.
-3. Use `replace_patch` for an atomic graph change, or edit individual modules and cables.
+3. Use `preview_edits` to validate a proposed group of edits, then `apply_edits` to commit it atomically. `replace_patch` replaces the entire graph; individual edit tools remain available.
 4. Select the audible node with `set_output`. Without an output the patch is silent.
 5. Press Play locally to audition the live patch, or use `render_audio` with a new
    `.wav` filename and `seconds` between 0.001 and 30 to export it.
@@ -91,6 +91,49 @@ Tool failures return `isError: true`; malformed protocol calls use JSON-RPC erro
 The desktop starts with the demo patch. Call `inspect_patch` before editing;
 include `expected_revision` to detect edits made in the window since your read.
 Exchange saved JSON patches to move between separate client processes.
+
+## Atomic edits and shared history
+
+`apply_edits` accepts 1–256 graph edits and validates the **final** graph. The
+whole transaction commits one revision and one undo step. Temporary disconnected
+or unresolved connections inside the transaction are allowed; the final graph
+must compile. Any failure leaves the live graph, revision, and history unchanged.
+The supported operations are `add_module`, `remove_module`, `connect`,
+`disconnect`, `set_parameter`, and `set_output`. File I/O, nested transactions,
+and history commands are excluded.
+
+For example, pass this argument object to `preview_edits`, using the revision
+from `inspect_patch` (replace `7` below):
+
+```json
+{
+  "expected_revision": 7,
+  "edits": [
+    {"tool": "add_module", "arguments": {"id": "pitch", "kind": "constant", "params": {"value": 1}}},
+    {"tool": "connect", "arguments": {"from": "pitch", "to": "vco", "input": "pitch"}}
+  ]
+}
+```
+
+This assumes an existing `vco` with an unoccupied `pitch` input. Preview returns
+`committed: false`, the validated candidate patch, the base revision, and a
+`changes` summary of added/removed/modified modules, cables, and output; it does
+not mutate the live patch. Submit the same arguments to `apply_edits` to commit.
+If a GUI or MCP edit happened meanwhile, the revision check rejects the request;
+inspect again and revise the proposal. Preview does not reserve the session.
+
+`undo`, `redo`, and `inspect_history` share the desktop's history, bounded to 128
+graph edits. Cmd-Z and Shift-Cmd-Z invoke the same commands. Revisions always
+increase, including undo/redo. New edits clear redo. History is in memory only;
+layout movement, file writes, and playback state are not included yet. The desktop
+retains layouts for graph states it has displayed, so undoing a module deletion
+restores its placement. States created and undone entirely between GUI polls may
+not have a recorded layout. `state_id` identifies a retained history state; use
+`revision`, not `state_id`, for concurrency checks.
+Consecutive `set_parameter` calls may use the same `history_group` string to
+form a single undo step for one parameter gesture, while each edit still advances
+the revision. Use a unique group per gesture; unrelated edits and undo/redo
+break the group. Omit this field inside transactions.
 
 ## Headless offline mode
 
@@ -111,7 +154,8 @@ Compilation, JSON parsing, file access, MCP dispatch, and rendering orchestratio
 run on control threads. The native GUI observes committed revisions, compiles a
 device-rate engine, and transfers it to the audio callback through bounded
 queues. The callback never locks the session or dispatches MCP commands. Edits
-crossfade to fresh engines; oscillator and filter state are reset by graph edits.
+transfer compatible oscillator, capacitor, filter, and resampler state by stable
+module ID before crossfading. New or changed module kinds start from reset.
 
 Offline rendering and benchmarks use a coherent patch snapshot and release the
 session mutex before processing. MCP requests on that connection remain

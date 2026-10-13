@@ -81,7 +81,7 @@ the current block graph would change feedback timing and pitch.
    See [analog models](ANALOG_MODELS.md) and [module coverage](MODULE_COVERAGE.md).
 2. **Live instrument refinement:** device selection, latency controls, xrun and
    callback percentile measurements, with macOS ARM as the first interactive target.
-3. **Rack workflow and breadth:** multi-step undo/redo, named outputs, sequencing,
+3. **Rack workflow and breadth:** layout undo/redo, named outputs, sequencing,
    MIDI, polyphony, explicit feedback, and richer project persistence.
 4. **Additional control transports:** multiple agents attached to one existing
    application session, subscriptions, and cancellable background rendering.
@@ -93,3 +93,8 @@ the current block graph would change feedback timing and pitch.
 A VCV C++ plugin compatibility layer would be a separate substantial project.
 Platform CI validates the portable headless core; hardware audio and native UI
 require actual device testing before a platform can be called production-ready.
+
+The current cross-cutting parity target and acceptance gates are tracked in the
+[parity roadmap](ROADMAP.md). The shared control session supports atomic batch
+edits, preview, and 128 graph undo/redo steps; GUI and MCP use the same revision
+boundary. Layout history is a separate remaining gap.
