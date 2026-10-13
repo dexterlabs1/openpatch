@@ -328,10 +328,10 @@ uniform int u_mode;
 out vec4 outColor;
 
 float fft(float x) {
-  return texture(u_audio, vec2(clamp(x, 0.0, 0.499), 0.5)).r;
+  return texture(u_audio, vec2((clamp(x / 0.499, 0.0, 1.0) * 255.0 + 0.5) / 512.0, 0.5)).r;
 }
 float wave(float x) {
-  return texture(u_audio, vec2(0.5 + (clamp(x, -1.0, 1.0) + 1.0) * 0.249, 0.5)).r * 2.0 - 1.0;
+  return texture(u_audio, vec2((256.5 + (clamp(x, -1.0, 1.0) + 1.0) * 127.5) / 512.0, 0.5)).r * 2.0 - 1.0;
 }
 float lineMask(float distanceToLine, float thickness) {
   return 1.0 - smoothstep(thickness, thickness + fwidth(distanceToLine) * 1.8, distanceToLine);
@@ -354,15 +354,27 @@ void main() {
     float low = fft(0.04);
     float mid = fft(0.25);
     float high = fft(0.44);
-    float drift = sin(p.x * 2.4 + time * 0.22) * 0.18 + cos(p.y * 3.2 - time * 0.17) * 0.17;
-    float cloudA = sin(p.x * 2.7 + p.y * 1.7 + time * 0.18 + low * 2.2);
-    float cloudB = cos(p.y * 3.1 - p.x * 1.3 - time * 0.13 + mid * 1.8);
-    float veil = smoothstep(-0.48, 0.78, cloudA * 0.48 + cloudB * 0.36 + drift + energy * 0.3);
-    float halo = exp(-length(p - vec2(0.14 * sin(time * 0.12), 0.12 * cos(time * 0.1))) * (1.65 - energy * 0.28));
-    vec3 aurora = mix(vec3(0.035, 0.13, 0.17), vec3(0.2, 0.62, 0.49), veil * (0.55 + low * 0.8));
-    aurora = mix(aurora, vec3(0.48, 0.3, 0.56), smoothstep(0.12, 0.9, cloudB * 0.5 + high * 1.3) * 0.52);
-    color += aurora * (0.16 + veil * 0.45) + vec3(0.18, 0.42, 0.44) * halo * (0.09 + energy * 0.18);
-    color += vec3(0.06, 0.13, 0.18) * exp(-abs(p.y + 0.36 * sin(p.x * 2.0 + time * 0.1)) * 4.0) * (0.07 + mid * 0.18);
+    vec2 q = p * vec2(0.82, 1.0);
+    color = vec3(0.006, 0.012, 0.025);
+    for (int i = 0; i < 6; i++) {
+      float band = float(i);
+      float drift = time * (0.13 + band * 0.012);
+      float center = 0.20 * sin(q.x * 2.8 + drift + band * 0.38)
+                   + 0.08 * sin(q.x * 5.3 - drift * 1.4 + band * 0.22)
+                   + (band - 2.5) * 0.040;
+      center += low * 0.13 * sin(q.x * 4.0 + band) + energy * 0.08;
+      float d = q.y - center;
+      float filament = exp(-abs(d) * (180.0 - energy * 70.0));
+      float ribbon = exp(-abs(d) * 28.0) * 0.24;
+      float curtain = exp(-abs(d - 0.08) * 9.0) * 0.05;
+      float detail = 0.65 + 0.35 * sin(q.x * 36.0 + band * 2.0 + time * 0.5);
+      vec3 tint = mix(vec3(0.06, 0.82, 0.73), vec3(0.54, 0.16, 0.96), band / 5.0);
+      tint = mix(tint, vec3(1.0, 0.38, 0.62), high * 0.45);
+      color += tint * (filament * 0.65 + ribbon + curtain * detail) * (0.55 + mid + energy);
+    }
+    vec2 stars = floor(gl_FragCoord.xy / 3.0);
+    float random = fract(sin(dot(stars, vec2(127.1, 311.7))) * 43758.5453);
+    color += vec3(0.30, 0.49, 0.65) * step(0.9997, random) * 0.30;
   } else if (u_mode == 1) {
     float x = clamp(uv.x, 0.001, 0.999);
     float freq = fft(x * 0.499) * u_sensitivity;
@@ -388,7 +400,7 @@ void main() {
     color += vec3(0.69, 1.0, 0.87) * raw * 0.95;
   }
 
-  float vignette = smoothstep(1.25, 0.15, length(p));
+  float vignette = (1.0 - smoothstep(0.15, 1.25, length(p)));
   color *= 0.52 + vignette * 0.48;
   color = pow(max(color, 0.0), vec3(0.88));
   outColor = vec4(color, 1.0);
