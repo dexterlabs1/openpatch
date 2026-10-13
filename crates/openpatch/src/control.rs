@@ -81,7 +81,9 @@ impl Application {
             "export_visualizer" => {
                 let path = self.file(string(&args, "filename")?, ".html")?;
                 crate::visualizer::export(&path).map_err(|e| e.to_string())?;
-                return Ok(json!({"filename":args["filename"],"shader_profile":"webgl2-glsl-es-300-v1","instructions":"Open the HTML in a browser, select a local audio file, then press Play. This is a standalone visual preview, not a live native audio session."}));
+                return Ok(
+                    json!({"filename":args["filename"],"shader_profile":"webgl2-glsl-es-300-v1","instructions":"Open the HTML in a browser, select a local audio file, then press Play. This is a standalone visual preview, not a live native audio session."}),
+                );
             }
             "save_patch" => {
                 let path = self.file(string(&args, "filename")?, ".json")?;

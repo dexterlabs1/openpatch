@@ -344,6 +344,33 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_error("save_patch", {"filename": "safe.json"})
         self.assertEqual(safe_path.read_bytes(), original, "rejected overwrite changed the file")
 
+    def test_visualizer_export_creates_html_and_rejects_overwrite(self) -> None:
+        output = self.workspace / "visualizer.html"
+        exported = subprocess.run(
+            [str(self.executable.resolve()), "visualizer", str(output)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(exported.returncode, 0, exported.stderr or exported.stdout)
+        self.assertTrue(output.is_file(), "visualizer command did not create an HTML file")
+        original = output.read_bytes()
+        self.assertGreater(len(original), 10_000, "exported visualizer HTML is unexpectedly small")
+        source = original.decode("utf-8")
+        self.assertIn("Visual Lab", source)
+        self.assertIn("u_audio", source)
+
+        overwrite = subprocess.run(
+            [str(self.executable.resolve()), "visualizer", str(output)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertNotEqual(overwrite.returncode, 0, "visualizer command overwrote an existing file")
+        self.assertEqual(output.read_bytes(), original, "rejected export changed the existing file")
+
     def test_parse_error_recovers_and_notifications_are_silent(self) -> None:
         self.client.send_raw("{this is not json")
         parse_error = json.loads(self.client.read_line())

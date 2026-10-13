@@ -310,6 +310,13 @@
       const modeNames = ["Aurora field", "Spectrum", "Oscilloscope"];
 
       const fragmentShader = `#version 300 es
+// Profile: webgl2-glsl-es-300-v1
+// u_audio: R8 texture 512x1; texels 0..255 FFT, 256..511 waveform.
+// FFT 512 samples, Web Audio Blackman window; bin Hz = bin * sampleRate/512.
+// FFT normalized from -100..-30 dB. Waveform byte128 is zero.
+// u_level: smoothed mean normalized FFT magnitude, not RMS.
+// u_time: audio playback seconds when loaded; ambient clock otherwise.
+// u_resolution: physical canvas pixels (DPR capped at 2).
 precision highp float;
 precision highp sampler2D;
 uniform sampler2D u_audio;
@@ -413,7 +420,8 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       const audioTextureData = new Uint8Array(512);
-      audioTextureData.fill(128);
+      audioTextureData.fill(0, 0, 256);
+      audioTextureData.fill(128, 256);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 512, 1, 0, gl.RED, gl.UNSIGNED_BYTE, audioTextureData);
 
       function compileShader(type, source) {
@@ -491,7 +499,8 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
 
       function updateAudioTexture() {
         let level = 0;
-        audioTextureData.fill(128);
+        audioTextureData.fill(0, 0, 256);
+      audioTextureData.fill(128, 256);
         if (analyser && !audioElement.paused && !audioElement.ended) {
           analyser.getByteFrequencyData(analyserData);
           analyser.getByteTimeDomainData(timeData);
@@ -523,7 +532,7 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
         gl.uniform1i(uniforms.u_audio, 0);
-        gl.uniform1f(uniforms.u_time, (now - startTime) / 1000);
+        gl.uniform1f(uniforms.u_time, objectUrl ? audioElement.currentTime : (now - startTime) / 1000);
         gl.uniform2f(uniforms.u_resolution, canvas.width, canvas.height);
         gl.uniform1f(uniforms.u_level, level);
         gl.uniform1f(uniforms.u_sensitivity, Number(sensitivity.value));
@@ -547,6 +556,7 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
       });
       smoothing.addEventListener("input", () => {
         document.getElementById("smoothnessValue").textContent = Number(smoothing.value).toFixed(2);
+        if (analyser) analyser.smoothingTimeConstant = Number(smoothing.value);
       });
 
       document.getElementById("applyShader").addEventListener("click", () => {
@@ -570,7 +580,9 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); }`;
         audioContext = new AudioContextClass();
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.72;
+        analyser.smoothingTimeConstant = Number(smoothing.value);
+        analyser.minDecibels = -100;
+        analyser.maxDecibels = -30;
         gainNode = audioContext.createGain();
         gainNode.gain.value = Number(volume.value);
         mediaSource = audioContext.createMediaElementSource(audioElement);

@@ -26,6 +26,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -33,20 +35,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Format source (bootstrap)
-        run: cargo fmt --all
+      - name: Format check
+        run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Rust correctness and allocation tests
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
       - name: Release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
       - name: MCP integration tests
         env:
           OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
         run: python -m unittest discover -s scripts -v
       - name: Throughput benchmark
-        run: cargo bench -p openpatch-core
+        run: cargo bench --locked -p openpatch-core
       - uses: actions/upload-artifact@v4
         with:
           name: openpatch-${{ matrix.artifact }}
@@ -55,10 +57,30 @@ jobs:
             Cargo.lock
             LICENSE
             README.md
+      - name: Portable repository snapshot
+        if: matrix.os == 'ubuntu-latest'
+        run: git bundle create openpatch.bundle --all
       - uses: actions/upload-artifact@v4
-        if: always() && matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         with:
-          name: formatted-source
-          path: |
-            crates/
-            Cargo.lock
+          name: repository-snapshot
+          path: openpatch.bundle
+  visualizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --package-lock=false playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Browser integration
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 > /tmp/openpatch-http.log 2>&1 &
+          node scripts/test_visualizer.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visualizer-screenshots
+          path: visualizer-test-output/

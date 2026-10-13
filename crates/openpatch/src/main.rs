@@ -26,7 +26,10 @@ fn run() -> Result<(), String> {
         }
         Some("visualizer") if args.len() == 2 => {
             visualizer::export(Path::new(&args[1])).map_err(|e| e.to_string())?;
-            println!("Open {} in a browser and select a local audio file.", args[1]);
+            println!(
+                "Open {} in a browser and select a local audio file.",
+                args[1]
+            );
             Ok(())
         }
         Some("render") if args.len() == 4 => {
