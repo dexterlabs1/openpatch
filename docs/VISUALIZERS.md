@@ -5,7 +5,8 @@ control. They must never stall the audio callback.
 
 ## Native live visualizer
 
-`openpatch-desktop` includes an OpenGL visual field in the native window. Aurora,
+`openpatch-desktop` includes an optional OpenGL dock in the native window. Click
+**Visuals** to reveal it beneath the rack, then drag its divider to resize. Aurora,
 Spectrum, and Scope modes react to the same audio output as the rack. Playback
 starts paused; press Play in the window to hear the patch and drive its visuals.
 The animated background continues while paused, with audio input fading to zero.

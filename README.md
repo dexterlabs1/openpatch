@@ -27,14 +27,26 @@ cargo run --release -p openpatch-desktop
 ```
 
 The app opens a tremolo patch with playback paused. Press **Play** (or Space).
-Click **OUT**, then an input jack to connect a cable. Right-click an input to
-unplug it. Select a module header to remove it or choose it as the audio output.
-Use the library to add modules; change sliders to hear the result live.
+Current design and feature development focuses on the **macOS ARM app** and a
+familiar modular rack workflow:
 
-Patch files live in `~/OpenPatch` by default. **Save new** writes a new JSON file;
-existing files are never overwritten. Select a saved filename and press **Load**.
-**Undo last edit / load** recovers the previous displayed patch. Closing with
-unsaved edits prompts you to keep working or discard. There is no autosave yet.
+- Drag a rotary knob vertically to change it; hold Command for fine adjustment.
+  Double-click to reset, or right-click to enter a value.
+- Drag from **OUT** to an input, or click the two jacks in sequence. Right-click
+  an input to unplug it.
+- Drag module headers to rearrange panels; they snap onto rack rails. Right-click
+  a module for removal and output options.
+- Press Enter or **+ Add module** for the searchable module browser.
+- Scroll or middle-drag to pan; pinch or Command-scroll to zoom. Command-0 resets
+  the view. **Visuals** opens the optional visualizer dock.
+
+Patch files live in `~/OpenPatch` by default. **File → Save as** (Command-S)
+writes a new JSON file; existing files are never overwritten. Panel positions
+and the view are saved in an adjacent `.json.layout.json` file. **File → Open**
+(Command-O) lists saved patches. Command-Z recovers the previous patch edit;
+undo currently records individual knob updates rather than whole drag gestures.
+Closing, opening another patch, or starting a new rack with unsaved edits prompts
+you to keep working or discard. There is no autosave yet.
 
 On macOS, create a double-clickable application bundle:
 
@@ -46,12 +58,14 @@ python3 scripts/package_macos.py
 
 The bundle is locally ad-hoc signed, not notarized. CI builds both desktop and
 CLI binaries for **Linux x86-64, Windows x86-64, and macOS ARM64**, plus a zipped
-Mac app. Hardware audio and GPU verification currently covers an Apple Silicon
-Mac; other platforms are compile/test targets pending device testing.
+Mac app. Apple Silicon audio initialization has been checked; automated native
+window and shader checks run with Mesa in CI. Interactive macOS graphics and
+audio playback still need verification. Other platforms remain compile/test
+targets pending device testing.
 
 ## Visualizers
 
-The native **Visual Field** has Aurora, Spectrum, and Scope modes driven by the
+The native **Visuals** dock has Aurora, Spectrum, and Scope modes driven by the
 live audio output. **Edit GLSL** opens the shader editor. Compile errors leave the
 last working shader running. The visualizer uses desktop OpenGL / GLSL 330 core,
 not a browser or webview. It requires a compatible GPU/driver.
