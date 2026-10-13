@@ -149,6 +149,50 @@ the processing improvement.
 Within each build, all checked instrumented/raw buffers matched exactly. This
 comparison does not measure audio-device behavior or scheduling lateness.
 
+## Four-voice circuit traversal
+
+`a1ef5a4` extends the paired implementation by processing circuit voices in
+groups of four. Interpolation still runs as two pairs; decimation traverses
+the coefficients once for four independent sums. Smaller remainders use the
+existing pair/scalar paths. No precision, equation, tap order, solver limit,
+oversampling factor, latency, or persistent-state layout changes are involved.
+The code uses portable Rust; inspection of the actual ARM64 release CLI after
+ThinLTO confirms two packed accumulation chains with separate multiply/add.
+
+Five randomized, interleaved baseline/candidate pairs per workload on the same
+M1 Max (Rust 1.99.0, 48 kHz, 128-frame blocks, one audio second per call) gave:
+
+| Workload | Paired baseline µs/frame | Quartet µs/frame | Processing time reduction |
+|---|---:|---:|---:|
+| Ladder, sixteen voices | 21.032 | 19.170 | 8.9% |
+| OTA VCA, sixteen voices | 6.714 | 4.691 | 30.1% |
+| Full circuit voice, sixteen voices | 27.957 | 24.064 | 13.9% |
+| Ladder with audio-rate CV, sixteen voices | 22.389 | 20.472 | 8.6% |
+| OTA VCA with audio-rate CV, sixteen voices | 7.070 | 5.064 | 28.4% |
+
+Mono median changes were between a 0.56% reduction and a 0.91% increase. All
+mono paired ranges except the full-voice patch crossed no change; its median
+improved 0.32%, too small to treat as a universal speed guarantee. All 50 benchmark checksums and ten channel
+analyses matched exactly, with zero reported solver failures. The full sixteen-
+voice patch improved from about 0.745× to **0.866× realtime**, still below
+realtime on this machine. These figures compare OpenPatch builds, not VCV Rack.
+[Raw workloads, timings, output checks and provenance](benchmarks/quartet-circuits-m1max.json).
+
+New tests compare quartet phases, full ring histories, solver state and
+diagnostics with independent scalar trajectories. Public-engine coverage includes
+widths 1/2/3/4/5/7/8/15/16, quartet/pair/scalar tails, parameter adoption,
+regrowth, and a 4→3→4 transition. Response, alias rejection, latency and callback
+allocation checks remain in the suite.
+
+A final headless callback profile recorded a **5.845 ms** steady median for the
+sixteen-voice circuit patch, versus 6.841 ms in the fresh paired baseline.
+Both profiles exceeded the 5.333 ms budget on all 256 measured steady buffers.
+The candidate checkpoint median was 11.756 ms. This is progress toward the
+budget, not realtime qualification: there is still no headroom, and edits are
+more expensive. These sequential profiles are observations, not controlled
+estimates of small timing changes or audio-device stability.
+[Full callback profiles and provenance](benchmarks/quartet-circuit-callbacks-m1max.json).
+
 ## Offline engine throughput
 
 Run release benchmarks using `cargo bench -p openpatch-core`, or MCP `benchmark`

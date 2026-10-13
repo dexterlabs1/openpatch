@@ -1,0 +1,5192 @@
+{
+  "format_version": 1,
+  "started_utc": "2026-10-13T19:38:06.138794+00:00",
+  "binaries": {
+    "baseline": {
+      "filename": "openpatch",
+      "sha256": "620e2a7775cc7e26bce22c0a10ef4b1c717fe626b6c747b0bcaa8ea93c8e9e85",
+      "source_id": "5cb48de",
+      "bytes": 1945808,
+      "server_info": {
+        "name": "openpatch",
+        "version": "0.1.0"
+      },
+      "source_commit": "5cb48dec07a97410eb45343c8c5ed686c9fe98a2"
+    },
+    "candidate": {
+      "filename": "openpatch",
+      "sha256": "3d64bd52154fe6f6ada367e7c85b70ededfe97dede2392d86931cc03c069ec5b",
+      "source_id": "a1ef5a4",
+      "bytes": 1945936,
+      "server_info": {
+        "name": "openpatch",
+        "version": "0.1.0"
+      },
+      "source_commit": "a1ef5a478a6d791b0726dc11e0cb78bcb44a9310"
+    }
+  },
+  "host": {
+    "cpu": "Apple M1 Max",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "logical_cpus": 10,
+    "initial_load": [
+      13.21240234375,
+      18.3359375,
+      16.96728515625
+    ]
+  },
+  "compiler": {
+    "current_rustc_verbose": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "provenance": "Current shell toolchain, not extracted from the executables; callers must record which compiler built each source ID."
+  },
+  "method": {
+    "runs": 5,
+    "seconds_per_call": 1.0,
+    "seed": 2026101302,
+    "patch_version": 2,
+    "sample_rate": 48000,
+    "block_size": 128,
+    "benchmark_internal_warmup_frames": 2048,
+    "separate_warmup_seconds": 0.05,
+    "analysis_seconds": 0.5,
+    "order": "shuffled workloads each round; randomized baseline/candidate order within each pair",
+    "timing_scope": "offline DSP plus checksum reduction; compilation/RPC excluded",
+    "output_adapter": "channel zero; all active voices still process",
+    "limitations": "single host; no live callback/device/UI/GPU measurements, core affinity, thermal or power control; no VCV comparison"
+  },
+  "workloads": {
+    "ladder_1": {
+      "voices": 1,
+      "description": "+/-2 V sine at 220+i Hz; ladder pole 1200 Hz, resonance 0.3, drive 1; zero cutoff CV.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "target",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1200.0,
+              "resonance": 0.3,
+              "drive": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "vca_1": {
+      "voices": 1,
+      "description": "+/-2 V sine at 220+i Hz; OTA gain 1, unpatched CV normalizes to 10 V.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "target",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "full_voice_1": {
+      "voices": 1,
+      "description": "Reference saw/ladder/OTA voice; semitone pitch bus; one 1.5 Hz clock/RC envelope broadcasts to all voices; audio adapter selects channel 1 but all voices process.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800.0,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          },
+          {
+            "id": "out",
+            "kind": "audio_out",
+            "params": {}
+          }
+        ],
+        "cables": [
+          {
+            "from": "pitch",
+            "output": "out",
+            "to": "vco",
+            "input": "pitch"
+          },
+          {
+            "from": "vco",
+            "output": "out",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "output": "out",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "output": "out",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "output": "out",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "vca",
+            "output": "out",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out",
+        "output_port": "out"
+      }
+    },
+    "ladder_audio_cv_1": {
+      "voices": 1,
+      "description": "+/-2 V sine at 220+i Hz; cutoff CV +/-0.25 V at 997+i Hz, one V/oct; pole 1200 Hz, resonance 0.7, drive 1.5.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "cutoff_control",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 997.0,
+              "amplitude": 0.25
+            }
+          },
+          {
+            "id": "target",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1200.0,
+              "resonance": 0.7,
+              "drive": 1.5
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "cutoff_control",
+            "input": "fm"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          },
+          {
+            "from": "cutoff_control",
+            "output": "out",
+            "to": "target",
+            "input": "cutoff_cv"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "vca_audio_cv_1": {
+      "voices": 1,
+      "description": "+/-2 V sine at 220+i Hz; OTA CV 0.5..9.5 V at 997+i Hz, gain 1; signal/control are reconstructed together.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "cv_sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 997.0,
+              "amplitude": 0.9
+            }
+          },
+          {
+            "id": "cv_scale",
+            "kind": "gain",
+            "params": {
+              "gain": 5.0
+            }
+          },
+          {
+            "id": "cv_offset",
+            "kind": "constant",
+            "params": {
+              "value": 5.0
+            }
+          },
+          {
+            "id": "cv_sum",
+            "kind": "mixer",
+            "params": {}
+          },
+          {
+            "id": "target",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "cv_sine",
+            "input": "fm"
+          },
+          {
+            "from": "cv_sine",
+            "output": "out",
+            "to": "cv_scale",
+            "input": "signal"
+          },
+          {
+            "from": "cv_scale",
+            "output": "out",
+            "to": "cv_sum",
+            "input": "a"
+          },
+          {
+            "from": "cv_offset",
+            "output": "out",
+            "to": "cv_sum",
+            "input": "b"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          },
+          {
+            "from": "cv_sum",
+            "output": "out",
+            "to": "target",
+            "input": "cv"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "ladder_16": {
+      "voices": 16,
+      "description": "+/-2 V sine at 220+i Hz; ladder pole 1200 Hz, resonance 0.3, drive 1; zero cutoff CV.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 1.0,
+              "v3": 2.0,
+              "v4": 3.0,
+              "v5": 4.0,
+              "v6": 5.0,
+              "v7": 6.0,
+              "v8": 7.0,
+              "v9": 8.0,
+              "v10": 9.0,
+              "v11": 10.0,
+              "v12": 11.0,
+              "v13": 12.0,
+              "v14": 13.0,
+              "v15": 14.0,
+              "v16": 15.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "target",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1200.0,
+              "resonance": 0.3,
+              "drive": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "vca_16": {
+      "voices": 16,
+      "description": "+/-2 V sine at 220+i Hz; OTA gain 1, unpatched CV normalizes to 10 V.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 1.0,
+              "v3": 2.0,
+              "v4": 3.0,
+              "v5": 4.0,
+              "v6": 5.0,
+              "v7": 6.0,
+              "v8": 7.0,
+              "v9": 8.0,
+              "v10": 9.0,
+              "v11": 10.0,
+              "v12": 11.0,
+              "v13": 12.0,
+              "v14": 13.0,
+              "v15": 14.0,
+              "v16": 15.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "target",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "full_voice_16": {
+      "voices": 16,
+      "description": "Reference saw/ladder/OTA voice; semitone pitch bus; one 1.5 Hz clock/RC envelope broadcasts to all voices; audio adapter selects channel 1 but all voices process.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 0.08333333333333333,
+              "v3": 0.16666666666666666,
+              "v4": 0.25,
+              "v5": 0.3333333333333333,
+              "v6": 0.4166666666666667,
+              "v7": 0.5,
+              "v8": 0.5833333333333334,
+              "v9": 0.6666666666666666,
+              "v10": 0.75,
+              "v11": 0.8333333333333334,
+              "v12": 0.9166666666666666,
+              "v13": 0.0,
+              "v14": 0.08333333333333333,
+              "v15": 0.16666666666666666,
+              "v16": 0.25
+            }
+          },
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800.0,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          },
+          {
+            "id": "out",
+            "kind": "audio_out",
+            "params": {}
+          }
+        ],
+        "cables": [
+          {
+            "from": "pitch",
+            "output": "out",
+            "to": "vco",
+            "input": "pitch"
+          },
+          {
+            "from": "vco",
+            "output": "out",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "output": "out",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "output": "out",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "output": "out",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "vca",
+            "output": "out",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out",
+        "output_port": "out"
+      }
+    },
+    "ladder_audio_cv_16": {
+      "voices": 16,
+      "description": "+/-2 V sine at 220+i Hz; cutoff CV +/-0.25 V at 997+i Hz, one V/oct; pole 1200 Hz, resonance 0.7, drive 1.5.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 1.0,
+              "v3": 2.0,
+              "v4": 3.0,
+              "v5": 4.0,
+              "v6": 5.0,
+              "v7": 6.0,
+              "v8": 7.0,
+              "v9": 8.0,
+              "v10": 9.0,
+              "v11": 10.0,
+              "v12": 11.0,
+              "v13": 12.0,
+              "v14": 13.0,
+              "v15": 14.0,
+              "v16": 15.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "cutoff_control",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 997.0,
+              "amplitude": 0.25
+            }
+          },
+          {
+            "id": "target",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1200.0,
+              "resonance": 0.7,
+              "drive": 1.5
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "cutoff_control",
+            "input": "fm"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          },
+          {
+            "from": "cutoff_control",
+            "output": "out",
+            "to": "target",
+            "input": "cutoff_cv"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    },
+    "vca_audio_cv_16": {
+      "voices": 16,
+      "description": "+/-2 V sine at 220+i Hz; OTA CV 0.5..9.5 V at 997+i Hz, gain 1; signal/control are reconstructed together.",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "fm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 1.0,
+              "v3": 2.0,
+              "v4": 3.0,
+              "v5": 4.0,
+              "v6": 5.0,
+              "v7": 6.0,
+              "v8": 7.0,
+              "v9": 8.0,
+              "v10": 9.0,
+              "v11": 10.0,
+              "v12": 11.0,
+              "v13": 12.0,
+              "v14": 13.0,
+              "v15": 14.0,
+              "v16": 15.0
+            }
+          },
+          {
+            "id": "sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 220.0,
+              "amplitude": 1.0
+            }
+          },
+          {
+            "id": "scale",
+            "kind": "gain",
+            "params": {
+              "gain": 2.0
+            }
+          },
+          {
+            "id": "cv_sine",
+            "kind": "oscillator",
+            "params": {
+              "frequency": 997.0,
+              "amplitude": 0.9
+            }
+          },
+          {
+            "id": "cv_scale",
+            "kind": "gain",
+            "params": {
+              "gain": 5.0
+            }
+          },
+          {
+            "id": "cv_offset",
+            "kind": "constant",
+            "params": {
+              "value": 5.0
+            }
+          },
+          {
+            "id": "cv_sum",
+            "kind": "mixer",
+            "params": {}
+          },
+          {
+            "id": "target",
+            "kind": "analog_vca",
+            "params": {
+              "gain": 1.0
+            }
+          }
+        ],
+        "cables": [
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "sine",
+            "input": "fm"
+          },
+          {
+            "from": "sine",
+            "output": "out",
+            "to": "scale",
+            "input": "signal"
+          },
+          {
+            "from": "fm",
+            "output": "out",
+            "to": "cv_sine",
+            "input": "fm"
+          },
+          {
+            "from": "cv_sine",
+            "output": "out",
+            "to": "cv_scale",
+            "input": "signal"
+          },
+          {
+            "from": "cv_scale",
+            "output": "out",
+            "to": "cv_sum",
+            "input": "a"
+          },
+          {
+            "from": "cv_offset",
+            "output": "out",
+            "to": "cv_sum",
+            "input": "b"
+          },
+          {
+            "from": "scale",
+            "output": "out",
+            "to": "target",
+            "input": "signal"
+          },
+          {
+            "from": "cv_sum",
+            "output": "out",
+            "to": "target",
+            "input": "cv"
+          }
+        ],
+        "output": "target",
+        "output_port": "out"
+      }
+    }
+  },
+  "pairs": {
+    "ladder_1": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.076196084,
+          "frames": 48000,
+          "frames_per_second": 629953.6338376654,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.124034038284698,
+          "sample_rate": 48000,
+          "ns_per_frame": 1587.4184166666666,
+          "completed_utc": "2026-10-13T19:38:08.183097+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.075989125,
+          "frames": 48000,
+          "frames_per_second": 631669.334263291,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.159777797151895,
+          "sample_rate": 48000,
+          "ns_per_frame": 1583.1067708333333,
+          "completed_utc": "2026-10-13T19:38:08.263958+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0027235344531207
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.07683275,
+          "frames": 48000,
+          "frames_per_second": 624733.5934220758,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.015283196293247,
+          "sample_rate": 48000,
+          "ns_per_frame": 1600.6822916666667,
+          "completed_utc": "2026-10-13T19:38:24.339456+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.075968291,
+          "frames": 48000,
+          "frames_per_second": 631842.5670520876,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.16338681358516,
+          "sample_rate": 48000,
+          "ns_per_frame": 1582.6727291666666,
+          "completed_utc": "2026-10-13T19:38:24.419996+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0113792082014852
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.07608975,
+          "frames": 48000,
+          "frames_per_second": 630833.9822380807,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.142374629960015,
+          "sample_rate": 48000,
+          "ns_per_frame": 1585.203125,
+          "completed_utc": "2026-10-13T19:38:32.746126+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.075633792,
+          "frames": 48000,
+          "frames_per_second": 634636.9622721018,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.221603380668787,
+          "sample_rate": 48000,
+          "ns_per_frame": 1575.704,
+          "completed_utc": "2026-10-13T19:38:32.826616+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.006028495834243
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.076209041,
+          "frames": 48000,
+          "frames_per_second": 629846.5296263208,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.12180270054835,
+          "sample_rate": 48000,
+          "ns_per_frame": 1587.6883541666666,
+          "completed_utc": "2026-10-13T19:38:42.134263+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.075298958,
+          "frames": 48000,
+          "frames_per_second": 637459.020349259,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.28039625727623,
+          "sample_rate": 48000,
+          "ns_per_frame": 1568.7282916666666,
+          "completed_utc": "2026-10-13T19:38:42.214205+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9880580704328767
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.075891833,
+          "frames": 48000,
+          "frames_per_second": 632479.1232806302,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.176648401679795,
+          "sample_rate": 48000,
+          "ns_per_frame": 1581.0798541666666,
+          "completed_utc": "2026-10-13T19:38:44.709738+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.076026,
+          "frames": 48000,
+          "frames_per_second": 631362.9547786284,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 13.153394891221424,
+          "sample_rate": 48000,
+          "ns_per_frame": 1583.875,
+          "completed_utc": "2026-10-13T19:38:44.790797+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.001767871386108
+      }
+    ],
+    "vca_1": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035576625,
+          "frames": 48000,
+          "frames_per_second": 1349200.4933014303,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.108343610446465,
+          "sample_rate": 48000,
+          "ns_per_frame": 741.1796875,
+          "completed_utc": "2026-10-13T19:38:15.583292+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035115209,
+          "frames": 48000,
+          "frames_per_second": 1366929.0705346507,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.477688969471888,
+          "sample_rate": 48000,
+          "ns_per_frame": 731.5668541666666,
+          "completed_utc": "2026-10-13T19:38:15.621591+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0131400613335377
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035358417,
+          "frames": 48000,
+          "frames_per_second": 1357526.8372450045,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.281809109270924,
+          "sample_rate": 48000,
+          "ns_per_frame": 736.6336875,
+          "completed_utc": "2026-10-13T19:38:16.239540+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035463459,
+          "frames": 48000,
+          "frames_per_second": 1353505.8720583348,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.198039001215307,
+          "sample_rate": 48000,
+          "ns_per_frame": 738.8220625,
+          "completed_utc": "2026-10-13T19:38:16.278208+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0029707777924561
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035328709,
+          "frames": 48000,
+          "frames_per_second": 1358668.384967025,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.305591353479688,
+          "sample_rate": 48000,
+          "ns_per_frame": 736.0147708333334,
+          "completed_utc": "2026-10-13T19:38:32.866695+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035338125,
+          "frames": 48000,
+          "frames_per_second": 1358306.3617551867,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.298049203233052,
+          "sample_rate": 48000,
+          "ns_per_frame": 736.2109375,
+          "completed_utc": "2026-10-13T19:38:32.905044+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9997335455687024
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035426125,
+          "frames": 48000,
+          "frames_per_second": 1354932.2710287957,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.227755646433245,
+          "sample_rate": 48000,
+          "ns_per_frame": 738.0442708333334,
+          "completed_utc": "2026-10-13T19:38:42.012559+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035620583,
+          "frames": 48000,
+          "frames_per_second": 1347535.496541424,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.073656177946333,
+          "sample_rate": 48000,
+          "ns_per_frame": 742.0954791666667,
+          "completed_utc": "2026-10-13T19:38:42.051166+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.994540852966949
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035368875,
+          "frames": 48000,
+          "frames_per_second": 1357125.4386801955,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.27344663917074,
+          "sample_rate": 48000,
+          "ns_per_frame": 736.8515625,
+          "completed_utc": "2026-10-13T19:38:45.065393+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.035097583,
+          "frames": 48000,
+          "frames_per_second": 1367615.5420730822,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 28.49199045985588,
+          "sample_rate": 48000,
+          "ns_per_frame": 731.1996458333333,
+          "completed_utc": "2026-10-13T19:38:45.103482+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0077296490758352
+      }
+    ],
+    "full_voice_1": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.111141792,
+          "frames": 48000,
+          "frames_per_second": 431880.7456334697,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 8.997515534030619,
+          "sample_rate": 48000,
+          "ns_per_frame": 2315.454,
+          "completed_utc": "2026-10-13T19:38:10.701247+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.110319875,
+          "frames": 48000,
+          "frames_per_second": 435098.39002265007,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.064549792138543,
+          "sample_rate": 48000,
+          "ns_per_frame": 2298.3307291666665,
+          "completed_utc": "2026-10-13T19:38:10.817996+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.007450307571505
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109110333,
+          "frames": 48000,
+          "frames_per_second": 439921.67084670154,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.165034809306283,
+          "sample_rate": 48000,
+          "ns_per_frame": 2273.1319375,
+          "completed_utc": "2026-10-13T19:38:24.536837+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.11071625,
+          "frames": 48000,
+          "frames_per_second": 433540.6952457295,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.032097817619364,
+          "sample_rate": 48000,
+          "ns_per_frame": 2306.5885416666665,
+          "completed_utc": "2026-10-13T19:38:24.653571+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0147182852058567
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109458792,
+          "frames": 48000,
+          "frames_per_second": 438521.19252330135,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.135858177568778,
+          "sample_rate": 48000,
+          "ns_per_frame": 2280.3915,
+          "completed_utc": "2026-10-13T19:38:30.397663+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109329167,
+          "frames": 48000,
+          "frames_per_second": 439041.1206553874,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.146690013653904,
+          "sample_rate": 48000,
+          "ns_per_frame": 2277.6909791666667,
+          "completed_utc": "2026-10-13T19:38:30.513285+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0011856396930199
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109600833,
+          "frames": 48000,
+          "frames_per_second": 437952.8757778693,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.124018245372278,
+          "sample_rate": 48000,
+          "ns_per_frame": 2283.3506875,
+          "completed_utc": "2026-10-13T19:38:37.884742+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109667458,
+          "frames": 48000,
+          "frames_per_second": 437686.8113419753,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.118475236291152,
+          "sample_rate": 48000,
+          "ns_per_frame": 2284.7387083333333,
+          "completed_utc": "2026-10-13T19:38:38.000727+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.000607887715598
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109723084,
+          "frames": 48000,
+          "frames_per_second": 437464.9185033844,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.11385246882051,
+          "sample_rate": 48000,
+          "ns_per_frame": 2285.8975833333334,
+          "completed_utc": "2026-10-13T19:38:44.909004+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.109369167,
+          "frames": 48000,
+          "frames_per_second": 438880.54848218785,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 9.14334476004558,
+          "sample_rate": 48000,
+          "ns_per_frame": 2278.5243125,
+          "completed_utc": "2026-10-13T19:38:45.024623+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.003235985147441
+      }
+    ],
+    "ladder_audio_cv_1": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.079966458,
+          "frames": 48000,
+          "frames_per_second": 600251.6705191568,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.505243135815768,
+          "sample_rate": 48000,
+          "ns_per_frame": 1665.967875,
+          "completed_utc": "2026-10-13T19:38:10.496576+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.080861417,
+          "frames": 48000,
+          "frames_per_second": 593608.1975907001,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.366837449806253,
+          "sample_rate": 48000,
+          "ns_per_frame": 1684.6128541666667,
+          "completed_utc": "2026-10-13T19:38:10.582456+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9889321875227588
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.080240833,
+          "frames": 48000,
+          "frames_per_second": 598199.1737299138,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.462482786039871,
+          "sample_rate": 48000,
+          "ns_per_frame": 1671.6840208333333,
+          "completed_utc": "2026-10-13T19:38:24.825109+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.079832708,
+          "frames": 48000,
+          "frames_per_second": 601257.3192431353,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.526194150898652,
+          "sample_rate": 48000,
+          "ns_per_frame": 1663.1814166666666,
+          "completed_utc": "2026-10-13T19:38:24.909952+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0051122529878354
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.07960325,
+          "frames": 48000,
+          "frames_per_second": 602990.4557916919,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.562301162326914,
+          "sample_rate": 48000,
+          "ns_per_frame": 1658.4010416666667,
+          "completed_utc": "2026-10-13T19:38:27.604128+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.079523125,
+          "frames": 48000,
+          "frames_per_second": 603598.0100128107,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.574958541933556,
+          "sample_rate": 48000,
+          "ns_per_frame": 1656.7317708333333,
+          "completed_utc": "2026-10-13T19:38:27.688622+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9989934456193685
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.080654875,
+          "frames": 48000,
+          "frames_per_second": 595128.3167942421,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.398506599880044,
+          "sample_rate": 48000,
+          "ns_per_frame": 1680.3098958333333,
+          "completed_utc": "2026-10-13T19:38:41.886503+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.080692833,
+          "frames": 48000,
+          "frames_per_second": 594848.3677602445,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.392674328338428,
+          "sample_rate": 48000,
+          "ns_per_frame": 1681.1006875,
+          "completed_utc": "2026-10-13T19:38:41.972314+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9995295988678449
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.079213417,
+          "frames": 48000,
+          "frames_per_second": 605957.9528048892,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.624124016768524,
+          "sample_rate": 48000,
+          "ns_per_frame": 1650.2795208333334,
+          "completed_utc": "2026-10-13T19:38:44.540887+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.081135167,
+          "frames": 48000,
+          "frames_per_second": 591605.3639231432,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 12.325111748398818,
+          "sample_rate": 48000,
+          "ns_per_frame": 1690.3159791666667,
+          "completed_utc": "2026-10-13T19:38:44.626960+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9763142164975146
+      }
+    ],
+    "vca_audio_cv_1": [
+      {
+        "repeat": 0,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.038212708,
+          "frames": 48000,
+          "frames_per_second": 1256126.6267755744,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.16930472449113,
+          "sample_rate": 48000,
+          "ns_per_frame": 796.0980833333333,
+          "completed_utc": "2026-10-13T19:38:12.888018+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.038096292,
+          "frames": 48000,
+          "frames_per_second": 1259965.1430643173,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.24927381383994,
+          "sample_rate": 48000,
+          "ns_per_frame": 793.67275,
+          "completed_utc": "2026-10-13T19:38:12.929424+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9969534742211936
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.038305,
+          "frames": 48000,
+          "frames_per_second": 1253100.117478136,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.106252447461166,
+          "sample_rate": 48000,
+          "ns_per_frame": 798.0208333333334,
+          "completed_utc": "2026-10-13T19:38:24.696739+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.038088417,
+          "frames": 48000,
+          "frames_per_second": 1260225.6481281435,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.254701002669655,
+          "sample_rate": 48000,
+          "ns_per_frame": 793.5086875,
+          "completed_utc": "2026-10-13T19:38:24.738186+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0056863219072611
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.037811542,
+          "frames": 48000,
+          "frames_per_second": 1269453.6498934638,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.446951039447164,
+          "sample_rate": 48000,
+          "ns_per_frame": 787.7404583333333,
+          "completed_utc": "2026-10-13T19:38:32.948185+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.037604708,
+          "frames": 48000,
+          "frames_per_second": 1276435.9186089146,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.592414971019053,
+          "sample_rate": 48000,
+          "ns_per_frame": 783.4314166666667,
+          "completed_utc": "2026-10-13T19:38:32.989055+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9945298713287071
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.037853166,
+          "frames": 48000,
+          "frames_per_second": 1268057.7365708326,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.41786951189235,
+          "sample_rate": 48000,
+          "ns_per_frame": 788.607625,
+          "completed_utc": "2026-10-13T19:38:42.257546+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.037139667,
+          "frames": 48000,
+          "frames_per_second": 1292418.696161169,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.92538950335769,
+          "sample_rate": 48000,
+          "ns_per_frame": 773.7430625,
+          "completed_utc": "2026-10-13T19:38:42.297963+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 0.9811508765211343
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.037843916,
+          "frames": 48000,
+          "frames_per_second": 1268367.6816109624,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.42432670022838,
+          "sample_rate": 48000,
+          "ns_per_frame": 788.4149166666666,
+          "completed_utc": "2026-10-13T19:38:45.146728+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.038066375,
+          "frames": 48000,
+          "frames_per_second": 1260955.3707175953,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 26.26990355661657,
+          "sample_rate": 48000,
+          "ns_per_frame": 793.0494791666666,
+          "completed_utc": "2026-10-13T19:38:45.188082+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0058783292934061
+      }
+    ],
+    "ladder_16": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.014986166,
+          "frames": 48000,
+          "frames_per_second": 47291.284953336006,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 0.9852351031945001,
+          "sample_rate": 48000,
+          "ns_per_frame": 21145.545124999997,
+          "completed_utc": "2026-10-13T19:38:11.878882+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.925355708,
+          "frames": 48000,
+          "frames_per_second": 51871.944577662885,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 1.0806655120346433,
+          "sample_rate": 48000,
+          "ns_per_frame": 19278.243916666666,
+          "completed_utc": "2026-10-13T19:38:12.845088+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0968605447884696
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.00928425,
+          "frames": 48000,
+          "frames_per_second": 47558.45541035639,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 0.9908011543824249,
+          "sample_rate": 48000,
+          "ns_per_frame": 21026.755208333336,
+          "completed_utc": "2026-10-13T19:38:23.295787+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.920139625,
+          "frames": 48000,
+          "frames_per_second": 52165.996003052256,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 1.086791583396922,
+          "sample_rate": 48000,
+          "ns_per_frame": 19169.575520833332,
+          "completed_utc": "2026-10-13T19:38:24.256270+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0968816281550748
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.011638458,
+          "frames": 48000,
+          "frames_per_second": 47447.780993711494,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 0.9884954373689894,
+          "sample_rate": 48000,
+          "ns_per_frame": 21075.801208333334,
+          "completed_utc": "2026-10-13T19:38:29.321157+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.918660792,
+          "frames": 48000,
+          "frames_per_second": 52249.97128210954,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 1.088541068377282,
+          "sample_rate": 48000,
+          "ns_per_frame": 19138.7665,
+          "completed_utc": "2026-10-13T19:38:30.280066+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.1012100078828662
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.92021625,
+          "frames": 48000,
+          "frames_per_second": 52161.65222033408,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 1.0867010879236267,
+          "sample_rate": 48000,
+          "ns_per_frame": 19171.171875,
+          "completed_utc": "2026-10-13T19:38:34.564326+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.009548875,
+          "frames": 48000,
+          "frames_per_second": 47545.98929150409,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 0.990541443573002,
+          "sample_rate": 48000,
+          "ns_per_frame": 21032.268229166664,
+          "completed_utc": "2026-10-13T19:38:35.618055+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0970778607745733
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.009093708,
+          "frames": 48000,
+          "frames_per_second": 47567.43563007133,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 0.9909882422931529,
+          "sample_rate": 48000,
+          "ns_per_frame": 21022.785583333334,
+          "completed_utc": "2026-10-13T19:38:47.430785+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 0.0,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.917157125,
+          "frames": 48000,
+          "frames_per_second": 52335.634420329014,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 1.0903257170901877,
+          "sample_rate": 48000,
+          "ns_per_frame": 19107.440104166668,
+          "completed_utc": "2026-10-13T19:38:48.388289+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.1002408207862966
+      }
+    ],
+    "vca_16": [
+      {
+        "repeat": 0,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.22669625,
+          "frames": 48000,
+          "frames_per_second": 211737.07108079645,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 4.411188980849926,
+          "sample_rate": 48000,
+          "ns_per_frame": 4722.838541666667,
+          "completed_utc": "2026-10-13T19:38:15.861022+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.323041917,
+          "frames": 48000,
+          "frames_per_second": 148587.52834852698,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 3.0955735072609785,
+          "sample_rate": 48000,
+          "ns_per_frame": 6730.0399375,
+          "completed_utc": "2026-10-13T19:38:16.199595+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.4249989446230364
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.323437875,
+          "frames": 48000,
+          "frames_per_second": 148405.62503695648,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 3.0917838549365935,
+          "sample_rate": 48000,
+          "ns_per_frame": 6738.2890625,
+          "completed_utc": "2026-10-13T19:38:22.003256+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.225166666,
+          "frames": 48000,
+          "frames_per_second": 213175.42624182213,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 4.4411547133712945,
+          "sample_rate": 48000,
+          "ns_per_frame": 4690.972208333334,
+          "completed_utc": "2026-10-13T19:38:22.239934+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.4364376430390455
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.322267833,
+          "frames": 48000,
+          "frames_per_second": 148944.43405401867,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 3.1030090427920554,
+          "sample_rate": 48000,
+          "ns_per_frame": 6713.9131875,
+          "completed_utc": "2026-10-13T19:38:28.027789+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.225062625,
+          "frames": 48000,
+          "frames_per_second": 213273.9720777717,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 4.4432077516202435,
+          "sample_rate": 48000,
+          "ns_per_frame": 4688.8046875,
+          "completed_utc": "2026-10-13T19:38:28.264063+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.4319029336834581
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.224794125,
+          "frames": 48000,
+          "frames_per_second": 213528.71210490933,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 4.448514835518944,
+          "sample_rate": 48000,
+          "ns_per_frame": 4683.2109375,
+          "completed_utc": "2026-10-13T19:38:38.238602+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.322189458,
+          "frames": 48000,
+          "frames_per_second": 148980.66590372426,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 3.1037638729942554,
+          "sample_rate": 48000,
+          "ns_per_frame": 6712.280375,
+          "completed_utc": "2026-10-13T19:38:38.576133+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.4332645837608076
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.22550475,
+          "frames": 48000,
+          "frames_per_second": 212855.82676196398,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 4.43449639087425,
+          "sample_rate": 48000,
+          "ns_per_frame": 4698.015625,
+          "completed_utc": "2026-10-13T19:38:45.426983+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -5.4427573559223674e-12,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.321070375,
+          "frames": 48000,
+          "frames_per_second": 149499.9343991173,
+          "nodes": 4,
+          "os": "macos",
+          "realtime_factor": 3.1145819666482777,
+          "sample_rate": 48000,
+          "ns_per_frame": 6688.966145833333,
+          "completed_utc": "2026-10-13T19:38:45.763443+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.4237854191541421
+      }
+    ],
+    "full_voice_16": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.3419335000000001,
+          "frames": 48000,
+          "frames_per_second": 35769.28364930155,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.7451934093604489,
+          "sample_rate": 48000,
+          "ns_per_frame": 27956.947916666668,
+          "completed_utc": "2026-10-13T19:38:14.332420+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.160150416,
+          "frames": 48000,
+          "frames_per_second": 41373.945428124556,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.8619571964192615,
+          "sample_rate": 48000,
+          "ns_per_frame": 24169.800333333333,
+          "completed_utc": "2026-10-13T19:38:15.543284+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.156689237441087
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.15312825,
+          "frames": 48000,
+          "frames_per_second": 41625.89894055583,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.8672062279282465,
+          "sample_rate": 48000,
+          "ns_per_frame": 24023.505208333332,
+          "completed_utc": "2026-10-13T19:38:19.642660+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.3432735,
+          "frames": 48000,
+          "frames_per_second": 35733.60153386484,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.7444500319555176,
+          "sample_rate": 48000,
+          "ns_per_frame": 27984.864583333332,
+          "completed_utc": "2026-10-13T19:38:21.044156+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.1648951450109735
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.155067458,
+          "frames": 48000,
+          "frames_per_second": 41556.01447132103,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.8657503014858549,
+          "sample_rate": 48000,
+          "ns_per_frame": 24063.905375,
+          "completed_utc": "2026-10-13T19:38:26.117745+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.341734292,
+          "frames": 48000,
+          "frames_per_second": 35774.59433376396,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.7453040486200826,
+          "sample_rate": 48000,
+          "ns_per_frame": 27952.79775,
+          "completed_utc": "2026-10-13T19:38:27.517912+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.16160686781291
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.343923458,
+          "frames": 48000,
+          "frames_per_second": 35716.31979058736,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.7440899956372367,
+          "sample_rate": 48000,
+          "ns_per_frame": 27998.405375,
+          "completed_utc": "2026-10-13T19:38:39.980407+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.155263375,
+          "frames": 48000,
+          "frames_per_second": 41548.967134875194,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.8656034819765666,
+          "sample_rate": 48000,
+          "ns_per_frame": 24067.986979166668,
+          "completed_utc": "2026-10-13T19:38:41.185886+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.163304824754788
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.341177625,
+          "frames": 48000,
+          "frames_per_second": 35789.44287860454,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.7456133933042612,
+          "sample_rate": 48000,
+          "ns_per_frame": 27941.200520833332,
+          "completed_utc": "2026-10-13T19:38:49.790420+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.147446083,
+          "frames": 48000,
+          "frames_per_second": 41832.030899878024,
+          "nodes": 7,
+          "os": "macos",
+          "realtime_factor": 0.8715006437474588,
+          "sample_rate": 48000,
+          "ns_per_frame": 23905.126729166666,
+          "completed_utc": "2026-10-13T19:38:50.988974+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.168837163567188
+      }
+    ],
+    "ladder_audio_cv_16": [
+      {
+        "repeat": 0,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.073941792,
+          "frames": 48000,
+          "frames_per_second": 44695.15979130459,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 0.9311491623188456,
+          "sample_rate": 48000,
+          "ns_per_frame": 22373.787333333334,
+          "completed_utc": "2026-10-13T19:38:09.385928+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.981441709,
+          "frames": 48000,
+          "frames_per_second": 48907.642257131745,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 1.0189092136902447,
+          "sample_rate": 48000,
+          "ns_per_frame": 20446.70227083333,
+          "completed_utc": "2026-10-13T19:38:10.410349+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0942491868358124
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.988156041,
+          "frames": 48000,
+          "frames_per_second": 48575.32414761608,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 1.0119859197420016,
+          "sample_rate": 48000,
+          "ns_per_frame": 20586.5841875,
+          "completed_utc": "2026-10-13T19:38:17.311569+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.078046792,
+          "frames": 48000,
+          "frames_per_second": 44524.969005241466,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 0.9276035209425306,
+          "sample_rate": 48000,
+          "ns_per_frame": 22459.308166666666,
+          "completed_utc": "2026-10-13T19:38:18.437153+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0909681743270343
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.9826605,
+          "frames": 48000,
+          "frames_per_second": 48846.98224870135,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 1.0176454635146115,
+          "sample_rate": 48000,
+          "ns_per_frame": 20472.09375,
+          "completed_utc": "2026-10-13T19:38:31.540806+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.074652125,
+          "frames": 48000,
+          "frames_per_second": 44665.61679203863,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 0.9305336831674714,
+          "sample_rate": 48000,
+          "ns_per_frame": 22388.5859375,
+          "completed_utc": "2026-10-13T19:38:32.663535+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0936148598625874
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.9824785,
+          "frames": 48000,
+          "frames_per_second": 48856.030946224266,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 1.0178339780463388,
+          "sample_rate": 48000,
+          "ns_per_frame": 20468.302083333332,
+          "completed_utc": "2026-10-13T19:38:36.646175+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.07331575,
+          "frames": 48000,
+          "frames_per_second": 44721.22951703635,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 0.9316922816049239,
+          "sample_rate": 48000,
+          "ns_per_frame": 22360.744791666664,
+          "completed_utc": "2026-10-13T19:38:37.766644+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0924572395222896
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.985892375,
+          "frames": 48000,
+          "frames_per_second": 48686.85590554446,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 1.014309498032176,
+          "sample_rate": 48000,
+          "ns_per_frame": 20539.424479166668,
+          "completed_utc": "2026-10-13T19:38:43.329685+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -4.137673386139795e-06,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 1.077663875,
+          "frames": 48000,
+          "frames_per_second": 44540.78967804316,
+          "nodes": 5,
+          "os": "macos",
+          "realtime_factor": 0.9279331182925659,
+          "sample_rate": 48000,
+          "ns_per_frame": 22451.330729166668,
+          "completed_utc": "2026-10-13T19:38:44.454562+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.0930847040986598
+      }
+    ],
+    "vca_audio_cv_16": [
+      {
+        "repeat": 0,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.242541167,
+          "frames": 48000,
+          "frames_per_second": 197904.54789062674,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 4.123011414388057,
+          "sample_rate": 48000,
+          "ns_per_frame": 5052.940979166667,
+          "completed_utc": "2026-10-13T19:38:07.745596+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.338897,
+          "frames": 48000,
+          "frames_per_second": 141635.95428699575,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.9507490476457447,
+          "sample_rate": 48000,
+          "ns_per_frame": 7060.354166666667,
+          "completed_utc": "2026-10-13T19:38:08.100730+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.3972761993018694
+      },
+      {
+        "repeat": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.342242209,
+          "frames": 48000,
+          "frames_per_second": 140251.54915944338,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.9219072741550707,
+          "sample_rate": 48000,
+          "ns_per_frame": 7130.046020833333,
+          "completed_utc": "2026-10-13T19:38:21.404013+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.246525959,
+          "frames": 48000,
+          "frames_per_second": 194705.66180821552,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 4.056367954337823,
+          "sample_rate": 48000,
+          "ns_per_frame": 5135.957479166666,
+          "completed_utc": "2026-10-13T19:38:21.662545+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.3882603292093878
+      },
+      {
+        "repeat": 2,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.339381584,
+          "frames": 48000,
+          "frames_per_second": 141433.72022213202,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.946535837961084,
+          "sample_rate": 48000,
+          "ns_per_frame": 7070.449666666666,
+          "completed_utc": "2026-10-13T19:38:33.346441+00:00"
+        },
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.243444916,
+          "frames": 48000,
+          "frames_per_second": 197169.8599776879,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 4.107705416201831,
+          "sample_rate": 48000,
+          "ns_per_frame": 5071.769083333334,
+          "completed_utc": "2026-10-13T19:38:33.601774+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.394079570755957
+      },
+      {
+        "repeat": 3,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.243047792,
+          "frames": 48000,
+          "frames_per_second": 197492.0224743288,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 4.11441713488185,
+          "sample_rate": 48000,
+          "ns_per_frame": 5063.495666666667,
+          "completed_utc": "2026-10-13T19:38:41.442826+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.34029075,
+          "frames": 48000,
+          "frames_per_second": 141055.84709546177,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.9386634811554533,
+          "sample_rate": 48000,
+          "ns_per_frame": 7089.390625,
+          "completed_utc": "2026-10-13T19:38:41.799165+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.400098092641796
+      },
+      {
+        "repeat": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.243011209,
+          "frames": 48000,
+          "frames_per_second": 197521.7529986446,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 4.115036520805096,
+          "sample_rate": 48000,
+          "ns_per_frame": 5062.733520833333,
+          "completed_utc": "2026-10-13T19:38:46.020692+00:00"
+        },
+        "baseline": {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": -3.4413147886880324e-07,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.338370292,
+          "frames": 48000,
+          "frames_per_second": 141856.4251497587,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.955342190619973,
+          "sample_rate": 48000,
+          "ns_per_frame": 7049.381083333334,
+          "completed_utc": "2026-10-13T19:38:46.375200+00:00"
+        },
+        "checksum_equal": true,
+        "speedup": 1.3924061091354845
+      }
+    ]
+  },
+  "timing_finished_utc": "2026-10-13T19:38:50.991214+00:00",
+  "analysis": {
+    "ladder_1": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.9511657357215881,
+            "mean": 0.0021801883760785897,
+            "min": -0.9450604319572449,
+            "peak": 0.9511657357215881,
+            "rms": 0.6653723802223459
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 61,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.9511657357215881,
+            "mean": 0.0021801883760785897,
+            "min": -0.9450604319572449,
+            "peak": 0.9511657357215881,
+            "rms": 0.6653723802223459
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 61,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "vca_1": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.9047741889953613,
+            "mean": 0.003731621240333595,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611318552167868
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 62,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.9047741889953613,
+            "mean": 0.003731621240333595,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611318552167868
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 62,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "full_voice_1": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.1623932272195816,
+            "mean": 0.0009160662592714133,
+            "min": -0.23292508721351624,
+            "peak": 0.23292508721351624,
+            "rms": 0.04130181368597875
+          }
+        ],
+        "frames": 24000,
+        "id": "out",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 63,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.1623932272195816,
+            "mean": 0.0009160662592714133,
+            "min": -0.23292508721351624,
+            "peak": 0.23292508721351624,
+            "rms": 0.04130181368597875
+          }
+        ],
+        "frames": 24000,
+        "id": "out",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 63,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "ladder_audio_cv_1": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.8779944777488708,
+            "mean": 0.0018069764761597309,
+            "min": -0.8779721260070801,
+            "peak": 0.8779944777488708,
+            "rms": 0.574413089983838
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 64,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.8779944777488708,
+            "mean": 0.0018069764761597309,
+            "min": -0.8779721260070801,
+            "peak": 0.8779944777488708,
+            "rms": 0.574413089983838
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 64,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "vca_audio_cv_1": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.8089731931686401,
+            "mean": 0.0020862047853252943,
+            "min": -1.8089219331741333,
+            "peak": 1.8089731931686401,
+            "rms": 0.8063741293272769
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 65,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.8089731931686401,
+            "mean": 0.0020862047853252943,
+            "min": -1.8089219331741333,
+            "peak": 1.8089731931686401,
+            "rms": 0.8063741293272769
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 1,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 65,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "ladder_16": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.9511657357215881,
+            "mean": 0.0021801883760785897,
+            "min": -0.9450604319572449,
+            "peak": 0.9511657357215881,
+            "rms": 0.6653723802223459
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 0.9520769715309143,
+            "mean": 0.0004046234301410902,
+            "min": -0.945389449596405,
+            "peak": 0.9520769715309143,
+            "rms": 0.665621170442372
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 0.9529485106468201,
+            "mean": 0.0022118946306117215,
+            "min": -0.9457195997238159,
+            "peak": 0.9529485106468201,
+            "rms": 0.6658455743167234
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 0.9539582133293152,
+            "mean": 0.00037961889005588454,
+            "min": -0.9460510611534119,
+            "peak": 0.9539582133293152,
+            "rms": 0.6660711879477111
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 0.9549331665039062,
+            "mean": 0.0022131527737883345,
+            "min": -0.9463833570480347,
+            "peak": 0.9549331665039062,
+            "rms": 0.6662980107244902
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 0.9558702111244202,
+            "mean": 0.0003554236123554314,
+            "min": -0.946710467338562,
+            "peak": 0.9558702111244202,
+            "rms": 0.666526040964778
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 0.9567692279815674,
+            "mean": 0.002214019199352462,
+            "min": -0.9470526576042175,
+            "peak": 0.9567692279815674,
+            "rms": 0.6667552892972872
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 0.9577249884605408,
+            "mean": 0.0003320247448559856,
+            "min": -0.9473889470100403,
+            "peak": 0.9577249884605408,
+            "rms": 0.6669857441115775
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 0.9587295651435852,
+            "mean": 0.0022144956034774767,
+            "min": -0.9477263689041138,
+            "peak": 0.9587295651435852,
+            "rms": 0.6672174092471618
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 0.9596977829933167,
+            "mean": 0.0003094099156301331,
+            "min": -0.9480650424957275,
+            "peak": 0.9596977829933167,
+            "rms": 0.6674502854193547
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 0.9606297612190247,
+            "mean": 0.0022145837589836828,
+            "min": -0.9484047293663025,
+            "peak": 0.9606297612190247,
+            "rms": 0.6676843714882905
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 0.9615253210067749,
+            "mean": 0.0002875672738041132,
+            "min": -0.9487457275390625,
+            "peak": 0.9615253210067749,
+            "rms": 0.6679196694148364
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 0.9625034332275391,
+            "mean": 0.0022142856457176134,
+            "min": -0.9490877389907837,
+            "peak": 0.9625034332275391,
+            "rms": 0.6681561778609603
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 0.9635077714920044,
+            "mean": 0.00026648458857027633,
+            "min": -0.9494309425354004,
+            "peak": 0.9635077714920044,
+            "rms": 0.6683938974890345
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 0.9644774198532104,
+            "mean": 0.002213603306624787,
+            "min": -0.9497751593589783,
+            "peak": 0.9644774198532104,
+            "rms": 0.6686328276673476
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 0.9654123187065125,
+            "mean": 0.00024614990220673904,
+            "min": -0.9501204490661621,
+            "peak": 0.9654123187065125,
+            "rms": 0.6688729691252616
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 66,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.9511657357215881,
+            "mean": 0.0021801883760785897,
+            "min": -0.9450604319572449,
+            "peak": 0.9511657357215881,
+            "rms": 0.6653723802223459
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 0.9520769715309143,
+            "mean": 0.0004046234301410902,
+            "min": -0.945389449596405,
+            "peak": 0.9520769715309143,
+            "rms": 0.665621170442372
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 0.9529485106468201,
+            "mean": 0.0022118946306117215,
+            "min": -0.9457195997238159,
+            "peak": 0.9529485106468201,
+            "rms": 0.6658455743167234
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 0.9539582133293152,
+            "mean": 0.00037961889005588454,
+            "min": -0.9460510611534119,
+            "peak": 0.9539582133293152,
+            "rms": 0.6660711879477111
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 0.9549331665039062,
+            "mean": 0.0022131527737883345,
+            "min": -0.9463833570480347,
+            "peak": 0.9549331665039062,
+            "rms": 0.6662980107244902
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 0.9558702111244202,
+            "mean": 0.0003554236123554314,
+            "min": -0.946710467338562,
+            "peak": 0.9558702111244202,
+            "rms": 0.666526040964778
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 0.9567692279815674,
+            "mean": 0.002214019199352462,
+            "min": -0.9470526576042175,
+            "peak": 0.9567692279815674,
+            "rms": 0.6667552892972872
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 0.9577249884605408,
+            "mean": 0.0003320247448559856,
+            "min": -0.9473889470100403,
+            "peak": 0.9577249884605408,
+            "rms": 0.6669857441115775
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 0.9587295651435852,
+            "mean": 0.0022144956034774767,
+            "min": -0.9477263689041138,
+            "peak": 0.9587295651435852,
+            "rms": 0.6672174092471618
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 0.9596977829933167,
+            "mean": 0.0003094099156301331,
+            "min": -0.9480650424957275,
+            "peak": 0.9596977829933167,
+            "rms": 0.6674502854193547
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 0.9606297612190247,
+            "mean": 0.0022145837589836828,
+            "min": -0.9484047293663025,
+            "peak": 0.9606297612190247,
+            "rms": 0.6676843714882905
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 0.9615253210067749,
+            "mean": 0.0002875672738041132,
+            "min": -0.9487457275390625,
+            "peak": 0.9615253210067749,
+            "rms": 0.6679196694148364
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 0.9625034332275391,
+            "mean": 0.0022142856457176134,
+            "min": -0.9490877389907837,
+            "peak": 0.9625034332275391,
+            "rms": 0.6681561778609603
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 0.9635077714920044,
+            "mean": 0.00026648458857027633,
+            "min": -0.9494309425354004,
+            "peak": 0.9635077714920044,
+            "rms": 0.6683938974890345
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 0.9644774198532104,
+            "mean": 0.002213603306624787,
+            "min": -0.9497751593589783,
+            "peak": 0.9644774198532104,
+            "rms": 0.6686328276673476
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 0.9654123187065125,
+            "mean": 0.00024614990220673904,
+            "min": -0.9501204490661621,
+            "peak": 0.9654123187065125,
+            "rms": 0.6688729691252616
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 66,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "vca_16": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.9047741889953613,
+            "mean": 0.003731621240333595,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611318552167868
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 1.9047741889953613,
+            "mean": 0.0017621045209287721,
+            "min": -1.9047740697860718,
+            "peak": 1.9047741889953613,
+            "rms": 1.361162799946368
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 1.9047741889953613,
+            "mean": 0.003817135578107899,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611582394549329
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 1.9047741889953613,
+            "mean": 0.0017015349151518872,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611538168827975
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 1.9047741889953613,
+            "mean": 0.003827415563403015,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611495321908036
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 1.9047743082046509,
+            "mean": 0.0016423458663819908,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.361145385358286
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 1.9047741889953613,
+            "mean": 0.0038372051024539193,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611413806232666
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 1.9047743082046509,
+            "mean": 0.0015845127748497897,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611375113777615
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 1.9047743082046509,
+            "mean": 0.003846504051907024,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611337808434283
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 1.9047743082046509,
+            "mean": 0.0015280128247519527,
+            "min": -1.9047741889953613,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611301879523436
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 1.9047743082046509,
+            "mean": 0.0038553122820450285,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611267315013824
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 1.9047743082046509,
+            "mean": 0.001472825750367171,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.36112341468836
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 1.9047743082046509,
+            "mean": 0.003863629813774386,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611202363444537
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 1.9047743082046509,
+            "mean": 0.0014189290266685846,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.361117191560558
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 1.9047744274139404,
+            "mean": 0.003871456550427276,
+            "min": -1.9047744274139404,
+            "peak": 1.9047744274139404,
+            "rms": 1.3611142845561053
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 1.9047744274139404,
+            "mean": 0.0013663023451616877,
+            "min": -1.9047744274139404,
+            "peak": 1.9047744274139404,
+            "rms": 1.3611115142049632
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 67,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.9047741889953613,
+            "mean": 0.003731621240333595,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611318552167868
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 1.9047741889953613,
+            "mean": 0.0017621045209287721,
+            "min": -1.9047740697860718,
+            "peak": 1.9047741889953613,
+            "rms": 1.361162799946368
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 1.9047741889953613,
+            "mean": 0.003817135578107899,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611582394549329
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 1.9047741889953613,
+            "mean": 0.0017015349151518872,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611538168827975
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 1.9047741889953613,
+            "mean": 0.003827415563403015,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611495321908036
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 1.9047743082046509,
+            "mean": 0.0016423458663819908,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.361145385358286
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 1.9047741889953613,
+            "mean": 0.0038372051024539193,
+            "min": -1.9047741889953613,
+            "peak": 1.9047741889953613,
+            "rms": 1.3611413806232666
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 1.9047743082046509,
+            "mean": 0.0015845127748497897,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611375113777615
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 1.9047743082046509,
+            "mean": 0.003846504051907024,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611337808434283
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 1.9047743082046509,
+            "mean": 0.0015280128247519527,
+            "min": -1.9047741889953613,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611301879523436
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 1.9047743082046509,
+            "mean": 0.0038553122820450285,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611267315013824
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 1.9047743082046509,
+            "mean": 0.001472825750367171,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.36112341468836
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 1.9047743082046509,
+            "mean": 0.003863629813774386,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.3611202363444537
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 1.9047743082046509,
+            "mean": 0.0014189290266685846,
+            "min": -1.9047743082046509,
+            "peak": 1.9047743082046509,
+            "rms": 1.361117191560558
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 1.9047744274139404,
+            "mean": 0.003871456550427276,
+            "min": -1.9047744274139404,
+            "peak": 1.9047744274139404,
+            "rms": 1.3611142845561053
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 1.9047744274139404,
+            "mean": 0.0013663023451616877,
+            "min": -1.9047744274139404,
+            "peak": 1.9047744274139404,
+            "rms": 1.3611115142049632
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 67,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "full_voice_16": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.1623932272195816,
+            "mean": 0.0009160662592714133,
+            "min": -0.23292508721351624,
+            "peak": 0.23292508721351624,
+            "rms": 0.04130181368597875
+          },
+          {
+            "active_frames": 23996,
+            "channel": 2,
+            "max": 0.16423079371452332,
+            "mean": 0.0009715501347495272,
+            "min": -0.23529396951198578,
+            "peak": 0.23529396951198578,
+            "rms": 0.04134821490890513
+          },
+          {
+            "active_frames": 23996,
+            "channel": 3,
+            "max": 0.16593271493911743,
+            "mean": 0.0010328727361512296,
+            "min": -0.23751547932624817,
+            "peak": 0.23751547932624817,
+            "rms": 0.04139120071663354
+          },
+          {
+            "active_frames": 23996,
+            "channel": 4,
+            "max": 0.16271065175533295,
+            "mean": 0.0010819783695219518,
+            "min": -0.23724785447120667,
+            "peak": 0.23724785447120667,
+            "rms": 0.041416139614658475
+          },
+          {
+            "active_frames": 23996,
+            "channel": 5,
+            "max": 0.15913178026676178,
+            "mean": 0.0011503206297349263,
+            "min": -0.23216331005096436,
+            "peak": 0.23216331005096436,
+            "rms": 0.041435136491054674
+          },
+          {
+            "active_frames": 23996,
+            "channel": 6,
+            "max": 0.15632833540439606,
+            "mean": 0.0012219863398751343,
+            "min": -0.22695882618427277,
+            "peak": 0.22695882618427277,
+            "rms": 0.041457871779735755
+          },
+          {
+            "active_frames": 23996,
+            "channel": 7,
+            "max": 0.1583029180765152,
+            "mean": 0.0013024225810768853,
+            "min": -0.22507281601428986,
+            "peak": 0.22507281601428986,
+            "rms": 0.041491782414222994
+          },
+          {
+            "active_frames": 23996,
+            "channel": 8,
+            "max": 0.15998052060604095,
+            "mean": 0.001380643271917009,
+            "min": -0.22735245525836945,
+            "peak": 0.22735245525836945,
+            "rms": 0.04154054171034341
+          },
+          {
+            "active_frames": 23996,
+            "channel": 9,
+            "max": 0.16174949705600739,
+            "mean": 0.001463615245846599,
+            "min": -0.22932074964046478,
+            "peak": 0.22932074964046478,
+            "rms": 0.04160294767781202
+          },
+          {
+            "active_frames": 23996,
+            "channel": 10,
+            "max": 0.16329573094844818,
+            "mean": 0.0015420127990826112,
+            "min": -0.2311461716890335,
+            "peak": 0.2311461716890335,
+            "rms": 0.04166415677245715
+          },
+          {
+            "active_frames": 23996,
+            "channel": 11,
+            "max": 0.1602461189031601,
+            "mean": 0.0016231025385841206,
+            "min": -0.23074005544185638,
+            "peak": 0.23074005544185638,
+            "rms": 0.041717851812504134
+          },
+          {
+            "active_frames": 23996,
+            "channel": 12,
+            "max": 0.15646696090698242,
+            "mean": 0.0017102917734945558,
+            "min": -0.2254292219877243,
+            "peak": 0.2254292219877243,
+            "rms": 0.04176619299958878
+          },
+          {
+            "active_frames": 23996,
+            "channel": 13,
+            "max": 0.16234219074249268,
+            "mean": 0.0009151519562925907,
+            "min": -0.2328522950410843,
+            "peak": 0.2328522950410843,
+            "rms": 0.04130426583356157
+          },
+          {
+            "active_frames": 23996,
+            "channel": 14,
+            "max": 0.16423079371452332,
+            "mean": 0.0009715501347495272,
+            "min": -0.23529396951198578,
+            "peak": 0.23529396951198578,
+            "rms": 0.04134821490890513
+          },
+          {
+            "active_frames": 23996,
+            "channel": 15,
+            "max": 0.16593271493911743,
+            "mean": 0.0010328727361512296,
+            "min": -0.23751547932624817,
+            "peak": 0.23751547932624817,
+            "rms": 0.04139120071663354
+          },
+          {
+            "active_frames": 23996,
+            "channel": 16,
+            "max": 0.16271065175533295,
+            "mean": 0.0010819783695219518,
+            "min": -0.23724785447120667,
+            "peak": 0.23724785447120667,
+            "rms": 0.041416139614658475
+          }
+        ],
+        "frames": 24000,
+        "id": "out",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 68,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.1623932272195816,
+            "mean": 0.0009160662592714133,
+            "min": -0.23292508721351624,
+            "peak": 0.23292508721351624,
+            "rms": 0.04130181368597875
+          },
+          {
+            "active_frames": 23996,
+            "channel": 2,
+            "max": 0.16423079371452332,
+            "mean": 0.0009715501347495272,
+            "min": -0.23529396951198578,
+            "peak": 0.23529396951198578,
+            "rms": 0.04134821490890513
+          },
+          {
+            "active_frames": 23996,
+            "channel": 3,
+            "max": 0.16593271493911743,
+            "mean": 0.0010328727361512296,
+            "min": -0.23751547932624817,
+            "peak": 0.23751547932624817,
+            "rms": 0.04139120071663354
+          },
+          {
+            "active_frames": 23996,
+            "channel": 4,
+            "max": 0.16271065175533295,
+            "mean": 0.0010819783695219518,
+            "min": -0.23724785447120667,
+            "peak": 0.23724785447120667,
+            "rms": 0.041416139614658475
+          },
+          {
+            "active_frames": 23996,
+            "channel": 5,
+            "max": 0.15913178026676178,
+            "mean": 0.0011503206297349263,
+            "min": -0.23216331005096436,
+            "peak": 0.23216331005096436,
+            "rms": 0.041435136491054674
+          },
+          {
+            "active_frames": 23996,
+            "channel": 6,
+            "max": 0.15632833540439606,
+            "mean": 0.0012219863398751343,
+            "min": -0.22695882618427277,
+            "peak": 0.22695882618427277,
+            "rms": 0.041457871779735755
+          },
+          {
+            "active_frames": 23996,
+            "channel": 7,
+            "max": 0.1583029180765152,
+            "mean": 0.0013024225810768853,
+            "min": -0.22507281601428986,
+            "peak": 0.22507281601428986,
+            "rms": 0.041491782414222994
+          },
+          {
+            "active_frames": 23996,
+            "channel": 8,
+            "max": 0.15998052060604095,
+            "mean": 0.001380643271917009,
+            "min": -0.22735245525836945,
+            "peak": 0.22735245525836945,
+            "rms": 0.04154054171034341
+          },
+          {
+            "active_frames": 23996,
+            "channel": 9,
+            "max": 0.16174949705600739,
+            "mean": 0.001463615245846599,
+            "min": -0.22932074964046478,
+            "peak": 0.22932074964046478,
+            "rms": 0.04160294767781202
+          },
+          {
+            "active_frames": 23996,
+            "channel": 10,
+            "max": 0.16329573094844818,
+            "mean": 0.0015420127990826112,
+            "min": -0.2311461716890335,
+            "peak": 0.2311461716890335,
+            "rms": 0.04166415677245715
+          },
+          {
+            "active_frames": 23996,
+            "channel": 11,
+            "max": 0.1602461189031601,
+            "mean": 0.0016231025385841206,
+            "min": -0.23074005544185638,
+            "peak": 0.23074005544185638,
+            "rms": 0.041717851812504134
+          },
+          {
+            "active_frames": 23996,
+            "channel": 12,
+            "max": 0.15646696090698242,
+            "mean": 0.0017102917734945558,
+            "min": -0.2254292219877243,
+            "peak": 0.2254292219877243,
+            "rms": 0.04176619299958878
+          },
+          {
+            "active_frames": 23996,
+            "channel": 13,
+            "max": 0.16234219074249268,
+            "mean": 0.0009151519562925907,
+            "min": -0.2328522950410843,
+            "peak": 0.2328522950410843,
+            "rms": 0.04130426583356157
+          },
+          {
+            "active_frames": 23996,
+            "channel": 14,
+            "max": 0.16423079371452332,
+            "mean": 0.0009715501347495272,
+            "min": -0.23529396951198578,
+            "peak": 0.23529396951198578,
+            "rms": 0.04134821490890513
+          },
+          {
+            "active_frames": 23996,
+            "channel": 15,
+            "max": 0.16593271493911743,
+            "mean": 0.0010328727361512296,
+            "min": -0.23751547932624817,
+            "peak": 0.23751547932624817,
+            "rms": 0.04139120071663354
+          },
+          {
+            "active_frames": 23996,
+            "channel": 16,
+            "max": 0.16271065175533295,
+            "mean": 0.0010819783695219518,
+            "min": -0.23724785447120667,
+            "peak": 0.23724785447120667,
+            "rms": 0.041416139614658475
+          }
+        ],
+        "frames": 24000,
+        "id": "out",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 68,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "ladder_audio_cv_16": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.8779944777488708,
+            "mean": 0.0018069764761597309,
+            "min": -0.8779721260070801,
+            "peak": 0.8779944777488708,
+            "rms": 0.574413089983838
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 0.8781883716583252,
+            "mean": 0.0005537108007702563,
+            "min": -0.8781970739364624,
+            "peak": 0.8781970739364624,
+            "rms": 0.5746842742827984
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 0.8771452903747559,
+            "mean": 0.001840062977847261,
+            "min": -0.8593800067901611,
+            "peak": 0.8771452903747559,
+            "rms": 0.5748190257618032
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 0.8785521388053894,
+            "mean": 0.0005306932385509439,
+            "min": -0.8785752058029175,
+            "peak": 0.8785752058029175,
+            "rms": 0.5750741404223076
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 0.8786981701850891,
+            "mean": 0.001843603293292459,
+            "min": -0.8787186145782471,
+            "peak": 0.8787186145782471,
+            "rms": 0.5752117890027271
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 0.878984808921814,
+            "mean": 0.0005082688254116066,
+            "min": -0.878984808921814,
+            "peak": 0.878984808921814,
+            "rms": 0.5754690045574701
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 0.879208505153656,
+            "mean": 0.0018468412927482559,
+            "min": -0.8790934681892395,
+            "peak": 0.879208505153656,
+            "rms": 0.5756095897538481
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 0.8792229294776917,
+            "mean": 0.0004864291684253663,
+            "min": -0.8792981505393982,
+            "peak": 0.8792981505393982,
+            "rms": 0.5758687725980479
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 0.8796370625495911,
+            "mean": 0.0018497762720760737,
+            "min": -0.8796448707580566,
+            "peak": 0.8796448707580566,
+            "rms": 0.5760123268650449
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 0.8798093795776367,
+            "mean": 0.00046516665119255657,
+            "min": -0.8797822594642639,
+            "peak": 0.8798093795776367,
+            "rms": 0.5762733539014359
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 0.8800714015960693,
+            "mean": 0.0018524096090235978,
+            "min": -0.8818798661231995,
+            "peak": 0.8818798661231995,
+            "rms": 0.5764199142393099
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 0.8803136944770813,
+            "mean": 0.0004444733740304714,
+            "min": -0.8844629526138306,
+            "peak": 0.8844629526138306,
+            "rms": 0.5766826748431666
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 0.8805203437805176,
+            "mean": 0.0018547413287854197,
+            "min": -0.8866682648658752,
+            "peak": 0.8866682648658752,
+            "rms": 0.576832275117553
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 0.8806923031806946,
+            "mean": 0.0004243425730517099,
+            "min": -0.8884949088096619,
+            "peak": 0.8884949088096619,
+            "rms": 0.5770966710910971
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 0.8809332847595215,
+            "mean": 0.0018567721782584586,
+            "min": -0.8907182216644287,
+            "peak": 0.8907182216644287,
+            "rms": 0.5772493432919634
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 0.8811472058296204,
+            "mean": 0.0004047667184108811,
+            "min": -0.8926068544387817,
+            "peak": 0.8926068544387817,
+            "rms": 0.5775152868103117
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 69,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 0.8779944777488708,
+            "mean": 0.0018069764761597309,
+            "min": -0.8779721260070801,
+            "peak": 0.8779944777488708,
+            "rms": 0.574413089983838
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 0.8781883716583252,
+            "mean": 0.0005537108007702563,
+            "min": -0.8781970739364624,
+            "peak": 0.8781970739364624,
+            "rms": 0.5746842742827984
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 0.8771452903747559,
+            "mean": 0.001840062977847261,
+            "min": -0.8593800067901611,
+            "peak": 0.8771452903747559,
+            "rms": 0.5748190257618032
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 0.8785521388053894,
+            "mean": 0.0005306932385509439,
+            "min": -0.8785752058029175,
+            "peak": 0.8785752058029175,
+            "rms": 0.5750741404223076
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 0.8786981701850891,
+            "mean": 0.001843603293292459,
+            "min": -0.8787186145782471,
+            "peak": 0.8787186145782471,
+            "rms": 0.5752117890027271
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 0.878984808921814,
+            "mean": 0.0005082688254116066,
+            "min": -0.878984808921814,
+            "peak": 0.878984808921814,
+            "rms": 0.5754690045574701
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 0.879208505153656,
+            "mean": 0.0018468412927482559,
+            "min": -0.8790934681892395,
+            "peak": 0.879208505153656,
+            "rms": 0.5756095897538481
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 0.8792229294776917,
+            "mean": 0.0004864291684253663,
+            "min": -0.8792981505393982,
+            "peak": 0.8792981505393982,
+            "rms": 0.5758687725980479
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 0.8796370625495911,
+            "mean": 0.0018497762720760737,
+            "min": -0.8796448707580566,
+            "peak": 0.8796448707580566,
+            "rms": 0.5760123268650449
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 0.8798093795776367,
+            "mean": 0.00046516665119255657,
+            "min": -0.8797822594642639,
+            "peak": 0.8798093795776367,
+            "rms": 0.5762733539014359
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 0.8800714015960693,
+            "mean": 0.0018524096090235978,
+            "min": -0.8818798661231995,
+            "peak": 0.8818798661231995,
+            "rms": 0.5764199142393099
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 0.8803136944770813,
+            "mean": 0.0004444733740304714,
+            "min": -0.8844629526138306,
+            "peak": 0.8844629526138306,
+            "rms": 0.5766826748431666
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 0.8805203437805176,
+            "mean": 0.0018547413287854197,
+            "min": -0.8866682648658752,
+            "peak": 0.8866682648658752,
+            "rms": 0.576832275117553
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 0.8806923031806946,
+            "mean": 0.0004243425730517099,
+            "min": -0.8884949088096619,
+            "peak": 0.8884949088096619,
+            "rms": 0.5770966710910971
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 0.8809332847595215,
+            "mean": 0.0018567721782584586,
+            "min": -0.8907182216644287,
+            "peak": 0.8907182216644287,
+            "rms": 0.5772493432919634
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 0.8811472058296204,
+            "mean": 0.0004047667184108811,
+            "min": -0.8926068544387817,
+            "peak": 0.8926068544387817,
+            "rms": 0.5775152868103117
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 69,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    },
+    "vca_audio_cv_16": {
+      "baseline": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.8089731931686401,
+            "mean": 0.0020862047853252943,
+            "min": -1.8089219331741333,
+            "peak": 1.8089731931686401,
+            "rms": 0.8063741293272769
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 1.809433937072754,
+            "mean": 0.0011194360190971162,
+            "min": -1.809417963027954,
+            "peak": 1.809433937072754,
+            "rms": 0.806886341681528
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 1.7785561084747314,
+            "mean": 0.0021471108282531555,
+            "min": -1.7937067747116089,
+            "peak": 1.7937067747116089,
+            "rms": 0.8063744045291288
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 1.8095263242721558,
+            "mean": 0.0010894356028332561,
+            "min": -1.8095331192016602,
+            "peak": 1.8095331192016602,
+            "rms": 0.8068794026694165
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 1.8095210790634155,
+            "mean": 0.002152467168590577,
+            "min": -1.8092867136001587,
+            "peak": 1.8095210790634155,
+            "rms": 0.8063695899434667
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 1.8091627359390259,
+            "mean": 0.001059989712378723,
+            "min": -1.8091627359390259,
+            "peak": 1.8091627359390259,
+            "rms": 0.8068726101496762
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 1.8092237710952759,
+            "mean": 0.0021574434578605422,
+            "min": -1.8092739582061768,
+            "peak": 1.8092739582061768,
+            "rms": 0.806365079143626
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 1.807717204093933,
+            "mean": 0.0010310873184017732,
+            "min": -1.807856798171997,
+            "peak": 1.807856798171997,
+            "rms": 0.8068659517057599
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 1.8091282844543457,
+            "mean": 0.002162040030521077,
+            "min": -1.8093477487564087,
+            "peak": 1.8093477487564087,
+            "rms": 0.8063608135979633
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 1.8094545602798462,
+            "mean": 0.0010027175225509905,
+            "min": -1.8093682527542114,
+            "peak": 1.8094545602798462,
+            "rms": 0.8068594290281318
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 1.809332251548767,
+            "mean": 0.0021662576375267306,
+            "min": -1.8093458414077759,
+            "peak": 1.8093458414077759,
+            "rms": 0.8063567248907322
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 1.8095086812973022,
+            "mean": 0.0009748715237185994,
+            "min": -1.8095086812973022,
+            "peak": 1.8095086812973022,
+            "rms": 0.806853043361277
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 1.8094450235366821,
+            "mean": 0.00217009861639556,
+            "min": -1.8091003894805908,
+            "peak": 1.8094450235366821,
+            "rms": 0.8063527285300268
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 1.8076566457748413,
+            "mean": 0.0009475395090043969,
+            "min": -1.809359073638916,
+            "peak": 1.809359073638916,
+            "rms": 0.806846796884819
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 1.8092031478881836,
+            "mean": 0.0021735627913925535,
+            "min": -1.809310793876648,
+            "peak": 1.809310793876648,
+            "rms": 0.8063487088635342
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 1.8093429803848267,
+            "mean": 0.0009207130410157292,
+            "min": -1.8093221187591553,
+            "peak": 1.8093429803848267,
+            "rms": 0.8068406898043496
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 70,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "candidate": {
+        "channels": [
+          {
+            "active_frames": 24000,
+            "channel": 1,
+            "max": 1.8089731931686401,
+            "mean": 0.0020862047853252943,
+            "min": -1.8089219331741333,
+            "peak": 1.8089731931686401,
+            "rms": 0.8063741293272769
+          },
+          {
+            "active_frames": 23997,
+            "channel": 2,
+            "max": 1.809433937072754,
+            "mean": 0.0011194360190971162,
+            "min": -1.809417963027954,
+            "peak": 1.809433937072754,
+            "rms": 0.806886341681528
+          },
+          {
+            "active_frames": 23997,
+            "channel": 3,
+            "max": 1.7785561084747314,
+            "mean": 0.0021471108282531555,
+            "min": -1.7937067747116089,
+            "peak": 1.7937067747116089,
+            "rms": 0.8063744045291288
+          },
+          {
+            "active_frames": 23997,
+            "channel": 4,
+            "max": 1.8095263242721558,
+            "mean": 0.0010894356028332561,
+            "min": -1.8095331192016602,
+            "peak": 1.8095331192016602,
+            "rms": 0.8068794026694165
+          },
+          {
+            "active_frames": 23997,
+            "channel": 5,
+            "max": 1.8095210790634155,
+            "mean": 0.002152467168590577,
+            "min": -1.8092867136001587,
+            "peak": 1.8095210790634155,
+            "rms": 0.8063695899434667
+          },
+          {
+            "active_frames": 23997,
+            "channel": 6,
+            "max": 1.8091627359390259,
+            "mean": 0.001059989712378723,
+            "min": -1.8091627359390259,
+            "peak": 1.8091627359390259,
+            "rms": 0.8068726101496762
+          },
+          {
+            "active_frames": 23997,
+            "channel": 7,
+            "max": 1.8092237710952759,
+            "mean": 0.0021574434578605422,
+            "min": -1.8092739582061768,
+            "peak": 1.8092739582061768,
+            "rms": 0.806365079143626
+          },
+          {
+            "active_frames": 23997,
+            "channel": 8,
+            "max": 1.807717204093933,
+            "mean": 0.0010310873184017732,
+            "min": -1.807856798171997,
+            "peak": 1.807856798171997,
+            "rms": 0.8068659517057599
+          },
+          {
+            "active_frames": 23997,
+            "channel": 9,
+            "max": 1.8091282844543457,
+            "mean": 0.002162040030521077,
+            "min": -1.8093477487564087,
+            "peak": 1.8093477487564087,
+            "rms": 0.8063608135979633
+          },
+          {
+            "active_frames": 23997,
+            "channel": 10,
+            "max": 1.8094545602798462,
+            "mean": 0.0010027175225509905,
+            "min": -1.8093682527542114,
+            "peak": 1.8094545602798462,
+            "rms": 0.8068594290281318
+          },
+          {
+            "active_frames": 23997,
+            "channel": 11,
+            "max": 1.809332251548767,
+            "mean": 0.0021662576375267306,
+            "min": -1.8093458414077759,
+            "peak": 1.8093458414077759,
+            "rms": 0.8063567248907322
+          },
+          {
+            "active_frames": 23997,
+            "channel": 12,
+            "max": 1.8095086812973022,
+            "mean": 0.0009748715237185994,
+            "min": -1.8095086812973022,
+            "peak": 1.8095086812973022,
+            "rms": 0.806853043361277
+          },
+          {
+            "active_frames": 23997,
+            "channel": 13,
+            "max": 1.8094450235366821,
+            "mean": 0.00217009861639556,
+            "min": -1.8091003894805908,
+            "peak": 1.8094450235366821,
+            "rms": 0.8063527285300268
+          },
+          {
+            "active_frames": 23997,
+            "channel": 14,
+            "max": 1.8076566457748413,
+            "mean": 0.0009475395090043969,
+            "min": -1.809359073638916,
+            "peak": 1.809359073638916,
+            "rms": 0.806846796884819
+          },
+          {
+            "active_frames": 23997,
+            "channel": 15,
+            "max": 1.8092031478881836,
+            "mean": 0.0021735627913925535,
+            "min": -1.809310793876648,
+            "peak": 1.809310793876648,
+            "rms": 0.8063487088635342
+          },
+          {
+            "active_frames": 23997,
+            "channel": 16,
+            "max": 1.8093429803848267,
+            "mean": 0.0009207130410157292,
+            "min": -1.8093221187591553,
+            "peak": 1.8093429803848267,
+            "rms": 0.8068406898043496
+          }
+        ],
+        "frames": 24000,
+        "id": "target",
+        "max_channels": 16,
+        "midi_event_count": 0,
+        "min_channels": 1,
+        "module_event_count": 0,
+        "port": "out",
+        "revision": 70,
+        "sample_rate": 48000,
+        "solver_failures": 0,
+        "state": "analyzed offline from reset",
+        "statistics": "active frames only; inactive channels excluded",
+        "units": "raw module output units; consult catalog"
+      },
+      "differences_excluding_revision": {}
+    }
+  },
+  "summary": {
+    "ladder_1": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 1585.203125,
+      "candidate_median_ns_per_frame": 1582.6727291666666,
+      "baseline_min_max_ns_per_frame": [
+        1568.7282916666666,
+        1600.6822916666667
+      ],
+      "candidate_min_max_ns_per_frame": [
+        1575.704,
+        1587.6883541666666
+      ],
+      "paired_median_speedup": 1.0027235344531207,
+      "paired_min_max_speedup": [
+        0.9880580704328767,
+        1.0113792082014852
+      ],
+      "candidate_time_reduction_percent": 0.15962596801804008,
+      "all_checksums_equal": true
+    },
+    "vca_1": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 738.0442708333334,
+      "candidate_median_ns_per_frame": 736.2109375,
+      "baseline_min_max_ns_per_frame": [
+        736.0147708333334,
+        741.1796875
+      ],
+      "candidate_min_max_ns_per_frame": [
+        731.1996458333333,
+        742.0954791666667
+      ],
+      "paired_median_speedup": 1.0029707777924561,
+      "paired_min_max_speedup": [
+        0.994540852966949,
+        1.0131400613335377
+      ],
+      "candidate_time_reduction_percent": 0.2484042496886163,
+      "all_checksums_equal": true
+    },
+    "full_voice_1": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 2285.8975833333334,
+      "candidate_median_ns_per_frame": 2278.5243125,
+      "baseline_min_max_ns_per_frame": [
+        2280.3915,
+        2315.454
+      ],
+      "candidate_min_max_ns_per_frame": [
+        2273.1319375,
+        2298.3307291666665
+      ],
+      "paired_median_speedup": 1.003235985147441,
+      "paired_min_max_speedup": [
+        1.000607887715598,
+        1.0147182852058567
+      ],
+      "candidate_time_reduction_percent": 0.3225547324207545,
+      "all_checksums_equal": true
+    },
+    "ladder_audio_cv_1": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 1665.967875,
+      "candidate_median_ns_per_frame": 1681.1006875,
+      "baseline_min_max_ns_per_frame": [
+        1650.2795208333334,
+        1680.3098958333333
+      ],
+      "candidate_min_max_ns_per_frame": [
+        1658.4010416666667,
+        1690.3159791666667
+      ],
+      "paired_median_speedup": 0.9989934456193685,
+      "paired_min_max_speedup": [
+        0.9763142164975146,
+        1.0051122529878354
+      ],
+      "candidate_time_reduction_percent": -0.9083495982778134,
+      "all_checksums_equal": true
+    },
+    "vca_audio_cv_1": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 793.0494791666666,
+      "candidate_median_ns_per_frame": 788.607625,
+      "baseline_min_max_ns_per_frame": [
+        773.7430625,
+        798.0208333333334
+      ],
+      "candidate_min_max_ns_per_frame": [
+        787.7404583333333,
+        796.0980833333333
+      ],
+      "paired_median_speedup": 0.9969534742211936,
+      "paired_min_max_speedup": [
+        0.9811508765211343,
+        1.0058783292934061
+      ],
+      "candidate_time_reduction_percent": 0.56009798674026,
+      "all_checksums_equal": true
+    },
+    "ladder_16": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 21032.268229166664,
+      "candidate_median_ns_per_frame": 19169.575520833332,
+      "baseline_min_max_ns_per_frame": [
+        21022.785583333334,
+        21145.545124999997
+      ],
+      "candidate_min_max_ns_per_frame": [
+        19107.440104166668,
+        19278.243916666666
+      ],
+      "paired_median_speedup": 1.0970778607745733,
+      "paired_min_max_speedup": [
+        1.0968605447884696,
+        1.1012100078828662
+      ],
+      "candidate_time_reduction_percent": 8.856356756377936,
+      "all_checksums_equal": true
+    },
+    "vca_16": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 6713.9131875,
+      "candidate_median_ns_per_frame": 4690.972208333334,
+      "baseline_min_max_ns_per_frame": [
+        6688.966145833333,
+        6738.2890625
+      ],
+      "candidate_min_max_ns_per_frame": [
+        4683.2109375,
+        4722.838541666667
+      ],
+      "paired_median_speedup": 1.4319029336834581,
+      "paired_min_max_speedup": [
+        1.4237854191541421,
+        1.4364376430390455
+      ],
+      "candidate_time_reduction_percent": 30.130579926666158,
+      "all_checksums_equal": true
+    },
+    "full_voice_16": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 27956.947916666668,
+      "candidate_median_ns_per_frame": 24063.905375,
+      "baseline_min_max_ns_per_frame": [
+        27941.200520833332,
+        27998.405375
+      ],
+      "candidate_min_max_ns_per_frame": [
+        23905.126729166666,
+        24169.800333333333
+      ],
+      "paired_median_speedup": 1.163304824754788,
+      "paired_min_max_speedup": [
+        1.156689237441087,
+        1.168837163567188
+      ],
+      "candidate_time_reduction_percent": 13.925134293167297,
+      "all_checksums_equal": true
+    },
+    "ladder_audio_cv_16": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 22388.5859375,
+      "candidate_median_ns_per_frame": 20472.09375,
+      "baseline_min_max_ns_per_frame": [
+        22360.744791666664,
+        22459.308166666666
+      ],
+      "candidate_min_max_ns_per_frame": [
+        20446.70227083333,
+        20586.5841875
+      ],
+      "paired_median_speedup": 1.0930847040986598,
+      "paired_min_max_speedup": [
+        1.0909681743270343,
+        1.0942491868358124
+      ],
+      "candidate_time_reduction_percent": 8.56013056318109,
+      "all_checksums_equal": true
+    },
+    "vca_audio_cv_16": {
+      "pairs": 5,
+      "baseline_median_ns_per_frame": 7070.449666666666,
+      "candidate_median_ns_per_frame": 5063.495666666667,
+      "baseline_min_max_ns_per_frame": [
+        7049.381083333334,
+        7130.046020833333
+      ],
+      "candidate_min_max_ns_per_frame": [
+        5052.940979166667,
+        5135.957479166666
+      ],
+      "paired_median_speedup": 1.394079570755957,
+      "paired_min_max_speedup": [
+        1.3882603292093878,
+        1.400098092641796
+      ],
+      "candidate_time_reduction_percent": 28.385097053468876,
+      "all_checksums_equal": true
+    }
+  },
+  "validation": {
+    "all_paired_checksums_equal": true,
+    "all_channel_statistics_equal": true,
+    "all_solver_failure_counts_zero": true
+  },
+  "finished_utc": "2026-10-13T19:38:55.178230+00:00",
+  "candidate_build_command": "cargo build --locked --release (workspace); measured binary copied before subsequent source changes",
+  "candidate_source_hashes": {
+    "crates/openpatch-core/src/ladder.rs": "a6f157e6b317285468f825be3607a48d23d1e8e6126a844080cf6c7d0b5de714",
+    "crates/openpatch-core/src/analog.rs": "44a28a5b441e01c5bc91376b71556c304b1a9b38488051f5305aa82014793a24",
+    "crates/openpatch-core/src/poly.rs": "616d28b5eec358dc55d4f8b7751881df398ebc0a0808f8a56f4f03155a1eb5ab"
+  },
+  "assembly_evidence": {
+    "method": "otool -tvV of the actual measured ARM64 CLI executable after ThinLTO",
+    "sha256": "ad0512148071f541e6dc81db15d385667261693030feebb72291dcafe429aa7d",
+    "observation": "Ladder and VCA quartet decimation use two independent packed f64x2 sums with separate multiply/add over513 chronological taps; no FMA, horizontal reduction, or hot-loop stack spills."
+  }
+}
