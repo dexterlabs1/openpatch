@@ -53,11 +53,15 @@ uses best-effort recent samples, and does not require the audio callback to wait
 for a complete visual frame. See [visualizers](VISUALIZERS.md) for the shader
 interface and analysis limitations.
 
-The engine sorts dependencies into a stable order, stores integer input indices,
-and processes nodes across fixed-capacity blocks. Audio-rate modulation still
-varies per sample. Arbitrary caller buffer lengths are split into chunks without
-allocation. There is no runtime graph traversal, JSON, filesystem access,
-mutex, or trait-object plugin dispatch in the sample loop.
+The version-1 engine sorts dependencies into a stable order, stores integer
+input indices, and processes nodes across fixed-capacity blocks. Audio-rate
+modulation still varies per sample. The version-2 foundation adds named source
+ports and fixed-capacity 16-channel frames, with every cable carrying a completed
+previous-sample frame. This allows feedback without evaluation-order-dependent
+timing. Arbitrary caller buffer lengths must preserve the same sample sequence.
+There is no runtime graph search, JSON, filesystem access, mutex, or trait-object
+plugin dispatch in the sample loop. The precise API, migration rules and
+acceptance gates are specified in [Engine version 2](ENGINE_V2.md).
 
 ## Signal contract
 
@@ -70,9 +74,13 @@ clips to [-1,1]; the graph can carry signals outside that range within its numer
 safety limits. Consult `catalog` for exact limits. These conventions are versioned
 and intentionally do not promise VCV patch or plugin compatibility.
 
-Cycles are rejected. A future feedback design must define an explicit sample
-delay and strongly connected component scheduling; simply accepting cycles in
-the current block graph would change feedback timing and pitch.
+Patch version selects engine semantics: version 1 remains mono, uses same-sample
+DAG routing and rejects cycles. Version 2 uses named ports, 0–16 active channels
+and one sample of delay per cable, including its channel count. New cable frames
+start empty. Version-1 files must never acquire version-2 timing implicitly.
+`Patch::default()` stays version 1; `Patch::new_v2()` explicitly requests the new
+contract. The mono render API returns channel 0; explicit `poly_sum` performs
+voice mixing. Polyphonic processing does not itself add hardware channels.
 
 ## Next milestones
 
@@ -81,8 +89,9 @@ the current block graph would change feedback timing and pitch.
    See [analog models](ANALOG_MODELS.md) and [module coverage](MODULE_COVERAGE.md).
 2. **Live instrument refinement:** device selection, latency controls, xrun and
    callback percentile measurements, with macOS ARM as the first interactive target.
-3. **Rack workflow and breadth:** layout undo/redo, named outputs, sequencing,
-   MIDI, polyphony, explicit feedback, and richer project persistence.
+3. **Rack workflow and breadth:** complete the named-port/polyphonic/feedback
+   foundation's acceptance gates, then layout undo/redo, sequencing, MIDI and
+   richer project persistence.
 4. **Additional control transports:** multiple agents attached to one existing
    application session, subscriptions, and cancellable background rendering.
    Current native stdio already shares one agent connection with its own GUI.

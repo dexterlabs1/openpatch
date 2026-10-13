@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "chord",
+      "kind": "poly_constant",
+      "params": {
+        "channels": 3,
+        "v1": 0,
+        "v2": 0.3333333333333333,
+        "v3": 0.5833333333333334
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 1800,
+        "resonance": 0.45
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 1.5,
+        "duty": 0.45
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.015,
+        "decay": 0.18,
+        "sustain": 0.4,
+        "release": 0.25
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca"
+    },
+    {
+      "id": "sum",
+      "kind": "poly_sum"
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "vco",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "to": "vca",
+      "input": "signal"
+    },
+    {
+      "from": "clock",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "envelope",
+      "to": "vca",
+      "input": "cv"
+    },
+    {
+      "from": "chord",
+      "output": "out",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "vca",
+      "output": "out",
+      "to": "sum",
+      "input": "signal"
+    },
+    {
+      "from": "sum",
+      "output": "out",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}

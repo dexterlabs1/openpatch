@@ -40,7 +40,7 @@ struct ParameterEdit {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CableEnd {
-    Output(String),
+    Output { node: String, port: String },
     Input { node: String, port: String },
 }
 
@@ -59,7 +59,7 @@ impl PendingCable {
                 .iter()
                 .find(|cable| cable.to == *node && cable.input == *port)
                 .cloned(),
-            CableEnd::Output(_) => None,
+            CableEnd::Output { .. } => None,
         };
         Self { origin, original }
     }
@@ -160,7 +160,7 @@ impl Rack {
             .as_ref()
             .filter(|id| !self.positions.contains_key(*id))
             .cloned();
-        self.reconcile(patch);
+        self.reconcile(patch, catalog);
         let mut action = None;
         let (canvas, response) = ui.allocate_exact_size(
             ui.available_size().max(vec2(1.0, 1.0)),
@@ -219,7 +219,7 @@ impl Rack {
         }
         paint_background(&painter, canvas, self.pan, self.zoom);
 
-        let mut outputs = BTreeMap::<String, Pos2>::new();
+        let mut outputs = BTreeMap::<(String, String), Pos2>::new();
         let mut inputs = BTreeMap::<(String, String), Pos2>::new();
         let mut jack_targets = Vec::new();
         let mut pointer_on_module = false;
@@ -230,7 +230,8 @@ impl Rack {
                 canvas.min + self.pan + position.to_vec2() * self.zoom,
                 vec2(width, PANEL_HEIGHT) * self.zoom,
             );
-            let point = |x, y| rect.min + vec2(x, y) * self.zoom;
+            let zoom = self.zoom;
+            let point = |x, y| rect.min + vec2(x, y) * zoom;
             let module = catalog["modules"]
                 .as_array()
                 .and_then(|modules| modules.iter().find(|item| item["kind"] == node.kind));
@@ -238,11 +239,31 @@ impl Rack {
                 .and_then(|item| item["inputs"].as_array())
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let output_point = point(width * 0.5, 374.0);
-            outputs.insert(node.id.clone(), output_point);
-            jack_targets.push((CableEnd::Output(node.id.clone()), output_point));
+            let output_ports: Vec<&str> = module
+                .and_then(|module| module["outputs"].as_array())
+                .map(|ports| ports.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_else(|| vec!["out"]);
+            for (index, port) in output_ports.iter().enumerate() {
+                let location = point_from_port(
+                    rect.min,
+                    self.zoom,
+                    port_position(&node.kind, false, index, output_ports.len(), width),
+                );
+                outputs.insert((node.id.clone(), port.to_string()), location);
+                jack_targets.push((
+                    CableEnd::Output {
+                        node: node.id.clone(),
+                        port: port.to_string(),
+                    },
+                    location,
+                ));
+            }
             for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
-                let location = point(width * (index + 1) as f32 / (ports.len() + 1) as f32, 332.0);
+                let location = point_from_port(
+                    rect.min,
+                    self.zoom,
+                    port_position(&node.kind, true, index, ports.len(), width),
+                );
                 inputs.insert((node.id.clone(), port.to_string()), location);
                 jack_targets.push((
                     CableEnd::Input {
@@ -273,10 +294,7 @@ impl Rack {
             panel_response.context_menu(|ui| {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
-                if ui.button("Use as audio output").clicked() {
-                    action = Some(RackAction::Command("set_output", json!({"id":node.id})));
-                    ui.close();
-                }
+                monitor_menu(ui, node, &output_ports, patch, &mut action);
                 if ui.button("Remove module").clicked() {
                     action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
                     self.selected = None;
@@ -331,10 +349,7 @@ impl Rack {
             header_response.context_menu(|ui| {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
-                if ui.button("Use as audio output").clicked() {
-                    action = Some(RackAction::Command("set_output", json!({"id":node.id})));
-                    ui.close();
-                }
+                monitor_menu(ui, node, &output_ports, patch, &mut action);
                 if ui.button("Remove module").clicked() {
                     action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
                     self.selected = None;
@@ -347,11 +362,140 @@ impl Rack {
             let model = module
                 .and_then(|module| module["model"].as_str())
                 .unwrap_or("legacy");
-            header_response.on_hover_text(format!("{description}\nModel: {model}\nDrag to move. Panels snap to rack rows and free space."));
+            let policy = module
+                .and_then(|module| {
+                    module["polyphony"][if patch.version == 2 {
+                        "version_2"
+                    } else {
+                        "version_1"
+                    }]
+                    .as_str()
+                })
+                .unwrap_or("mono");
+            header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move. Panels snap to rack rows and free space."));
 
             let parameters = ordered_parameters(node, module);
             let count = parameters.len();
+            if node.kind == "poly_constant" {
+                painter.text(
+                    point(20.0, 93.0),
+                    Align2::LEFT_CENTER,
+                    "CHANNELS",
+                    FontId::proportional(10.0 * self.zoom),
+                    INK,
+                );
+                if let Some(spec) = module.and_then(|module| module["params"].get("channels")) {
+                    if let Some(edit) = self.compact_parameter(
+                        ui,
+                        node,
+                        "channels",
+                        spec,
+                        Rect::from_min_size(
+                            point(width - 100.0, 81.0),
+                            vec2(75.0, 24.0) * self.zoom,
+                        ),
+                        "",
+                    ) {
+                        action = Some(edit);
+                    }
+                }
+                for channel in 0..16 {
+                    let parameter = format!("v{}", channel + 1);
+                    let x = 20.0 + (channel % 4) as f32 * (width - 40.0) / 4.0;
+                    let y = 127.0 + (channel / 4) as f32 * 45.0;
+                    painter.text(
+                        point(x, y + 12.0),
+                        Align2::LEFT_CENTER,
+                        format!("{:02}", channel + 1),
+                        FontId::monospace(9.0 * self.zoom),
+                        MUTED,
+                    );
+                    if let Some(spec) = module.and_then(|module| module["params"].get(&parameter)) {
+                        if let Some(edit) = self.compact_parameter(
+                            ui,
+                            node,
+                            &parameter,
+                            spec,
+                            Rect::from_min_size(
+                                point(x + 20.0, y),
+                                vec2((width - 40.0) / 4.0 - 24.0, 24.0) * self.zoom,
+                            ),
+                            " V",
+                        ) {
+                            action = Some(edit);
+                        }
+                    }
+                }
+                let channels = node
+                    .params
+                    .get("channels")
+                    .copied()
+                    .or_else(|| {
+                        module
+                            .and_then(|module| module["params"]["channels"]["default"].as_f64())
+                            .map(|value| value as f32)
+                    })
+                    .unwrap_or(0.0);
+                painter.text(
+                    point(width * 0.5, 313.0),
+                    Align2::CENTER_CENTER,
+                    format!("Configured: {} channels", channels as u32),
+                    FontId::proportional(10.0 * self.zoom),
+                    MUTED,
+                );
+            }
+            if node.kind == "poly_split" {
+                painter.text(
+                    point(width * 0.5, 83.0),
+                    Align2::CENTER_CENTER,
+                    "16 named mono outputs",
+                    FontId::proportional(10.0 * self.zoom),
+                    MUTED,
+                );
+            }
+            if node.kind == "poly_sum" {
+                painter.text(
+                    point(width * 0.5, 183.0),
+                    Align2::CENTER_CENTER,
+                    "SUM CHANNELS",
+                    FontId::proportional(12.0 * self.zoom),
+                    MUTED,
+                );
+            }
             for (index, (name, spec)) in parameters.iter().enumerate() {
+                if node.kind == "poly_constant" {
+                    continue;
+                }
+                if node.kind == "poly_merge" && *name == "channels" {
+                    painter.text(
+                        point(20.0, 330.0),
+                        Align2::LEFT_CENTER,
+                        "CHANNELS",
+                        FontId::proportional(10.0 * self.zoom),
+                        INK,
+                    );
+                    if let Some(edit) = self.compact_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        Rect::from_min_size(
+                            point(width - 100.0, 318.0),
+                            vec2(75.0, 24.0) * self.zoom,
+                        ),
+                        "",
+                    ) {
+                        action = Some(edit);
+                    }
+                    painter.text(
+                        point(width * 0.5, 305.0),
+                        Align2::CENTER_CENTER,
+                        "0 = auto from connected inputs",
+                        FontId::proportional(9.0 * self.zoom),
+                        MUTED,
+                    );
+                    continue;
+                }
                 let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
                 let mut max = spec["max"].as_f64().unwrap_or(1.0) as f32;
                 if let Some(ratio) = spec["sample_rate_max_ratio"].as_f64() {
@@ -539,7 +683,7 @@ impl Rack {
                 ));
                 value_response.on_hover_text("Double-click to type a value");
             }
-            if count == 0 {
+            if count == 0 && !node.kind.starts_with("poly_") {
                 paint_center_mark(
                     &painter,
                     rect,
@@ -571,6 +715,7 @@ impl Rack {
                         port: port.to_string(),
                     },
                     patch,
+                    catalog,
                     &mut action,
                 );
                 if jack.secondary_clicked() && connected {
@@ -582,18 +727,55 @@ impl Rack {
                     ));
                 }
             }
-            let connected = patch.cables.iter().any(|c| c.from == node.id);
-            let jack = jack(
-                ui,
-                &painter,
-                output_point,
-                ui.id().with(("output", &node.id)),
-                "OUT",
-                connected,
-                true,
-                self.zoom,
-            );
-            self.cable_jack(&jack, CableEnd::Output(node.id.clone()), patch, &mut action);
+            for port in &output_ports {
+                let output_point = outputs[&(node.id.clone(), port.to_string())];
+                let connected = patch
+                    .cables
+                    .iter()
+                    .any(|c| c.from == node.id && c.output == *port);
+                let jack = jack(
+                    ui,
+                    &painter,
+                    output_point,
+                    ui.id().with(("output", &node.id, port)),
+                    port,
+                    connected,
+                    true,
+                    self.zoom,
+                );
+                self.cable_jack(
+                    &jack,
+                    CableEnd::Output {
+                        node: node.id.clone(),
+                        port: port.to_string(),
+                    },
+                    patch,
+                    catalog,
+                    &mut action,
+                );
+                if patch.output.as_ref() == Some(&node.id) && patch.output_port == *port {
+                    paint_jack_light(
+                        &painter,
+                        output_point,
+                        self.zoom * 0.8,
+                        Color32::from_rgb(91, 174, 119),
+                    );
+                }
+                let metadata = module
+                    .and_then(|module| module["output_metadata"].as_array())
+                    .and_then(|ports| ports.iter().find(|metadata| metadata["name"] == *port));
+                let capacity = if patch.version == 1 {
+                    1
+                } else {
+                    metadata
+                        .and_then(|metadata| metadata["maximum_channels"].as_u64())
+                        .unwrap_or(16)
+                };
+                let units = metadata
+                    .and_then(|metadata| metadata["units"].as_str())
+                    .unwrap_or("signal");
+                jack.on_hover_text(format!("{}.{}\nCapacity: up to {capacity} channels; {units}.\nThis is the port specification, not a live channel meter.", node.id, port));
+            }
         }
 
         let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
@@ -610,12 +792,12 @@ impl Rack {
                 .zip(nearest)
                 .is_some_and(|(pending, (target, _))| {
                     cable_plan(pending, target)
-                        .is_some_and(|(cable, old)| connection_allowed(patch, &cable, old))
+                        .is_some_and(|(cable, old)| connection_allowed(patch, &cable, old, catalog))
                 });
         if self.dragging_cable && ui.input(|i| i.pointer.button_released(PointerButton::Primary)) {
             if let Some(pending) = self.pending.take() {
                 if let Some((target, _)) = nearest {
-                    action = cable_action(patch, &pending, target);
+                    action = cable_action(patch, &pending, target, catalog);
                 }
             }
             self.dragging_cable = false;
@@ -624,7 +806,7 @@ impl Rack {
         // picked-up cable becomes a ghost so cancellation never loses a route.
         for cable in &patch.cables {
             if let (Some(&from), Some(&to)) = (
-                outputs.get(&cable.from),
+                outputs.get(&(cable.from.clone(), cable.output.clone())),
                 inputs.get(&(cable.to.clone(), cable.input.clone())),
             ) {
                 let picked_up = self
@@ -633,51 +815,74 @@ impl Rack {
                     .and_then(|pending| pending.original.as_ref())
                     .is_some_and(|old| same_cable(old, cable));
                 let traced = nearest.is_some_and(|(end, _)| match end {
-                    CableEnd::Output(source) => *source == cable.from,
+                    CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
                     CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                 });
-                let color = cable_color(&cable.from).gamma_multiply(if picked_up {
+                let color = cable_color(&cable.from, &cable.output).gamma_multiply(if picked_up {
                     0.24
                 } else if nearest.is_some() && !traced && self.pending.is_none() {
                     0.48
                 } else {
                     1.0
                 });
-                paint_cable(&painter, from, to, color, self.zoom, true);
+                paint_cable(
+                    &painter,
+                    from,
+                    to,
+                    color,
+                    self.zoom,
+                    true,
+                    configured_bus(patch, catalog, &cable.from),
+                );
                 if traced && !picked_up {
-                    paint_jack_light(&painter, to, self.zoom, cable_color(&cable.from));
+                    paint_jack_light(
+                        &painter,
+                        to,
+                        self.zoom,
+                        cable_color(&cable.from, &cable.output),
+                    );
                 }
             }
         }
         if let Some(pending) = &self.pending {
             if let Some(pointer) = pointer {
-                let original_source = pending
-                    .original
-                    .as_ref()
-                    .and_then(|old| outputs.get(&old.from).copied());
+                let original_source = pending.original.as_ref().and_then(|old| {
+                    outputs
+                        .get(&(old.from.clone(), old.output.clone()))
+                        .copied()
+                });
                 let origin = match &pending.origin {
-                    CableEnd::Output(node) => outputs.get(node).copied(),
+                    CableEnd::Output { node, port } => {
+                        outputs.get(&(node.clone(), port.clone())).copied()
+                    }
                     CableEnd::Input { node, port } => {
                         inputs.get(&(node.clone(), port.clone())).copied()
                     }
                 };
                 let changing_source =
-                    nearest.is_some_and(|(end, _)| matches!(end, CableEnd::Output(_)));
+                    nearest.is_some_and(|(end, _)| matches!(end, CableEnd::Output { .. }));
                 let anchor = if changing_source {
                     origin
                 } else {
                     original_source.or(origin)
                 };
                 let color = match &pending.origin {
-                    CableEnd::Output(source) => cable_color(source),
+                    CableEnd::Output { node, port } => cable_color(node, port),
                     _ => pending
                         .original
                         .as_ref()
-                        .map_or(CABLES[2], |old| cable_color(&old.from)),
+                        .map_or(CABLES[2], |old| cable_color(&old.from, &old.output)),
                 };
                 if let Some(anchor) = anchor {
                     let endpoint = nearest.map_or(pointer, |(_, point)| *point);
-                    paint_cable(&painter, anchor, endpoint, color, self.zoom, false);
+                    let bus = match &pending.origin {
+                        CableEnd::Output { node, .. } => configured_bus(patch, catalog, node),
+                        _ => pending
+                            .original
+                            .as_ref()
+                            .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
+                    };
+                    paint_cable(&painter, anchor, endpoint, color, self.zoom, false, bus);
                     paint_jack_light(&painter, anchor, self.zoom, color);
                 }
                 if let Some((_, target)) = nearest {
@@ -748,18 +953,88 @@ impl Rack {
         action
     }
 
+    fn compact_parameter(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        parameter: &str,
+        spec: &Value,
+        rect: Rect,
+        suffix: &str,
+    ) -> Option<RackAction> {
+        let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
+        let max = spec["max"].as_f64().unwrap_or(16.0) as f32;
+        let step = spec["step"]
+            .as_f64()
+            .map(|step| step as f32)
+            .or_else(|| (parameter == "channels").then_some(1.0));
+        let mut value = node
+            .params
+            .get(parameter)
+            .copied()
+            .unwrap_or(spec["default"].as_f64().unwrap_or(0.0) as f32)
+            .clamp(min, max);
+        let id = ui.id().with((&node.id, parameter, "compact"));
+        let response = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
+                ui.visuals_mut().override_text_color = Some(INK);
+                ui.style_mut().override_font_id = Some(FontId::monospace(10.0 * self.zoom));
+                ui.spacing_mut().button_padding = vec2(2.0, 1.0) * self.zoom;
+                ui.spacing_mut().interact_size = vec2(8.0, 18.0) * self.zoom;
+                ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(234, 235, 228);
+                ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(244, 246, 238);
+                ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(181, 215, 195);
+                ui.add_sized(
+                    rect.size(),
+                    egui::DragValue::new(&mut value)
+                        .range(min..=max)
+                        .speed(if step.is_some() { 0.1 } else { 0.02 })
+                        .max_decimals(if step.is_some() { 0 } else { 2 })
+                        .suffix(suffix),
+                )
+            })
+            .inner;
+        response.widget_info(|| {
+            egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, parameter))
+        });
+        if response.drag_started() {
+            self.gesture = self.gesture.wrapping_add(1);
+            ui.data_mut(|data| data.insert_temp(id, format!("rack-value-{}", self.gesture)));
+        }
+        let group = if response.dragged() {
+            ui.data(|data| data.get_temp::<String>(id))
+        } else {
+            None
+        };
+        if response.drag_stopped() {
+            ui.data_mut(|data| data.remove::<String>(id));
+        }
+        if response.changed() {
+            self.selected = Some(node.id.clone());
+            let mut args =
+                json!({"id":node.id,"parameter":parameter,"value":quantize(value,min,max,step)});
+            if let Some(group) = group {
+                args["history_group"] = json!(group);
+            }
+            Some(RackAction::Command("set_parameter", args))
+        } else {
+            None
+        }
+    }
+
     fn cable_jack(
         &mut self,
         response: &egui::Response,
         end: CableEnd,
         patch: &Patch,
+        catalog: &Value,
         action: &mut Option<RackAction>,
     ) {
         if response.clicked() {
             if let Some(pending) = self.pending.take() {
                 if pending.origin != end {
                     if cable_plan(&pending, &end).is_some() {
-                        *action = cable_action(patch, &pending, &end);
+                        *action = cable_action(patch, &pending, &end, catalog);
                     } else {
                         self.pending = Some(PendingCable::new(end.clone(), patch));
                     }
@@ -769,19 +1044,19 @@ impl Rack {
             }
             self.dragging_cable = false;
             self.selected = Some(match &end {
-                CableEnd::Output(node) | CableEnd::Input { node, .. } => node.clone(),
+                CableEnd::Output { node, .. } | CableEnd::Input { node, .. } => node.clone(),
             });
         }
         if response.drag_started_by(PointerButton::Primary) {
             self.pending = Some(PendingCable::new(end.clone(), patch));
             self.dragging_cable = true;
             self.selected = Some(match end {
-                CableEnd::Output(node) | CableEnd::Input { node, .. } => node,
+                CableEnd::Output { node, .. } | CableEnd::Input { node, .. } => node,
             });
         }
     }
 
-    fn reconcile(&mut self, patch: &Patch) {
+    fn reconcile(&mut self, patch: &Patch, catalog: &Value) {
         self.positions
             .retain(|id, _| patch.nodes.iter().any(|node| &node.id == id));
         if self
@@ -793,8 +1068,8 @@ impl Rack {
         }
         if self.pending.as_ref().is_some_and(|pending| {
             let origin_exists = match &pending.origin {
-                CableEnd::Output(id) => patch.nodes.iter().any(|node| &node.id == id),
-                CableEnd::Input { node: id, .. } => patch.nodes.iter().any(|node| &node.id == id),
+                CableEnd::Output { node, port } => port_exists(patch, catalog, node, port, true),
+                CableEnd::Input { node, port } => port_exists(patch, catalog, node, port, false),
             };
             !origin_exists
                 || pending
@@ -876,7 +1151,77 @@ impl Rack {
 }
 
 fn same_cable(a: &Cable, b: &Cable) -> bool {
-    a.from == b.from && a.to == b.to && a.input == b.input
+    a.from == b.from && a.output == b.output && a.to == b.to && a.input == b.input
+}
+
+fn port_exists(patch: &Patch, catalog: &Value, node: &str, port: &str, output: bool) -> bool {
+    let Some(node) = patch.nodes.iter().find(|item| item.id == node) else {
+        return false;
+    };
+    let Some(module) = catalog["modules"]
+        .as_array()
+        .and_then(|modules| modules.iter().find(|module| module["kind"] == node.kind))
+    else {
+        return false;
+    };
+    if module["min_patch_version"].as_u64().unwrap_or(1) > patch.version as u64 {
+        return false;
+    }
+    module[if output { "outputs" } else { "inputs" }]
+        .as_array()
+        .map_or(output && port == "out", |ports| {
+            ports.iter().any(|item| item == port)
+        })
+}
+
+fn monitor_menu(
+    ui: &mut egui::Ui,
+    node: &Node,
+    ports: &[&str],
+    patch: &Patch,
+    action: &mut Option<RackAction>,
+) {
+    for port in ports {
+        if ui
+            .selectable_label(
+                patch.output.as_ref() == Some(&node.id) && patch.output_port == *port,
+                format!("Monitor {}", port.to_uppercase()),
+            )
+            .clicked()
+        {
+            *action = Some(RackAction::Command(
+                "set_output",
+                json!({"id":node.id,"port":port}),
+            ));
+            ui.close();
+        }
+    }
+}
+
+fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
+    origin + point.to_vec2() * zoom
+}
+
+fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    if count > 4 {
+        let rows = count.div_ceil(4);
+        let first_y = if input { 112.0 } else { 187.0 };
+        let last_y = if input { 286.0 } else { 361.0 };
+        return pos2(
+            width * ((index % 4) + 1) as f32 / 5.0,
+            first_y + (index / 4) as f32 * (last_y - first_y) / (rows - 1).max(1) as f32,
+        );
+    }
+    let y = if input {
+        if kind == "poly_split" {
+            126.0
+        } else {
+            332.0
+        }
+    } else {
+        374.0
+    };
+    pos2(width * (index + 1) as f32 / (count + 1) as f32, y)
 }
 
 fn cable_plan<'a>(
@@ -887,18 +1232,33 @@ fn cable_plan<'a>(
         return None;
     }
     let cable = match (&pending.origin, target) {
-        (CableEnd::Output(from), CableEnd::Input { node, port }) => Cable {
+        (
+            CableEnd::Output {
+                node: from,
+                port: output,
+            },
+            CableEnd::Input { node, port },
+        ) => Cable {
             from: from.clone(),
+            output: output.clone(),
             to: node.clone(),
             input: port.clone(),
         },
-        (CableEnd::Input { node, port }, CableEnd::Output(from)) => Cable {
+        (
+            CableEnd::Input { node, port },
+            CableEnd::Output {
+                node: from,
+                port: output,
+            },
+        ) => Cable {
             from: from.clone(),
+            output: output.clone(),
             to: node.clone(),
             input: port.clone(),
         },
         (CableEnd::Input { .. }, CableEnd::Input { node, port }) => Cable {
             from: pending.original.as_ref()?.from.clone(),
+            output: pending.original.as_ref()?.output.clone(),
             to: node.clone(),
             input: port.clone(),
         },
@@ -907,8 +1267,34 @@ fn cable_plan<'a>(
     Some((cable, pending.original.as_ref()))
 }
 
-fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>) -> bool {
-    if cable.from == cable.to {
+fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>, catalog: &Value) -> bool {
+    let module = |id: &str| {
+        let node = patch.nodes.iter().find(|node| node.id == id)?;
+        catalog["modules"]
+            .as_array()?
+            .iter()
+            .find(|module| module["kind"] == node.kind)
+    };
+    let Some(source) = module(&cable.from) else {
+        return false;
+    };
+    let Some(destination) = module(&cable.to) else {
+        return false;
+    };
+    let output_exists = source["outputs"]
+        .as_array()
+        .map_or(cable.output == "out", |ports| {
+            ports.iter().any(|port| port == &cable.output)
+        });
+    let input_exists = destination["inputs"]
+        .as_array()
+        .is_some_and(|ports| ports.iter().any(|port| port == &cable.input));
+    if !output_exists
+        || !input_exists
+        || [source, destination]
+            .iter()
+            .any(|module| module["min_patch_version"].as_u64().unwrap_or(1) > patch.version as u64)
+    {
         return false;
     }
     let retained = |existing: &&Cable| {
@@ -916,6 +1302,12 @@ fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>) -> bool
             && !old.is_some_and(|old| same_cable(old, existing))
     };
     if patch.cables.iter().filter(retained).count() >= openpatch_core::MAX_CABLES {
+        return false;
+    }
+    if patch.version == 2 {
+        return true;
+    }
+    if cable.from == cable.to {
         return false;
     }
     // A candidate creates feedback exactly when its destination can reach its
@@ -941,9 +1333,14 @@ fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>) -> bool
     true
 }
 
-fn cable_action(patch: &Patch, pending: &PendingCable, target: &CableEnd) -> Option<RackAction> {
+fn cable_action(
+    patch: &Patch,
+    pending: &PendingCable,
+    target: &CableEnd,
+    catalog: &Value,
+) -> Option<RackAction> {
     let (cable, old) = cable_plan(pending, target)?;
-    if !connection_allowed(patch, &cable, old) {
+    if !connection_allowed(patch, &cable, old, catalog) {
         return None;
     }
     if patch
@@ -962,7 +1359,7 @@ fn cable_action(patch: &Patch, pending: &PendingCable, target: &CableEnd) -> Opt
     {
         return Some(RackAction::Command(
             "connect",
-            json!({"from":cable.from,"to":cable.to,"input":cable.input}),
+            json!({"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}),
         ));
     }
     let mut candidate = patch.clone();
@@ -977,11 +1374,43 @@ fn cable_action(patch: &Patch, pending: &PendingCable, target: &CableEnd) -> Opt
     ))
 }
 
-fn cable_color(source: &str) -> Color32 {
-    let hash = source.bytes().fold(2166136261_u32, |hash, byte| {
-        (hash ^ byte as u32).wrapping_mul(16777619)
-    });
+fn cable_color(source: &str, port: &str) -> Color32 {
+    let hash = source
+        .bytes()
+        .chain([0])
+        .chain(port.bytes())
+        .fold(2166136261_u32, |hash, byte| {
+            (hash ^ byte as u32).wrapping_mul(16777619)
+        });
     CABLES[hash as usize % CABLES.len()]
+}
+
+/// Only explicit bus sources have a known static channel count. Propagated or
+/// auto-sized signals need engine telemetry before their width can be reported.
+fn configured_bus(patch: &Patch, catalog: &Value, id: &str) -> bool {
+    if patch.version != 2 {
+        return false;
+    }
+    let Some(node) = patch.nodes.iter().find(|node| node.id == id) else {
+        return false;
+    };
+    if !matches!(node.kind.as_str(), "poly_constant" | "poly_merge") {
+        return false;
+    }
+    let channels = node
+        .params
+        .get("channels")
+        .copied()
+        .or_else(|| {
+            catalog["modules"]
+                .as_array()?
+                .iter()
+                .find(|module| module["kind"] == node.kind)?["params"]["channels"]["default"]
+                .as_f64()
+                .map(|value| value as f32)
+        })
+        .unwrap_or(0.0);
+    channels > 1.0
 }
 
 fn paint_jack_light(painter: &egui::Painter, center: Pos2, zoom: f32, color: Color32) {
@@ -1165,6 +1594,9 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
 }
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "poly_constant" => HP * 24.0,
+        "poly_split" | "poly_merge" => HP * 20.0,
+        "poly_sum" => HP * 10.0,
         "quantizer" => HP * 16.0,
         "white_noise" | "attenuverter" | "crossfade" => HP * 12.0,
         "sample_hold" => HP * 10.0,
@@ -1181,6 +1613,10 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "poly_constant" => "POLY VOLTAGE",
+        "poly_split" => "SPLIT",
+        "poly_merge" => "MERGE",
+        "poly_sum" => "SUM",
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
         "sample_hold" => "S&H",
@@ -1344,6 +1780,8 @@ fn format_value(value: f32, unit: &str) -> String {
         } else {
             format!("{value:.2} s")
         }
+    } else if matches!(unit, "V" | "V RMS") {
+        format!("{value:.2} {unit}")
     } else if unit == "x" {
         format!("{value:.2}x")
     } else {
@@ -1702,6 +2140,7 @@ fn paint_cable(
     color: Color32,
     zoom: f32,
     plugged: bool,
+    bus: bool,
 ) {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
     let points = [from, from + vec2(0.0, sag), to + vec2(0.0, sag), to];
@@ -1715,13 +2154,17 @@ fn paint_cable(
     };
     painter.add(curve(
         points.map(|point| point + vec2(1.0, 3.0) * zoom),
-        7.0 * zoom,
+        (if bus { 9.0 } else { 7.0 }) * zoom,
         Color32::from_black_alpha(100),
     ));
-    painter.add(curve(points, 5.0 * zoom, color.gamma_multiply(0.62)));
+    painter.add(curve(
+        points,
+        (if bus { 7.0 } else { 5.0 }) * zoom,
+        color.gamma_multiply(0.62),
+    ));
     painter.add(curve(
         points.map(|point| point - vec2(0.0, 0.7) * zoom),
-        3.0 * zoom,
+        (if bus { 4.5 } else { 3.0 }) * zoom,
         color,
     ));
     for (index, point) in [from, to].iter().enumerate() {
@@ -2028,6 +2471,161 @@ mod tests {
     }
 
     #[test]
+    fn named_output_pointer_drag_and_replug_preserve_the_selected_port() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let mut patch = Patch {
+            version: 2,
+            nodes: [("split", "poly_split"), ("a", "gain"), ("b", "gain")]
+                .into_iter()
+                .map(|(id, kind)| Node {
+                    id: id.into(),
+                    kind: kind.into(),
+                    params: Default::default(),
+                })
+                .collect(),
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let split_out16 = pos2(264.0, 373.0);
+        let a_signal = pos2(374.0, 344.0);
+        let b_signal = pos2(524.0, 344.0);
+        let action = drag(&ctx, &mut rack, &patch, 1.0, split_out16, a_signal);
+        assert!(
+            matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "split" && args["output"] == "out16" && args["to"] == "a")
+        );
+        patch.cables.push(Cable {
+            from: "split".into(),
+            output: "out16".into(),
+            to: "a".into(),
+            input: "signal".into(),
+        });
+        let action = drag(&ctx, &mut rack, &patch, 2.0, a_signal, b_signal);
+        let Some(RackAction::Command("replace_patch", args)) = action else {
+            panic!("expected atomic named-output replug");
+        };
+        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        assert_eq!(candidate.cables.len(), 1);
+        assert_eq!(candidate.cables[0].output, "out16");
+        assert_eq!(candidate.cables[0].to, "b");
+        candidate.validate().unwrap();
+        let mut invalid = candidate.cables[0].clone();
+        invalid.output = "out17".into();
+        assert!(!connection_allowed(
+            &candidate,
+            &invalid,
+            None,
+            &openpatch_core::catalog()
+        ));
+        let action = drag(&ctx, &mut rack, &patch, 3.0, a_signal, pos2(84.0, 199.0));
+        let Some(RackAction::Command("replace_patch", args)) = action else {
+            panic!("expected a named source replacement");
+        };
+        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        assert_eq!(candidate.cables[0].output, "out1");
+        assert_eq!(candidate.cables[0].to, "a");
+    }
+
+    #[test]
+    fn feedback_pointer_gestures_follow_patch_version() {
+        for version in [1, 2] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch = Patch {
+                version,
+                nodes: vec![Node {
+                    id: "loop".into(),
+                    kind: "gain".into(),
+                    params: Default::default(),
+                }],
+                ..Patch::default()
+            };
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let action = drag(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                pos2(99.0, 386.0),
+                pos2(74.0, 344.0),
+            );
+            if version == 1 {
+                assert!(action.is_none());
+            } else {
+                assert!(
+                    matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "loop" && args["to"] == "loop" && args["output"] == "out")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sixteen_port_panels_have_separate_labeled_jack_regions() {
+        for (kind, input) in [("poly_split", false), ("poly_merge", true)] {
+            let points: Vec<_> = (0..16)
+                .map(|index| port_position(kind, input, index, 16, panel_width(kind)))
+                .collect();
+            for (index, point) in points.iter().enumerate() {
+                assert!(point.x > 20.0 && point.x < panel_width(kind) - 20.0);
+                assert!(point.y > 90.0 && point.y < PANEL_HEIGHT - 20.0);
+                for other in &points[index + 1..] {
+                    assert!(
+                        point.distance(*other) >= 50.0,
+                        "jack labels and hit targets overlap"
+                    );
+                }
+            }
+        }
+        assert_eq!(format_value(-2.5, "V"), "-2.50 V");
+        assert_eq!(format_value(1.25, "V RMS"), "1.25 V RMS");
+    }
+
+    #[test]
+    fn poly_voltage_cells_edit_first_and_last_channel_independently() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = Patch {
+            version: 2,
+            nodes: vec![Node {
+                id: "voltages".into(),
+                kind: "poly_constant".into(),
+                params: Default::default(),
+            }],
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        for (time, point, name) in [
+            (1.0, pos2(92.0, 151.0), "v1"),
+            (2.0, pos2(332.0, 286.0), "v16"),
+        ] {
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![egui::Event::PointerMoved(point - vec2(20.0, 0.0))],
+            );
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["value"].as_f64().unwrap().is_finite())
+            );
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.2,
+                vec![button(point - vec2(20.0, 0.0), false)],
+            );
+        }
+    }
+
+    #[test]
     fn pointer_gestures_patch_jacks_adjust_knobs_and_snap_modules() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
@@ -2044,7 +2642,7 @@ mod tests {
         );
         frame(&ctx, &mut rack, &patch, 1.1, vec![button(output, false)]);
         assert!(
-            matches!(rack.pending.as_ref().map(|pending| &pending.origin), Some(CableEnd::Output(source)) if source == "tone")
+            matches!(rack.pending.as_ref().map(|pending| &pending.origin), Some(CableEnd::Output { node, port }) if node == "tone" && port == "out")
         );
         let input = pos2(464.0, 344.0);
         frame(

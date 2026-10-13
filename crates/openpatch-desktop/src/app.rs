@@ -67,6 +67,7 @@ pub struct OpenPatch {
     can_undo: bool,
     can_redo: bool,
     confirm_close: bool,
+    confirm_engine_upgrade: bool,
     confirm_discard: Option<PendingAction>,
     layout_dirty: bool,
     allow_close: bool,
@@ -143,6 +144,7 @@ impl OpenPatch {
             can_undo: false,
             can_redo: false,
             confirm_close: false,
+            confirm_engine_upgrade: false,
             confirm_discard: None,
             layout_dirty: false,
             allow_close: false,
@@ -380,7 +382,7 @@ impl OpenPatch {
                     ui.add_space(10.0);
                     ui.menu_button("File", |ui| {
                         if ui.button("New patch").clicked() {
-                            self.replace_from_menu(Patch::default(), "Untitled");
+                            self.replace_from_menu(Patch::new_v2(), "Untitled");
                             ui.close();
                         }
                         if ui.button("Open…     ⌘O").clicked() {
@@ -393,10 +395,9 @@ impl OpenPatch {
                         }
                         ui.separator();
                         if ui.button("Reference analog voice").clicked() {
-                            self.replace_from_menu(
-                                openpatch_core::analog_demo_patch(),
-                                "Reference analog voice",
-                            );
+                            let mut patch = openpatch_core::analog_demo_patch();
+                            patch.version = 2;
+                            self.replace_from_menu(patch, "Reference analog voice");
                             ui.close();
                         }
                         if ui.button("Clocked random voice").clicked() {
@@ -405,6 +406,20 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Polyphonic voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/polyphonic-voice.json"
+                            ))
+                            .expect("valid bundled polyphonic voice");
+                            self.replace_from_menu(patch, "Polyphonic voice");
+                            ui.close();
+                        }
+                        if self.patch.version == 1
+                            && ui.button("Enable polyphony and feedback…").clicked()
+                        {
+                            self.confirm_engine_upgrade = true;
                             ui.close();
                         }
                         if ui.button("Tremolo study").clicked() {
@@ -509,9 +524,10 @@ impl OpenPatch {
                     ui.separator();
                     ui.label(
                         RichText::new(format!(
-                            "{} modules · {} cables",
+                            "{} modules · {} cables · {}",
                             self.patch.nodes.len(),
-                            self.patch.cables.len()
+                            self.patch.cables.len(),
+                            if self.patch.version == 2 { "Poly engine" } else { "Legacy engine" }
                         ))
                         .size(10.0)
                         .color(MUTED),
@@ -638,9 +654,22 @@ impl OpenPatch {
                         .color(MUTED)
                         .size(11.0),
                 );
+                if self.patch.version == 1 {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Legacy timing: polyphonic modules require engine v2.");
+                        if ui.button("Enable polyphony…").clicked() {
+                            self.confirm_engine_upgrade = true;
+                            self.browser_open = false;
+                        }
+                    });
+                }
                 let query = self.search.trim().to_lowercase();
                 let visible: Vec<_> = modules
                     .iter()
+                    .filter(|module| {
+                        module["min_patch_version"].as_u64().unwrap_or(1)
+                            <= self.patch.version as u64
+                    })
                     .filter(|module| {
                         let kind = module["kind"].as_str().unwrap_or("");
                         let title = module["title"].as_str().unwrap_or(kind);
@@ -936,7 +965,29 @@ impl OpenPatch {
             self.rack.set_zoom(0.75);
             self.title = "Clocked random voice".into();
         }
-        if *frame == 12 || *frame == 24 || *frame == 36 {
+        if *frame == 40 || *frame == 52 {
+            let (source, title, zoom) = if *frame == 40 {
+                (
+                    include_str!("../../../examples/polyphonic-voice.json"),
+                    "Polyphonic voice",
+                    0.75,
+                )
+            } else {
+                (
+                    include_str!("../../../examples/polyphonic-routing.json"),
+                    "Polyphonic routing study",
+                    1.0,
+                )
+            };
+            let patch: Patch =
+                serde_json::from_str(source).expect("valid bundled polyphonic patch");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("polyphonic patch compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(zoom);
+            self.title = title.into();
+        }
+        if matches!(*frame, 12 | 24 | 36 | 48 | 60) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -956,7 +1007,9 @@ impl OpenPatch {
             let target = match *captures {
                 0 => path.clone(),
                 1 => path.with_file_name("rack-visuals.png"),
-                _ => path.with_file_name("rack-utilities.png"),
+                2 => path.with_file_name("rack-utilities.png"),
+                3 => path.with_file_name("rack-polyphonic.png"),
+                _ => path.with_file_name("rack-routing.png"),
             };
             image::save_buffer(
                 target,
@@ -967,7 +1020,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 3 {
+            if *captures == 5 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -978,7 +1031,11 @@ impl OpenPatch {
 impl eframe::App for OpenPatch {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sync();
-        if !ctx.wants_keyboard_input() {
+        if !ctx.wants_keyboard_input()
+            && !self.confirm_engine_upgrade
+            && !self.confirm_close
+            && self.confirm_discard.is_none()
+        {
             if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                 self.toggle_play();
             }
@@ -1081,6 +1138,30 @@ impl eframe::App for OpenPatch {
                             }
                         }
                     }
+                }
+            }
+        }
+        if self.confirm_engine_upgrade {
+            let mut convert = false;
+            let mut cancel = false;
+            egui::Modal::new(egui::Id::new("engine-upgrade")).show(ctx, |ui| {
+                ui.set_max_width(420.0);
+                ui.heading("Enable polyphony and feedback?");
+                ui.label("Engine v2 adds one sample of delay to every cable. Your modules and connections stay in place, but timing and sound can change.");
+                ui.label("You can undo this change. The saved file stays unchanged until you save a new copy.");
+                ui.horizontal(|ui| {
+                    cancel = ui.button("Keep legacy timing").clicked();
+                    convert = ui.button("Enable engine v2").clicked();
+                });
+            });
+            if cancel || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.confirm_engine_upgrade = false;
+            } else if convert {
+                let mut patch = self.patch.clone();
+                patch.version = 2;
+                if self.command("replace_patch", json!({"patch":patch})) {
+                    self.confirm_engine_upgrade = false;
+                    self.status = "Polyphony and feedback enabled".into();
                 }
             }
         }

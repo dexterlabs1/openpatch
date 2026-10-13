@@ -30,11 +30,13 @@ fn voice_patch(voices: usize) -> Patch {
             from: sum,
             to: id.clone(),
             input: "a".into(),
+            output: "out".into(),
         });
         patch.cables.push(Cable {
             from: format!("osc{i}"),
             to: id.clone(),
             input: "b".into(),
+            output: "out".into(),
         });
         sum = id;
     }
@@ -47,6 +49,7 @@ fn voice_patch(voices: usize) -> Patch {
         from: sum,
         to: "master".into(),
         input: "signal".into(),
+        output: "out".into(),
     });
     patch.output = Some("master".into());
     patch

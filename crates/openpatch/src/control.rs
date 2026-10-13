@@ -1,5 +1,7 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
-use openpatch_core::{catalog, render, write_wav, Cable, Node, Patch};
+use openpatch_core::{
+    catalog, render, write_wav, Cable, Node, Patch, PortFrame, BLOCK_SIZE, MAX_CHANNELS,
+};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -50,7 +52,7 @@ pub type Application = Session;
 pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     match name {
-        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" => {
+        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" | "analyze_signal" => {
             let mut snapshot = Session {
                 patch: live.patch.clone(),
                 revision: live.revision,
@@ -73,11 +75,18 @@ fn string<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("{name} must be a string"))
 }
 
+fn optional_string<'a>(args: &'a Value, name: &str, default: &'a str) -> Result<&'a str, String> {
+    match args.get(name) {
+        Some(_) => string(args, name),
+        None => Ok(default),
+    }
+}
+
 impl Session {
     pub fn new(workspace: &Path) -> Result<Self, String> {
         fs::create_dir_all(workspace).map_err(|e| e.to_string())?;
         Ok(Self {
-            patch: Patch::default(),
+            patch: Patch::new_v2(),
             revision: 0,
             state_id: 0,
             undo: VecDeque::new(),
@@ -223,6 +232,69 @@ impl Session {
         Ok(path)
     }
 
+    fn analyze_signal(&self, args: &Value) -> Result<Value, String> {
+        let seconds = args
+            .get("seconds")
+            .and_then(Value::as_f64)
+            .ok_or("seconds must be a number")?;
+        if !seconds.is_finite() || !(0.001..=2.0).contains(&seconds) {
+            return Err("analysis seconds must be 0.001..2".into());
+        }
+        let mut patch = self.patch.clone();
+        patch.output = Some(string(args, "id")?.into());
+        patch.output_port = optional_string(args, "port", "out")?.into();
+        let mut engine = patch.compile()?;
+        let frames = (seconds * patch.sample_rate as f64).round() as usize;
+        let mut block = [PortFrame::default(); BLOCK_SIZE];
+        let mut counts = [0_usize; MAX_CHANNELS];
+        let mut sums = [0.0_f64; MAX_CHANNELS];
+        let mut squares = [0.0_f64; MAX_CHANNELS];
+        let mut minimum = [f32::INFINITY; MAX_CHANNELS];
+        let mut maximum = [f32::NEG_INFINITY; MAX_CHANNELS];
+        let mut peak = [0.0_f32; MAX_CHANNELS];
+        let mut remaining = frames;
+        let mut max_channels = 0;
+        let mut min_channels = MAX_CHANNELS;
+        while remaining > 0 {
+            let count = remaining.min(BLOCK_SIZE);
+            engine.process_poly_block(&mut block[..count]);
+            for frame in &block[..count] {
+                let channels = frame.channels as usize;
+                max_channels = max_channels.max(channels);
+                min_channels = min_channels.min(channels);
+                for channel in 0..channels {
+                    let value = frame.values[channel];
+                    if !value.is_finite() {
+                        return Err("analysis encountered a nonfinite signal".into());
+                    }
+                    counts[channel] += 1;
+                    sums[channel] += value as f64;
+                    squares[channel] += (value as f64).powi(2);
+                    minimum[channel] = minimum[channel].min(value);
+                    maximum[channel] = maximum[channel].max(value);
+                    peak[channel] = peak[channel].max(value.abs());
+                }
+            }
+            remaining -= count;
+        }
+        let channels: Vec<_> = (0..max_channels)
+            .map(|channel| {
+                let count = counts[channel];
+                json!({"channel":channel + 1,"active_frames":count,
+                "mean":sums[channel] / count as f64,
+                "rms":(squares[channel] / count as f64).sqrt(),
+                "peak":peak[channel],"min":minimum[channel],"max":maximum[channel]})
+            })
+            .collect();
+        Ok(
+            json!({"revision":self.revision,"id":patch.output,"port":patch.output_port,
+            "sample_rate":patch.sample_rate,"frames":frames,"min_channels":min_channels,
+            "max_channels":max_channels,"channels":channels,"solver_failures":engine.solver_failures(),
+            "state":"analyzed offline from reset","statistics":"active frames only; inactive channels excluded",
+            "units":"raw module output units; consult catalog"}),
+        )
+    }
+
     pub fn execute(&mut self, name: &str, args: Value) -> Result<Value, String> {
         let schemas = tools();
         validate_arguments(&schemas, name, &args)?;
@@ -232,6 +304,7 @@ impl Session {
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
             }
+            "analyze_signal" => return self.analyze_signal(&args),
             "export_visualizer" => {
                 let path = self.file(string(&args, "filename")?, ".html")?;
                 crate::visualizer::export(&path).map_err(|e| e.to_string())?;
@@ -269,7 +342,7 @@ impl Session {
                     .sqrt();
                 write_wav(&path, &samples, self.patch.sample_rate).map_err(|e| e.to_string())?;
                 return Ok(
-                    json!({"filename":args["filename"],"frames":samples.len(),"sample_rate":self.patch.sample_rate,"peak":peak,"rms":rms,"revision":self.revision,"state":"rendered from reset"}),
+                    json!({"filename":args["filename"],"frames":samples.len(),"sample_rate":self.patch.sample_rate,"peak":peak,"rms":rms,"revision":self.revision,"state":"rendered from reset","channel_policy":"first channel only; use poly_sum to mix all voices"}),
                 );
             }
             "benchmark" => {
@@ -416,7 +489,14 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
                 .then(|| json!({"id":id,"before":previous,"after":node}))
         })
         .collect();
-    let endpoints = |cable: &Cable| (cable.from.clone(), cable.to.clone(), cable.input.clone());
+    let endpoints = |cable: &Cable| {
+        (
+            cable.from.clone(),
+            cable.output.clone(),
+            cable.to.clone(),
+            cable.input.clone(),
+        )
+    };
     let old_cables: BTreeSet<_> = before.cables.iter().map(endpoints).collect();
     let new_cables: BTreeSet<_> = after.cables.iter().map(endpoints).collect();
     let added_cables: Vec<_> = after
@@ -431,7 +511,7 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
         .collect();
     json!({"added_modules":added,"removed_modules":removed,"changed_modules":changed,
         "added_cables":added_cables,"removed_cables":removed_cables,
-        "output":{"before":before.output,"after":after.output}})
+        "output":{"before":{"node":before.output,"port":before.output_port},"after":{"node":after.output,"port":after.output_port}}})
 }
 
 fn validate_arguments(schemas: &Value, name: &str, args: &Value) -> Result<(), String> {
@@ -480,11 +560,13 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
             candidate.cables.retain(|c| c.from != id && c.to != id);
             if candidate.output.as_deref() == Some(id) {
                 candidate.output = None;
+                candidate.output_port = "out".into();
             }
         }
         "connect" => {
             candidate.cables.push(Cable {
                 from: string(args, "from")?.into(),
+                output: optional_string(args, "output", "out")?.into(),
                 to: string(args, "to")?.into(),
                 input: string(args, "input")?.into(),
             });
@@ -515,6 +597,7 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
         }
         "set_output" => {
             candidate.output = Some(string(args, "id")?.into());
+            candidate.output_port = optional_string(args, "port", "out")?.into();
         }
         _ => return Err(format!("unknown graph edit: {name}")),
     }
@@ -544,19 +627,20 @@ pub fn tools() -> Value {
         tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
         tool("undo","Undo one shared GUI/MCP graph edit. Revision increases; file writes and rack layout are not undone.",json!({"expected_revision":rev}),&[],false),
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
-        tool("catalog","List built-in modules, input ports, parameter defaults and ranges.",json!({}),&[],true),
+        tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("connect","Connect a source to a named input. Cycles and occupied inputs are rejected.",json!({"from":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
+        tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
         tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
-        tool("set_output","Select a module as the mono rendering output.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("set_output","Select a module output port (default out). Native playback and render_audio use channel 1; add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
         tool("render_audio","Render offline from reset to mono 16-bit WAV in workspace. Does not play speakers. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30}}),&["filename","seconds"],false),
+        tool("analyze_signal","Measure a named output offline from reset, reporting per-channel active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; explicit audio_out converts volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2}}),&["id","seconds"],true),
         tool("benchmark","Measure this patch's offline DSP throughput, excluding compilation. Release builds recommended. No VCV Rack comparison.",json!({"seconds":{"type":"number","minimum":0.01,"maximum":5}}),&[],true)
     ])
 }
@@ -600,7 +684,8 @@ mod tests {
         assert_eq!(result["patch"], preview["patch"]);
         assert_eq!(result["revision"], 1);
         assert_eq!(result["history"]["undo_steps"], 1);
-        assert_eq!(render(s.patch(), 0.001).unwrap()[0], 0.25);
+        assert_eq!(render(s.patch(), 0.001).unwrap()[0], 0.0);
+        assert_eq!(render(s.patch(), 0.001).unwrap()[1], 0.25);
         let undone = s.execute("undo", json!({"expected_revision":1})).unwrap();
         assert_eq!(undone["patch"], before["patch"]);
         assert_eq!(undone["revision"], 2);
@@ -725,5 +810,70 @@ mod tests {
             )
             .is_err());
         assert_eq!(s.snapshot(), before);
+    }
+
+    #[test]
+    fn polyphonic_analysis_named_routing_and_output_selection_share_validation() {
+        let mut s = session();
+        assert_eq!(s.patch.version, 2);
+        s.execute("apply_edits", json!({"edits":[
+            {"tool":"add_module","arguments":{"id":"bus","kind":"poly_constant","params":{"channels":2,"v1":0.25,"v2":-0.5}}},
+            {"tool":"add_module","arguments":{"id":"split","kind":"poly_split"}},
+            {"tool":"add_module","arguments":{"id":"out","kind":"output"}},
+            {"tool":"connect","arguments":{"from":"bus","to":"split","input":"signal"}},
+            {"tool":"connect","arguments":{"from":"split","output":"out2","to":"out","input":"signal"}},
+            {"tool":"set_output","arguments":{"id":"split","port":"out2"}}
+        ]})).unwrap();
+        assert_eq!(s.patch.output_port, "out2");
+        assert_eq!(s.patch.cables[1].output, "out2");
+        let before = s.snapshot();
+        let analysis = s
+            .execute("analyze_signal", json!({"id":"bus","seconds":0.001}))
+            .unwrap();
+        assert_eq!(analysis["max_channels"], 2);
+        assert_eq!(analysis["channels"][0]["active_frames"], 48);
+        assert_eq!(analysis["channels"][0]["mean"], 0.25);
+        assert_eq!(analysis["channels"][1]["mean"], -0.5);
+        assert_eq!(analysis["channels"][1]["rms"], 0.5);
+        let split = s
+            .execute(
+                "analyze_signal",
+                json!({"id":"split","port":"out2","seconds":0.001}),
+            )
+            .unwrap();
+        assert_eq!(split["max_channels"], 1);
+        assert_eq!(split["channels"][0]["min"], -0.5);
+        assert_eq!(split["channels"][0]["max"], 0.0);
+        assert_eq!(s.snapshot(), before);
+        for (tool, arguments) in [
+            ("set_output", json!({"id":"split","port":"missing"})),
+            (
+                "analyze_signal",
+                json!({"id":"bus","port":12,"seconds":0.001}),
+            ),
+            ("analyze_signal", json!({"id":"missing","seconds":0.001})),
+            ("analyze_signal", json!({"id":"bus","seconds":20})),
+        ] {
+            assert!(s.execute(tool, arguments).is_err());
+            assert_eq!(s.snapshot(), before);
+        }
+        let preview = s.execute("preview_edits", json!({"edits":[
+            {"tool":"disconnect","arguments":{"to":"out","input":"signal"}},
+            {"tool":"connect","arguments":{"from":"split","output":"out1","to":"out","input":"signal"}}
+        ]})).unwrap();
+        assert_eq!(preview["changes"]["removed_cables"][0]["output"], "out2");
+        assert_eq!(preview["changes"]["added_cables"][0]["output"], "out1");
+        assert_eq!(s.snapshot(), before);
+        s.execute(
+            "set_parameter",
+            json!({"id":"bus","parameter":"channels","value":0}),
+        )
+        .unwrap();
+        let empty = s
+            .execute("analyze_signal", json!({"id":"bus","seconds":0.001}))
+            .unwrap();
+        assert_eq!(empty["min_channels"], 0);
+        assert_eq!(empty["max_channels"], 0);
+        assert_eq!(empty["channels"], json!([]));
     }
 }

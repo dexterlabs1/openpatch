@@ -44,7 +44,9 @@ fn run() -> Result<(), String> {
         }
     }
     let mut session = Session::new(&workspace)?;
-    session.replace_patch(openpatch_core::analog_demo_patch(), None)?;
+    let mut initial_patch = openpatch_core::analog_demo_patch();
+    initial_patch.version = 2;
+    session.replace_patch(initial_patch, None)?;
     let shared: SharedSession = Arc::new(Mutex::new(session));
     if mcp {
         let shared = shared.clone();

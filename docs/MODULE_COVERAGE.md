@@ -8,27 +8,52 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
+There are **22 built-in kinds**: seven legacy utilities, six reference-voice
+kinds, five functional utilities and four version-2 polyphonic routing/source
+utilities. This count is not a count of completed VCV equivalents.
+
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback and a master-signal visualizer exist; neither supplies the complete Audio or Scope feature set.
 
 The selected first target is a **generic VCO → VCF → VCA voice with ADSR**, using explicitly specified reference circuits and voltage interfaces. The ramp VCO, OTA VCA, RC ADSR, gate/audio interfaces, and nonlinear four-pole ladder are implemented with numerical and integration tests. The ladder has bounded numerical solving, oversampling, and independent ODE-reference comparisons. These remain reference models rather than complete VCV equivalents or calibrated hardware clones; see [model validation](ANALOG_MODELS.md).
 
-## Implemented mono utility contracts
+Version 1 retains mono, same-sample DAG evaluation. Version 2 implements named
+source outputs, 0–16 channels, explicit voice policies and one sample of delay
+per cable, including feedback cycles. Ten independent engine contract tests
+pass; polyphonic hardware I/O and full module parity remain separate work.
+See [ENGINE_V2.md](ENGINE_V2.md) for exact routing, normalization and state rules.
 
-Five additional original models fit the current two-input/one-output engine. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They extend the usable toolkit; they do not establish full VCV module parity.
+## Implemented functional utility contracts
+
+Five additional original models use at most two inputs and one output. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They retain mono version-1 behavior; version 2 adds the declared voice policies below. They extend the usable toolkit; they do not establish full VCV module parity.
 
 | Kind | Implemented behavior | Explicit gaps against related VCV modules |
 |---|---|---|
-| `quantizer` | Nearest enabled 12-tone note at 1 V/oct; integer `scale_mask` bits C through B; `offset` and `offset_cv` add volts before quantization. Exact ties choose the higher pitch, including below zero. Empty mask passes the adjusted pitch through. | Mono only; no piano display or factory-scale preset browser. The tie and empty-scale policies are OpenPatch contracts, not claimed VCV equivalence. |
-| `sample_hold` | One held voltage; captures the same-sample signal when trigger rises to 1 V, rearms at 0.1 V or below; starts at `initial`. Ideal hold without droop. | No eight-row shift register, normalization chain, clear/random controls, or saved runtime voltage in patch JSON. |
+| `quantizer` | Nearest enabled 12-tone note at 1 V/oct; integer `scale_mask` bits C through B; `offset` and `offset_cv` add volts before quantization. Exact ties choose the higher pitch, including below zero. Empty mask passes the adjusted pitch through. In v2, pitch sets voice count and offset CV follows auxiliary broadcast rules. | No piano display or factory-scale preset browser. The tie and empty-scale policies are OpenPatch contracts, not claimed VCV equivalence. |
+| `sample_hold` | One held voltage per voice; captures the simultaneously received signal when trigger rises to 1 V, rearms at 0.1 V or below; starts at `initial`. Ideal hold without droop. In v2, trigger sets voice count; mono signal broadcasts. | No eight-row shift register, normalization chain, clear/random controls, or saved runtime voltage in patch JSON. |
 | `white_noise` | Single Gaussian white-noise output with `level` in RMS volts and an integer 24-bit `seed`. Reproducible sequence within an execution environment; no peak clipping. | No colored-noise outputs, VCV-specific level calibration, or identical VCV random sequence. |
-| `attenuverter` | One channel computes `gain * signal + offset`; gain −1…1, offset −10…10 V; unpatched signal is 10 V. | No eight-channel bank or input propagation; no Rescale range limiter or slew behavior. |
-| `crossfade` | Two inputs, one output; `mix` selects a at 0 and b at 1. Linear gains or square-root gains for constant power with uncorrelated inputs. | No CV control input, complementary output, stereo routing, or automatic signal-correlation compensation. |
+| `attenuverter` | Computes `gain * signal + offset`; gain −1…1, offset −10…10 V; unpatched signal is 10 V. In v2, signal sets voice count. | No eight-section control bank or input propagation; no Rescale range limiter or slew behavior. |
+| `crossfade` | Two inputs, one output; `mix` selects a at 0 and b at 1. Linear gains or square-root gains for constant power with uncorrelated inputs. In v2, maximum input count sets voices with mono broadcast. | No CV control input, complementary output, dedicated stereo interface, or automatic signal-correlation compensation. |
 
-Nonfinite utility inputs map to zero. Arithmetic safety bounds are ±1,000,000 V and can override quantizer membership at that extreme. Quantization and sample-and-hold deliberately introduce discontinuities without antialias filtering. These models add no processing delay; cable propagation retains OpenPatch's immediate DAG evaluation rather than Rack's one-sample-per-cable timing.
+Nonfinite utility inputs map to zero. Arithmetic safety bounds are ±1,000,000 V and can override quantizer membership at that extreme. Quantization and sample-and-hold deliberately introduce discontinuities without antialias filtering. These models add no internal processing delay; cable propagation is immediate in version 1 and one sample per cable in version 2. Zero-channel inputs use unpatched normalization; missing channels of a short polyphonic auxiliary input use zero instead.
 
-Live graph replacement preserves held voltage and trigger hysteresis by matching node ID and kind. It also preserves noise PRNG state and the pending Gaussian sample when the seed is unchanged, including after a level edit; changing the seed explicitly restarts the sequence. Loading version-1 patch JSON restores parameters and starts from `initial`/`seed`, rather than serializing running DSP state. Stateless utility parameter edits take effect immediately.
+Compatible live graph replacement preserves held voltage and trigger hysteresis by matching node ID and kind. It also preserves noise PRNG state and the pending Gaussian sample when the seed is unchanged, including after a level edit; changing the seed explicitly restarts the sequence. Patch JSON stores parameters, not running DSP state: fresh compilation starts from `initial`/`seed`, while the host can separately adopt compatible live state. In version 2, retired voices reset before reactivation. Stateless utility parameter edits take effect immediately.
 
 Validation includes an independent nearest-note search over all 4,095 nonempty masks at signed octave boundaries, empty-scale and tie tests, exact trigger/hold event sequences, crossfade endpoint and center gains, noise distribution/RMS and lag correlations, JSON parameter round trips, invalid-parameter rejection, graph-state adoption, callback-size/order independence, and allocation tracking on the first callback and graph replacement. These are contract tests; direct VCV differential testing and full spectral/parity acceptance remain future work. Functional roles were checked against the official [Free manuals](https://vcvrack.com/Free) and [voltage/trigger standards](https://vcvrack.com/manual/VoltageStandards).
+
+## Implemented version-2 routing/source utilities
+
+| Kind | Implemented behavior | Remaining scope |
+|---|---|---|
+| `poly_constant` | 0–16 configured constant-voltage channels, `v1`…`v16`, with explicit zero-channel output; default count 3. | Original source/testing utility; not a claimed stock VCV equivalent. |
+| `poly_split` | `signal` to 16 independently named mono outputs `out1`…`out16`; missing input channels emit mono 0 V. | Native channel-count indicators and direct VCV behavior/UI comparison remain open. |
+| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; 1–16 forces count. Empty automatic input gives zero channels. | The zero setting selects automatic mode, not forced zero; native channel indicators and full VCV configuration parity remain open. |
+| `poly_sum` | Unity sum of active channels to one mono output; empty input gives mono zero; arithmetic safety bound ±1,000,000 V. | No OUT level control, level meter or channel-count indicators. |
+
+Independent tests exercise sparse Merge/Split routing, all 16 channels, zero
+channels, explicit source-port selection, mono-adapter versus summed output,
+feedback timing, retirement and edge-history continuity. These establish the
+specified functional subsets. They do not mark the related VCV inventory rows
+complete or qualify multichannel audio hardware.
 
 ## Core inventory
 
@@ -73,16 +98,16 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Sequential Switch 1 to 4 | Routing | Planned | Selected-path routing and clock/reset transitions |
 | Sequential Switch 4 to 1 | Routing | Planned | Input selection and clock/reset transitions |
 | Octave | Pitch utility | Planned | Exact pitch-voltage increments and boundaries |
-| Quantizer | Pitch utility | Partial: mono `quantizer`, 12-note mask and pre-offset | Polyphony, scale UI/presets, direct VCV boundary comparison |
-| Split | Polyphony | Planned; engine prerequisite | Channel extraction and unused-channel policy |
-| Merge | Polyphony | Planned; engine prerequisite | Channel ordering/count and unpatched inputs |
-| Sum | Polyphony | Planned; engine prerequisite | Channel reduction, gain and empty input |
-| Viz | Measurement | Planned; engine prerequisite | Per-channel voltage display calibration |
-| Mid/Side | Stereo | Planned; named-output prerequisite | Encode/decode identity and gain normalization |
+| Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Scale UI/presets, broader per-voice boundary cases and direct VCV comparison |
+| Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
+| Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
+| Sum | Polyphony | Partial: `poly_sum`, unity mono reduction and empty-input behavior tested | OUT level control, level/channel indicators and headroom behavior |
+| Viz | Measurement | Planned; engine channel frames now available | Per-channel voltage display calibration |
+| Mid/Side | Stereo | Planned; named-output foundation implemented | Encode/decode identity and gain normalization |
 | Noise | Source | Partial: seeded Gaussian `white_noise` with RMS control | Colored outputs, spectral-density budget and VCV level calibration |
 | Random | Modulation | Planned | Trigger timing, distribution and repeatability |
 | CV Mix | Mixing | Planned | Offset/gain combination and voltage endpoints |
-| Fade | Mixing | Partial: mono `crossfade`, linear and square-root laws | CV modulation and complementary output |
+| Fade | Mixing | Partial: `crossfade`, linear/square-root laws and v2 voices | CV modulation and complementary output |
 | Logic | Gate processing | Planned | Truth tables and threshold hysteresis |
 | Compare | Voltage processing | Planned | Boundary comparisons and simultaneous events |
 | Gates | Gate processing | Planned | Timing, retrigger and overlapping-event cases |
@@ -96,7 +121,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 ## Delivery order and acceptance rules
 
 1. **Validate the reference voice.** Publish circuit equations, component values, voltage scaling, assumptions, and unsupported physical effects. Test the ramp source, ladder, OTA VCA, and RC envelope independently and together. Compare circuit solvers against an independent high-accuracy reference; compare physical hardware only when a specific measured target exists. Preserve old patches and continuous oscillator/capacitor state during edits.
-2. **Extend engine contracts before broad module coverage.** Add named multiple outputs, more input ports, explicit voltage conventions, polyphonic channel rules, timing semantics, and delay/feedback handling. The current mono DAG with one output per node is not a general Rack engine. Keep audio callbacks bounded and allocation-free; document oversampling latency and parallel-path alignment.
+2. **Qualify the implemented engine foundation.** Version 2 now supplies named multiple outputs, up to 16 current input/output ports, 0–16-channel frames, per-module voice policies and one-sample cable feedback. Preserve version-1 render fixtures; expand state/event cases and measure one/16-voice callback performance on target hardware. Keep audio callbacks bounded and allocation-free; document oversampling latency and parallel-path alignment. See [ENGINE_V2.md](ENGINE_V2.md).
 3. **Implement the remaining inventory by functional group.** Utilities and measurement first, then modulation/sequencing, expanded oscillators/effects, polyphony, and hardware/MIDI interfaces. Promote each row only with a documented port/parameter contract, persistence tests, DSP/event tests, and native integration checks. Record partial coverage explicitly rather than counting a generic substitute as complete.
 
 For voltage-oriented modules, use the [VCV voltage conventions](https://vcvrack.com/manual/VoltageStandards) as an interoperability reference: pitch in V/oct, explicit audio/CV levels, hysteretic gate detection, and documented conversion at device boundaries. Legacy normalized signals require explicit conversion. VCV also specifies cable timing and polyphonic behavior; adopting voltage units alone does not reproduce those semantics.

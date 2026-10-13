@@ -1,12 +1,12 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 18 built-in module kinds, a tested reference analog voice, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 22 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds and five functional utilities do not constitute 18 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds, five functional utilities and four polyphonic routing/source utilities do not constitute 22 completed VCV equivalents.
 
 The third-party ecosystem is an ongoing compatibility program, not a finite “all modules” milestone. A Rust extension API, a Rust implementation of selected module behavior, a `.vcv` importer, and a loader for existing VCV C++ binaries are four different deliverables. Each must state which plugins and versions it supports. Neither a generic filter nor a circuit-derived reference model establishes the behavior of a particular commercial module.
 
@@ -14,12 +14,12 @@ The third-party ecosystem is an ongoing compatibility program, not a finite “a
 
 This plan starts from the code inspected on the baseline date:
 
-- `openpatch-core`: version-1 JSON patches; one unnamed source output per node; at most two compiled inputs; mono buffers; deterministic dependency ordering; all cycles rejected. Source dependencies are evaluated within the same sample, without a cable delay. The limits are 256 nodes and 1024 cables.
+- `openpatch-core`: version 1 preserves mono, same-sample DAG routing and cycle rejection. Version 2 implements named source ports, up to 16 input/output ports per current module, 0–16 channels per port, and a synchronous scheduler with one sample of delay per cable, including channel counts. Feedback cycles are supported in version 2. Limits remain 256 nodes and 1024 cables. See [ENGINE_V2.md](ENGINE_V2.md).
 - Reference DSP: voltage-based VCO/ladder/OTA VCA/RC ADSR/gate/audio conversion, with documented idealizations and numerical tests. Ladder and VCA each add 64 samples of oversampling latency; parallel paths are not compensated. Legacy patches retain normalized semantics. See [ANALOG_MODELS.md](ANALOG_MODELS.md).
-- Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade. These implement declared mono behavior; full corresponding VCV port and polyphony contracts remain open.
+- Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. Complete corresponding VCV module contracts remain open.
 - Native host: rack browser, module movement, rotary controls, cable creation/removal, workspace save/load with layout sidecars, shared multi-step patch undo/redo, and optional GLSL visuals. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Layout movement is not yet an undoable project action. Default-device mono output is duplicated across device channels; there is no hardware audio input or MIDI integration.
 - Control: UI and MCP share revision-checked transactions and bounded history. `preview_edits` validates a candidate without committing; `apply_edits` validates the final graph and commits up to 256 edit operations as one revision/history action. History retains at most 128 prior/future patch snapshots combined. Rendering/export clone the active patch without cloning history. Audio swaps compiled graphs through bounded queues and carries matching DSP state forward. Stdio starts with one application instance; it cannot attach to an arbitrary already-running window.
-- Validation: repository tests and platform CI exist. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
+- Validation: repository tests and platform CI exist. Ten independent engine-v2 contract tests pass, covering timing/counts, feedback, normalization, routing, retirement/state adoption, invalid data, legacy rendering and allocation/deallocation checks. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
 
 “Partial” below means useful behavior exists but its acceptance gate is open. “Missing” means the capability is not implemented. Gates describe proposed OpenPatch tests, not claims about current results.
 
@@ -27,11 +27,11 @@ This plan starts from the code inspected on the baseline date:
 
 | Area | Current status | Acceptance gate |
 |---|---|---|
-| Named ports and multiple outputs | Missing; only destination inputs are named | A versioned patch can independently route every declared source output; validate names, direction, channel limits and normaling; preserve old files and render fixtures. |
-| Polyphonic engine | Missing; mono only | Per-port 0–16 channels; primary-input voice count, mono broadcast and missing-channel policies tested; add/remove voices without allocation, cross-talk or stale samples. |
-| Cable timing and feedback | Missing; same-sample DAG | Versioned Rack-style timing with one sample per cable; self-loops and multi-node loops have deterministic impulse responses independent of node order and callback partition. No implicit block-sized feedback delay. |
+| Named ports and multiple outputs | Foundation implemented in v2; Split provides 16 named outputs | Extend native interaction and persistence coverage across every multi-output module; retain invalid-port/direction and legacy-file tests as the catalog grows. |
+| Polyphonic engine | Foundation implemented; 0–16-channel frames, voice policies and retirement tested | Broaden cross-talk and shrink/regrowth tests across every stateful model; measure 16-voice callback deadlines and memory; qualify actual multichannel device sinks separately. |
+| Cable timing and feedback | Foundation implemented; per-cable value/count delay and deterministic loops tested | Retain node-order/callback invariance; add clock/reset and longer modulated feedback fixtures as those modules arrive; test feedback during live graph replacement. |
 | Voltage and event contracts | Partial; reference modules use volts | Catalog every port's units, normaling, thresholds and channel policy; test gate/trigger edges, clock/reset ordering, pitch calibration and legacy conversions. |
-| DSP state and parameters | Partial; state adoption plus crossfade | Preserve per-voice state through graph edits; define sample-timed parameter events and reset behavior; test edits during oscillation, release, delay tails and feedback. |
+| DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
 | Rack construction | Partial | Module selection/duplication, presets, initialization/randomization, bypass, grouping and placement workflows have interaction and persistence tests. |
@@ -49,27 +49,46 @@ The engine targets derive from VCV's [voltage/timing contract](https://vcvrack.c
 
 Host workflow targets are grounded in VCV's [menu reference](https://vcvrack.com/manual/MenuBar), [key commands](https://vcvrack.com/manual/KeyCommands), and [getting-started workflow](https://vcvrack.com/manual/GettingStarted). Rack includes persistent patch operations, history, configurable engine/view behavior, direct module/parameter interaction, and cable editing. Equivalent task outcomes matter; identical artwork is not required. Audio and MIDI scope follows the [Core manual](https://vcvrack.com/manual/Core).
 
-## Next architecture step: versioned ports and timing
+## Implemented engine foundation and next gates
 
-Implement the port/graph contract before expanding the module catalog substantially. Otherwise every multi-output oscillator, stereo utility, polyphonic module and MIDI interface will require another incompatible graph redesign.
+The [version-2 contract](ENGINE_V2.md) is implemented and tested. The existing
+`Patch` wire model gains `output_port`, and `Cable` gains source `output`, both
+defaulting to `out`. `Patch::default()` remains version 1; `Patch::new_v2()`
+explicitly selects version 2. Patch version chooses timing; there is no separate
+`PatchV2` type or independently selectable timing field. Old files retain their
+same-sample mono behavior. Explicitly changing their version changes timing.
 
-1. **Introduce a version-2 wire schema.** Represent both cable endpoints as stable module ID plus port ID. Declare port metadata, normaling, channel policy and output channel counts. Keep version-1 parsing/rendering fixtures intact; migration assigns its implicit output explicitly and retains its original timing mode.
-2. **Separate control data from compiled signal storage.** Resolve strings and allocate port buffers, voice states and lookup tables on the control thread. Runtime uses dense port indices and fixed-capacity 16-channel storage with an active-channel count. Change that count without allocating or leaving old voice values audible.
-3. **Add a simple, correct timing reference.** For Rack-style mode, every sample reads connected values from a completed previous-sample bank, computes current outputs, then publishes them together. This permits arbitrary loops with defined edge delays. Validate it before introducing block/SCC scheduling optimizations; adding a single delay only to a feedback edge is not equivalent to delaying every cable.
-4. **Carry routing history as well as module history.** Preserve compatible per-port delay values and voice states across live edits. Specify zeroing for newly connected ports, voice retirement, sample-rate changes and intentional reset. Keep crossfades an explicit host policy rather than a claimed circuit property.
-5. **Ship one end-to-end proof.** A multi-output source drives distinct destinations; a 16-channel source exercises split/merge; a delayed feedback loop produces a known recurrence. Test direct/indirect clock paths, zero/one/sixteen channels, arbitrary callback lengths, old-file regression, and callback allocation/deallocation. Expose port metadata and routing through both GUI and MCP.
+Compilation resolves stable node/port names into routing indices and allocates
+voice storage. `PortFrame` carries `[f32; 16]` plus a channel count.
+`process_poly_block` returns full frames; the existing mono API returns channel
+0 rather than mixing voices. `poly_sum` supplies explicit unity mixing. All
+version-2 cables read the previous completed frame, including its channel
+count; newly connected edges start empty. Compatible unchanged edges and active
+voices retain state across graph replacement. Retired voices reset, and
+ordinary modules execute only their active preallocated states.
 
-This is the next implementation recommendation, not an implemented engine description. Profile the reference scheduler before replacing it with a faster one. The existing expensive circuit voice is not evidence that sixteen such voices will meet a live deadline.
+Ten independent tests in
+`crates/openpatch-core/tests/engine_v2_contract.rs` cover old JSON/render
+compatibility, named outputs, zero/one/sixteen channels, sparse routing,
+normalization and broadcast, exact self/two-node recurrences, callback
+partitioning, state adoption and retirement. A 16-voice VCO/ladder graph passes
+the first-callback and adoption allocation/deallocation check. This proves the
+tested contracts, not a 16-voice live performance guarantee.
 
-### Proposed API boundary for the next engine pass
+The next gates are:
 
-Keep deserialization/version migration separate from the compiled engine. Add an explicit `PatchV2` wire type instead of silently interpreting new fields in version 1. Its cables use `source: {node, port}` and `destination: {node, port}`; its selected output also identifies a port. Stable string IDs belong in patch files and control APIs; dense `NodeIndex`/`PortIndex` values belong only in compiled storage. The catalog should expose ordered input/output descriptors and their channel/normaling policy.
-
-Require an explicit version-2 timing mode: `legacy_dag` preserves migrated version-1 evaluation, while `rack_delayed` uses the completed-previous-sample bank described above. The latter may accept cycles; the former must retain cycle rejection. Migration maps today's implicit output to `out` without changing the module kind, voltage convention or selected waveform. A source-port rename needs a module-version migration, not an index-based guess.
-
-Define a runtime port frame as fixed `[f32; 16]` storage plus a validated 0–16 channel count. Delay the count together with its samples in Rack timing mode, and clear newly inactive voices. Compile per-module voice policy rather than imposing mono broadcast on every input. Expose a channel-aware render API for new device sinks while retaining `process_block(&mut [f32])` as the legacy mono adapter. Do not add device handles, JSON values or dynamic allocation to module processing.
-
-The first change can introduce schema/types, validation and compatibility fixtures without replacing the scheduler in the same commit. Follow with named outputs, then the reference timed/polyphonic engine. Review serialization, history snapshots and MCP endpoint schemas together so one layer cannot refer to a port the others cannot represent.
+1. **Profile representative polyphonic workloads.** Measure callback deadlines,
+   graph-compilation cost and memory at one and sixteen voices on supported
+   hardware. Preserve the reference timing when introducing SIMD or scheduling
+   optimizations.
+2. **Broaden live state/event tests.** Exercise graph edits during envelope
+   release, circuit transients and feedback; add direct/indirect clock-reset
+   fixtures with sequencing modules. Keep crossfades a host policy rather than
+   claiming them as circuit behavior.
+3. **Connect the foundation to complete instrument workflows.** Qualify native
+   multi-output patching and persistence, then stereo/multichannel device I/O
+   and MIDI allocation. Every new module still needs its own complete port,
+   parameter, voice-policy and state contract.
 
 ## MCP and visuals beyond the baseline
 
@@ -77,7 +96,7 @@ These are OpenPatch differentiators and do not substitute for missing host or mo
 
 | Capability | Current status | Acceptance gate |
 |---|---|---|
-| Machine-readable instrument contract | Partial: catalog and patch inspection | Versioned schemas include named ports, units, polyphony, model class, latency and bounded resource costs; no UI-only meaning required to construct a valid patch. |
+| Machine-readable instrument contract | Partial: catalog/patch inspection includes versions, named outputs and voice policies | Complete per-port units/normaling, model latency and bounded resource-cost metadata; no UI-only meaning required to construct a valid patch. |
 | Atomic multi-edit transactions | Implemented: candidate preview and atomic apply, final validation, one revision/history action | Structured change summary included; keep rejection/rollback and stale-revision tests; preview/apply clients must carry the preview revision into commit. |
 | Agent discovery and attachment | Missing | Attach to an existing chosen desktop session, with session identity and explicit transport lifetime; demonstrate simultaneous UI/two-client edits without lost updates. |
 | Subscriptions and diagnostics | Missing | Bounded revision/transport/meter/solver-event subscriptions, backpressure and reconnect/resync tests; no JSON or network work in DSP callbacks. |
@@ -113,7 +132,7 @@ These are researched candidates, not newly added dependencies or endorsements of
 
 Advance by evidence, not module count alone:
 
-1. **Engine foundation:** named multi-output/polyphonic/timed routing and backward-compatible files pass the reference tests above.
+1. **Engine foundation:** implemented named multi-output/polyphonic/timed routing and backward-compatible files pass the independent contract tests; remaining performance, broader state/event and native/device qualification gates are listed above.
 2. **Useful instrument:** shared history, reliable projects, stereo audio/MIDI and a playable polyphonic voice pass native macOS tests; core concurrency and device-failure cases are exercised.
 3. **Stock Free coverage:** all 49 inventory rows meet their contracts; remaining behavioral differences and host/plugin compatibility gaps are listed openly.
 4. **Free host parity:** every host-matrix gate has a test artifact and supported-platform result. An unsupported plugin/file workflow remains a gap, not an implied success.

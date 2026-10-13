@@ -39,6 +39,7 @@ fn frequency_and_wiring_edits_keep_phase_by_id_and_leave_old_branch_unchanged() 
         from: "mod".into(),
         to: "osc".into(),
         input: "fm".into(),
+        output: "out".into(),
     });
     let mut replacement = patch.compile().unwrap();
     replacement.adopt_state_from(&previous);
@@ -72,6 +73,7 @@ fn cutoff_edit_preserves_filter_memory_and_uses_new_coefficient() {
             from: "dc".into(),
             to: "filter".into(),
             input: "signal".into(),
+            output: "out".into(),
         }],
         output: Some("filter".into()),
         ..Patch::default()

@@ -1,0 +1,578 @@
+{
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "seconds_per_run": 1.0,
+  "note": "Offline throughput only; not live deadlines or a VCV Rack comparison",
+  "scenarios": [
+    {
+      "scenario": "legacy_reference_1_voice",
+      "patch": {
+        "version": 1,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca"
+          },
+          {
+            "id": "out",
+            "kind": "audio_out"
+          }
+        ],
+        "cables": [
+          {
+            "from": "vco",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "vca",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out"
+      },
+      "median_realtime_factor": 6.368852053967843,
+      "min_realtime_factor": 5.866618015976784,
+      "max_realtime_factor": 6.36929660698398,
+      "runs": [
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.52597920819211,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.170455959,
+          "frames": 48000,
+          "frames_per_second": 281597.66476688563,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 5.866618015976784,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.52597920819211,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.157003208,
+          "frames": 48000,
+          "frames_per_second": 305726.23713523103,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 6.36929660698398,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.52597920819211,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.157014167,
+          "frames": 48000,
+          "frames_per_second": 305704.89859045646,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 6.368852053967843,
+          "sample_rate": 48000
+        }
+      ]
+    },
+    {
+      "scenario": "v2_reference_1_voice",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca"
+          },
+          {
+            "id": "out",
+            "kind": "audio_out"
+          }
+        ],
+        "cables": [
+          {
+            "from": "vco",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "vca",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out"
+      },
+      "median_realtime_factor": 6.275472850290022,
+      "min_realtime_factor": 6.267529496560693,
+      "max_realtime_factor": 6.294652692537689,
+      "runs": [
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.159350542,
+          "frames": 48000,
+          "frames_per_second": 301222.6968139211,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 6.275472850290022,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.1595525,
+          "frames": 48000,
+          "frames_per_second": 300841.41583491326,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 6.267529496560693,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 43.35243156029868,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.158865,
+          "frames": 48000,
+          "frames_per_second": 302143.3292418091,
+          "nodes": 6,
+          "os": "macos",
+          "realtime_factor": 6.294652692537689,
+          "sample_rate": 48000
+        }
+      ]
+    },
+    {
+      "scenario": "v2_chord_3_voices",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "chord",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 3,
+              "v1": 0,
+              "v2": 0.3333333333333333,
+              "v3": 0.5833333333333334
+            }
+          },
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca"
+          },
+          {
+            "id": "sum",
+            "kind": "poly_sum"
+          },
+          {
+            "id": "out",
+            "kind": "audio_out"
+          }
+        ],
+        "cables": [
+          {
+            "from": "vco",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "chord",
+            "output": "out",
+            "to": "vco",
+            "input": "pitch"
+          },
+          {
+            "from": "vca",
+            "output": "out",
+            "to": "sum",
+            "input": "signal"
+          },
+          {
+            "from": "sum",
+            "output": "out",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out"
+      },
+      "median_realtime_factor": 2.113425800093924,
+      "min_realtime_factor": 2.095444526858045,
+      "max_realtime_factor": 2.1159860083133664,
+      "runs": [
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 160.61595301489507,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.477225709,
+          "frames": 48000,
+          "frames_per_second": 100581.33728918615,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.095444526858045,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 160.61595301489507,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.473165417,
+          "frames": 48000,
+          "frames_per_second": 101444.43840450834,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.113425800093924,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 160.61595301489507,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 0.472592917,
+          "frames": 48000,
+          "frames_per_second": 101567.32839904158,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 2.1159860083133664,
+          "sample_rate": 48000
+        }
+      ]
+    },
+    {
+      "scenario": "v2_chord_16_voices",
+      "patch": {
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+          {
+            "id": "chord",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16,
+              "v1": 0.0,
+              "v2": 0.08333333333333333,
+              "v3": 0.16666666666666666,
+              "v4": 0.25,
+              "v5": 0.3333333333333333,
+              "v6": 0.4166666666666667,
+              "v7": 0.5,
+              "v8": 0.5833333333333334,
+              "v9": 0.6666666666666666,
+              "v10": 0.75,
+              "v11": 0.8333333333333334,
+              "v12": 0.9166666666666666,
+              "v13": 1.0,
+              "v14": 1.0833333333333333,
+              "v15": 1.1666666666666667,
+              "v16": 1.25
+            }
+          },
+          {
+            "id": "vco",
+            "kind": "analog_vco",
+            "params": {
+              "frequency": 130.8128
+            }
+          },
+          {
+            "id": "filter",
+            "kind": "ladder_vcf",
+            "params": {
+              "cutoff": 1800,
+              "resonance": 0.45
+            }
+          },
+          {
+            "id": "clock",
+            "kind": "gate",
+            "params": {
+              "frequency": 1.5,
+              "duty": 0.45
+            }
+          },
+          {
+            "id": "envelope",
+            "kind": "adsr",
+            "params": {
+              "attack": 0.015,
+              "decay": 0.18,
+              "sustain": 0.4,
+              "release": 0.25
+            }
+          },
+          {
+            "id": "vca",
+            "kind": "analog_vca"
+          },
+          {
+            "id": "sum",
+            "kind": "poly_sum"
+          },
+          {
+            "id": "out",
+            "kind": "audio_out"
+          }
+        ],
+        "cables": [
+          {
+            "from": "vco",
+            "to": "filter",
+            "input": "signal"
+          },
+          {
+            "from": "filter",
+            "to": "vca",
+            "input": "signal"
+          },
+          {
+            "from": "clock",
+            "to": "envelope",
+            "input": "gate"
+          },
+          {
+            "from": "envelope",
+            "to": "vca",
+            "input": "cv"
+          },
+          {
+            "from": "chord",
+            "output": "out",
+            "to": "vco",
+            "input": "pitch"
+          },
+          {
+            "from": "vca",
+            "output": "out",
+            "to": "sum",
+            "input": "signal"
+          },
+          {
+            "from": "sum",
+            "output": "out",
+            "to": "out",
+            "input": "signal"
+          }
+        ],
+        "output": "out"
+      },
+      "median_realtime_factor": 0.38970951875538473,
+      "min_realtime_factor": 0.38699005846417095,
+      "max_realtime_factor": 0.39051483073227017,
+      "runs": [
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 1046.3235961610703,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 2.566013792,
+          "frames": 48000,
+          "frames_per_second": 18706.056900258467,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 0.38970951875538473,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 1046.3235961610703,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 2.5840457089999997,
+          "frames": 48000,
+          "frames_per_second": 18575.522806280205,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 0.38699005846417095,
+          "sample_rate": 48000
+        },
+        {
+          "arch": "aarch64",
+          "block_size": 128,
+          "checksum": 1046.3235961610703,
+          "comparison": "OpenPatch only; not a VCV Rack comparison",
+          "debug_build": false,
+          "elapsed_seconds": 2.560722209,
+          "frames": 48000,
+          "frames_per_second": 18744.71187514897,
+          "nodes": 8,
+          "os": "macos",
+          "realtime_factor": 0.39051483073227017,
+          "sample_rate": 48000
+        }
+      ]
+    }
+  ],
+  "hardware": "Apple M1 Max",
+  "compiler": "rustc 1.99.0",
+  "binary_sha256": "6362bace3b8983eca90a591dc9e2962bda905e757487af1a13b9634c1971b2ae",
+  "source_state": "Engine-v2 foundation worktree, 2026-10-12; raw offline observations before publication"
+}

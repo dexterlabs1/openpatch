@@ -1,0 +1,408 @@
+//! Independent wire/behavior acceptance tests for the versioned engine.
+use openpatch_core::{Cable, Node, Patch, PortFrame};
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+
+struct CallbackAllocator;
+thread_local! {
+    static TRACK_MEMORY: Cell<bool> = const { Cell::new(false) };
+    static MEMORY_OPERATIONS: Cell<usize> = const { Cell::new(0) };
+}
+fn record_memory_operation() {
+    let _ = TRACK_MEMORY.try_with(|active| {
+        if active.get() {
+            let _ = MEMORY_OPERATIONS.try_with(|count| count.set(count.get() + 1));
+        }
+    });
+}
+unsafe impl GlobalAlloc for CallbackAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        record_memory_operation();
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        record_memory_operation();
+        unsafe { System.alloc_zeroed(layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        record_memory_operation();
+        unsafe { System.realloc(ptr, layout, size) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        record_memory_operation();
+        unsafe { System.dealloc(ptr, layout) }
+    }
+}
+#[global_allocator]
+static ALLOCATOR: CallbackAllocator = CallbackAllocator;
+
+fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
+    Node {
+        id: id.into(),
+        kind: kind.into(),
+        params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
+    }
+}
+
+fn cable(from: &str, output: &str, to: &str, input: &str) -> Cable {
+    Cable {
+        from: from.into(),
+        output: output.into(),
+        to: to.into(),
+        input: input.into(),
+    }
+}
+
+fn patch(nodes: Vec<Node>, cables: Vec<Cable>, output: &str) -> Patch {
+    Patch {
+        nodes,
+        cables,
+        output: Some(output.into()),
+        ..Patch::new_v2()
+    }
+}
+
+fn render(patch: &Patch, length: usize) -> Vec<PortFrame> {
+    let mut frames = vec![PortFrame::default(); length];
+    patch.compile().unwrap().process_poly_block(&mut frames);
+    frames
+}
+
+fn active(frame: &PortFrame) -> &[f32] {
+    assert!(frame.channels <= 16);
+    assert!(frame.values[frame.channels as usize..]
+        .iter()
+        .all(|v| *v == 0.0));
+    &frame.values[..frame.channels as usize]
+}
+
+#[test]
+fn literal_v1_fixture_keeps_defaults_and_same_sample_rendering() {
+    // Intentionally omit every new field; this is the old on-disk schema.
+    let legacy: Patch = serde_json::from_str(
+        r#"{
+        "nodes":[{"id":"dc","kind":"constant","params":{"value":3}},
+                 {"id":"amp","kind":"gain","params":{"gain":2}}],
+        "cables":[{"from":"dc","to":"amp","input":"signal"}],
+        "output":"amp"
+    }"#,
+    )
+    .unwrap();
+    assert_eq!(legacy.version, 1);
+    assert_eq!(legacy.output_port, "out");
+    assert_eq!(legacy.cables[0].output, "out");
+    let mut actual = [0.0; 137];
+    legacy.compile().unwrap().process_block(&mut actual);
+    assert_eq!(actual, [6.0; 137]);
+    let mut unsupported = legacy.clone();
+    unsupported.cables[0].output = "out1".into();
+    assert!(unsupported.compile().is_err());
+    unsupported = legacy;
+    unsupported.nodes[0] = node("dc", "poly_constant", &[]);
+    assert!(unsupported.compile().is_err());
+}
+
+#[test]
+fn two_edges_delay_values_and_channel_counts_one_sample_each() {
+    let p = patch(
+        vec![
+            node(
+                "source",
+                "poly_constant",
+                &[("channels", 3.0), ("v1", 2.0), ("v2", 4.0), ("v3", 6.0)],
+            ),
+            node("first", "output", &[]),
+            node("second", "output", &[]),
+        ],
+        vec![
+            cable("source", "out", "first", "signal"),
+            cable("first", "out", "second", "signal"),
+        ],
+        "second",
+    );
+    let frames = render(&p, 5);
+    assert_eq!(active(&frames[0]), &[0.0]);
+    assert_eq!(active(&frames[1]), &[0.0]);
+    for frame in &frames[2..] {
+        assert_eq!(active(frame), &[2.0, 4.0, 6.0]);
+    }
+    let mut direct = p;
+    direct.output = Some("source".into());
+    assert_eq!(active(&render(&direct, 1)[0]), &[2.0, 4.0, 6.0]);
+}
+
+#[test]
+fn zero_channels_normalize_but_short_poly_auxiliary_channels_are_zero() {
+    for (count, expected) in [
+        (0.0, [2.0, 3.0, 4.0]),
+        (1.0, [20.0, 30.0, 40.0]),
+        (2.0, [20.0, 36.0, 0.0]),
+    ] {
+        let p = patch(
+            vec![
+                node(
+                    "signal",
+                    "poly_constant",
+                    &[("channels", 3.0), ("v1", 2.0), ("v2", 3.0), ("v3", 4.0)],
+                ),
+                node(
+                    "cv",
+                    "poly_constant",
+                    &[("channels", count), ("v1", 10.0), ("v2", 12.0)],
+                ),
+                node("gain", "gain", &[]),
+            ],
+            vec![
+                cable("signal", "out", "gain", "signal"),
+                cable("cv", "out", "gain", "cv"),
+            ],
+            "gain",
+        );
+        assert_eq!(active(&render(&p, 2)[1]), &expected);
+    }
+    let p = patch(
+        vec![
+            node("empty", "poly_constant", &[("channels", 0.0)]),
+            node("normal", "attenuverter", &[("gain", 0.5)]),
+        ],
+        vec![cable("empty", "out", "normal", "signal")],
+        "normal",
+    );
+    assert!(render(&p, 9).iter().all(|f| active(f) == [5.0]));
+}
+
+#[test]
+fn feedback_recurrences_ignore_node_order_and_callback_partition() {
+    for two_nodes in [false, true] {
+        let mut p = patch(
+            vec![
+                node("one", "constant", &[("value", 1.0)]),
+                node("sum", "mixer", &[]),
+            ],
+            vec![cable("one", "out", "sum", "a")],
+            "sum",
+        );
+        if two_nodes {
+            p.nodes.push(node("half", "gain", &[("gain", 0.5)]));
+            p.cables.extend([
+                cable("sum", "out", "half", "signal"),
+                cable("half", "out", "sum", "b"),
+            ]);
+        } else {
+            p.cables.push(cable("sum", "out", "sum", "b"));
+        }
+        let mut expected = vec![0.0; 257];
+        for n in 1..expected.len() {
+            expected[n] = if two_nodes {
+                1.0 + if n >= 2 { 0.5 * expected[n - 2] } else { 0.0 }
+            } else {
+                n as f32
+            };
+        }
+        p.nodes.reverse();
+        p.cables.reverse();
+        for chunk_length in [1, 3, 64, 129, 257] {
+            let mut engine = p.compile().unwrap();
+            let mut actual = vec![0.0; expected.len()];
+            for chunk in actual.chunks_mut(chunk_length) {
+                engine.process_block(chunk);
+            }
+            assert_eq!(
+                actual, expected,
+                "two_nodes={two_nodes}, chunk={chunk_length}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sparse_merge_split_sum_and_mono_adapter_have_distinct_contracts() {
+    let mut p = patch(
+        vec![
+            node("two", "constant", &[("value", 2.0)]),
+            node("five", "constant", &[("value", 5.0)]),
+            node("merge", "poly_merge", &[]),
+            node("split", "poly_split", &[]),
+            node("sum", "poly_sum", &[]),
+        ],
+        vec![
+            cable("two", "out", "merge", "in1"),
+            cable("five", "out", "merge", "in4"),
+            cable("merge", "out", "split", "signal"),
+            cable("merge", "out", "sum", "signal"),
+        ],
+        "merge",
+    );
+    let merged = render(&p, 3);
+    assert!(active(&merged[0]).is_empty());
+    assert_eq!(active(&merged[1]), &[2.0, 0.0, 0.0, 5.0]);
+    let mut mono = [0.0; 3];
+    p.compile().unwrap().process_block(&mut mono);
+    assert_eq!(mono, [0.0, 2.0, 2.0]);
+    p.output = Some("sum".into());
+    assert_eq!(active(&render(&p, 3)[2]), &[7.0]);
+    p.output = Some("split".into());
+    for (port, expected) in [("out4", 5.0), ("out2", 0.0), ("out16", 0.0)] {
+        p.output_port = port.into();
+        assert_eq!(active(&render(&p, 3)[2]), &[expected]);
+    }
+    p.output_port = "out17".into();
+    assert!(p.compile().is_err());
+}
+
+#[test]
+fn sixteen_channels_and_explicit_zero_are_preserved_without_stale_lanes() {
+    let mut source = node("source", "poly_constant", &[("channels", 16.0)]);
+    for n in 1..=16 {
+        source.params.insert(format!("v{n}"), n as f32);
+    }
+    let mut p = patch(vec![source], vec![], "source");
+    let full = render(&p, 1);
+    assert_eq!(
+        active(&full[0]),
+        &(1..=16).map(|n| n as f32).collect::<Vec<_>>()
+    );
+    for count in [1.0, 0.0, 16.0] {
+        p.nodes[0].params.insert("channels".into(), count);
+        assert_eq!(active(&render(&p, 1)[0]).len(), count as usize);
+    }
+}
+
+#[test]
+fn adoption_preserves_unchanged_edge_frames_but_clears_rewired_edges() {
+    let mut p = patch(
+        vec![
+            node("a", "constant", &[("value", 2.0)]),
+            node("b", "constant", &[("value", 7.0)]),
+            node("sink", "output", &[]),
+        ],
+        vec![cable("a", "out", "sink", "signal")],
+        "sink",
+    );
+    let mut old = p.compile().unwrap();
+    old.process_block(&mut [0.0; 17]);
+    p.nodes[0].params.insert("value".into(), 3.0);
+    let mut unchanged = p.compile().unwrap();
+    unchanged.adopt_state_from(&old);
+    let mut out = [0.0; 2];
+    unchanged.process_block(&mut out);
+    assert_eq!(out, [2.0, 3.0]);
+    p.cables[0].from = "b".into();
+    let mut rewired = p.compile().unwrap();
+    rewired.adopt_state_from(&old);
+    rewired.process_block(&mut out);
+    assert_eq!(out, [0.0, 7.0]);
+    old.process_block(&mut out);
+    assert_eq!(
+        out,
+        [2.0, 2.0],
+        "adoption must leave the old crossfade branch intact"
+    );
+}
+
+#[test]
+fn retired_sample_hold_voice_restarts_at_configured_initial_voltage() {
+    let mut p = patch(
+        vec![
+            node("signal", "constant", &[("value", 3.0)]),
+            node(
+                "trigger",
+                "poly_constant",
+                &[("channels", 2.0), ("v1", 10.0), ("v2", 10.0)],
+            ),
+            node("held", "sample_hold", &[("initial", -2.0)]),
+        ],
+        vec![
+            cable("signal", "out", "held", "signal"),
+            cable("trigger", "out", "held", "trigger"),
+        ],
+        "held",
+    );
+    let mut engine = p.compile().unwrap();
+    let mut frames = [PortFrame::default(); 4];
+    engine.process_poly_block(&mut frames);
+    assert_eq!(active(&frames[3]), &[3.0, 3.0]);
+    p.nodes[1].params.insert("channels".into(), 1.0);
+    let mut shrunk = p.compile().unwrap();
+    shrunk.adopt_state_from(&engine);
+    shrunk.process_poly_block(&mut frames);
+    assert_eq!(
+        active(&frames[0]),
+        &[3.0, 3.0],
+        "old cable channel count survives one sample"
+    );
+    assert_eq!(active(&frames[3]), &[3.0]);
+    p.nodes[0].params.insert("value".into(), 9.0);
+    p.nodes[1].params.insert("channels".into(), 2.0);
+    p.nodes[1].params.insert("v2".into(), 0.0);
+    let mut grown = p.compile().unwrap();
+    grown.adopt_state_from(&shrunk);
+    grown.process_poly_block(&mut frames);
+    assert_eq!(active(&frames[0]), &[3.0]);
+    assert_eq!(active(&frames[3]), &[3.0, -2.0]);
+}
+
+#[test]
+fn poly_processing_and_state_adoption_neither_allocate_nor_deallocate() {
+    let p = patch(
+        vec![
+            node(
+                "source",
+                "poly_constant",
+                &[("channels", 16.0), ("v1", 1.0)],
+            ),
+            node("osc", "analog_vco", &[]),
+            node("filter", "ladder_vcf", &[]),
+            node("sum", "poly_sum", &[]),
+        ],
+        vec![
+            cable("source", "out", "osc", "pitch"),
+            cable("osc", "out", "filter", "signal"),
+            cable("filter", "out", "sum", "signal"),
+        ],
+        "sum",
+    );
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    let mut mono = [0.0; 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 128, 129] {
+        old.process_poly_block(&mut frames[..length]);
+    }
+    replacement.adopt_state_from(&old);
+    replacement.process_poly_block(&mut frames);
+    replacement.process_block(&mut mono);
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(mono.iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn invalid_channels_ports_and_duplicate_destinations_reject_before_rendering() {
+    for kind in ["poly_constant", "poly_merge"] {
+        for count in [-1.0, 0.5, 17.0, f32::NAN] {
+            let p = patch(
+                vec![node("unit", kind, &[("channels", count)])],
+                vec![],
+                "unit",
+            );
+            assert!(p.compile().is_err(), "{kind}: channels={count}");
+        }
+    }
+    let p = patch(
+        vec![node("a", "constant", &[]), node("b", "output", &[])],
+        vec![cable("a", "out", "b", "signal")],
+        "b",
+    );
+    let mut bad = p.clone();
+    bad.cables[0].output = "missing".into();
+    assert!(bad.compile().is_err());
+    bad = p.clone();
+    bad.cables[0].input = "out".into();
+    assert!(bad.compile().is_err());
+    bad = p;
+    bad.cables.push(bad.cables[0].clone());
+    assert!(bad.compile().is_err());
+}

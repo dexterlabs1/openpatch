@@ -263,6 +263,40 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(redone["patch"], committed["patch"])
         self.assertEqual(redone["revision"], committed["revision"] + 2)
 
+    def test_v2_named_ports_polyphony_analysis_and_legacy_loading(self) -> None:
+        initial = self.patch_snapshot()
+        self.assertEqual(initial["patch"]["version"], 2)
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "add_module", "arguments": {"id": "bus", "kind": "poly_constant", "params": {"channels": 2, "v1": 0.25, "v2": -0.5}}},
+            {"tool": "add_module", "arguments": {"id": "split", "kind": "poly_split"}},
+            {"tool": "connect", "arguments": {"from": "bus", "to": "split", "input": "signal"}},
+            {"tool": "set_output", "arguments": {"id": "split", "port": "out2"}},
+        ]})
+        before = self.patch_snapshot()
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "bus", "seconds": 0.001}))
+        self.assertEqual(measured["max_channels"], 2)
+        self.assertEqual([channel["mean"] for channel in measured["channels"]], [0.25, -0.5])
+        self.assertEqual(measured["revision"], before["revision"])
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_error("set_output", {"id": "split", "port": "out17"})
+        self.require_tool_error("analyze_signal", {"id": "bus", "port": "unknown", "seconds": 0.001})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("save_patch", {"filename": "poly.json"})
+        saved = json.loads((self.workspace / "poly.json").read_text())
+        self.assertEqual(saved["output_port"], "out2")
+        self.require_tool_success("render_audio", {"filename": "split.wav", "seconds": 0.001})
+        with wave.open(str(self.workspace / "split.wav")) as rendered:
+            samples = self._first_channel_samples(rendered.readframes(48), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertEqual(samples[0], 0)
+        self.assertAlmostEqual(samples[-1], -16384, delta=1)
+        # Old files retain legacy timing and cannot silently acquire polyphony.
+        legacy = {"version": 1, "nodes": [{"id": "old", "kind": "constant", "params": {"value": 0.25}}], "output": "old"}
+        self.require_tool_success("replace_patch", {"patch": legacy})
+        self.require_tool_error("add_module", {"id": "poly", "kind": "poly_constant"})
+        restored = self.patch_snapshot()
+        self.assertEqual(restored["patch"]["version"], 1)
+        self.assertEqual(len(restored["patch"]["nodes"]), 1)
+
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")
         self.assertIn("result", listed, f"tools/list failed: {listed}")
@@ -273,7 +307,7 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
              "connect", "disconnect", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
-             "inspect_history", "undo", "redo"}.issubset(names),
+             "inspect_history", "undo", "redo", "analyze_signal"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         catalog = self.require_tool_success("catalog")

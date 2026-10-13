@@ -8,7 +8,7 @@ pub(crate) const THERMAL_VOLTAGE: f64 = 1.380649e-23 * 298.15 / 1.602176634e-19;
 /// An ideal gain of two and a -5 V offset map the ramp to ±5 V at the jack.
 /// Reset/comparator discontinuities use a two-sample polynomial BLEP correction.
 /// This suppresses (but does not eliminate) aliasing; it is not a transistor VCO.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Vco {
     pub(crate) phase: f64,
     rate: f64,
@@ -59,7 +59,7 @@ fn blep(phase: f64, dt: f64) -> f64 {
 
 /// Matched differential pair, ideal voltage-controlled bias and transimpedance
 /// output. a=.01, Iabc=100 µA at gain1/CV10V, R=2VT/(a*100µA).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Vca {
     gain: f64,
     oversampler: Oversampler,
@@ -95,7 +95,7 @@ enum Stage {
 /// One 1 µF capacitor, ideal switches and comparators. Attack charges toward
 /// 12 V and switches to decay at 10 V. Decay approaches 10*sustain; release 0.
 /// Attack time is 0→10V; decay/release knobs specify 99% settling time.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Adsr {
     value: f64,
     stage: Stage,
@@ -161,7 +161,7 @@ fn schmitt(state: &mut bool, voltage: f32) {
 }
 
 /// Ideal comparator clock; gate transitions deliberately have sharp edges.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Gate {
     pub(crate) phase: f64,
     increment: f64,

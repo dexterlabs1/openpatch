@@ -55,7 +55,7 @@ fn finite_voltage(value: f32) -> f32 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Utility {
     Quantizer { mask: u16, offset: f32 },
     SampleHold { held: f32, high: bool },
@@ -186,7 +186,7 @@ fn quantize(volts: f64, mask: u16) -> f32 {
     bounded((best / 12.0) as f32)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct WhiteNoise {
     seed: u32,
     state: u64,

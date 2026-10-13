@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Compare OpenPatch engine workloads through MCP; never opens audio devices.
+
+Run after `cargo build --release -p openpatch`. Reports repeated offline DSP
+throughput, not callback deadlines or performance relative to VCV Rack.
+"""
+import argparse
+import copy
+import json
+import os
+from pathlib import Path
+import platform
+import statistics
+import subprocess
+import tempfile
+
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path, default=root / "target/release" / ("openpatch.exe" if os.name == "nt" else "openpatch"))
+    parser.add_argument("--seconds", type=float, default=1.0)
+    parser.add_argument("--runs", type=int, default=3)
+    args = parser.parse_args()
+    if not 0.01 <= args.seconds <= 5 or not 1 <= args.runs <= 20:
+        parser.error("seconds must be 0.01..5 and runs 1..20")
+    legacy = json.loads((root / "examples/reference-voice.json").read_text())
+    v2 = copy.deepcopy(legacy)
+    v2["version"] = 2
+    chord = json.loads((root / "examples/polyphonic-voice.json").read_text())
+    sixteen = copy.deepcopy(chord)
+    sixteen["nodes"][0]["params"] = {"channels": 16, **{f"v{i + 1}": i / 12 for i in range(16)}}
+    scenarios = [("legacy_reference_1_voice", legacy), ("v2_reference_1_voice", v2), ("v2_chord_3_voices", chord), ("v2_chord_16_voices", sixteen)]
+    with tempfile.TemporaryDirectory(prefix="openpatch-benchmark-") as workspace:
+        with subprocess.Popen([str(args.binary), "mcp", "--workspace", workspace], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as process:
+            request_id = 0
+
+            def request(method, params):
+                nonlocal request_id
+                request_id += 1
+                process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}) + "\n")
+                process.stdin.flush()
+                line = process.stdout.readline()
+                if not line:
+                    raise RuntimeError("MCP server exited before responding")
+                response = json.loads(line)
+                if response.get("id") != request_id or "error" in response:
+                    raise RuntimeError(response)
+                return response["result"]
+
+            def tool(name, arguments):
+                result = request("tools/call", {"name": name, "arguments": arguments})
+                if result.get("isError"):
+                    raise RuntimeError(result)
+                return result["structuredContent"]
+
+            request("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "engine-benchmark", "version": "1"}})
+            process.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
+            process.stdin.flush()
+            results = []
+            for name, patch in scenarios:
+                tool("replace_patch", {"patch": patch})
+                runs = [tool("benchmark", {"seconds": args.seconds}) for _ in range(args.runs)]
+                factors = [run["realtime_factor"] for run in runs]
+                results.append({"scenario": name, "patch": patch, "median_realtime_factor": statistics.median(factors), "min_realtime_factor": min(factors), "max_realtime_factor": max(factors), "runs": runs})
+            process.stdin.close()
+            process.wait(timeout=10)
+    print(json.dumps({"platform": platform.platform(), "seconds_per_run": args.seconds, "note": "Offline throughput only; not live deadlines or a VCV Rack comparison", "scenarios": results}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

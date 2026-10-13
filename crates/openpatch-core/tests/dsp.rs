@@ -17,6 +17,7 @@ fn cable(from: &str, to: &str, input: &str) -> Cable {
         from: from.into(),
         to: to.into(),
         input: input.into(),
+        output: "out".into(),
     }
 }
 
@@ -223,7 +224,7 @@ fn invalid_connections_duplicate_ids_and_cycles_are_rejected() {
 #[test]
 fn limits_versions_rates_and_render_duration_are_enforced() {
     let mut patch = Patch {
-        version: 2,
+        version: 3,
         ..Patch::default()
     };
     assert!(patch.validate().is_err());

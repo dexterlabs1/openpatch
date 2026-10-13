@@ -92,6 +92,41 @@ The desktop starts with the demo patch. Call `inspect_patch` before editing;
 include `expected_revision` to detect edits made in the window since your read.
 Exchange saved JSON patches to move between separate client processes.
 
+## Named outputs, polyphony, and feedback
+
+New sessions and **New patch** use patch version 2. Each cable has a source
+`output` (default `out`) and destination `input`. `set_output` accepts `port`
+(default `out`); patch JSON stores it as `output_port`. Discover valid names,
+minimum patch versions, and polyphony rules in `catalog`.
+
+Version 2 supports 0–16 channels per cable and feedback, with exactly one sample
+of delay per cable. Version-1 files retain their mono, same-sample DAG timing;
+loading does not convert them. The desktop's **Enable polyphony and feedback**
+action explicitly converts a legacy patch and can be undone. An MCP client can
+make the same explicit conversion by replacing a patch with `version: 2`.
+Conversion changes timing. See [engine contracts](ENGINE_V2.md).
+
+**Playback and WAV export currently take the first channel of the selected
+output.** Use `poly_sum` to hear all voices as a mono mix, then `audio_out` for
+voltage-to-digital conversion. This is polyphonic internal routing, not
+multichannel hardware I/O. `poly_split` provides `out1` through `out16`, and
+`poly_merge` combines `in1` through `in16` without collapsing gaps.
+
+`analyze_signal` measures any named output offline from reset. It returns the
+snapshot revision, channel-count range, and per-channel active-frame count,
+minimum, maximum, peak, mean, and RMS. Statistics exclude frames where the
+channel is inactive. It does not select a new live output, change history, or
+start playback. For example:
+
+```json
+{"id": "chord", "port": "out", "seconds": 0.25}
+```
+
+With the bundled polyphonic voice this reports three constant pitch channels.
+Analyze `vco` or `vca` to measure the three processed voices; analyze `sum` to
+inspect their mono sum. Values retain each output's catalog units; they are not
+automatically normalized, calibrated hardware measurements, or a live probe.
+
 ## Atomic edits and shared history
 
 `apply_edits` accepts 1–256 graph edits and validates the **final** graph. The

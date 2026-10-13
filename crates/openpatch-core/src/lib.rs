@@ -1,5 +1,6 @@
-//! Original mono modular DSP for OpenPatch. Graphs are directed and acyclic;
-//! feedback needs a future explicit delay module and is rejected today.
+//! Original modular DSP for OpenPatch. Version 1 is the unchanged mono DAG;
+//! version 2 has named 0–16-channel ports and one sample of delay per cable,
+//! including feedback loops. New sessions should use `Patch::new_v2()`.
 //!
 //! Compile on a control thread, then move the engine to the audio thread.
 //! `process_block` performs no allocation, locking, or I/O. Unpatched inputs
@@ -17,7 +18,9 @@ use std::path::Path;
 
 mod analog;
 pub mod ladder;
+mod poly;
 mod utilities;
+pub use poly::{PortFrame, MAX_CHANNELS};
 
 pub const BLOCK_SIZE: usize = 128;
 pub const MAX_NODES: usize = 256;
@@ -27,6 +30,13 @@ const SIGNAL_LIMIT: f32 = 1_000_000.0;
 fn default_version() -> u32 {
     1
 }
+fn default_output_port() -> String {
+    "out".into()
+}
+fn is_default_output_port(value: &str) -> bool {
+    value == "out"
+}
+
 fn default_rate() -> u32 {
     48_000
 }
@@ -45,6 +55,12 @@ pub struct Patch {
     /// ID of the node to hear. `None` is a silent graph, useful while editing.
     #[serde(default)]
     pub output: Option<String>,
+    /// Named output of the selected node; version 1 supports only `out`.
+    #[serde(
+        default = "default_output_port",
+        skip_serializing_if = "is_default_output_port"
+    )]
+    pub output_port: String,
 }
 
 impl Default for Patch {
@@ -55,6 +71,7 @@ impl Default for Patch {
             nodes: Vec::new(),
             cables: Vec::new(),
             output: None,
+            output_port: default_output_port(),
         }
     }
 }
@@ -74,16 +91,28 @@ pub struct Cable {
     pub from: String,
     pub to: String,
     pub input: String,
+    /// Named source output. Older JSON omitting this field selects `out`.
+    #[serde(
+        default = "default_output_port",
+        skip_serializing_if = "is_default_output_port"
+    )]
+    pub output: String,
 }
 
 /// Machine-readable module descriptions. Bounds depending on the sample rate
 /// are checked by `validate`; input port names are also the cable `input` names.
 pub fn catalog() -> Value {
     let mut result = json!({
-        "version": 1,
+        "version": 2,
+        "patch_versions": [1, 2],
+        "default_patch_version": 1,
+        "wire_default_patch_version": 1,
+        "new_session_patch_version": 2,
+        "recommended_patch_version": 2,
+        "timing": {"1":"same-sample DAG; cycles rejected", "2":"every cable delays values and channel count by exactly one sample; loops supported"},
         "sample_rate": {"min": 8000, "max": 192000, "default": 48000},
         "limits": {"nodes": MAX_NODES, "cables": MAX_CABLES, "block_size": BLOCK_SIZE},
-        "unpatched_inputs": "zero except gain.cv defaults to 1, analog_vca.cv defaults to 10 V, and attenuverter.signal defaults to 10 V", "cycles": "rejected", "channels": 1,
+        "unpatched_inputs": "zero except gain.cv defaults to 1, analog_vca.cv defaults to 10 V, and attenuverter.signal defaults to 10 V", "cycles": "version 1 rejected; version 2 delayed", "channels": {"1":1,"2_max":16},
         "modules": [
             {"kind":"oscillator", "description":"Sine oscillator; FM is additive Hz, instantaneous frequency clamped to 0..0.45 × sample rate", "inputs":["fm"], "params":{
                 "frequency":{"default":220.0,"min":0.0,"max":20000.0,"unit":"Hz","sample_rate_max_ratio":0.45},
@@ -122,16 +151,21 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(utilities::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(poly::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
         }
+        poly::annotate_catalog(module);
     }
     result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
     result
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Dsp {
     Utility(utilities::Utility),
     Vco(analog::Vco),
@@ -157,6 +191,80 @@ enum Dsp {
 }
 
 impl Dsp {
+    fn copy_state_from(&mut self, old: &Self) {
+        match (self, old) {
+            (Self::Utility(current), Self::Utility(old)) => current.copy_state_from(old),
+            (Self::Vco(current), Self::Vco(old)) => current.phase = old.phase,
+            (Self::Gate(current), Self::Gate(old)) => current.phase = old.phase,
+            (Self::Ladder(current), Self::Ladder(old)) => current.copy_state_from(old),
+            (Self::Vca(current), Self::Vca(old)) => current.copy_state_from(old),
+            (Self::Adsr(current), Self::Adsr(old)) => current.copy_state_from(old),
+            (
+                Self::Oscillator { phase, .. },
+                Self::Oscillator {
+                    phase: old_phase, ..
+                },
+            ) => *phase = *old_phase,
+            (
+                Self::Lowpass { state, .. },
+                Self::Lowpass {
+                    state: old_state, ..
+                },
+            ) => *state = *old_state,
+            _ => {}
+        }
+    }
+    fn solver_failures(&self) -> u64 {
+        if let Self::Ladder(filter) = self {
+            filter.diagnostics().solver_failures
+        } else {
+            0
+        }
+    }
+    fn process_sample(
+        &mut self,
+        a: f32,
+        b: f32,
+        a_connected: bool,
+        b_connected: bool,
+        rate: f64,
+    ) -> f32 {
+        match self {
+            Self::Utility(utility) => utility.process(a, b, a_connected),
+            Self::Vco(vco) => vco.process(a, b),
+            Self::Ladder(filter) => filter.process(a, b),
+            Self::Vca(vca) => vca.process(a, if b_connected { b } else { 10.0 }),
+            Self::Adsr(envelope) => envelope.process(a, b),
+            Self::Gate(gate) => gate.process(),
+            Self::AudioOut => a * 0.1,
+            Self::Oscillator {
+                phase,
+                frequency,
+                amplitude,
+                offset,
+            } => {
+                let value = (*phase * TAU).sin() as f32 * *amplitude + *offset;
+                let hz = (*frequency as f64 + a as f64).clamp(0.0, rate * 0.45);
+                *phase += hz / rate;
+                if *phase >= 1.0 {
+                    *phase -= 1.0;
+                }
+                value
+            }
+            Self::Constant(value) => *value,
+            Self::Gain(gain) => bounded(a * *gain * if b_connected { b } else { 1.0 }),
+            Self::Mixer => bounded(a + b),
+            Self::Lowpass { coefficient, state } => {
+                *state += *coefficient * (a - *state);
+                if state.abs() < 1e-20 {
+                    *state = 0.0;
+                }
+                *state
+            }
+            Self::Output => a,
+        }
+    }
+
     fn port(&self, name: &str) -> Option<usize> {
         if let Self::Utility(utility) = self {
             return utility.port(name);
@@ -192,7 +300,7 @@ struct CompiledNode {
 /// Stateful compiled graph. Construct and replace engines outside the audio
 /// callback; process any slice length without allocating intermediate buffers.
 #[derive(Debug)]
-pub struct Engine {
+struct LegacyEngine {
     sample_rate: f64,
     nodes: Vec<CompiledNode>,
     state_lookup: BTreeMap<String, usize>,
@@ -334,7 +442,37 @@ impl Patch {
         self.compile().map(|_| ())
     }
 
+    /// Create an empty graph with one-sample cable timing and polyphonic ports.
+    pub fn new_v2() -> Self {
+        Self {
+            version: 2,
+            ..Self::default()
+        }
+    }
+
     pub fn compile(&self) -> Result<Engine, String> {
+        let inner = match self.version {
+            1 => EngineKind::Legacy(self.compile_legacy()?),
+            2 => EngineKind::Poly(poly::PolyEngine::compile(self)?),
+            version => {
+                return Err(format!(
+                    "unsupported patch version {version} (expected 1 or 2)"
+                ))
+            }
+        };
+        Ok(Engine { inner })
+    }
+
+    fn compile_legacy(&self) -> Result<LegacyEngine, String> {
+        if self.output_port != "out" || self.cables.iter().any(|c| c.output != "out") {
+            return Err(
+                "version 1 supports only source output 'out'; use version 2 for named outputs"
+                    .into(),
+            );
+        }
+        if self.nodes.iter().any(|node| poly::is_poly_kind(&node.kind)) {
+            return Err("polyphonic utility modules require patch version 2".into());
+        }
         if self.version != 1 {
             return Err(format!(
                 "unsupported patch version {} (expected 1)",
@@ -437,7 +575,7 @@ impl Patch {
                 inputs: inputs[old].map(|source| source.map(|old_source| remap[old_source])),
             })
             .collect();
-        Ok(Engine {
+        Ok(LegacyEngine {
             sample_rate: self.sample_rate as f64,
             nodes,
             state_lookup: ids
@@ -454,7 +592,7 @@ fn bounded(value: f32) -> f32 {
     value.clamp(-SIGNAL_LIMIT, SIGNAL_LIMIT)
 }
 
-impl Engine {
+impl LegacyEngine {
     /// Aggregate bounded-solver failures without allocating or resetting state.
     pub fn solver_failures(&self) -> u64 {
         self.nodes.iter().fold(0_u64, |sum, node| {
@@ -620,6 +758,70 @@ impl Engine {
     }
 }
 
+/// Compiled versioned engine. Version 1 retains its original mono DAG scheduler;
+/// version 2 reads previous edge frames and publishes every edge together.
+#[derive(Debug)]
+pub struct Engine {
+    inner: EngineKind,
+}
+#[derive(Debug)]
+enum EngineKind {
+    Legacy(LegacyEngine),
+    Poly(poly::PolyEngine),
+}
+impl Engine {
+    pub fn solver_failures(&self) -> u64 {
+        match &self.inner {
+            EngineKind::Legacy(engine) => engine.solver_failures(),
+            EngineKind::Poly(engine) => engine.solver_failures(),
+        }
+    }
+    /// Copy compatible state without allocation. Version and sample rate must
+    /// match. Version 2 also retains only edges with unchanged compatible endpoints.
+    pub fn adopt_state_from(&mut self, previous: &Self) {
+        match (&mut self.inner, &previous.inner) {
+            (EngineKind::Legacy(current), EngineKind::Legacy(old))
+                if current.sample_rate == old.sample_rate =>
+            {
+                current.adopt_state_from(old)
+            }
+            (EngineKind::Poly(current), EngineKind::Poly(old)) => current.adopt_state_from(old),
+            _ => {}
+        }
+    }
+    /// Mono adapter: select channel zero; never sum polyphonic voices.
+    pub fn process_block(&mut self, output: &mut [f32]) {
+        match &mut self.inner {
+            EngineKind::Legacy(engine) => engine.process_block(output),
+            EngineKind::Poly(engine) => {
+                for sample in output {
+                    *sample = engine.process_sample().channel(0);
+                }
+            }
+        }
+    }
+    /// Render full port frames. Unused values are zero. No allocation, locking,
+    /// or I/O occurs, including the first callback and state adoption.
+    pub fn process_poly_block(&mut self, output: &mut [PortFrame]) {
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                for frame in output {
+                    *frame = engine.process_sample();
+                }
+            }
+            EngineKind::Legacy(engine) => {
+                let mut mono = [0.0; BLOCK_SIZE];
+                for chunk in output.chunks_mut(BLOCK_SIZE) {
+                    engine.process_block(&mut mono[..chunk.len()]);
+                    for (frame, sample) in chunk.iter_mut().zip(&mono) {
+                        *frame = PortFrame::mono(*sample);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A 220 Hz tone with a smooth 2 Hz tremolo, routed through a low-pass filter.
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
@@ -634,6 +836,7 @@ pub fn demo_patch() -> Patch {
         from: from.into(),
         to: to.into(),
         input: input.into(),
+        output: default_output_port(),
     };
     Patch {
         nodes: vec![
@@ -676,6 +879,7 @@ pub fn analog_demo_patch() -> Patch {
         from: from.into(),
         to: to.into(),
         input: input.into(),
+        output: default_output_port(),
     };
     Patch {
         nodes: vec![

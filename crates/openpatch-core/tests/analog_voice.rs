@@ -13,6 +13,7 @@ fn cable(from: &str, to: &str, input: &str) -> Cable {
         from: from.into(),
         to: to.into(),
         input: input.into(),
+        output: "out".into(),
     }
 }
 #[test]
@@ -20,8 +21,10 @@ fn catalog_defaults_compile_and_invalid_reference_parameters_fail() {
     for module in catalog()["modules"].as_array().unwrap() {
         let kind = module["kind"].as_str().unwrap();
         let patch = Patch {
+            version: module["min_patch_version"].as_u64().unwrap() as u32,
             nodes: vec![node("test", kind, &[])],
             output: Some("test".into()),
+            output_port: module["outputs"][0].as_str().unwrap().into(),
             ..Patch::default()
         };
         assert!(patch.compile().is_ok(), "{kind}");

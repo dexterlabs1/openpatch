@@ -563,9 +563,12 @@ mod tests {
 
     #[test]
     fn live_stateful_edit_adopts_phase_and_filter_memory_without_heap_activity() {
+        let polyphonic: Patch =
+            serde_json::from_str(include_str!("../../../examples/polyphonic-voice.json")).unwrap();
         for original in [
             openpatch_core::demo_patch(),
             openpatch_core::analog_demo_patch(),
+            polyphonic,
         ] {
             let (mut updates, incoming) = RingBuffer::new(2);
             let (retired, _disposal) = RingBuffer::new(2);

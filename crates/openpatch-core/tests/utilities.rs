@@ -46,6 +46,7 @@ fn cable(from: &str, to: &str, input: &str) -> Cable {
         from: from.into(),
         to: to.into(),
         input: input.into(),
+        output: "out".into(),
     }
 }
 fn utilities_patch() -> Patch {

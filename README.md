@@ -27,7 +27,7 @@
 - **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
-- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, tune, save, and render through a local MCP server using the same validated controls as the UI.
+- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, tune, save, and render through a local MCP server using the same validated controls as the UI.
 
 ## Get started on macOS
 
@@ -58,7 +58,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
 | Save / open / undo / redo | **Cmd-S** / **Cmd-O** / **Cmd-Z** / **Shift-Cmd-Z** |
 
-Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step.
+Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click an output jack to select that specific output for monitoring. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
@@ -100,11 +100,11 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**Eighteen built-in kinds:** six reference-voice modules, five voltage utilities, and seven legacy modules. The new utilities are quantizer, sample-and-hold, seeded white noise, attenuverter, and crossfade. Try **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**Twenty-two built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, and seven legacy modules. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
-The current engine is mono, uses the default output device, and rejects feedback cycles. MIDI, polyphony, device selection, VCV patch/plugin compatibility, and broader module coverage remain ahead. See the [architecture and roadmap](docs/ARCHITECTURE.md) for the detailed boundaries.
+New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. Hardware output and WAV export currently use the first channel; **SUM** mixes polyphonic voices to mono. MIDI, device selection, multichannel hardware audio, VCV patch/plugin compatibility, and broader module coverage remain ahead.
 
 **Performance goal:** low CPU use and predictable audio deadlines on large patches. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [measurement methodology](docs/PERFORMANCE.md).
 
@@ -112,6 +112,7 @@ The current engine is mono, uses the default output device, and rejects feedback
 
 | Guide | What it covers |
 |---|---|
+| [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
 | [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |
 | [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
