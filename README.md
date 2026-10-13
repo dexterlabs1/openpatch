@@ -90,6 +90,23 @@ contracts, not an imported VCV project.
 
 </details>
 
+<details>
+<summary><strong>Play a polyphonic analog voice</strong></summary>
+
+![Three-note polyphonic voice with voltage source, oscillator, ladder filter, envelope, VCA, and explicit mono sum](docs/images/openpatch-polyphonic.png)
+
+Choose **File → Polyphonic voice**. Three pitch voltages drive independent
+oscillator, filter, and VCA states; one envelope controls all three voices.
+Change the first three voltage fields to reshape the chord. **SUM** combines
+the voices before the audio output. Split and Merge provide individual access
+to up to 16 channels for more elaborate routing.
+
+<sub>Native Linux / Mesa CI render. Sixteen-channel routing is supported;
+sixteen full circuit voices still exceed realtime CPU capacity in the
+[published M1 Max benchmark](docs/PERFORMANCE.md).</sub>
+
+</details>
+
 ## Claude & Codex
 
 Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. The client launches OpenPatch with `--mcp` and controls the live patch in that window. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
