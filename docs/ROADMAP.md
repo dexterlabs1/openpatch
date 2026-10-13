@@ -128,6 +128,22 @@ A connected stereo example exercises both signal directions. Complete parity
 still requires reference traces, legacy import/state mapping, host bypass and
 native-device qualification.
 
+## Next utility batch and bypass prerequisite
+
+Implement the complete 8vert, Mutes and CV Mix signal roles with original Rust
+DSP and dedicated panels, then qualify them against pinned references:
+
+- [8vert](https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/src/8vert.cpp): eight gains and eight row ports. Unpatched rows inherit the input frame above, independent of that row's gain; the top normal is 10 V. Test polyphonic inheritance and mid-chain overrides.
+- [Mutes](https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Mutes.cpp): ten rows, passing by default, and atomic inversion. The pinned source makes inherited rows mono even when the source row is polyphonic; test this explicitly and keep normalization independent of muting.
+- [CV Mix](https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/src/CVMix.cpp): three independently normalized 10 V inputs and bipolar levels. Test offsets, mono broadcast, short-poly zero fill, and cancellation before the safety bound.
+
+General host bypass remains missing. Mutes requires direct per-row input/output
+bypass, while the other two have no bypass routes. Specify serialized bypass
+state, atomic UI/MCP operations, output channel policies and frozen/resumed DSP
+state before claiming complete host integration. Legacy Mutes state polarity and
+VCV patch import remain explicit compatibility work. No utility in this batch
+is implemented merely by listing its contract here.
+
 ## MCP and visuals beyond the baseline
 
 These are OpenPatch differentiators and do not substitute for missing host or module functionality.

@@ -19,8 +19,8 @@ pub(crate) fn output_names(kind: &str) -> Option<&'static [&'static str]> {
 }
 pub(crate) fn catalog() -> [Value; 2] {
     ["switch_1to4", "switch_4to1"].map(|kind| json!({
-        "kind":kind,"title":if kind=="switch_1to4" {"SWITCH 1→4"} else {"SWITCH 4→1"},
-        "model":"functional","description":"Clocked sequential routing with reset priority and optional 400/s linear de-click gain ramps. Two to four positions. Initial position one, initial ramp gains zero. No reset guard. All outputs keep the maximum signal-input channel count, minimum one, including unselected inputs. Raw 4→1 zero-pads mono; de-click 4→1 broadcasts mono. Nonfinite signal inputs become zero; final arithmetic safety bound ±1,000,000 V.",
+        "kind":kind,"title":if kind=="switch_1to4" {"SWITCH 1:4"} else {"SWITCH 4:1"},
+        "model":"functional","description":"Clocked sequential routing with reset priority and optional 400/s linear de-click gain ramps. Two to four positions. Initial position one, initial ramp gains zero. No reset guard. All outputs keep the maximum signal-input channel count, minimum one, including unselected inputs. Raw 4-to-1 zero-pads mono; de-click 4-to-1 broadcasts mono. Nonfinite signal inputs become zero; final arithmetic safety bound ±1,000,000 V.",
         "inputs":input_names(kind).unwrap(),"params":{
             "steps":{"default":4.0,"min":2.0,"max":4.0,"step":1.0},
             "declick":{"default":0.0,"min":0.0,"max":1.0,"step":1.0}
