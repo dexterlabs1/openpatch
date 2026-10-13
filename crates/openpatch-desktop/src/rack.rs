@@ -324,7 +324,7 @@ impl Rack {
                 let (y, radius) = match count {
                     1 => (183.0, 42.0),
                     2 => (135.0 + index as f32 * 110.0, 32.0),
-                    _ => (111.0 + index as f32 * 76.0, 22.0),
+                    _ => (114.0 + index as f32 * 78.0, 18.0),
                 };
                 let center = point(width * 0.5, y);
                 let logarithmic = *name == "frequency" || *name == "cutoff";
