@@ -793,7 +793,7 @@ impl Rack {
                 ));
                 value_response.on_hover_text("Double-click to type a value");
             }
-            if count == 0 && !node.kind.starts_with("poly_") {
+            if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
                 paint_center_mark(
                     &painter,
                     rect,

@@ -107,6 +107,42 @@ sixteen full circuit voices still exceed realtime CPU capacity in the
 
 </details>
 
+<details>
+<summary><strong>Perform with MIDI or your keyboard</strong></summary>
+
+![Native MIDI voice with a performance keyboard and independent envelope voices](docs/images/openpatch-midi.png)
+
+Choose **File → MIDI keyboard voice**, then **Play**. Use `A W S E D F T G Y H U J K`
+or click the piano keys. **Audio / MIDI** selects your output device and hardware
+controller. Sustain, velocity, pitch wheel, clock, and polyphonic voice allocation
+are available through the MIDI TO CV panel. The keyboard's **All notes off**
+button releases held notes.
+
+Agents can render and inspect repeatable sample-timed MIDI phrases through MCP.
+See [MIDI and audio](docs/MIDI_AUDIO.md) for routing, device behavior, and examples.
+
+<sub>Native Linux / Mesa CI render. Physical MIDI hardware still needs qualification.</sub>
+
+</details>
+
+<details>
+<summary><strong>Shape a stereo image</strong></summary>
+
+![Stereo oscillator pair with Mid/Side encoder and decoder width controls](docs/images/openpatch-stereo.png)
+
+Choose **File → Stereo width study**. Two slightly detuned oscillators feed
+MID / SIDE, and its decoder connects to independent L/R audio outputs. Adjust
+either Width control to collapse the image to mono or increase its width.
+
+Mix 6 adds six-input mixing, averaging, and polarity inversion. Octave transposes
+pitch by whole octaves; Mult distributes an intact polyphonic signal to eight
+outputs. Their [signal contracts](docs/ROUTING_MODULES.md) state the voltage,
+normaling, and voice behavior explicitly.
+
+<sub>Native Linux / Mesa CI render. Original Rust functional implementations.</sub>
+
+</details>
+
 ## Claude & Codex
 
 Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. The client launches OpenPatch with `--mcp` and controls the live patch in that window. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
