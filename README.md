@@ -17,7 +17,7 @@ ALSA, udev, XKB, Wayland, and OpenGL development packages:
 
 ```sh
 # Debian / Ubuntu only
-sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev
 ```
 
 ```sh
