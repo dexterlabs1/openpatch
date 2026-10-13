@@ -1,0 +1,64 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+            binary: openpatch
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x86_64
+            binary: openpatch.exe
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: macos-arm64
+            binary: openpatch
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Format source (bootstrap)
+        run: cargo fmt --all
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Rust correctness and allocation tests
+        run: cargo test --workspace
+      - name: Release binary
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: MCP integration tests
+        env:
+          OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
+        run: python -m unittest discover -s scripts -v
+      - name: Throughput benchmark
+        run: cargo bench -p openpatch-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openpatch-${{ matrix.artifact }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.binary }}
+            Cargo.lock
+            LICENSE
+            README.md
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.os == 'ubuntu-latest'
+        with:
+          name: formatted-source
+          path: |
+            crates/
+            Cargo.lock

@@ -1,0 +1,374 @@
+"""Integration smoke tests for the OpenPatch MCP stdio server.
+
+Run from the repository root with ``python -m unittest discover -s scripts``.
+Set ``OPENPATCH_BIN`` to override the default release binary location.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import queue
+import subprocess
+import tempfile
+import threading
+import unittest
+import wave
+from pathlib import Path
+from typing import Any
+
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+DEFAULT_BINARY = REPOSITORY / "target" / "release" / (
+    "openpatch.exe" if os.name == "nt" else "openpatch"
+)
+PROTOCOL_VERSION = "2025-11-25"
+READ_TIMEOUT = 5.0
+
+
+class MCPProcess:
+    """Small line-oriented JSON-RPC client with bounded stdout reads."""
+
+    def __init__(self, executable: Path, workspace: Path) -> None:
+        self.process = subprocess.Popen(
+            [str(executable), "mcp", "--workspace", str(workspace)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+        )
+        assert self.process.stdin is not None
+        assert self.process.stdout is not None
+        self._stdout: queue.Queue[str | None] = queue.Queue()
+        self._reader = threading.Thread(target=self._read_stdout, daemon=True)
+        self._reader.start()
+        self._next_id = 1
+
+    def _read_stdout(self) -> None:
+        assert self.process.stdout is not None
+        for line in self.process.stdout:
+            self._stdout.put(line)
+        self._stdout.put(None)
+
+    def send_raw(self, line: str) -> None:
+        assert self.process.stdin is not None
+        self.process.stdin.write(line + "\n")
+        self.process.stdin.flush()
+
+    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        request_id = self._next_id
+        self._next_id += 1
+        request: dict[str, Any] = {"jsonrpc": "2.0", "id": request_id, "method": method}
+        if params is not None:
+            request["params"] = params
+        self.send_raw(json.dumps(request, separators=(",", ":")))
+        line = self.read_line()
+        response = json.loads(line)
+        if response.get("id") != request_id:
+            raise AssertionError(f"response id {response.get('id')!r} did not match {request_id}")
+        return response
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        notification: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            notification["params"] = params
+        self.send_raw(json.dumps(notification, separators=(",", ":")))
+
+    def read_line(self, timeout: float = READ_TIMEOUT) -> str:
+        try:
+            line = self._stdout.get(timeout=timeout)
+        except queue.Empty as exc:
+            code = self.process.poll()
+            stderr = self._stderr_text()
+            raise AssertionError(
+                f"timed out waiting for JSON-RPC output (process exit={code}, stderr={stderr!r})"
+            ) from exc
+        if line is None:
+            raise AssertionError(
+                f"MCP process closed stdout unexpectedly (exit={self.process.poll()}, "
+                f"stderr={self._stderr_text()!r})"
+            )
+        return line.rstrip("\r\n")
+
+    def assert_no_output(self, timeout: float = 0.2) -> None:
+        try:
+            unexpected = self._stdout.get(timeout=timeout)
+        except queue.Empty:
+            return
+        raise AssertionError(f"server emitted output for a notification: {unexpected!r}")
+
+    def _stderr_text(self) -> str:
+        # stderr is kept separate so diagnostics are available without mixing it
+        # into the JSON-RPC stream. The server should not emit enough to fill a
+        # pipe during these short smoke tests.
+        if self.process.stderr is None:
+            return ""
+        return "<stderr captured separately>"
+
+    def close(self) -> None:
+        if self.process.poll() is None:
+            self.process.terminate()
+        try:
+            self.process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=3)
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        if self.process.stdout is not None:
+            self.process.stdout.close()
+        if self.process.stderr is not None:
+            self.process.stderr.close()
+
+
+class OpenPatchMCPTests(unittest.TestCase):
+    def setUp(self) -> None:
+        configured_binary = os.environ.get("OPENPATCH_BIN")
+        self.executable = Path(configured_binary) if configured_binary else DEFAULT_BINARY
+        self.assertTrue(
+            self.executable.is_file(),
+            f"OpenPatch executable not found at {self.executable}; build it or set OPENPATCH_BIN",
+        )
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="openpatch-mcp-")
+        self.workspace = Path(self.temp_dir.name) / "workspace"
+        self.workspace.mkdir()
+        self.client = MCPProcess(self.executable.resolve(), self.workspace)
+
+        init = self.client.request(
+            "initialize",
+            {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "openpatch-smoke-tests", "version": "1.0"},
+            },
+        )
+        self.assertIn("result", init, f"initialize failed: {init}")
+        self.assertEqual(init["result"].get("protocolVersion"), PROTOCOL_VERSION)
+        self.client.notify("notifications/initialized")
+        self.client.assert_no_output()
+
+    def tearDown(self) -> None:
+        if hasattr(self, "client"):
+            self.client.close()
+        if hasattr(self, "temp_dir"):
+            self.temp_dir.cleanup()
+
+    def tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+        response = self.client.request(
+            "tools/call", {"name": name, "arguments": arguments or {}}
+        )
+        if "error" in response:
+            return {"_jsonrpc_error": response["error"]}
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise AssertionError(f"tools/call returned no result object: {response}")
+        return result
+
+    def require_tool_success(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        result = self.tool(name, arguments)
+        self.assertNotIn("_jsonrpc_error", result, f"{name} returned JSON-RPC error: {result}")
+        self.assertFalse(result.get("isError", False), f"{name} failed: {result}")
+        return result
+
+    def require_tool_error(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        result = self.tool(name, arguments)
+        self.assertTrue(
+            "_jsonrpc_error" in result or result.get("isError", False),
+            f"{name} unexpectedly succeeded: {result}",
+        )
+        return result
+
+    @staticmethod
+    def payload(result: dict[str, Any]) -> dict[str, Any] | None:
+        structured = result.get("structuredContent")
+        if isinstance(structured, dict):
+            return structured
+        for item in result.get("content", []):
+            if item.get("type") == "text":
+                try:
+                    decoded = json.loads(item.get("text", ""))
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if isinstance(decoded, dict):
+                    return decoded
+        return None
+
+    def patch_snapshot(self) -> dict[str, Any]:
+        result = self.require_tool_success("inspect_patch")
+        payload = self.payload(result)
+        self.assertIsInstance(payload, dict, f"inspect_patch did not return JSON content: {result}")
+        assert payload is not None
+        self.assertIn("revision", payload)
+        self.assertIn("patch", payload)
+        return payload
+
+    def add_node(self, node_id: str, kind: str) -> None:
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "add_module", {"id": node_id, "kind": kind, "expected_revision": revision}
+        )
+
+    def make_audio_graph(self) -> None:
+        self.add_node("osc", "oscillator")
+        self.add_node("gain", "gain")
+        self.add_node("out", "output")
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "connect",
+            {"from": "osc", "to": "gain", "input": "signal", "expected_revision": revision},
+        )
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "connect",
+            {"from": "gain", "to": "out", "input": "signal", "expected_revision": revision},
+        )
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success("set_output", {"id": "out", "expected_revision": revision})
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "set_parameter",
+            {"id": "osc", "parameter": "frequency", "value": 440,
+             "expected_revision": revision},
+        )
+
+    def test_handshake_catalog_and_tool_listing(self) -> None:
+        listed = self.client.request("tools/list")
+        self.assertIn("result", listed, f"tools/list failed: {listed}")
+        tools = listed["result"].get("tools")
+        self.assertIsInstance(tools, list)
+        names = {item.get("name") for item in tools if isinstance(item, dict)}
+        self.assertTrue(
+            {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
+             "connect", "disconnect", "set_parameter", "set_output", "save_patch",
+             "load_patch", "render_audio", "benchmark"}.issubset(names),
+            f"tools/list omitted documented tools: {names}",
+        )
+        catalog = self.require_tool_success("catalog")
+        self.assertTrue(catalog.get("content") or catalog.get("structuredContent"), catalog)
+        inspected = self.patch_snapshot()
+        self.assertEqual(inspected["patch"].get("sample_rate"), 48000)
+        self.assertEqual(inspected["patch"].get("nodes"), [])
+        self.assertEqual(inspected["patch"].get("cables"), [])
+        self.assertIsNone(inspected["patch"].get("output"))
+
+    def test_audio_render_save_load_and_wav_content(self) -> None:
+        self.make_audio_graph()
+        snapshot = self.patch_snapshot()
+        self.require_tool_success("save_patch", {"filename": "roundtrip.json"})
+        self.assertTrue((self.workspace / "roundtrip.json").is_file())
+
+        self.require_tool_success(
+            "render_audio", {"filename": "tone.wav", "seconds": 0.1}
+        )
+        wav_path = self.workspace / "tone.wav"
+        self.assertTrue(wav_path.is_file(), "render_audio did not create the requested WAV")
+        self.assertGreater(wav_path.stat().st_size, 44, "rendered WAV contains no audio data")
+        with wave.open(str(wav_path), "rb") as rendered:
+            self.assertEqual(rendered.getframerate(), 48000)
+            self.assertGreaterEqual(rendered.getnchannels(), 1)
+            self.assertEqual(rendered.getnframes(), 4800)
+            width = rendered.getsampwidth()
+            channels = rendered.getnchannels()
+            frames = rendered.readframes(rendered.getnframes())
+        samples = self._first_channel_samples(frames, width, channels)
+        self.assertTrue(any(sample != 0 for sample in samples), "rendered audio is silent")
+        crossings = sum(
+            (left <= 0 < right) or (left >= 0 > right)
+            for left, right in zip(samples, samples[1:])
+        )
+        frequency = crossings / (2 * 0.1)
+        self.assertAlmostEqual(frequency, 440, delta=20, msg="rendered tone is not near 440 Hz")
+
+        self.require_tool_success(
+            "render_audio", {"filename": "fractional.wav", "seconds": 0.100125}
+        )
+        with wave.open(str(self.workspace / "fractional.wav"), "rb") as rendered:
+            self.assertEqual(rendered.getframerate(), 48000)
+            self.assertEqual(rendered.getnframes(), 4806)
+
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "set_parameter",
+            {"id": "osc", "parameter": "frequency", "value": 660,
+             "expected_revision": revision},
+        )
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success("load_patch", {"filename": "roundtrip.json",
+                                                   "expected_revision": revision})
+        restored = self.patch_snapshot()
+        self.assertEqual(restored["patch"], snapshot["patch"])
+
+    def test_mutation_errors_preserve_revision(self) -> None:
+        self.make_audio_graph()
+        before_invalid = self.patch_snapshot()
+        self.require_tool_error(
+            "set_parameter",
+            {"id": "osc", "parameter": "not_a_real_parameter", "value": 1,
+             "expected_revision": before_invalid["revision"]},
+        )
+        self.assertEqual(self.patch_snapshot(), before_invalid)
+
+        current = self.patch_snapshot()["revision"]
+        self.require_tool_success(
+            "set_parameter",
+            {"id": "osc", "parameter": "frequency", "value": 440,
+             "expected_revision": current},
+        )
+        changed = self.patch_snapshot()
+        self.assertGreater(changed["revision"], current)
+        self.require_tool_error(
+            "set_parameter",
+            {"id": "osc", "parameter": "frequency", "value": 880,
+             "expected_revision": current},
+        )
+        self.assertEqual(self.patch_snapshot(), changed)
+
+    def test_unknown_tool_and_filename_safety(self) -> None:
+        unknown = self.require_tool_error("there_is_no_such_tool")
+        self.assertTrue(unknown.get("_jsonrpc_error") or unknown.get("content"), unknown)
+
+        escape_name = "../openpatch-mcp-escape.json"
+        outside_target = self.workspace.parent / "openpatch-mcp-escape.json"
+        self.require_tool_error("save_patch", {"filename": escape_name})
+        self.assertFalse(outside_target.exists(), "save_patch wrote outside its workspace")
+
+        self.require_tool_success("save_patch", {"filename": "safe.json"})
+        safe_path = self.workspace / "safe.json"
+        original = safe_path.read_bytes()
+        self.require_tool_error("save_patch", {"filename": "safe.json"})
+        self.assertEqual(safe_path.read_bytes(), original, "rejected overwrite changed the file")
+
+    def test_parse_error_recovers_and_notifications_are_silent(self) -> None:
+        self.client.send_raw("{this is not json")
+        parse_error = json.loads(self.client.read_line())
+        self.assertIn("error", parse_error, f"invalid JSON did not yield a parse error: {parse_error}")
+        self.assertEqual(parse_error["error"].get("code"), -32700, parse_error)
+        recovered = self.client.request("tools/list")
+        self.assertIn("result", recovered, f"server did not recover after parse error: {recovered}")
+        self.client.notify("notifications/progress", {"token": "smoke", "progress": 1})
+        self.client.assert_no_output()
+
+    @staticmethod
+    def _first_channel_samples(data: bytes, width: int, channels: int) -> list[int]:
+        if width not in (1, 2, 3, 4):
+            raise AssertionError(f"unsupported PCM width in WAV: {width}")
+        frame_width = width * channels
+        samples: list[int] = []
+        for offset in range(0, len(data) - frame_width + 1, frame_width):
+            raw = data[offset:offset + width]
+            if width == 1:
+                value = raw[0] - 128
+            else:
+                value = int.from_bytes(raw, "little", signed=True)
+            samples.append(value)
+        return samples
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "tone",
+      "kind": "oscillator",
+      "params": {
+        "frequency": 220.0,
+        "amplitude": 0.3
+      }
+    },
+    {
+      "id": "tremolo",
+      "kind": "lfo",
+      "params": {
+        "frequency": 2.0,
+        "amplitude": 0.35,
+        "offset": 0.65
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "gain",
+      "params": {}
+    },
+    {
+      "id": "filter",
+      "kind": "lowpass",
+      "params": {
+        "cutoff": 1800.0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "output",
+      "params": {}
+    }
+  ],
+  "cables": [
+    {
+      "from": "tone",
+      "to": "vca",
+      "input": "signal"
+    },
+    {
+      "from": "tremolo",
+      "to": "vca",
+      "input": "cv"
+    },
+    {
+      "from": "vca",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}
