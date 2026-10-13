@@ -119,6 +119,23 @@ engine fixture; this screenshot does not demonstrate live audio-device testing.<
 </details>
 
 <details>
+<summary><strong>Route a voice around the rack</strong></summary>
+
+![Clocked pitch selector and stereo audio router with active-route lights](docs/images/openpatch-switches.png)
+
+Choose **File → Switched stereo voice**. One switch selects among four pitches;
+another routes the oscillator between left and right. Change either step count
+to reshape the pattern, and enable de-click for short ramps between audio routes.
+The illuminated route comes from the engine rather than a UI timer.
+
+<sub>Native Linux / Mesa CI render with offline engine telemetry. Actual device
+playback qualification remains separate.</sub>
+
+[Clocked routing and polyphony →](docs/SWITCHING.md)
+
+</details>
+
+<details>
 <summary><strong>Make a voice move with a clocked LFO</strong></summary>
 
 ![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)
