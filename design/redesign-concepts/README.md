@@ -13,6 +13,12 @@ Selected direction: **01 — Studio Rack**, chosen by the user on 2026-10-13. Us
 
 Implementation starts with procedural rack materials and matching graphite application chrome. The reference's docked thumbnail library, transport layout and integrated measurement dock require subsequent interaction work; this first material pass does not implement the entire mockup. Keep actual port definitions, control geometry and signal behavior authoritative over generated details.
 
+## Native implementation progress
+
+![First Studio Rack material pass in the actual OpenPatch application](../../docs/images/openpatch-rack.png)
+
+The first pass adds smoothly lit warm aluminum panels, beveled edges, machined knobs, recessed jacks, amber selection outlines, raised cable shading and graphite application controls. Existing control positions and patching interactions remain in place. This is an actual Linux/Mesa native render from [commit 4483066](https://github.com/dexterlabs1/openpatch/commit/448306620e42f72edab2767a9cd8455660af4ffe), separate from the generated concepts below; it does not establish macOS device or playback qualification.
+
 ## Visual previews
 
 ### Studio Rack
