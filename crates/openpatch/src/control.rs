@@ -54,6 +54,8 @@ const EDIT_TOOLS: &[&str] = &[
     "connect",
     "disconnect",
     "set_parameter",
+    "set_bypass",
+    "invert_mutes",
     "set_output",
 ];
 
@@ -401,7 +403,9 @@ impl Session {
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
                 let id = string(&args, "id")?;
-                sequence_node(&self.patch, id)?;
+                if sequence_node(&self.patch, id)?.bypassed {
+                    return Err("module actions are unavailable while seq3 is bypassed".into());
+                }
                 let action: ModuleAction = serde_json::from_value(args["action"].clone())
                     .map_err(|error| format!("invalid action: {error}"))?;
                 let backend = self
@@ -808,7 +812,9 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
         .iter()
         .filter_map(|(id, node)| {
             let previous = old.get(id)?;
-            (previous.kind != node.kind || previous.params != node.params)
+            (previous.kind != node.kind
+                || previous.params != node.params
+                || previous.bypassed != node.bypassed)
                 .then(|| json!({"id":id,"before":previous,"after":node}))
         })
         .collect();
@@ -872,6 +878,7 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
                 id: string(args, "id")?.into(),
                 kind: string(args, "kind")?.into(),
                 params,
+                bypassed: false,
             });
         }
         "remove_module" => {
@@ -917,6 +924,35 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
                 .and_then(Value::as_f64)
                 .ok_or("value must be a number")? as f32;
             node.params.insert(string(args, "parameter")?.into(), value);
+        }
+        "set_bypass" => {
+            let id = string(args, "id")?;
+            let bypassed = args
+                .get("bypassed")
+                .and_then(Value::as_bool)
+                .ok_or("bypassed must be a boolean")?;
+            candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?
+                .bypassed = bypassed;
+        }
+        "invert_mutes" => {
+            let id = string(args, "id")?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?;
+            if node.kind != "mutes10" {
+                return Err("invert_mutes requires a mutes10 module".into());
+            }
+            for channel in 1..=10 {
+                let key = format!("mute{channel}");
+                let value = node.params.get(&key).copied().unwrap_or(0.0);
+                node.params.insert(key, 1.0 - value);
+            }
         }
         "set_output" => {
             candidate.output = Some(string(args, "id")?.into());
@@ -964,6 +1000,8 @@ pub fn tools() -> Value {
         tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
         tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
+        tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
+        tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Sequencers start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),

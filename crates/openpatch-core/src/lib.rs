@@ -18,6 +18,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod analog;
+mod bypass;
 pub mod ladder;
 pub mod midi;
 mod multi_lfo;
@@ -25,6 +26,7 @@ mod poly;
 mod routing;
 mod sequence;
 mod switch;
+mod utility_bank;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
 pub use sequence::{
     validate_module_events, ModuleAction, ModuleHandle, ModuleTelemetry, TimedModuleEvent,
@@ -92,8 +94,13 @@ impl Default for Patch {
 pub struct Node {
     pub id: String,
     pub kind: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bypassed: bool,
     #[serde(default)]
     pub params: BTreeMap<String, f32>,
+}
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -182,11 +189,16 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(switch::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(utility_bank::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
         }
         poly::annotate_catalog(module);
+        bypass::annotate(module);
     }
     result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
     result
@@ -320,6 +332,8 @@ struct CompiledNode {
     // Exact model identity distinguishes oscillator and LFO even though they
     // share an implementation. Built on the control thread with the graph.
     kind: String,
+    bypassed: bool,
+    bypass_input: Option<usize>,
     dsp: Dsp,
     inputs: [Option<usize>; 2],
 }
@@ -601,6 +615,10 @@ impl Patch {
             .iter()
             .map(|&old| CompiledNode {
                 kind: self.nodes[old].kind.clone(),
+                bypassed: self.nodes[old].bypassed,
+                bypass_input: bypass::routes(&self.nodes[old].kind)
+                    .first()
+                    .and_then(|(input, _)| modules[old].as_ref().unwrap().port(input)),
                 dsp: modules[old].take().unwrap(),
                 inputs: inputs[old].map(|source| source.map(|old_source| remap[old_source])),
             })
@@ -690,6 +708,15 @@ impl LegacyEngine {
                     .map(|source| &previous[source])
                     .unwrap_or(&zero);
                 let buffer = &mut current[0];
+                if node.bypassed {
+                    let source = match node.bypass_input {
+                        Some(0) => a,
+                        Some(1) => b,
+                        _ => &zero,
+                    };
+                    buffer[..length].copy_from_slice(&source[..length]);
+                    continue;
+                }
                 match &mut node.dsp {
                     Dsp::Utility(utility) => {
                         for sample in 0..length {
@@ -1046,6 +1073,7 @@ impl Engine {
 /// A 220 Hz tone with a smooth 2 Hz tremolo, routed through a low-pass filter.
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params
@@ -1089,6 +1117,7 @@ pub fn demo_patch() -> Patch {
 /// A reference voice in volts, with a clock-gated RC envelope and OTA VCA.
 pub fn analog_demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params

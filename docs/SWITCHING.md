@@ -72,6 +72,9 @@ queueing. An agent can patch a clock/reset source or use timed MIDI events with
 a MIDI-to-CV source to operate switches. `capture_signal` inspects named outputs
 and voices offline from reset; it does not capture the live rack.
 
+Bypass freezes switch position, detectors, and fade gains, and emits mono zero
+on every output. It is saved and undoable through the common [bypass controls](VOLTAGE_UTILITIES.md).
+
 ## Reference and validation boundaries
 
 Behavior was checked against the
@@ -83,7 +86,7 @@ no upstream code or artwork is included.
 
 OpenPatch uses double-precision gain state and explicit finite-value handling.
 No sample-identical claim is made. Direct differential renders, VCV file/state
-migration (including older de-click defaults), host bypass and native-device
+migration (including older de-click defaults) and native-device
 qualification remain acceptance work. The engine and UI tests validate routing,
 timing, channel policies, state adoption and identity, and bounded callback
 behavior separately from those remaining compatibility requirements.

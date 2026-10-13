@@ -16,6 +16,7 @@ const FUTURE_SECONDS: u64 = 2;
 struct Event {
     slot: usize,
     token: u64,
+    action_epoch: u64,
     action: ModuleAction,
     sequence: u64,
     revision: u64,
@@ -43,6 +44,8 @@ struct Entry {
     token: u64,
     born_revision: u64,
     kind: ModuleKind,
+    bypassed: bool,
+    action_epoch: u64,
 }
 struct Control {
     queue: Producer<Event>,
@@ -104,6 +107,7 @@ impl Meter {
 }
 struct Shared {
     desired: [AtomicU64; MAX_NODES],
+    action_epochs: [AtomicU64; MAX_NODES],
     meters: [Meter; MAX_NODES],
     closed: AtomicBool,
     frame: AtomicU64,
@@ -150,6 +154,7 @@ impl Performance {
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
         let shared = Arc::new(Shared {
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
+            action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             meters: std::array::from_fn(|_| Meter::new()),
             closed: AtomicBool::new(false),
             frame: AtomicU64::new(0),
@@ -276,7 +281,15 @@ impl LiveModuleEvents for Performance {
                 .iter()
                 .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
             {
-                if control.entries.contains_key(&node.id) {
+                if let Some(entry) = control.entries.get_mut(&node.id) {
+                    if node.bypassed && !entry.bypassed {
+                        // Cancel pending actions without replacing DSP identity.
+                        // This survives a bypass/resume coalesced before audio.
+                        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                        self.shared.action_epochs[entry.slot]
+                            .store(entry.action_epoch, Ordering::Release);
+                    }
+                    entry.bypassed = node.bypassed;
                     continue;
                 }
                 let Some(slot) = used.iter().position(|used| !used) else {
@@ -292,8 +305,11 @@ impl LiveModuleEvents for Performance {
                         token,
                         born_revision: revision,
                         kind,
+                        bypassed: node.bypassed,
+                        action_epoch: 1,
                     },
                 );
+                self.shared.action_epochs[slot].store(1, Ordering::Release);
                 self.shared.desired[slot].store(token, Ordering::Release);
             }
         }
@@ -318,12 +334,19 @@ impl LiveModuleEvents for Performance {
                 "Module '{id}' is a sequential switch with read-only telemetry; module actions require seq3"
             ));
         }
+        if entry.bypassed {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!(
+                "Module '{id}' is bypassed; module action was not queued"
+            ));
+        }
         let sequence = control.next_sequence;
         control.next_sequence = control.next_sequence.wrapping_add(1).max(1);
         let revision = control.revision;
         let event = Event {
             slot: entry.slot,
             token: entry.token,
+            action_epoch: entry.action_epoch,
             action,
             sequence,
             revision,
@@ -387,6 +410,13 @@ impl EventReader {
                 self.head = None;
                 shared.dropped.fetch_add(1, Ordering::Relaxed);
                 shared.obsolete.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
+            if self.shared.action_epochs[event.slot].load(Ordering::Acquire) != event.action_epoch {
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.rejected.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
                 continue;
             }

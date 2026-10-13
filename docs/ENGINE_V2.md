@@ -115,6 +115,15 @@ Merge's zero setting means automatic, not forced zero. Use a zero-channel
 `poly_constant` when explicit virtual unpatching is required. This difference
 must remain visible in catalog/help text.
 
+## Saved bypass
+
+`Node.bypassed` defaults to false and is omitted from serialized false values.
+Both patch versions support it without changing their cable timing. Compiled
+routes copy designated input frames directly; no-route and zero-channel routes
+emit mono zero. Ordinary DSP state freezes. Compatible transitions preserve
+incoming history and clear the source outputs/outgoing history. MIDI consumes
+events and ages pulses while its outputs remain silent. See the [full contract](VOLTAGE_UTILITIES.md).
+
 ## Acceptance checks
 
 - Parse and render a literal legacy JSON fixture without the new fields;

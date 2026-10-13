@@ -6,6 +6,7 @@ use crate::multi_lfo::{self, MultiLfo};
 use crate::routing::{self, Routing};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::switch::{self, SequentialSwitch};
+use crate::utility_bank::{self, UtilityBank};
 use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -49,6 +50,7 @@ impl PortFrame {
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
     routing::input_names(kind).is_some()
         || switch::input_names(kind).is_some()
+        || utility_bank::input_names(kind).is_some()
         || matches!(
             kind,
             "poly_constant"
@@ -70,6 +72,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if let Some(ports) = utility_bank::input_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if let Some(ports) = switch::input_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -91,6 +96,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if let Some(ports) = utility_bank::output_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if let Some(ports) = switch::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -159,7 +167,9 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if let Some(names) = switch::output_names(&kind) {
+    let outputs = if let Some(names) = utility_bank::output_names(&kind) {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if let Some(names) = switch::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if let Some(names) = routing::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
@@ -234,6 +244,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
     routing::annotate(module);
     switch::annotate(module);
+    utility_bank::annotate(module);
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
@@ -260,9 +271,13 @@ enum Model {
     MultiLfo(Box<MultiLfo>),
     Seq3(Box<Seq3>),
     Switch(SequentialSwitch),
+    UtilityBank(UtilityBank),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if utility_bank::input_names(&node.kind).is_some() {
+            return UtilityBank::build(node).map(Self::UtilityBank);
+        }
         if switch::input_names(&node.kind).is_some() {
             return Ok(Self::Switch(SequentialSwitch::build(node, rate)?));
         }
@@ -354,6 +369,9 @@ struct PolyNode {
     model: Model,
     inputs: [Option<usize>; MAX_PORTS],
     output_start: usize,
+    output_count: usize,
+    bypassed: bool,
+    bypass_inputs: [Option<usize>; MAX_PORTS],
 }
 #[derive(Debug)]
 struct Edge {
@@ -391,12 +409,15 @@ impl PolyEngine {
             .node_lookup
             .get(id)
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
-        if !matches!(self.nodes[node].model, Model::Seq3(_)) {
+        if self.nodes[node].bypassed || !matches!(self.nodes[node].model, Model::Seq3(_)) {
             return Err(format!("module '{id}' does not support runtime actions"));
         }
         Ok(node)
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
+        if self.nodes.get(node).is_none_or(|node| node.bypassed) {
+            return false;
+        }
         match self.nodes.get_mut(node).map(|node| &mut node.model) {
             Some(Model::Seq3(seq)) => seq.enqueue(action),
             _ => false,
@@ -487,8 +508,13 @@ impl PolyEngine {
                 model: Model::build(node, patch.sample_rate)?,
                 inputs: [None; MAX_PORTS],
                 output_start: output_count,
+                output_count: 0,
+                bypassed: node.bypassed,
+                bypass_inputs: [None; MAX_PORTS],
             });
-            output_count += if let Some(ports) = switch::output_names(&node.kind) {
+            let count = if let Some(ports) = utility_bank::output_names(&node.kind) {
+                ports.len()
+            } else if let Some(ports) = switch::output_names(&node.kind) {
                 ports.len()
             } else if let Some(ports) = routing::output_names(&node.kind) {
                 ports.len()
@@ -501,6 +527,13 @@ impl PolyEngine {
                     _ => 1,
                 }
             };
+            let compiled = nodes.last_mut().unwrap();
+            compiled.output_count = count;
+            for (input, output) in crate::bypass::routes(&node.kind) {
+                compiled.bypass_inputs[output_port(&node.kind, output).unwrap()] =
+                    input_port(&node.kind, compiled.model.template(), input);
+            }
+            output_count += count;
         }
         let mut edges = Vec::with_capacity(patch.cables.len());
         let mut edge_lookup = BTreeMap::new();
@@ -590,6 +623,24 @@ impl PolyEngine {
     }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
         for node in &mut self.nodes {
+            if node.bypassed {
+                if let Model::Midi(midi) = &mut node.model {
+                    let mut scratch = [PortFrame::default(); MIDI_OUTPUTS.len()];
+                    midi.process(&mut scratch);
+                }
+                for (index, output) in self.outputs
+                    [node.output_start..node.output_start + node.output_count]
+                    .iter_mut()
+                    .enumerate()
+                {
+                    *output = node.bypass_inputs[index]
+                        .and_then(|input| node.inputs[input])
+                        .map(|edge| self.edge_frames[edge])
+                        .filter(|frame| frame.channels > 0)
+                        .unwrap_or_else(|| PortFrame::mono(0.0));
+                }
+                continue;
+            }
             let a = node.inputs[0]
                 .map(|edge| self.edge_frames[edge])
                 .unwrap_or_default();
@@ -597,6 +648,18 @@ impl PolyEngine {
                 .map(|edge| self.edge_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
+                Model::UtilityBank(bank) => {
+                    let mut inputs = [PortFrame::default(); 10];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    bank.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
                 Model::Voices {
                     template,
                     voices,
@@ -810,6 +873,7 @@ impl PolyEngine {
             if node.kind != previous.kind {
                 continue;
             }
+            let bypass_changed = node.bypassed != previous.bypassed;
             if let (Model::Switch(switch), Model::Switch(previous)) =
                 (&mut node.model, &previous.model)
             {
@@ -817,6 +881,13 @@ impl PolyEngine {
             }
             if let (Model::Seq3(seq), Model::Seq3(previous)) = (&mut node.model, &previous.model) {
                 seq.adopt(previous, seq_unchanged);
+                if bypass_changed {
+                    seq.discard_actions();
+                }
+            }
+            if bypass_changed {
+                self.outputs[node.output_start..node.output_start + node.output_count]
+                    .fill(PortFrame::mono(0.0));
             }
             if let (Model::MultiLfo(lfo), Model::MultiLfo(previous)) =
                 (&mut node.model, &previous.model)
@@ -848,6 +919,10 @@ impl PolyEngine {
             };
             let edge = &self.edges[*index];
             let previous = &old.edges[*old_index];
+            if self.nodes[edge.source_node].bypassed != old.nodes[previous.source_node].bypassed {
+                self.edge_frames[*index] = PortFrame::mono(0.0);
+                continue;
+            }
             let midi_compatible = match (
                 &self.nodes[edge.source_node].model,
                 &old.nodes[previous.source_node].model,
@@ -884,6 +959,7 @@ mod tests {
         Patch {
             nodes: vec![
                 Node {
+                    bypassed: false,
                     id: "source".into(),
                     kind: "poly_constant".into(),
                     params: BTreeMap::from([
@@ -895,6 +971,7 @@ mod tests {
                     ]),
                 },
                 Node {
+                    bypassed: false,
                     id: "voice".into(),
                     kind: kind.into(),
                     params: BTreeMap::new(),

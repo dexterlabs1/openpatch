@@ -27,6 +27,7 @@
 - **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
+- **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
@@ -56,6 +57,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value | Double-click the displayed value |
+| Explore voltage and mute banks | **File → Voltage utilities** |
+| Bypass a module | Right-click its panel → **Bypass module** |
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
 | Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
@@ -229,7 +232,7 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**Twenty-nine built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, four stereo/pitch/routing modules, a four-output clocked LFO, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**35 built-in kinds:** a reference analog voice, sequencer, sequential switches, voltage and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then add modules through the searchable browser. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 

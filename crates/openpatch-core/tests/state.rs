@@ -3,6 +3,7 @@ use std::f64::consts::TAU;
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params

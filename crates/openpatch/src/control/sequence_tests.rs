@@ -489,3 +489,135 @@ fn switch_actions_remain_seq3_only_and_replacements_retire_all_telemetry_modules
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn bypass_is_a_strict_atomic_graph_edit_and_seq3_actions_are_unavailable() {
+    let mut s = session();
+    let backend = Arc::new(MockLive::default());
+    s.set_live_module_events(Some(backend.clone()));
+    let before = s.snapshot();
+    for bypassed in [json!(0), json!(1), json!("true"), Value::Null] {
+        assert!(s
+            .execute("set_bypass", json!({"id":"seq","bypassed":bypassed}))
+            .is_err());
+        assert_eq!(s.snapshot(), before);
+    }
+    let edits = json!([{"tool":"set_bypass","arguments":{"id":"seq","bypassed":true}}]);
+    let preview = s.execute("preview_edits", json!({"edits":edits})).unwrap();
+    assert_eq!(
+        preview["changes"]["changed_modules"][0]["after"]["bypassed"],
+        true
+    );
+    assert_eq!(s.snapshot(), before);
+    s.execute("apply_edits", json!({"edits":edits,"expected_revision":1}))
+        .unwrap();
+    assert!(s.patch.nodes[0].bypassed);
+    assert_eq!(s.revision, 2);
+    assert_eq!(
+        s.snapshot()["history"]["undo_steps"],
+        before["history"]["undo_steps"].as_u64().unwrap() + 1
+    );
+    for action in ["clock", "run", "reset"] {
+        assert!(s
+            .execute("trigger_module", json!({"id":"seq","action":action}))
+            .unwrap_err()
+            .contains("bypassed"));
+    }
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 0);
+    s.execute(
+        "set_parameter",
+        json!({"id":"seq","parameter":"row1_1","value":4}),
+    )
+    .unwrap();
+    s.execute("rotate_sequence", json!({"id":"seq","direction":"right"}))
+        .unwrap();
+    assert!(s.patch.nodes[0].bypassed);
+    let before_invalid = s.snapshot();
+    assert!(s
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"set_bypass","arguments":{"id":"seq","bypassed":false}},
+                {"tool":"set_bypass","arguments":{"id":"missing","bypassed":true}}
+            ]})
+        )
+        .is_err());
+    assert_eq!(s.snapshot(), before_invalid);
+    s.execute("set_bypass", json!({"id":"seq","bypassed":false}))
+        .unwrap();
+    assert!(!s.patch.nodes[0].bypassed);
+    assert!(s.snapshot()["patch"]["nodes"][0].get("bypassed").is_none());
+    s.execute("undo", json!({})).unwrap();
+    assert!(s.patch.nodes[0].bypassed);
+    s.execute("redo", json!({})).unwrap();
+    assert!(!s.patch.nodes[0].bypassed);
+    s.execute("trigger_module", json!({"id":"seq","action":"clock"}))
+        .unwrap();
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn invert_mutes_inverts_all_defaults_and_batches_with_bypass_in_one_undo() {
+    let mut s = session();
+    s.execute(
+        "add_module",
+        json!({"id":"mutes","kind":"mutes10","params":{"mute2":1,"mute10":1}}),
+    )
+    .unwrap();
+    let before = s.snapshot();
+    let edits = json!([
+        {"tool":"set_bypass","arguments":{"id":"mutes","bypassed":true}},
+        {"tool":"invert_mutes","arguments":{"id":"mutes"}}
+    ]);
+    let preview = s.execute("preview_edits", json!({"edits":edits})).unwrap();
+    assert_eq!(
+        preview["patch"]["nodes"][1]["params"]["mute1"].as_f64(),
+        Some(1.0)
+    );
+    assert_eq!(
+        preview["patch"]["nodes"][1]["params"]["mute2"].as_f64(),
+        Some(0.0)
+    );
+    assert_eq!(s.snapshot(), before);
+    s.execute("apply_edits", json!({"edits":edits,"expected_revision":2}))
+        .unwrap();
+    assert_eq!(s.revision, 3);
+    assert_eq!(
+        s.snapshot()["history"]["undo_steps"],
+        before["history"]["undo_steps"].as_u64().unwrap() + 1
+    );
+    let node = &s.patch.nodes[1];
+    assert!(node.bypassed);
+    for channel in 1..=10 {
+        assert_eq!(
+            node.params[&format!("mute{channel}")],
+            if [2, 10].contains(&channel) { 0.0 } else { 1.0 }
+        );
+    }
+    s.execute("undo", json!({})).unwrap();
+    assert_eq!(s.snapshot()["patch"], before["patch"]);
+    s.execute("redo", json!({})).unwrap();
+    let before_invalid = s.snapshot();
+    assert!(s
+        .execute("invert_mutes", json!({"id":"seq"}))
+        .unwrap_err()
+        .contains("mutes10"));
+    assert!(s.execute("invert_mutes", json!({"id":"missing"})).is_err());
+    assert!(s
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"invert_mutes","arguments":{"id":"mutes"}},
+                {"tool":"set_parameter","arguments":{"id":"mutes","parameter":"mute1","value":0.5}}
+            ]})
+        )
+        .is_err());
+    assert_eq!(s.snapshot(), before_invalid);
+    s.execute("invert_mutes", json!({"id":"mutes"})).unwrap();
+    for channel in 1..=10 {
+        assert_eq!(
+            s.patch.nodes[1].params[&format!("mute{channel}")],
+            if [2, 10].contains(&channel) { 1.0 } else { 0.0 }
+        );
+    }
+}

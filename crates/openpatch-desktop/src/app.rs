@@ -998,6 +998,14 @@ impl OpenPatch {
                             self.replace_from_menu(patch, "Clocked random voice");
                             ui.close();
                         }
+                        if ui.button("Voltage utilities").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/voltage-utilities.json"
+                            ))
+                            .expect("valid bundled voltage utilities");
+                            self.replace_from_menu(patch, "Voltage utilities");
+                            ui.close();
+                        }
                         if ui.button("Switched stereo voice").clicked() {
                             let patch = serde_json::from_str(include_str!(
                                 "../../../examples/switched-stereo-voice.json"
@@ -1314,7 +1322,8 @@ impl OpenPatch {
                             .as_object()
                             .map(|params| params.keys().cloned().collect::<Vec<_>>().join(" "))
                             .unwrap_or_default();
-                        format!("{kind} {title} {description} {model} {inputs} {params}")
+                        let tags = module["tags"].to_string();
+                        format!("{kind} {title} {description} {model} {inputs} {params} {tags}")
                             .to_lowercase()
                             .contains(&query)
                     })
@@ -1801,12 +1810,46 @@ impl OpenPatch {
             self.rack.set_sequence_states(states, false);
             self.title = "Switched stereo voice · offline preview".into();
         }
+        if *frame == 204 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/voltage-utilities.json"))
+                    .expect("valid voltage utilities fixture");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("voltage utilities compile");
+            self.rack = Rack::default();
+            self.title = "Voltage utilities".into();
+        }
+        if *frame == 220 {
+            execute_shared(
+                &self.shared,
+                "set_bypass",
+                json!({"id":"mutes","bypassed":true}),
+            )
+            .expect("mute bypass fixture");
+            self.title = "Voltage utilities · Mutes bypassed".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
         if matches!(
             *frame,
-            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168 | 184 | 200
+            12 | 24
+                | 36
+                | 48
+                | 60
+                | 72
+                | 84
+                | 96
+                | 108
+                | 120
+                | 132
+                | 144
+                | 156
+                | 168
+                | 184
+                | 200
+                | 216
+                | 232
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1840,7 +1883,9 @@ impl OpenPatch {
                 12 => path.with_file_name("signal-scope.png"),
                 13 => path.with_file_name("signal-scope-xy.png"),
                 14 => path.with_file_name("rack-sequencer.png"),
-                _ => path.with_file_name("rack-switches.png"),
+                15 => path.with_file_name("rack-switches.png"),
+                16 => path.with_file_name("rack-voltage-utilities.png"),
+                _ => path.with_file_name("rack-bypass.png"),
             };
             image::save_buffer(
                 target,
@@ -1851,12 +1896,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 16 {
+            if *captures == 18 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 226, "Native screenshot timeout");
+        assert!(*frame < 258, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2152,6 +2197,53 @@ mod project_workflow_tests {
                     && p.extension().is_some_and(|ext| ext == "openpatch")
             })
             .collect()
+    }
+
+    #[test]
+    fn bypass_and_mute_edits_participate_in_dirty_undo_and_native_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/voltage-utilities.json")).unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        app.filename = "utilities.openpatch".into();
+        app.save_document("utilities.openpatch", true);
+        assert!(!app.dirty());
+        let before = app.capture_document();
+        assert!(app.command("set_bypass", json!({"id":"mutes","bypassed":true})));
+        app.capture_document();
+        assert!(app.dirty());
+        assert!(
+            app.patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "mutes")
+                .unwrap()
+                .bypassed
+        );
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+        assert!(!app.dirty());
+        app.history(true);
+        assert!(
+            app.patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "mutes")
+                .unwrap()
+                .bypassed
+        );
+        assert!(app.command("invert_mutes", json!({"id":"mutes"})));
+        let mutes = app.patch.nodes.iter().find(|n| n.id == "mutes").unwrap();
+        assert_eq!(mutes.params["mute10"], 1.0);
+        app.save_current();
+        let loaded = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("utilities.openpatch")
+            .unwrap();
+        assert!(loaded.document.equivalent(&app.capture_document()));
     }
 
     #[test]

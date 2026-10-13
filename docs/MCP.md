@@ -215,6 +215,16 @@ clock/reset inputs; they do not accept sequencer `module_events` or
 telemetry. See [clocked routing](SWITCHING.md) for mode-specific polyphony,
 timing and the stereo example.
 
+## Saved bypass and mute inversion
+
+`set_bypass` accepts `id`, the required JSON boolean `bypassed`, and optional
+`expected_revision`. `invert_mutes` accepts a `mutes10` ID and optional revision,
+and flips all ten flags as one edit. Both support preview/batch edits and shared
+undo/redo. Parameters remain editable during bypass; sequencer performance
+actions are rejected and earlier queued actions are invalidated on entry.
+See [utility and bypass contracts](VOLTAGE_UTILITIES.md) for routing, frozen state,
+and the MIDI exception.
+
 ## Offline waveform capture
 
 `capture_signal` returns a bounded waveform trace for one named output and one
@@ -272,7 +282,7 @@ whole transaction commits one revision and one undo step. Temporary disconnected
 or unresolved connections inside the transaction are allowed; the final graph
 must compile. Any failure leaves the live graph, revision, and history unchanged.
 The supported operations are `add_module`, `remove_module`, `connect`,
-`disconnect`, `set_parameter`, and `set_output`. File I/O, nested transactions,
+`disconnect`, `set_parameter`, `set_output`, `set_bypass`, and `invert_mutes`. File I/O, nested transactions,
 and history commands are excluded.
 
 For example, pass this argument object to `preview_edits`, using the revision

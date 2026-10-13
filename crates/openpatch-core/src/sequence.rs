@@ -217,6 +217,9 @@ pub(crate) struct Seq3 {
     action_count: usize,
 }
 impl Seq3 {
+    pub(crate) fn discard_actions(&mut self) {
+        self.action_count = 0;
+    }
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         for key in node.params.keys() {
             let fixed = [
@@ -494,6 +497,7 @@ mod tests {
     fn seq(params: &[(&str, f32)]) -> Seq3 {
         Seq3::build(
             &Node {
+                bypassed: false,
                 id: "s".into(),
                 kind: "seq3".into(),
                 params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),

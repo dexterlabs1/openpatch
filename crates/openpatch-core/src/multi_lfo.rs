@@ -203,6 +203,7 @@ mod tests {
     fn lfo(params: &[(&str, f32)]) -> MultiLfo {
         MultiLfo::build(
             &Node {
+                bypassed: false,
                 id: "lfo".into(),
                 kind: "multi_lfo".into(),
                 params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
@@ -323,6 +324,7 @@ mod tests {
         assert!(!clock_changed.voices[0].clock.armed);
         // Unknown/nonfinite parameters reject on the control thread.
         let n = Node {
+            bypassed: false,
             id: "bad".into(),
             kind: "multi_lfo".into(),
             params: BTreeMap::from([("frequency".into(), f32::NAN)]),

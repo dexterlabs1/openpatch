@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 fn voice_patch(voices: usize) -> Patch {
     let mut patch = Patch::default();
     let node = |id: String, kind: &str, params: BTreeMap<String, f32>| Node {
+        bypassed: false,
         id,
         kind: kind.into(),
         params,

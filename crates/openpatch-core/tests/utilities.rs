@@ -36,6 +36,7 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params.iter().map(|(k, v)| (k.to_string(), *v)).collect(),

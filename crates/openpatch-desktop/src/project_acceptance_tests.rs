@@ -14,6 +14,7 @@ fn patch(version: u32, value: f32) -> Patch {
     Patch {
         version,
         nodes: vec![Node {
+            bypassed: false,
             id: "dc".into(),
             kind: "constant".into(),
             params: [("value".into(), value)].into(),
@@ -100,11 +101,13 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             .into();
             original_patch.nodes.extend([
                 Node {
+                    bypassed: false,
                     id: "a".into(),
                     kind: "mult".into(),
                     params: Default::default(),
                 },
                 Node {
+                    bypassed: false,
                     id: "b".into(),
                     kind: "mult".into(),
                     params: Default::default(),
@@ -407,4 +410,45 @@ fn orphan_recovery_is_claimed_once_and_restore_keeps_original_project_unchanged(
     claimant.discard_recovery(&names[0]).unwrap();
     assert!(claimant.load_recovery(&names[0]).is_err());
     assert!(recovered.equivalent(&claimant.load("recovered.openpatch").unwrap().document));
+}
+
+#[test]
+fn voltage_utility_parameters_cables_and_bypass_survive_native_and_recovery_roundtrips() {
+    let (directory, store) = store();
+    let mut patch: Patch =
+        serde_json::from_str(include_str!("../../../examples/voltage-utilities.json")).unwrap();
+    let mutes = patch.nodes.iter_mut().find(|n| n.id == "mutes").unwrap();
+    mutes.bypassed = true;
+    mutes.params.insert("mute10".into(), 1.0);
+    let original = Document::new(
+        patch,
+        json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{}}),
+    )
+    .unwrap();
+    store.save_new("utilities.openpatch", &original).unwrap();
+    let loaded = store.load("utilities.openpatch").unwrap().document;
+    assert!(loaded.equivalent(&original));
+    let encoded: Value = serde_json::from_slice(&read(&directory, "utilities.openpatch")).unwrap();
+    let nodes = encoded["patch"]["nodes"].as_array().unwrap();
+    assert_eq!(
+        nodes.iter().find(|n| n["id"] == "mutes").unwrap()["bypassed"],
+        true
+    );
+    assert!(nodes
+        .iter()
+        .filter(|n| n["id"] != "mutes")
+        .all(|n| n.get("bypassed").is_none()));
+    store.save_recovery(&original).unwrap();
+    drop(store);
+    let store = Store::new(directory.path()).unwrap();
+    let names = store.recoveries();
+    assert_eq!(names.len(), 1);
+    let recovered = store.load_recovery(&names[0]).unwrap().document;
+    assert!(recovered.equivalent(&original));
+
+    let legacy = br#"{"version":2,"nodes":[{"id":"dc","kind":"constant"}]}"#;
+    fs::write(directory.path().join("old.json"), legacy).unwrap();
+    let imported = store.load("old.json").unwrap();
+    assert!(!imported.document.patch.nodes[0].bypassed);
+    assert_eq!(read(&directory, "old.json"), legacy);
 }

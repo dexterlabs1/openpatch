@@ -337,6 +337,7 @@ impl Rack {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
                 monitor_menu(ui, node, &output_ports, patch, &mut action);
+                utility_menu(ui, node, &mut action);
                 if node.kind == "seq3" {
                     for (direction, label) in [
                         ("left", "Rotate pattern left"),
@@ -410,6 +411,7 @@ impl Rack {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
                 monitor_menu(ui, node, &output_ports, patch, &mut action);
+                utility_menu(ui, node, &mut action);
                 if node.kind == "seq3" {
                     for (direction, label) in [
                         ("left", "Rotate pattern left"),
@@ -455,6 +457,11 @@ impl Rack {
             }
             if is_sequential_switch(&node.kind) {
                 if let Some(edit) = self.switch_panel(ui, node, rect) {
+                    action = Some(edit);
+                }
+            }
+            if is_voltage_utility(&node.kind) {
+                if let Some(edit) = self.utility_panel(ui, node, module, patch, rect) {
                     action = Some(edit);
                 }
             }
@@ -578,7 +585,8 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if is_sequential_switch(&node.kind)
+                if is_voltage_utility(&node.kind)
+                    || is_sequential_switch(&node.kind)
                     || (node.kind == "seq3" && sequence_cell(name).is_none())
                 {
                     continue;
@@ -985,6 +993,7 @@ impl Rack {
                     connected,
                     false,
                     self.zoom,
+                    is_voltage_utility(&node.kind),
                 );
                 self.cable_jack(
                     &jack,
@@ -1020,6 +1029,7 @@ impl Rack {
                     connected,
                     true,
                     self.zoom,
+                    is_voltage_utility(&node.kind),
                 );
                 self.cable_jack(
                     &jack,
@@ -1255,6 +1265,180 @@ impl Rack {
         }
     }
 
+    fn utility_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        patch: &Patch,
+        rect: Rect,
+    ) -> Option<RackAction> {
+        let painter = ui.painter().clone();
+        let zoom = self.zoom;
+        let width = rect.width() / zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let rows = match node.kind.as_str() {
+            "attenuverter8" => 8,
+            "mutes10" => 10,
+            _ => 3,
+        };
+        let mut action = None;
+        for (x, label) in [
+            (29.0, "IN"),
+            (
+                115.0,
+                if node.kind == "mutes10" {
+                    "STATE"
+                } else {
+                    "LEVEL"
+                },
+            ),
+            (
+                width - 29.0,
+                if node.kind == "cv_mix" {
+                    "SOURCE"
+                } else {
+                    "OUT"
+                },
+            ),
+        ] {
+            painter.text(
+                point(x, 79.0),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(9.0 * zoom),
+                MUTED,
+            );
+        }
+        for row in 0..rows {
+            let y = utility_row_y(&node.kind, row);
+            painter.line_segment(
+                [point(15.0, y + 15.0), point(width - 15.0, y + 15.0)],
+                Stroke::new(0.5 * zoom, Color32::from_gray(185)),
+            );
+            painter.text(
+                point(53.0, y),
+                Align2::CENTER_CENTER,
+                format!("{:02}", row + 1),
+                FontId::monospace(8.0 * zoom),
+                MUTED,
+            );
+            let parameter = format!(
+                "{}{}",
+                if node.kind == "mutes10" {
+                    "mute"
+                } else if node.kind == "cv_mix" {
+                    "level"
+                } else {
+                    "gain"
+                },
+                row + 1
+            );
+            let control = Rect::from_min_size(point(70.0, y - 11.0), vec2(92.0, 22.0) * zoom);
+            if node.kind == "mutes10" {
+                let muted = node.params.get(&parameter).copied().unwrap_or(0.0) >= 0.5;
+                if panel_button(
+                    ui,
+                    &painter,
+                    control,
+                    ui.id().with((&node.id, &parameter)),
+                    if muted { "MUTED" } else { "PASS" },
+                    muted,
+                    true,
+                    zoom,
+                ) {
+                    self.selected = Some(node.id.clone());
+                    action = Some(RackAction::Command(
+                        "set_parameter",
+                        json!({"id":node.id,"parameter":parameter,"value":if muted {0.0} else {1.0}}),
+                    ));
+                }
+                painter.text(
+                    point(181.0, y),
+                    Align2::CENTER_CENTER,
+                    if muted { "X" } else { ">" },
+                    FontId::proportional(12.0 * zoom),
+                    if muted {
+                        Color32::from_rgb(161, 76, 58)
+                    } else {
+                        MUTED
+                    },
+                );
+            } else {
+                let source = utility_source_row(patch, node, row);
+                let (suffix, scale) = if source.is_some() {
+                    (" %", 100.0)
+                } else {
+                    (" V", 10.0)
+                };
+                if let Some(spec) = module.and_then(|m| m["params"].get(&parameter)) {
+                    if let Some(edit) = self.compact_parameter_scaled(
+                        ui, node, &parameter, spec, control, suffix, scale,
+                    ) {
+                        action = Some(edit);
+                    }
+                }
+                let label = source.map_or("10V".into(), |source| {
+                    if source == row {
+                        "IN".into()
+                    } else {
+                        format!("in{}", source + 1)
+                    }
+                });
+                let explanation = source.map_or("Unpatched: normalled to +10 V. The level sets the output voltage.".into(), |source| if source == row { "Patched input: level is a percentage of this signal.".into() } else { format!("Unpatched: inherits input {} above. Level is a percentage of that signal.", source + 1) });
+                let hint = Rect::from_center_size(
+                    point(
+                        if node.kind == "cv_mix" {
+                            width - 29.0
+                        } else {
+                            181.0
+                        },
+                        y,
+                    ),
+                    vec2(32.0, 22.0) * zoom,
+                );
+                painter.text(
+                    hint.center(),
+                    Align2::CENTER_CENTER,
+                    label,
+                    FontId::monospace(8.0 * zoom),
+                    MUTED,
+                );
+                ui.interact(
+                    hint,
+                    ui.id().with((&node.id, row, "normal")),
+                    Sense::hover(),
+                )
+                .on_hover_text(explanation);
+            }
+        }
+        let footer = match node.kind.as_str() {
+            "attenuverter8" => "Unpatched: input above; first = +10 V",
+            "mutes10" => "Unpatched: input above; first = 0 V",
+            _ => "Unpatched = +10 V · bipolar sum",
+        };
+        painter.text(
+            point(
+                width * 0.5,
+                if node.kind == "cv_mix" { 320.0 } else { 375.0 },
+            ),
+            Align2::CENTER_CENTER,
+            footer,
+            FontId::proportional(8.0 * zoom),
+            MUTED,
+        );
+        if node.kind == "cv_mix" {
+            painter.text(
+                point(width * 0.5, 347.0),
+                Align2::CENTER_CENTER,
+                "SUM OUT",
+                FontId::proportional(9.0 * zoom),
+                INK,
+            );
+        }
+        action
+    }
+
     fn switch_panel(&mut self, ui: &mut egui::Ui, node: &Node, rect: Rect) -> Option<RackAction> {
         let painter = ui.painter().clone();
         let zoom = self.zoom;
@@ -1309,9 +1493,13 @@ impl Rack {
                 json!({"id":node.id,"parameter":"declick","value":if declick {0.0} else {1.0}}),
             ));
         }
-        let status = selected.map_or("Waiting for engine".into(), |step| {
-            format!("Route {step} / {length}")
-        });
+        let status = if node.bypassed {
+            "Bypassed · frozen".into()
+        } else {
+            selected.map_or("Waiting for engine".into(), |step| {
+                format!("Route {step} / {length}")
+            })
+        };
         painter.text(
             point(90.0, 174.0),
             Align2::CENTER_CENTER,
@@ -1434,7 +1622,7 @@ impl Rack {
                 ui.id().with((&node.id, "perform", event)),
                 label,
                 *event == "run" && state.is_some_and(|s| s.running),
-                self.performance_available,
+                self.performance_available && !node.bypassed,
                 zoom,
             ) {
                 action = Some(RackAction::Command(
@@ -1443,14 +1631,20 @@ impl Rack {
                 ));
             }
         }
-        let text = state.map_or("Waiting for live engine".into(), |s| {
-            format!(
-                "{} · step {} / {}",
-                if s.running { "Running" } else { "Stopped" },
-                s.step,
-                s.length
-            )
-        });
+        let text = if node.bypassed {
+            state.map_or("Bypassed · frozen".into(), |s| {
+                format!("Bypassed · frozen at {} / {}", s.step, s.length)
+            })
+        } else {
+            state.map_or("Waiting for live engine".into(), |s| {
+                format!(
+                    "{} · step {} / {}",
+                    if s.running { "Running" } else { "Stopped" },
+                    s.step,
+                    s.length
+                )
+            })
+        };
         painter.text(
             point(107.0, 345.0),
             Align2::CENTER_CENTER,
@@ -1558,6 +1752,20 @@ impl Rack {
         rect: Rect,
         suffix: &str,
     ) -> Option<RackAction> {
+        self.compact_parameter_scaled(ui, node, parameter, spec, rect, suffix, 1.0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn compact_parameter_scaled(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        parameter: &str,
+        spec: &Value,
+        rect: Rect,
+        suffix: &str,
+        scale: f32,
+    ) -> Option<RackAction> {
         let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
         let max = spec["max"].as_f64().unwrap_or(16.0) as f32;
         let step = spec["step"]
@@ -1570,6 +1778,7 @@ impl Rack {
             .copied()
             .unwrap_or(spec["default"].as_f64().unwrap_or(0.0) as f32)
             .clamp(min, max);
+        value *= scale;
         let id = ui.id().with((&node.id, parameter, "compact"));
         let response = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
@@ -1590,8 +1799,8 @@ impl Rack {
                 ui.add_sized(
                     rect.size(),
                     egui::DragValue::new(&mut value)
-                        .range(min..=max)
-                        .speed(if step.is_some() { 0.1 } else { 0.02 })
+                        .range(min * scale..=max * scale)
+                        .speed(if step.is_some() { 0.1 } else { 0.02 * scale })
                         .max_decimals(if step.is_some() { 0 } else { 2 })
                         .suffix(suffix),
                 )
@@ -1614,8 +1823,7 @@ impl Rack {
         }
         if response.changed() {
             self.selected = Some(node.id.clone());
-            let mut args =
-                json!({"id":node.id,"parameter":parameter,"value":quantize(value,min,max,step)});
+            let mut args = json!({"id":node.id,"parameter":parameter,"value":quantize(value / scale,min,max,step)});
             if let Some(group) = group {
                 args["history_group"] = json!(group);
             }
@@ -1807,11 +2015,65 @@ fn monitor_menu(
     }
 }
 
+fn is_voltage_utility(kind: &str) -> bool {
+    matches!(kind, "attenuverter8" | "mutes10" | "cv_mix")
+}
+
+fn utility_row_y(kind: &str, row: usize) -> f32 {
+    match kind {
+        "mutes10" => 96.0 + row as f32 * 29.0,
+        "cv_mix" => 132.0 + row as f32 * 70.0,
+        _ => 107.0 + row as f32 * 35.0,
+    }
+}
+
+/// The connected jack supplying this row, including a patched zero-volt source.
+fn utility_source_row(patch: &Patch, node: &Node, row: usize) -> Option<usize> {
+    let connected = |row: usize| {
+        patch
+            .cables
+            .iter()
+            .any(|c| c.to == node.id && c.input == format!("in{}", row + 1))
+    };
+    if node.kind == "attenuverter8" {
+        (0..=row).rev().find(|&row| connected(row))
+    } else {
+        connected(row).then_some(row)
+    }
+}
+
+fn utility_menu(ui: &mut egui::Ui, node: &Node, action: &mut Option<RackAction>) {
+    if ui
+        .selectable_label(node.bypassed, "Bypass module")
+        .clicked()
+    {
+        *action = Some(RackAction::Command(
+            "set_bypass",
+            json!({"id":node.id,"bypassed":!node.bypassed}),
+        ));
+        ui.close();
+    }
+    if node.kind == "mutes10" && ui.button("Invert all mutes").clicked() {
+        *action = Some(RackAction::Command("invert_mutes", json!({"id":node.id})));
+        ui.close();
+    }
+}
+
 fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
     origin + point.to_vec2() * zoom
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    if is_voltage_utility(kind) {
+        return if kind == "cv_mix" && !input {
+            pos2(width * 0.5, 366.0)
+        } else {
+            pos2(
+                if input { 29.0 } else { width - 29.0 },
+                utility_row_y(kind, index),
+            )
+        };
+    }
     if is_sequential_switch(kind) {
         return if input && index < 2 {
             pos2(50.0 + index as f32 * 80.0, 213.0)
@@ -2312,6 +2574,7 @@ fn panel_button(
 
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "attenuverter8" | "mutes10" | "cv_mix" => HP * 16.0,
         "seq3" => HP * 52.0,
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
@@ -2352,6 +2615,9 @@ fn title(kind: &str) -> &str {
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
         "sample_hold" => "S&H",
+        "attenuverter8" => "8VERT",
+        "mutes10" => "MUTES 10",
+        "cv_mix" => "CV MIX",
         "attenuverter" => "ATTENUVERTER",
         "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
@@ -2662,6 +2928,14 @@ fn paint_panel(
         [rect.right_top(), rect.right_bottom()],
         Stroke::new(1.0_f32, Color32::from_gray(110)),
     );
+    if node.bypassed {
+        painter.rect_stroke(
+            rect.shrink(3.0),
+            0,
+            Stroke::new(2.0 * zoom, Color32::from_rgb(171, 113, 48)),
+            egui::StrokeKind::Inside,
+        );
+    }
     if selected {
         painter.rect_stroke(
             rect.shrink(1.0),
@@ -2700,7 +2974,7 @@ fn paint_panel(
     painter.text(
         point(width * 0.5, 55.0),
         Align2::CENTER_CENTER,
-        &node.id,
+        if node.bypassed { "BYPASSED" } else { &node.id },
         FontId::monospace(9.0 * zoom),
         MUTED,
     );
@@ -2853,6 +3127,7 @@ fn jack(
     connected: bool,
     output: bool,
     zoom: f32,
+    compact: bool,
 ) -> egui::Response {
     let response = ui.interact(
         Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(18.0))),
@@ -2873,16 +3148,18 @@ fn jack(
     });
     let label_rect =
         Rect::from_center_size(center - vec2(0.0, 19.0) * zoom, vec2(39.0, 13.0) * zoom);
-    if output {
-        painter.rect_filled(label_rect, 1.0, INK);
+    if !compact {
+        if output {
+            painter.rect_filled(label_rect, 1.0, INK);
+        }
+        painter.text(
+            label_rect.center(),
+            Align2::CENTER_CENTER,
+            port_label(label).to_uppercase(),
+            FontId::proportional(9.0 * zoom),
+            if output { PAPER } else { INK },
+        );
     }
-    painter.text(
-        label_rect.center(),
-        Align2::CENTER_CENTER,
-        port_label(label).to_uppercase(),
-        FontId::proportional(9.0 * zoom),
-        if output { PAPER } else { INK },
-    );
     painter.circle_filled(
         center + vec2(0.0, 1.0) * zoom,
         10.0 * zoom,
@@ -2977,6 +3254,16 @@ mod tests {
         time: f64,
         events: Vec<egui::Event>,
     ) -> Option<RackAction> {
+        frame_output(ctx, rack, patch, time, events).0
+    }
+
+    fn frame_output(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> (Option<RackAction>, egui::FullOutput) {
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
             time: Some(time),
@@ -2984,14 +3271,14 @@ mod tests {
             ..Default::default()
         };
         let mut action = None;
-        let _ = ctx.run(input, |ctx| {
+        let output = ctx.run(input, |ctx| {
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
                     action = rack.show(ui, patch, &openpatch_core::catalog(), 48000);
                 });
         });
-        action
+        (action, output)
     }
 
     fn button(position: Pos2, pressed: bool) -> egui::Event {
@@ -3026,6 +3313,221 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn utility_end_rows_edit_and_patch_without_overlapping_controls() {
+        for (kind, rows) in [("attenuverter8", 8), ("mutes10", 10), ("cv_mix", 3)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"utility","kind":kind,"bypassed":true},
+                {"id":"source","kind":"constant"},
+                {"id":"sink","kind":"audio_out"}]}))
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let origin = pos2(24.0, 12.0);
+            for (iteration, row) in [0, rows - 1].into_iter().enumerate() {
+                let time = 1.0 + iteration as f64 * 50.0;
+                let input = origin + port_position(kind, true, row, rows, 240.0).to_vec2();
+                let action = drag(&ctx, &mut rack, &patch, time, pos2(324.0, 386.0), input);
+                assert!(
+                    matches!(action, Some(RackAction::Command("connect", ref args)) if args["input"] == format!("in{}",row+1)),
+                    "{kind} row {} input",
+                    row + 1
+                );
+                let output = origin
+                    + port_position(
+                        kind,
+                        false,
+                        if kind == "cv_mix" { 0 } else { row },
+                        rows,
+                        240.0,
+                    )
+                    .to_vec2();
+                let action = drag(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time + 10.0,
+                    output,
+                    pos2(444.0, 344.0),
+                );
+                assert!(
+                    matches!(action, Some(RackAction::Command("connect", ref args)) if args["output"] == if kind == "cv_mix" {"out".into()} else {format!("out{}",row+1)}),
+                    "{kind} row {} output",
+                    row + 1
+                );
+                let control = origin + vec2(116.0, utility_row_y(kind, row));
+                if kind == "mutes10" {
+                    frame(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time + 20.0,
+                        vec![egui::Event::PointerMoved(control), button(control, true)],
+                    );
+                    let action = frame(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time + 20.1,
+                        vec![button(control, false)],
+                    );
+                    assert!(
+                        matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"] == format!("mute{}",row+1) && args["value"] == 1.0)
+                    );
+                } else {
+                    frame(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time + 20.0,
+                        vec![egui::Event::PointerMoved(control), button(control, true)],
+                    );
+                    let moved = control + vec2(12.0, 0.0);
+                    let action = frame(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time + 20.1,
+                        vec![egui::Event::PointerMoved(moved)],
+                    );
+                    assert!(
+                        matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"] == format!("{}{}",if kind == "cv_mix" {"level"} else {"gain"},row+1) && args["value"].as_f64().unwrap() > 0.0)
+                    );
+                    frame(
+                        &ctx,
+                        &mut rack,
+                        &patch,
+                        time + 20.2,
+                        vec![button(moved, false)],
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bypass_and_invert_are_available_from_header_and_panel_menus() {
+        for (menu_position, label, command) in [
+            (pos2(144.0, 44.0), "Bypass module", "set_bypass"),
+            (pos2(144.0, 400.0), "Bypass module", "set_bypass"),
+            (pos2(144.0, 44.0), "Invert all mutes", "invert_mutes"),
+            (pos2(144.0, 400.0), "Invert all mutes", "invert_mutes"),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"mutes","kind":"mutes10"}]}),
+            )
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            for (time, pressed) in [(1.0, true), (1.1, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(menu_position),
+                        egui::Event::PointerButton {
+                            pos: menu_position,
+                            button: PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            let (_, output) = frame_output(&ctx, &mut rack, &patch, 1.2, vec![]);
+            let target = output
+                .shapes
+                .iter()
+                .find_map(|shape| {
+                    if let egui::epaint::Shape::Text(text) = &shape.shape {
+                        (text.galley.text() == label).then_some(text.pos + text.galley.size() * 0.5)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| panic!("Missing {label} at {menu_position:?}"));
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            let action = frame(&ctx, &mut rack, &patch, 1.4, vec![button(target, false)]);
+            assert!(
+                matches!(action,Some(RackAction::Command(name,ref args)) if name == command && args["id"] == "mutes")
+            );
+            if let Some(RackAction::Command("set_bypass", args)) = action {
+                assert_eq!(args["bypassed"], true);
+            }
+        }
+    }
+
+    #[test]
+    fn utility_normaling_tracks_connected_zero_sources_and_stops_at_current_row() {
+        let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[{"id":"utility","kind":"attenuverter8"},{"id":"zero","kind":"constant"}]})).unwrap();
+        let node = patch.nodes[0].clone();
+        assert_eq!(utility_source_row(&patch, &node, 7), None);
+        patch.cables.push(Cable {
+            from: "zero".into(),
+            output: "out".into(),
+            to: "utility".into(),
+            input: "in3".into(),
+        });
+        assert_eq!(utility_source_row(&patch, &node, 1), None);
+        assert_eq!(utility_source_row(&patch, &node, 2), Some(2));
+        assert_eq!(utility_source_row(&patch, &node, 7), Some(2));
+        let mut mix = node;
+        mix.kind = "cv_mix".into();
+        assert_eq!(utility_source_row(&patch, &mix, 1), None);
+        assert_eq!(utility_source_row(&patch, &mix, 2), Some(2));
+    }
+
+    #[test]
+    fn bypassed_sequencer_disables_performance_buttons_but_keeps_saved_controls() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(
+            json!({"version":2,"nodes":[{"id":"sequence","kind":"seq3","bypassed":true}]}),
+        )
+        .unwrap();
+        rack.set_sequence_states(BTreeMap::new(), true);
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        for (index, x) in [47.5, 107.5, 167.5].into_iter().enumerate() {
+            let target = pos2(24.0 + x, 333.5);
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0 + index as f64,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            assert!(frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.1 + index as f64,
+                vec![button(target, false)]
+            )
+            .is_none());
+        }
+        let target = pos2(100.0, 298.5);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            5.0,
+            vec![egui::Event::PointerMoved(target), button(target, true)],
+        );
+        assert!(
+            matches!(frame(&ctx,&mut rack,&patch,5.1,vec![button(target,false)]),Some(RackAction::Command("set_parameter",ref args)) if args["parameter"] == "running")
+        );
     }
 
     #[test]
@@ -3424,6 +3926,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                bypassed: false,
                 id: "q".into(),
                 kind: "quantizer".into(),
                 params: Default::default(),
@@ -3470,6 +3973,7 @@ mod tests {
             nodes: [("split", "poly_split"), ("a", "gain"), ("b", "gain")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    bypassed: false,
                     id: id.into(),
                     kind: kind.into(),
                     params: Default::default(),
@@ -3526,6 +4030,7 @@ mod tests {
             nodes: [("midi", "midi_cv"), ("audio", "audio_stereo")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    bypassed: false,
                     id: id.into(),
                     kind: kind.into(),
                     params: Default::default(),
@@ -3570,6 +4075,7 @@ mod tests {
             ]
             .into_iter()
             .map(|(id, kind)| Node {
+                bypassed: false,
                 id: id.into(),
                 kind: kind.into(),
                 params: Default::default(),
@@ -3724,6 +4230,7 @@ mod tests {
             let patch = Patch {
                 version,
                 nodes: vec![Node {
+                    bypassed: false,
                     id: "loop".into(),
                     kind: "gain".into(),
                     params: Default::default(),
@@ -3777,6 +4284,7 @@ mod tests {
         let patch = Patch {
             version: 2,
             nodes: vec![Node {
+                bypassed: false,
                 id: "voltages".into(),
                 kind: "poly_constant".into(),
                 params: Default::default(),
@@ -3930,6 +4438,7 @@ mod tests {
         let catalog = openpatch_core::catalog();
         for module in catalog["modules"].as_array().unwrap() {
             let node = Node {
+                bypassed: false,
                 id: "test".into(),
                 kind: module["kind"].as_str().unwrap().into(),
                 params: Default::default(),
@@ -3948,6 +4457,7 @@ mod tests {
             .find(|module| module["kind"] == "adsr")
             .unwrap();
         let node = Node {
+            bypassed: false,
             id: "env".into(),
             kind: "adsr".into(),
             params: Default::default(),
@@ -3988,6 +4498,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                bypassed: false,
                 id: "vco".into(),
                 kind: "analog_vco".into(),
                 params: Default::default(),

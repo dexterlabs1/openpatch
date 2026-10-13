@@ -1208,6 +1208,7 @@ mod tests {
     fn arbitrary_callback_size_duplicates_mono_and_crossfades_edits() {
         let mut patch = Patch::default();
         patch.nodes.push(openpatch_core::Node {
+            bypassed: false,
             id: "dc".into(),
             kind: "constant".into(),
             params: [("value".into(), 1.0)].into(),
@@ -2100,6 +2101,140 @@ mod tests {
         let status = callback.performance.snapshot();
         assert_eq!(status["obsolete"], 1);
         assert_eq!(status["applied"], 2);
+        assert_eq!(status["pending"], 0);
+    }
+
+    #[test]
+    fn bypass_freezes_sequence_identity_rejects_actions_and_allows_parameter_edits() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"seq","bypassed":true}),
+            )
+            .unwrap();
+        assert!(callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap_err()
+            .contains("bypassed"));
+        assert!(session
+            .execute(
+                "trigger_module",
+                serde_json::json!({"id":"seq","action":"reset"})
+            )
+            .unwrap_err()
+            .contains("bypassed"));
+        let bypassed = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(bypassed.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(bypassed).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        let status = callback.performance.snapshot();
+        assert_eq!(status["applied"], 1);
+        assert_eq!(status["dropped"], 1);
+        assert_eq!(status["rejected"], 2);
+        assert_eq!(status["obsolete"], 0);
+        session
+            .execute(
+                "set_parameter",
+                serde_json::json!({"id":"seq","parameter":"row1_2","value":4}),
+            )
+            .unwrap();
+        let edited = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(edited.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(edited).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"seq","bypassed":false}),
+            )
+            .unwrap();
+        let resumed = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(resumed.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(resumed).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 3);
+    }
+
+    #[test]
+    fn coalesced_bypass_resume_cancels_old_actions_without_resetting_dsp_state() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"seq","bypassed":true}),
+            )
+            .unwrap();
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"seq","bypassed":false}),
+            )
+            .unwrap();
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        // The prior graph cannot apply a pre-bypass action while waiting for
+        // the coalesced replacement. The post-resume action waits for revision.
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["applied"], 1);
+        assert_eq!(status["dropped"], 1);
+        assert_eq!(status["pending"], 1);
+        let resumed = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(resumed.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(resumed).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 3);
+        let old = callback.graphs.previous.as_ref().unwrap();
+        let handle = old.modules.bindings[0].unwrap().handle;
+        assert_eq!(old.engine.module_telemetry(handle).unwrap().step, 3);
+        let status = callback.performance.snapshot();
+        assert_eq!(status["applied"], 2);
+        assert_eq!(status["dropped"], 1);
+        assert_eq!(status["rejected"], 1);
+        assert_eq!(status["obsolete"], 0);
         assert_eq!(status["pending"], 0);
     }
 

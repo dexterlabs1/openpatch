@@ -4,6 +4,7 @@ use openpatch_core::{catalog, Cable, Node, Patch, PortFrame};
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params
@@ -450,6 +451,7 @@ fn catalog_names_defaults_ports_and_version_gates_match_persisted_contracts() {
             .collect();
         let p = patch(
             vec![Node {
+                bypassed: false,
                 id: "module".into(),
                 kind: kind.into(),
                 params: defaults,

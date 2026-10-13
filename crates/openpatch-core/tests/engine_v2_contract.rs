@@ -38,6 +38,7 @@ static ALLOCATOR: CallbackAllocator = CallbackAllocator;
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        bypassed: false,
         id: id.into(),
         kind: kind.into(),
         params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
@@ -694,6 +695,62 @@ fn sequential_switch_callbacks_telemetry_reset_and_adoption_neither_allocate_nor
             assert!(reordered.reset_module_state(re_h));
             new.process_block(&mut mono[..count]);
             reordered.process_audio_block(&mut audio[..count]);
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn utility_banks_and_bypass_transitions_midi_scratch_and_callbacks_do_not_allocate_or_free() {
+    use openpatch_core::MidiEvent;
+    let mut p = patch(
+        vec![
+            node("midi", "midi_cv", &[("channels", 16.0)]),
+            node("vert", "attenuverter8", &[("gain8", 1.0)]),
+            node("mutes", "mutes10", &[]),
+            node("mix", "cv_mix", &[("level1", 1.0), ("level2", -1.0)]),
+            node("seq", "seq3", &[("row1_1", 10.0)]),
+            node("out", "audio_stereo", &[]),
+        ],
+        vec![
+            cable("midi", "pitch", "vert", "in1"),
+            cable("vert", "out8", "mutes", "in1"),
+            cable("mutes", "out1", "mix", "in1"),
+            cable("mutes", "out10", "mix", "in2"),
+            cable("seq", "cv1", "seq", "clock"),
+            cable("mix", "out", "out", "left"),
+        ],
+        "out",
+    );
+    let mut active = p.compile().unwrap();
+    let mut resumed = p.compile().unwrap();
+    for node in &mut p.nodes {
+        node.bypassed = true;
+    }
+    let mut muted = p.compile().unwrap();
+    let mut audio = [[0.0; 2]; 129];
+    let mut poly = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            active.handle_midi(MidiEvent::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 100,
+            });
+            active.process_audio_block(&mut audio[..count]);
+            muted.adopt_state_from(&active);
+            muted.handle_midi(MidiEvent::NoteOff {
+                channel: 0,
+                note: 60,
+                velocity: 0,
+            });
+            muted.process_poly_block(&mut poly[..count]);
+            resumed.adopt_state_from(&muted);
+            resumed.process_audio_block(&mut audio[..count]);
+            active.adopt_state_from(&resumed);
         }
     }
     TRACK_MEMORY.with(|tracking| tracking.set(false));

@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "voltage",
+      "kind": "attenuverter8",
+      "params": {
+        "gain1": 0.1,
+        "gain2": 0.0333333333,
+        "gain3": -0.05,
+        "gain4": 0.2,
+        "gain8": -0.1
+      }
+    },
+    {
+      "id": "mix",
+      "kind": "cv_mix",
+      "params": {
+        "level1": 1,
+        "level2": 1,
+        "level3": 0
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "mutes",
+      "kind": "mutes10",
+      "params": {
+        "mute2": 1,
+        "mute4": 1,
+        "mute6": 1
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "voltage",
+      "output": "out1",
+      "to": "mix",
+      "input": "in1"
+    },
+    {
+      "from": "voltage",
+      "output": "out2",
+      "to": "mix",
+      "input": "in2"
+    },
+    {
+      "from": "mix",
+      "output": "out",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "mutes",
+      "input": "in1"
+    },
+    {
+      "from": "mutes",
+      "output": "out1",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}

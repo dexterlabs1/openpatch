@@ -438,6 +438,7 @@ mod tests {
     fn document(value: f32) -> Document {
         let mut patch = Patch::new_v2();
         patch.nodes.push(openpatch_core::Node {
+            bypassed: false,
             id: "source".into(),
             kind: "constant".into(),
             params: BTreeMap::from([("value".into(), value)]),

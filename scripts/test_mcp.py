@@ -462,9 +462,11 @@ class OpenPatchMCPTests(unittest.TestCase):
              "connect", "disconnect", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
              "inspect_history", "undo", "redo", "analyze_signal", "capture_signal",
-             "trigger_module", "inspect_performance", "rotate_sequence"}.issubset(names),
+             "trigger_module", "inspect_performance", "rotate_sequence", "set_bypass", "invert_mutes"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
+        bypass_tool = next(item for item in tools if item["name"] == "set_bypass")
+        self.assertEqual(bypass_tool["inputSchema"]["properties"]["bypassed"], {"type": "boolean"})
         catalog = self.require_tool_success("catalog")
         self.assertTrue(catalog.get("content") or catalog.get("structuredContent"), catalog)
         inspected = self.patch_snapshot()
@@ -630,6 +632,74 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("set_parameter", {"id": "route", "parameter": "steps", "value": 2})
         self.require_tool_success("load_patch", {"filename": "switches.json"})
         self.assertEqual(self.patch_snapshot()["patch"], saved)
+
+    def test_voltage_utility_demo_mute_and_bypass_render_actual_signal(self) -> None:
+        patch = json.loads((REPOSITORY / "examples" / "voltage-utilities.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        def measure(port: str = "out1") -> dict:
+            return self.payload(self.require_tool_success("capture_signal", {
+                "id": "mutes", "port": port, "seconds": 0.05, "points": 256,
+            }))
+        before = measure()
+        self.assertGreater(before["summary"]["rms"], 0.1)
+        self.require_tool_success("set_parameter", {"id": "mutes", "parameter": "mute1", "value": 1})
+        self.assertEqual(measure()["summary"]["peak"], 0)
+        self.assertGreater(measure("out10")["summary"]["rms"], 0.1)
+        self.require_tool_success("set_bypass", {"id": "mutes", "bypassed": True})
+        resumed = measure()
+        self.assertEqual(resumed["bins"], before["bins"])
+        self.assertEqual(measure("out10")["summary"]["peak"], 0)
+
+    def test_bypass_and_mute_inversion_are_atomic_roundtrip_edits(self) -> None:
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "add_module", "arguments": {"id": "mutes", "kind": "mutes10", "params": {"mute2": 1}}},
+            {"tool": "add_module", "arguments": {"id": "seq", "kind": "seq3"}},
+        ]})
+        before = self.patch_snapshot()
+        for value in (0, 1, "true", None):
+            self.require_tool_error("set_bypass", {"id": "mutes", "bypassed": value})
+        self.require_tool_error("set_bypass", {"id": "mutes", "bypassed": True, "unknown": 1})
+        self.require_tool_error("invert_mutes", {"id": "seq"})
+        self.assertEqual(self.patch_snapshot(), before)
+        edits = [
+            {"tool": "set_bypass", "arguments": {"id": "mutes", "bypassed": True}},
+            {"tool": "invert_mutes", "arguments": {"id": "mutes"}},
+        ]
+        preview = self.payload(self.require_tool_success("preview_edits", {"edits": edits}))
+        self.assertTrue(preview["patch"]["nodes"][0]["bypassed"])
+        self.assertEqual(self.patch_snapshot(), before)
+        changed = self.payload(self.require_tool_success("apply_edits", {
+            "edits": edits, "expected_revision": before["revision"],
+        }))
+        self.assertEqual(changed["revision"], before["revision"] + 1)
+        self.assertEqual(changed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        self.assertEqual(changed["patch"], preview["patch"])
+        node = changed["patch"]["nodes"][0]
+        for channel in range(1, 11):
+            self.assertEqual(node["params"][f"mute{channel}"], 0 if channel == 2 else 1)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        stable = self.patch_snapshot()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "invert_mutes", "arguments": {"id": "mutes"}},
+            {"tool": "set_bypass", "arguments": {"id": "missing", "bypassed": True}},
+        ]})
+        self.require_tool_error("set_bypass", {"id": "mutes", "bypassed": False, "expected_revision": before["revision"]})
+        self.assertEqual(self.patch_snapshot(), stable)
+        self.require_tool_success("set_parameter", {"id": "mutes", "parameter": "mute3", "value": 0})
+        saved = self.patch_snapshot()["patch"]
+        self.require_tool_success("save_patch", {"filename": "bypassed.json"})
+        self.require_tool_success("set_bypass", {"id": "mutes", "bypassed": False})
+        self.assertNotIn("bypassed", self.patch_snapshot()["patch"]["nodes"][0])
+        self.require_tool_success("load_patch", {"filename": "bypassed.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], saved)
+        self.require_tool_success("set_bypass", {"id": "seq", "bypassed": True})
+        self.require_tool_success("rotate_sequence", {"id": "seq", "direction": "left"})
+        self.require_tool_error("trigger_module", {"id": "seq", "action": "clock"})
+        self.require_tool_error("render_audio", {"filename": "bypassed-event.wav", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "seq", "action": "clock"}]})
+        self.assertFalse((self.workspace / "bypassed-event.wav").exists())
 
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
