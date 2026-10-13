@@ -59,7 +59,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Stack signals at an input | Hold **Shift** when finishing a cable; right-click the input to move or remove a particular cable |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
-| Type a value | Right-click a knob, or double-click its displayed value; **Enter** applies and **Esc** cancels |
+| Type a value or expression | Right-click a knob, or double-click its displayed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
 | Blend and synchronize audio waveforms | **File → Synced waveform voice** |
 | Layer voices with CV-controlled mixing | **File → Layered stereo morph** |
 | Add transpose and vibrato to a chord | **File → Stacked pitch voice** |

@@ -1,0 +1,6610 @@
+{
+  "scope": "Isolated pinned tinyexpr with independently reconstructed Rack note/custom function registration versus original Rust evaluator. Does not execute the Rack application, audio processing, or UI.",
+  "tinyexpr_commit": "4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2",
+  "rack_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+  "reproduce": "python3 scripts/verify_parameter_expressions.py --output expression-report.json",
+  "compiler_commands": [
+    [
+      "clang",
+      "-O2",
+      "-DTE_POW_FROM_RIGHT",
+      "-DTE_NAT_LOG",
+      "-I",
+      "<temporary-reference-dir>",
+      "./scripts/expression_reference/rack_registration_probe.c",
+      "<temporary-reference-dir>/tinyexpr.c",
+      "-lm",
+      "-o",
+      "<temporary-reference-dir>/rack_registration_probe"
+    ],
+    [
+      "rustc",
+      "--edition=2021",
+      "<temporary-reference-dir>/rust_expression_probe.rs",
+      "-o",
+      "<temporary-reference-dir>/rust_expression_probe"
+    ]
+  ],
+  "compiler_versions": {
+    "clang": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "reference_sources": {
+    "tinyexpr.c": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/tinyexpr.c",
+      "sha256": "b5b8f549f50fe68c19890ce31562543d9ee0dc6566eb3e6b72426e1e71e6d8c9"
+    },
+    "tinyexpr.h": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/tinyexpr.h",
+      "sha256": "4d7a0c30f5ec653b3b962d9eee24484d3a5f85a27393754feee6e47014b651c0"
+    },
+    "rack-src_Quantity.cpp": {
+      "url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/src/Quantity.cpp",
+      "sha256": "bdcc0c812f756d07c4ee1a8a0a02926cc3dbc1a3dde5760d9b1b705abbc9da86"
+    },
+    "rack-include_dsp_common.hpp": {
+      "url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/include/dsp/common.hpp",
+      "sha256": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e"
+    },
+    "rack-Makefile": {
+      "url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/Makefile",
+      "sha256": "3ffa32fb258da31691aa6c70357868d67e69bc8a0836e33a28068514c1c79f38"
+    },
+    "rack-.gitmodules": {
+      "url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/.gitmodules",
+      "sha256": "37c97511f107c5214b86167cabb66f2bf1b1bd34636ae4a20c9d80611f1146ad"
+    }
+  },
+  "source_sha256": {
+    "tinyexpr.c": "b5b8f549f50fe68c19890ce31562543d9ee0dc6566eb3e6b72426e1e71e6d8c9",
+    "tinyexpr.h": "4d7a0c30f5ec653b3b962d9eee24484d3a5f85a27393754feee6e47014b651c0",
+    "rack-src_Quantity.cpp": "bdcc0c812f756d07c4ee1a8a0a02926cc3dbc1a3dde5760d9b1b705abbc9da86",
+    "rack-include_dsp_common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+    "rack-Makefile": "3ffa32fb258da31691aa6c70357868d67e69bc8a0836e33a28068514c1c79f38",
+    "rack-.gitmodules": "37c97511f107c5214b86167cabb66f2bf1b1bd34636ae4a20c9d80611f1146ad",
+    "scripts/expression_reference/rack_registration_probe.c": "51dd8ac5b9fa62fa218f12701a99f952e6be5fdd012be5796e8bc6ecc75f262a",
+    "scripts/expression_reference/rust_expression_probe.rs": "cb5d7d3369fe7ec12e9440f3b669f00e96974cc77e5de6cfbc8952629b226563",
+    "scripts/verify_parameter_expressions.py": "d0c48341b3c273e1092adc45b5213e4af5d5bb7673b0d05822ea29e407d8e473",
+    "crates/openpatch-desktop/src/expression.rs": "8c50178902cb9f7c9086bdc9cdb293f09bd0a022f9c381b83d450a999d18f950"
+  },
+  "main_matrix_cases": 1081,
+  "total_cases": 1088,
+  "tolerance": {
+    "relative": 1e-12,
+    "absolute": 1e-14
+  },
+  "comparison_policy": "Reference NaN or syntax failure corresponds to Rust error; matching infinities compare equal. Finite results compare at documented tolerance.",
+  "intentional_difference_policy": "Rust preserves explicit negative parentheses and conventional exponent/unary-minus precedence.",
+  "unexpected_differences": 0,
+  "intentional_differences": 3,
+  "cases": [
+    {
+      "expression": "c",
+      "reference": "261.62556530059862",
+      "rust": "Ok(261.6255653005986)",
+      "status": "match"
+    },
+    {
+      "expression": "cv",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c0",
+      "reference": "16.351597831287414",
+      "rust": "Ok(16.351597831287414)",
+      "status": "match"
+    },
+    {
+      "expression": "c0v",
+      "reference": "-4",
+      "rust": "Ok(-4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c1",
+      "reference": "32.703195662574828",
+      "rust": "Ok(32.70319566257483)",
+      "status": "match"
+    },
+    {
+      "expression": "c1v",
+      "reference": "-3",
+      "rust": "Ok(-3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c2",
+      "reference": "65.406391325149656",
+      "rust": "Ok(65.40639132514966)",
+      "status": "match"
+    },
+    {
+      "expression": "c2v",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c3",
+      "reference": "130.81278265029931",
+      "rust": "Ok(130.8127826502993)",
+      "status": "match"
+    },
+    {
+      "expression": "c3v",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c4",
+      "reference": "261.62556530059862",
+      "rust": "Ok(261.6255653005986)",
+      "status": "match"
+    },
+    {
+      "expression": "c4v",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c5",
+      "reference": "523.25113060119725",
+      "rust": "Ok(523.2511306011972)",
+      "status": "match"
+    },
+    {
+      "expression": "c5v",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c6",
+      "reference": "1046.5022612023945",
+      "rust": "Ok(1046.5022612023945)",
+      "status": "match"
+    },
+    {
+      "expression": "c6v",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c7",
+      "reference": "2093.004522404789",
+      "rust": "Ok(2093.004522404789)",
+      "status": "match"
+    },
+    {
+      "expression": "c7v",
+      "reference": "3",
+      "rust": "Ok(3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c8",
+      "reference": "4186.009044809578",
+      "rust": "Ok(4186.009044809578)",
+      "status": "match"
+    },
+    {
+      "expression": "c8v",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "c9",
+      "reference": "8372.0180896191559",
+      "rust": "Ok(8372.018089619156)",
+      "status": "match"
+    },
+    {
+      "expression": "c9v",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "cs",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "csv",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cs0",
+      "reference": "17.323914436054512",
+      "rust": "Ok(17.323914436054512)",
+      "status": "match"
+    },
+    {
+      "expression": "cs0v",
+      "reference": "-3.9166666666666665",
+      "rust": "Ok(-3.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "cs1",
+      "reference": "34.64782887210901",
+      "rust": "Ok(34.64782887210901)",
+      "status": "match"
+    },
+    {
+      "expression": "cs1v",
+      "reference": "-2.9166666666666665",
+      "rust": "Ok(-2.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "cs2",
+      "reference": "69.295657744218019",
+      "rust": "Ok(69.29565774421802)",
+      "status": "match"
+    },
+    {
+      "expression": "cs2v",
+      "reference": "-1.9166666666666667",
+      "rust": "Ok(-1.9166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "cs3",
+      "reference": "138.59131548843604",
+      "rust": "Ok(138.59131548843604)",
+      "status": "match"
+    },
+    {
+      "expression": "cs3v",
+      "reference": "-0.91666666666666663",
+      "rust": "Ok(-0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "cs4",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "cs4v",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cs5",
+      "reference": "554.36526195374415",
+      "rust": "Ok(554.3652619537442)",
+      "status": "match"
+    },
+    {
+      "expression": "cs5v",
+      "reference": "1.0833333333333333",
+      "rust": "Ok(1.0833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cs6",
+      "reference": "1108.7305239074883",
+      "rust": "Ok(1108.7305239074883)",
+      "status": "match"
+    },
+    {
+      "expression": "cs6v",
+      "reference": "2.0833333333333335",
+      "rust": "Ok(2.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "cs7",
+      "reference": "2217.4610478149766",
+      "rust": "Ok(2217.4610478149766)",
+      "status": "match"
+    },
+    {
+      "expression": "cs7v",
+      "reference": "3.0833333333333335",
+      "rust": "Ok(3.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "cs8",
+      "reference": "4434.9220956299532",
+      "rust": "Ok(4434.922095629953)",
+      "status": "match"
+    },
+    {
+      "expression": "cs8v",
+      "reference": "4.083333333333333",
+      "rust": "Ok(4.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cs9",
+      "reference": "8869.8441912599064",
+      "rust": "Ok(8869.844191259906)",
+      "status": "match"
+    },
+    {
+      "expression": "cs9v",
+      "reference": "5.083333333333333",
+      "rust": "Ok(5.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cb",
+      "reference": "246.94165062806206",
+      "rust": "Ok(246.94165062806206)",
+      "status": "match"
+    },
+    {
+      "expression": "cbv",
+      "reference": "-0.083333333333333329",
+      "rust": "Ok(-0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cb0",
+      "reference": "15.433853164253883",
+      "rust": "Ok(15.433853164253883)",
+      "status": "match"
+    },
+    {
+      "expression": "cb0v",
+      "reference": "-4.083333333333333",
+      "rust": "Ok(-4.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cb1",
+      "reference": "30.867706328507751",
+      "rust": "Ok(30.86770632850775)",
+      "status": "match"
+    },
+    {
+      "expression": "cb1v",
+      "reference": "-3.0833333333333335",
+      "rust": "Ok(-3.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "cb2",
+      "reference": "61.735412657015502",
+      "rust": "Ok(61.7354126570155)",
+      "status": "match"
+    },
+    {
+      "expression": "cb2v",
+      "reference": "-2.0833333333333335",
+      "rust": "Ok(-2.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "cb3",
+      "reference": "123.47082531403103",
+      "rust": "Ok(123.47082531403103)",
+      "status": "match"
+    },
+    {
+      "expression": "cb3v",
+      "reference": "-1.0833333333333333",
+      "rust": "Ok(-1.0833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cb4",
+      "reference": "246.94165062806206",
+      "rust": "Ok(246.94165062806206)",
+      "status": "match"
+    },
+    {
+      "expression": "cb4v",
+      "reference": "-0.083333333333333329",
+      "rust": "Ok(-0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "cb5",
+      "reference": "493.88330125612413",
+      "rust": "Ok(493.8833012561241)",
+      "status": "match"
+    },
+    {
+      "expression": "cb5v",
+      "reference": "0.91666666666666663",
+      "rust": "Ok(0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "cb6",
+      "reference": "987.76660251224826",
+      "rust": "Ok(987.7666025122483)",
+      "status": "match"
+    },
+    {
+      "expression": "cb6v",
+      "reference": "1.9166666666666667",
+      "rust": "Ok(1.9166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "cb7",
+      "reference": "1975.5332050244961",
+      "rust": "Ok(1975.533205024496)",
+      "status": "match"
+    },
+    {
+      "expression": "cb7v",
+      "reference": "2.9166666666666665",
+      "rust": "Ok(2.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "cb8",
+      "reference": "3951.0664100489921",
+      "rust": "Ok(3951.066410048992)",
+      "status": "match"
+    },
+    {
+      "expression": "cb8v",
+      "reference": "3.9166666666666665",
+      "rust": "Ok(3.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "cb9",
+      "reference": "7902.1328200979879",
+      "rust": "Ok(7902.132820097988)",
+      "status": "match"
+    },
+    {
+      "expression": "cb9v",
+      "reference": "4.916666666666667",
+      "rust": "Ok(4.916666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "c#",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "c#v",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "c#0",
+      "reference": "17.323914436054512",
+      "rust": "Ok(17.323914436054512)",
+      "status": "match"
+    },
+    {
+      "expression": "c#0v",
+      "reference": "-3.9166666666666665",
+      "rust": "Ok(-3.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "c#1",
+      "reference": "34.64782887210901",
+      "rust": "Ok(34.64782887210901)",
+      "status": "match"
+    },
+    {
+      "expression": "c#1v",
+      "reference": "-2.9166666666666665",
+      "rust": "Ok(-2.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "c#2",
+      "reference": "69.295657744218019",
+      "rust": "Ok(69.29565774421802)",
+      "status": "match"
+    },
+    {
+      "expression": "c#2v",
+      "reference": "-1.9166666666666667",
+      "rust": "Ok(-1.9166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "c#3",
+      "reference": "138.59131548843604",
+      "rust": "Ok(138.59131548843604)",
+      "status": "match"
+    },
+    {
+      "expression": "c#3v",
+      "reference": "-0.91666666666666663",
+      "rust": "Ok(-0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "c#4",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "c#4v",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "c#5",
+      "reference": "554.36526195374415",
+      "rust": "Ok(554.3652619537442)",
+      "status": "match"
+    },
+    {
+      "expression": "c#5v",
+      "reference": "1.0833333333333333",
+      "rust": "Ok(1.0833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "c#6",
+      "reference": "1108.7305239074883",
+      "rust": "Ok(1108.7305239074883)",
+      "status": "match"
+    },
+    {
+      "expression": "c#6v",
+      "reference": "2.0833333333333335",
+      "rust": "Ok(2.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "c#7",
+      "reference": "2217.4610478149766",
+      "rust": "Ok(2217.4610478149766)",
+      "status": "match"
+    },
+    {
+      "expression": "c#7v",
+      "reference": "3.0833333333333335",
+      "rust": "Ok(3.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "c#8",
+      "reference": "4434.9220956299532",
+      "rust": "Ok(4434.922095629953)",
+      "status": "match"
+    },
+    {
+      "expression": "c#8v",
+      "reference": "4.083333333333333",
+      "rust": "Ok(4.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "c#9",
+      "reference": "8869.8441912599064",
+      "rust": "Ok(8869.844191259906)",
+      "status": "match"
+    },
+    {
+      "expression": "c#9v",
+      "reference": "5.083333333333333",
+      "rust": "Ok(5.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "d",
+      "reference": "293.66476791740757",
+      "rust": "Ok(293.6647679174076)",
+      "status": "match"
+    },
+    {
+      "expression": "dv",
+      "reference": "0.16666666666666666",
+      "rust": "Ok(0.16666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "d0",
+      "reference": "18.354047994837966",
+      "rust": "Ok(18.354047994837966)",
+      "status": "match"
+    },
+    {
+      "expression": "d0v",
+      "reference": "-3.8333333333333335",
+      "rust": "Ok(-3.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "d1",
+      "reference": "36.70809598967594",
+      "rust": "Ok(36.70809598967594)",
+      "status": "match"
+    },
+    {
+      "expression": "d1v",
+      "reference": "-2.8333333333333335",
+      "rust": "Ok(-2.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "d2",
+      "reference": "73.416191979351908",
+      "rust": "Ok(73.41619197935191)",
+      "status": "match"
+    },
+    {
+      "expression": "d2v",
+      "reference": "-1.8333333333333333",
+      "rust": "Ok(-1.8333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "d3",
+      "reference": "146.83238395870376",
+      "rust": "Ok(146.83238395870376)",
+      "status": "match"
+    },
+    {
+      "expression": "d3v",
+      "reference": "-0.83333333333333337",
+      "rust": "Ok(-0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "d4",
+      "reference": "293.66476791740757",
+      "rust": "Ok(293.6647679174076)",
+      "status": "match"
+    },
+    {
+      "expression": "d4v",
+      "reference": "0.16666666666666666",
+      "rust": "Ok(0.16666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "d5",
+      "reference": "587.32953583481515",
+      "rust": "Ok(587.3295358348151)",
+      "status": "match"
+    },
+    {
+      "expression": "d5v",
+      "reference": "1.1666666666666667",
+      "rust": "Ok(1.1666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "d6",
+      "reference": "1174.6590716696301",
+      "rust": "Ok(1174.65907166963)",
+      "status": "match"
+    },
+    {
+      "expression": "d6v",
+      "reference": "2.1666666666666665",
+      "rust": "Ok(2.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "d7",
+      "reference": "2349.3181433392601",
+      "rust": "Ok(2349.31814333926)",
+      "status": "match"
+    },
+    {
+      "expression": "d7v",
+      "reference": "3.1666666666666665",
+      "rust": "Ok(3.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "d8",
+      "reference": "4698.6362866785221",
+      "rust": "Ok(4698.636286678522)",
+      "status": "match"
+    },
+    {
+      "expression": "d8v",
+      "reference": "4.166666666666667",
+      "rust": "Ok(4.166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "d9",
+      "reference": "9397.2725733570442",
+      "rust": "Ok(9397.272573357044)",
+      "status": "match"
+    },
+    {
+      "expression": "d9v",
+      "reference": "5.166666666666667",
+      "rust": "Ok(5.166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "ds",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "dsv",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds0",
+      "reference": "19.445436482630058",
+      "rust": "Ok(19.445436482630058)",
+      "status": "match"
+    },
+    {
+      "expression": "ds0v",
+      "reference": "-3.75",
+      "rust": "Ok(-3.75)",
+      "status": "match"
+    },
+    {
+      "expression": "ds1",
+      "reference": "38.890872965260115",
+      "rust": "Ok(38.890872965260115)",
+      "status": "match"
+    },
+    {
+      "expression": "ds1v",
+      "reference": "-2.75",
+      "rust": "Ok(-2.75)",
+      "status": "match"
+    },
+    {
+      "expression": "ds2",
+      "reference": "77.781745930520231",
+      "rust": "Ok(77.78174593052023)",
+      "status": "match"
+    },
+    {
+      "expression": "ds2v",
+      "reference": "-1.75",
+      "rust": "Ok(-1.75)",
+      "status": "match"
+    },
+    {
+      "expression": "ds3",
+      "reference": "155.56349186104046",
+      "rust": "Ok(155.56349186104046)",
+      "status": "match"
+    },
+    {
+      "expression": "ds3v",
+      "reference": "-0.75",
+      "rust": "Ok(-0.75)",
+      "status": "match"
+    },
+    {
+      "expression": "ds4",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "ds4v",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds5",
+      "reference": "622.25396744416184",
+      "rust": "Ok(622.2539674441618)",
+      "status": "match"
+    },
+    {
+      "expression": "ds5v",
+      "reference": "1.25",
+      "rust": "Ok(1.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds6",
+      "reference": "1244.5079348883237",
+      "rust": "Ok(1244.5079348883237)",
+      "status": "match"
+    },
+    {
+      "expression": "ds6v",
+      "reference": "2.25",
+      "rust": "Ok(2.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds7",
+      "reference": "2489.0158697766474",
+      "rust": "Ok(2489.0158697766474)",
+      "status": "match"
+    },
+    {
+      "expression": "ds7v",
+      "reference": "3.25",
+      "rust": "Ok(3.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds8",
+      "reference": "4978.0317395532948",
+      "rust": "Ok(4978.031739553295)",
+      "status": "match"
+    },
+    {
+      "expression": "ds8v",
+      "reference": "4.25",
+      "rust": "Ok(4.25)",
+      "status": "match"
+    },
+    {
+      "expression": "ds9",
+      "reference": "9956.0634791065895",
+      "rust": "Ok(9956.06347910659)",
+      "status": "match"
+    },
+    {
+      "expression": "ds9v",
+      "reference": "5.25",
+      "rust": "Ok(5.25)",
+      "status": "match"
+    },
+    {
+      "expression": "db",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "dbv",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "db0",
+      "reference": "17.323914436054512",
+      "rust": "Ok(17.323914436054512)",
+      "status": "match"
+    },
+    {
+      "expression": "db0v",
+      "reference": "-3.9166666666666665",
+      "rust": "Ok(-3.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "db1",
+      "reference": "34.64782887210901",
+      "rust": "Ok(34.64782887210901)",
+      "status": "match"
+    },
+    {
+      "expression": "db1v",
+      "reference": "-2.9166666666666665",
+      "rust": "Ok(-2.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "db2",
+      "reference": "69.295657744218019",
+      "rust": "Ok(69.29565774421802)",
+      "status": "match"
+    },
+    {
+      "expression": "db2v",
+      "reference": "-1.9166666666666667",
+      "rust": "Ok(-1.9166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "db3",
+      "reference": "138.59131548843604",
+      "rust": "Ok(138.59131548843604)",
+      "status": "match"
+    },
+    {
+      "expression": "db3v",
+      "reference": "-0.91666666666666663",
+      "rust": "Ok(-0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "db4",
+      "reference": "277.18263097687208",
+      "rust": "Ok(277.1826309768721)",
+      "status": "match"
+    },
+    {
+      "expression": "db4v",
+      "reference": "0.083333333333333329",
+      "rust": "Ok(0.08333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "db5",
+      "reference": "554.36526195374415",
+      "rust": "Ok(554.3652619537442)",
+      "status": "match"
+    },
+    {
+      "expression": "db5v",
+      "reference": "1.0833333333333333",
+      "rust": "Ok(1.0833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "db6",
+      "reference": "1108.7305239074883",
+      "rust": "Ok(1108.7305239074883)",
+      "status": "match"
+    },
+    {
+      "expression": "db6v",
+      "reference": "2.0833333333333335",
+      "rust": "Ok(2.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "db7",
+      "reference": "2217.4610478149766",
+      "rust": "Ok(2217.4610478149766)",
+      "status": "match"
+    },
+    {
+      "expression": "db7v",
+      "reference": "3.0833333333333335",
+      "rust": "Ok(3.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "db8",
+      "reference": "4434.9220956299532",
+      "rust": "Ok(4434.922095629953)",
+      "status": "match"
+    },
+    {
+      "expression": "db8v",
+      "reference": "4.083333333333333",
+      "rust": "Ok(4.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "db9",
+      "reference": "8869.8441912599064",
+      "rust": "Ok(8869.844191259906)",
+      "status": "match"
+    },
+    {
+      "expression": "db9v",
+      "reference": "5.083333333333333",
+      "rust": "Ok(5.083333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "d#",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "d#v",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#0",
+      "reference": "19.445436482630058",
+      "rust": "Ok(19.445436482630058)",
+      "status": "match"
+    },
+    {
+      "expression": "d#0v",
+      "reference": "-3.75",
+      "rust": "Ok(-3.75)",
+      "status": "match"
+    },
+    {
+      "expression": "d#1",
+      "reference": "38.890872965260115",
+      "rust": "Ok(38.890872965260115)",
+      "status": "match"
+    },
+    {
+      "expression": "d#1v",
+      "reference": "-2.75",
+      "rust": "Ok(-2.75)",
+      "status": "match"
+    },
+    {
+      "expression": "d#2",
+      "reference": "77.781745930520231",
+      "rust": "Ok(77.78174593052023)",
+      "status": "match"
+    },
+    {
+      "expression": "d#2v",
+      "reference": "-1.75",
+      "rust": "Ok(-1.75)",
+      "status": "match"
+    },
+    {
+      "expression": "d#3",
+      "reference": "155.56349186104046",
+      "rust": "Ok(155.56349186104046)",
+      "status": "match"
+    },
+    {
+      "expression": "d#3v",
+      "reference": "-0.75",
+      "rust": "Ok(-0.75)",
+      "status": "match"
+    },
+    {
+      "expression": "d#4",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "d#4v",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#5",
+      "reference": "622.25396744416184",
+      "rust": "Ok(622.2539674441618)",
+      "status": "match"
+    },
+    {
+      "expression": "d#5v",
+      "reference": "1.25",
+      "rust": "Ok(1.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#6",
+      "reference": "1244.5079348883237",
+      "rust": "Ok(1244.5079348883237)",
+      "status": "match"
+    },
+    {
+      "expression": "d#6v",
+      "reference": "2.25",
+      "rust": "Ok(2.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#7",
+      "reference": "2489.0158697766474",
+      "rust": "Ok(2489.0158697766474)",
+      "status": "match"
+    },
+    {
+      "expression": "d#7v",
+      "reference": "3.25",
+      "rust": "Ok(3.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#8",
+      "reference": "4978.0317395532948",
+      "rust": "Ok(4978.031739553295)",
+      "status": "match"
+    },
+    {
+      "expression": "d#8v",
+      "reference": "4.25",
+      "rust": "Ok(4.25)",
+      "status": "match"
+    },
+    {
+      "expression": "d#9",
+      "reference": "9956.0634791065895",
+      "rust": "Ok(9956.06347910659)",
+      "status": "match"
+    },
+    {
+      "expression": "d#9v",
+      "reference": "5.25",
+      "rust": "Ok(5.25)",
+      "status": "match"
+    },
+    {
+      "expression": "e",
+      "reference": "329.62755691286992",
+      "rust": "Ok(329.6275569128699)",
+      "status": "match"
+    },
+    {
+      "expression": "ev",
+      "reference": "0.33333333333333331",
+      "rust": "Ok(0.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e0",
+      "reference": "20.601722307054381",
+      "rust": "Ok(20.60172230705438)",
+      "status": "match"
+    },
+    {
+      "expression": "e0v",
+      "reference": "-3.6666666666666665",
+      "rust": "Ok(-3.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "e1",
+      "reference": "41.203444614108747",
+      "rust": "Ok(41.20344461410875)",
+      "status": "match"
+    },
+    {
+      "expression": "e1v",
+      "reference": "-2.6666666666666665",
+      "rust": "Ok(-2.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "e2",
+      "reference": "82.406889228217466",
+      "rust": "Ok(82.40688922821747)",
+      "status": "match"
+    },
+    {
+      "expression": "e2v",
+      "reference": "-1.6666666666666667",
+      "rust": "Ok(-1.6666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e3",
+      "reference": "164.81377845643496",
+      "rust": "Ok(164.81377845643496)",
+      "status": "match"
+    },
+    {
+      "expression": "e3v",
+      "reference": "-0.66666666666666674",
+      "rust": "Ok(-0.6666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e4",
+      "reference": "329.62755691286992",
+      "rust": "Ok(329.6275569128699)",
+      "status": "match"
+    },
+    {
+      "expression": "e4v",
+      "reference": "0.33333333333333331",
+      "rust": "Ok(0.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e5",
+      "reference": "659.25511382573984",
+      "rust": "Ok(659.2551138257398)",
+      "status": "match"
+    },
+    {
+      "expression": "e5v",
+      "reference": "1.3333333333333333",
+      "rust": "Ok(1.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e6",
+      "reference": "1318.5102276514799",
+      "rust": "Ok(1318.51022765148)",
+      "status": "match"
+    },
+    {
+      "expression": "e6v",
+      "reference": "2.3333333333333335",
+      "rust": "Ok(2.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "e7",
+      "reference": "2637.0204553029598",
+      "rust": "Ok(2637.02045530296)",
+      "status": "match"
+    },
+    {
+      "expression": "e7v",
+      "reference": "3.3333333333333335",
+      "rust": "Ok(3.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "e8",
+      "reference": "5274.0409106059178",
+      "rust": "Ok(5274.040910605918)",
+      "status": "match"
+    },
+    {
+      "expression": "e8v",
+      "reference": "4.333333333333333",
+      "rust": "Ok(4.333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e9",
+      "reference": "10548.081821211836",
+      "rust": "Ok(10548.081821211836)",
+      "status": "match"
+    },
+    {
+      "expression": "e9v",
+      "reference": "5.333333333333333",
+      "rust": "Ok(5.333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "es",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "esv",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "es0",
+      "reference": "21.826764464562736",
+      "rust": "Ok(21.826764464562736)",
+      "status": "match"
+    },
+    {
+      "expression": "es0v",
+      "reference": "-3.5833333333333335",
+      "rust": "Ok(-3.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "es1",
+      "reference": "43.653528929125486",
+      "rust": "Ok(43.653528929125486)",
+      "status": "match"
+    },
+    {
+      "expression": "es1v",
+      "reference": "-2.5833333333333335",
+      "rust": "Ok(-2.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "es2",
+      "reference": "87.307057858250985",
+      "rust": "Ok(87.30705785825099)",
+      "status": "match"
+    },
+    {
+      "expression": "es2v",
+      "reference": "-1.5833333333333333",
+      "rust": "Ok(-1.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "es3",
+      "reference": "174.61411571650194",
+      "rust": "Ok(174.61411571650194)",
+      "status": "match"
+    },
+    {
+      "expression": "es3v",
+      "reference": "-0.58333333333333326",
+      "rust": "Ok(-0.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "es4",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "es4v",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "es5",
+      "reference": "698.45646286600777",
+      "rust": "Ok(698.4564628660078)",
+      "status": "match"
+    },
+    {
+      "expression": "es5v",
+      "reference": "1.4166666666666667",
+      "rust": "Ok(1.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "es6",
+      "reference": "1396.9129257320155",
+      "rust": "Ok(1396.9129257320155)",
+      "status": "match"
+    },
+    {
+      "expression": "es6v",
+      "reference": "2.4166666666666665",
+      "rust": "Ok(2.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "es7",
+      "reference": "2793.8258514640311",
+      "rust": "Ok(2793.825851464031)",
+      "status": "match"
+    },
+    {
+      "expression": "es7v",
+      "reference": "3.4166666666666665",
+      "rust": "Ok(3.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "es8",
+      "reference": "5587.6517029280631",
+      "rust": "Ok(5587.651702928063)",
+      "status": "match"
+    },
+    {
+      "expression": "es8v",
+      "reference": "4.416666666666667",
+      "rust": "Ok(4.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "es9",
+      "reference": "11175.303405856126",
+      "rust": "Ok(11175.303405856126)",
+      "status": "match"
+    },
+    {
+      "expression": "es9v",
+      "reference": "5.416666666666667",
+      "rust": "Ok(5.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "eb",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "ebv",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb0",
+      "reference": "19.445436482630058",
+      "rust": "Ok(19.445436482630058)",
+      "status": "match"
+    },
+    {
+      "expression": "eb0v",
+      "reference": "-3.75",
+      "rust": "Ok(-3.75)",
+      "status": "match"
+    },
+    {
+      "expression": "eb1",
+      "reference": "38.890872965260115",
+      "rust": "Ok(38.890872965260115)",
+      "status": "match"
+    },
+    {
+      "expression": "eb1v",
+      "reference": "-2.75",
+      "rust": "Ok(-2.75)",
+      "status": "match"
+    },
+    {
+      "expression": "eb2",
+      "reference": "77.781745930520231",
+      "rust": "Ok(77.78174593052023)",
+      "status": "match"
+    },
+    {
+      "expression": "eb2v",
+      "reference": "-1.75",
+      "rust": "Ok(-1.75)",
+      "status": "match"
+    },
+    {
+      "expression": "eb3",
+      "reference": "155.56349186104046",
+      "rust": "Ok(155.56349186104046)",
+      "status": "match"
+    },
+    {
+      "expression": "eb3v",
+      "reference": "-0.75",
+      "rust": "Ok(-0.75)",
+      "status": "match"
+    },
+    {
+      "expression": "eb4",
+      "reference": "311.12698372208092",
+      "rust": "Ok(311.1269837220809)",
+      "status": "match"
+    },
+    {
+      "expression": "eb4v",
+      "reference": "0.25",
+      "rust": "Ok(0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb5",
+      "reference": "622.25396744416184",
+      "rust": "Ok(622.2539674441618)",
+      "status": "match"
+    },
+    {
+      "expression": "eb5v",
+      "reference": "1.25",
+      "rust": "Ok(1.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb6",
+      "reference": "1244.5079348883237",
+      "rust": "Ok(1244.5079348883237)",
+      "status": "match"
+    },
+    {
+      "expression": "eb6v",
+      "reference": "2.25",
+      "rust": "Ok(2.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb7",
+      "reference": "2489.0158697766474",
+      "rust": "Ok(2489.0158697766474)",
+      "status": "match"
+    },
+    {
+      "expression": "eb7v",
+      "reference": "3.25",
+      "rust": "Ok(3.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb8",
+      "reference": "4978.0317395532948",
+      "rust": "Ok(4978.031739553295)",
+      "status": "match"
+    },
+    {
+      "expression": "eb8v",
+      "reference": "4.25",
+      "rust": "Ok(4.25)",
+      "status": "match"
+    },
+    {
+      "expression": "eb9",
+      "reference": "9956.0634791065895",
+      "rust": "Ok(9956.06347910659)",
+      "status": "match"
+    },
+    {
+      "expression": "eb9v",
+      "reference": "5.25",
+      "rust": "Ok(5.25)",
+      "status": "match"
+    },
+    {
+      "expression": "e#",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "e#v",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e#0",
+      "reference": "21.826764464562736",
+      "rust": "Ok(21.826764464562736)",
+      "status": "match"
+    },
+    {
+      "expression": "e#0v",
+      "reference": "-3.5833333333333335",
+      "rust": "Ok(-3.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "e#1",
+      "reference": "43.653528929125486",
+      "rust": "Ok(43.653528929125486)",
+      "status": "match"
+    },
+    {
+      "expression": "e#1v",
+      "reference": "-2.5833333333333335",
+      "rust": "Ok(-2.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "e#2",
+      "reference": "87.307057858250985",
+      "rust": "Ok(87.30705785825099)",
+      "status": "match"
+    },
+    {
+      "expression": "e#2v",
+      "reference": "-1.5833333333333333",
+      "rust": "Ok(-1.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e#3",
+      "reference": "174.61411571650194",
+      "rust": "Ok(174.61411571650194)",
+      "status": "match"
+    },
+    {
+      "expression": "e#3v",
+      "reference": "-0.58333333333333326",
+      "rust": "Ok(-0.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "e#4",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "e#4v",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e#5",
+      "reference": "698.45646286600777",
+      "rust": "Ok(698.4564628660078)",
+      "status": "match"
+    },
+    {
+      "expression": "e#5v",
+      "reference": "1.4166666666666667",
+      "rust": "Ok(1.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e#6",
+      "reference": "1396.9129257320155",
+      "rust": "Ok(1396.9129257320155)",
+      "status": "match"
+    },
+    {
+      "expression": "e#6v",
+      "reference": "2.4166666666666665",
+      "rust": "Ok(2.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "e#7",
+      "reference": "2793.8258514640311",
+      "rust": "Ok(2793.825851464031)",
+      "status": "match"
+    },
+    {
+      "expression": "e#7v",
+      "reference": "3.4166666666666665",
+      "rust": "Ok(3.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "e#8",
+      "reference": "5587.6517029280631",
+      "rust": "Ok(5587.651702928063)",
+      "status": "match"
+    },
+    {
+      "expression": "e#8v",
+      "reference": "4.416666666666667",
+      "rust": "Ok(4.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "e#9",
+      "reference": "11175.303405856126",
+      "rust": "Ok(11175.303405856126)",
+      "status": "match"
+    },
+    {
+      "expression": "e#9v",
+      "reference": "5.416666666666667",
+      "rust": "Ok(5.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "f",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "fv",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "f0",
+      "reference": "21.826764464562736",
+      "rust": "Ok(21.826764464562736)",
+      "status": "match"
+    },
+    {
+      "expression": "f0v",
+      "reference": "-3.5833333333333335",
+      "rust": "Ok(-3.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "f1",
+      "reference": "43.653528929125486",
+      "rust": "Ok(43.653528929125486)",
+      "status": "match"
+    },
+    {
+      "expression": "f1v",
+      "reference": "-2.5833333333333335",
+      "rust": "Ok(-2.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "f2",
+      "reference": "87.307057858250985",
+      "rust": "Ok(87.30705785825099)",
+      "status": "match"
+    },
+    {
+      "expression": "f2v",
+      "reference": "-1.5833333333333333",
+      "rust": "Ok(-1.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "f3",
+      "reference": "174.61411571650194",
+      "rust": "Ok(174.61411571650194)",
+      "status": "match"
+    },
+    {
+      "expression": "f3v",
+      "reference": "-0.58333333333333326",
+      "rust": "Ok(-0.5833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "f4",
+      "reference": "349.22823143300388",
+      "rust": "Ok(349.2282314330039)",
+      "status": "match"
+    },
+    {
+      "expression": "f4v",
+      "reference": "0.41666666666666669",
+      "rust": "Ok(0.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "f5",
+      "reference": "698.45646286600777",
+      "rust": "Ok(698.4564628660078)",
+      "status": "match"
+    },
+    {
+      "expression": "f5v",
+      "reference": "1.4166666666666667",
+      "rust": "Ok(1.4166666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "f6",
+      "reference": "1396.9129257320155",
+      "rust": "Ok(1396.9129257320155)",
+      "status": "match"
+    },
+    {
+      "expression": "f6v",
+      "reference": "2.4166666666666665",
+      "rust": "Ok(2.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "f7",
+      "reference": "2793.8258514640311",
+      "rust": "Ok(2793.825851464031)",
+      "status": "match"
+    },
+    {
+      "expression": "f7v",
+      "reference": "3.4166666666666665",
+      "rust": "Ok(3.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "f8",
+      "reference": "5587.6517029280631",
+      "rust": "Ok(5587.651702928063)",
+      "status": "match"
+    },
+    {
+      "expression": "f8v",
+      "reference": "4.416666666666667",
+      "rust": "Ok(4.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "f9",
+      "reference": "11175.303405856126",
+      "rust": "Ok(11175.303405856126)",
+      "status": "match"
+    },
+    {
+      "expression": "f9v",
+      "reference": "5.416666666666667",
+      "rust": "Ok(5.416666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "fs",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "fsv",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs0",
+      "reference": "23.12465141947715",
+      "rust": "Ok(23.12465141947715)",
+      "status": "match"
+    },
+    {
+      "expression": "fs0v",
+      "reference": "-3.5",
+      "rust": "Ok(-3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs1",
+      "reference": "46.2493028389543",
+      "rust": "Ok(46.2493028389543)",
+      "status": "match"
+    },
+    {
+      "expression": "fs1v",
+      "reference": "-2.5",
+      "rust": "Ok(-2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs2",
+      "reference": "92.4986056779086",
+      "rust": "Ok(92.4986056779086)",
+      "status": "match"
+    },
+    {
+      "expression": "fs2v",
+      "reference": "-1.5",
+      "rust": "Ok(-1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs3",
+      "reference": "184.9972113558172",
+      "rust": "Ok(184.9972113558172)",
+      "status": "match"
+    },
+    {
+      "expression": "fs3v",
+      "reference": "-0.5",
+      "rust": "Ok(-0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs4",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "fs4v",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs5",
+      "reference": "739.9888454232688",
+      "rust": "Ok(739.9888454232688)",
+      "status": "match"
+    },
+    {
+      "expression": "fs5v",
+      "reference": "1.5",
+      "rust": "Ok(1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs6",
+      "reference": "1479.9776908465376",
+      "rust": "Ok(1479.9776908465376)",
+      "status": "match"
+    },
+    {
+      "expression": "fs6v",
+      "reference": "2.5",
+      "rust": "Ok(2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs7",
+      "reference": "2959.9553816930752",
+      "rust": "Ok(2959.955381693075)",
+      "status": "match"
+    },
+    {
+      "expression": "fs7v",
+      "reference": "3.5",
+      "rust": "Ok(3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs8",
+      "reference": "5919.9107633861504",
+      "rust": "Ok(5919.91076338615)",
+      "status": "match"
+    },
+    {
+      "expression": "fs8v",
+      "reference": "4.5",
+      "rust": "Ok(4.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fs9",
+      "reference": "11839.821526772301",
+      "rust": "Ok(11839.8215267723)",
+      "status": "match"
+    },
+    {
+      "expression": "fs9v",
+      "reference": "5.5",
+      "rust": "Ok(5.5)",
+      "status": "match"
+    },
+    {
+      "expression": "fb",
+      "reference": "329.62755691286992",
+      "rust": "Ok(329.6275569128699)",
+      "status": "match"
+    },
+    {
+      "expression": "fbv",
+      "reference": "0.33333333333333331",
+      "rust": "Ok(0.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "fb0",
+      "reference": "20.601722307054381",
+      "rust": "Ok(20.60172230705438)",
+      "status": "match"
+    },
+    {
+      "expression": "fb0v",
+      "reference": "-3.6666666666666665",
+      "rust": "Ok(-3.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "fb1",
+      "reference": "41.203444614108747",
+      "rust": "Ok(41.20344461410875)",
+      "status": "match"
+    },
+    {
+      "expression": "fb1v",
+      "reference": "-2.6666666666666665",
+      "rust": "Ok(-2.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "fb2",
+      "reference": "82.406889228217466",
+      "rust": "Ok(82.40688922821747)",
+      "status": "match"
+    },
+    {
+      "expression": "fb2v",
+      "reference": "-1.6666666666666667",
+      "rust": "Ok(-1.6666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "fb3",
+      "reference": "164.81377845643496",
+      "rust": "Ok(164.81377845643496)",
+      "status": "match"
+    },
+    {
+      "expression": "fb3v",
+      "reference": "-0.66666666666666674",
+      "rust": "Ok(-0.6666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "fb4",
+      "reference": "329.62755691286992",
+      "rust": "Ok(329.6275569128699)",
+      "status": "match"
+    },
+    {
+      "expression": "fb4v",
+      "reference": "0.33333333333333331",
+      "rust": "Ok(0.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "fb5",
+      "reference": "659.25511382573984",
+      "rust": "Ok(659.2551138257398)",
+      "status": "match"
+    },
+    {
+      "expression": "fb5v",
+      "reference": "1.3333333333333333",
+      "rust": "Ok(1.3333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "fb6",
+      "reference": "1318.5102276514799",
+      "rust": "Ok(1318.51022765148)",
+      "status": "match"
+    },
+    {
+      "expression": "fb6v",
+      "reference": "2.3333333333333335",
+      "rust": "Ok(2.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "fb7",
+      "reference": "2637.0204553029598",
+      "rust": "Ok(2637.02045530296)",
+      "status": "match"
+    },
+    {
+      "expression": "fb7v",
+      "reference": "3.3333333333333335",
+      "rust": "Ok(3.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "fb8",
+      "reference": "5274.0409106059178",
+      "rust": "Ok(5274.040910605918)",
+      "status": "match"
+    },
+    {
+      "expression": "fb8v",
+      "reference": "4.333333333333333",
+      "rust": "Ok(4.333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "fb9",
+      "reference": "10548.081821211836",
+      "rust": "Ok(10548.081821211836)",
+      "status": "match"
+    },
+    {
+      "expression": "fb9v",
+      "reference": "5.333333333333333",
+      "rust": "Ok(5.333333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "f#",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "f#v",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#0",
+      "reference": "23.12465141947715",
+      "rust": "Ok(23.12465141947715)",
+      "status": "match"
+    },
+    {
+      "expression": "f#0v",
+      "reference": "-3.5",
+      "rust": "Ok(-3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#1",
+      "reference": "46.2493028389543",
+      "rust": "Ok(46.2493028389543)",
+      "status": "match"
+    },
+    {
+      "expression": "f#1v",
+      "reference": "-2.5",
+      "rust": "Ok(-2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#2",
+      "reference": "92.4986056779086",
+      "rust": "Ok(92.4986056779086)",
+      "status": "match"
+    },
+    {
+      "expression": "f#2v",
+      "reference": "-1.5",
+      "rust": "Ok(-1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#3",
+      "reference": "184.9972113558172",
+      "rust": "Ok(184.9972113558172)",
+      "status": "match"
+    },
+    {
+      "expression": "f#3v",
+      "reference": "-0.5",
+      "rust": "Ok(-0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#4",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "f#4v",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#5",
+      "reference": "739.9888454232688",
+      "rust": "Ok(739.9888454232688)",
+      "status": "match"
+    },
+    {
+      "expression": "f#5v",
+      "reference": "1.5",
+      "rust": "Ok(1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#6",
+      "reference": "1479.9776908465376",
+      "rust": "Ok(1479.9776908465376)",
+      "status": "match"
+    },
+    {
+      "expression": "f#6v",
+      "reference": "2.5",
+      "rust": "Ok(2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#7",
+      "reference": "2959.9553816930752",
+      "rust": "Ok(2959.955381693075)",
+      "status": "match"
+    },
+    {
+      "expression": "f#7v",
+      "reference": "3.5",
+      "rust": "Ok(3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#8",
+      "reference": "5919.9107633861504",
+      "rust": "Ok(5919.91076338615)",
+      "status": "match"
+    },
+    {
+      "expression": "f#8v",
+      "reference": "4.5",
+      "rust": "Ok(4.5)",
+      "status": "match"
+    },
+    {
+      "expression": "f#9",
+      "reference": "11839.821526772301",
+      "rust": "Ok(11839.8215267723)",
+      "status": "match"
+    },
+    {
+      "expression": "f#9v",
+      "reference": "5.5",
+      "rust": "Ok(5.5)",
+      "status": "match"
+    },
+    {
+      "expression": "g",
+      "reference": "391.99543598174927",
+      "rust": "Ok(391.99543598174927)",
+      "status": "match"
+    },
+    {
+      "expression": "gv",
+      "reference": "0.58333333333333337",
+      "rust": "Ok(0.5833333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "g0",
+      "reference": "24.499714748859343",
+      "rust": "Ok(24.499714748859343)",
+      "status": "match"
+    },
+    {
+      "expression": "g0v",
+      "reference": "-3.4166666666666665",
+      "rust": "Ok(-3.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g1",
+      "reference": "48.999429497718666",
+      "rust": "Ok(48.999429497718666)",
+      "status": "match"
+    },
+    {
+      "expression": "g1v",
+      "reference": "-2.4166666666666665",
+      "rust": "Ok(-2.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g2",
+      "reference": "97.998858995437331",
+      "rust": "Ok(97.99885899543733)",
+      "status": "match"
+    },
+    {
+      "expression": "g2v",
+      "reference": "-1.4166666666666665",
+      "rust": "Ok(-1.4166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g3",
+      "reference": "195.99771799087466",
+      "rust": "Ok(195.99771799087466)",
+      "status": "match"
+    },
+    {
+      "expression": "g3v",
+      "reference": "-0.41666666666666663",
+      "rust": "Ok(-0.41666666666666663)",
+      "status": "match"
+    },
+    {
+      "expression": "g4",
+      "reference": "391.99543598174927",
+      "rust": "Ok(391.99543598174927)",
+      "status": "match"
+    },
+    {
+      "expression": "g4v",
+      "reference": "0.58333333333333337",
+      "rust": "Ok(0.5833333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "g5",
+      "reference": "783.99087196349865",
+      "rust": "Ok(783.9908719634986)",
+      "status": "match"
+    },
+    {
+      "expression": "g5v",
+      "reference": "1.5833333333333335",
+      "rust": "Ok(1.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g6",
+      "reference": "1567.9817439269973",
+      "rust": "Ok(1567.9817439269973)",
+      "status": "match"
+    },
+    {
+      "expression": "g6v",
+      "reference": "2.5833333333333335",
+      "rust": "Ok(2.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g7",
+      "reference": "3135.9634878539946",
+      "rust": "Ok(3135.9634878539946)",
+      "status": "match"
+    },
+    {
+      "expression": "g7v",
+      "reference": "3.5833333333333335",
+      "rust": "Ok(3.5833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g8",
+      "reference": "6271.9269757079874",
+      "rust": "Ok(6271.926975707987)",
+      "status": "match"
+    },
+    {
+      "expression": "g8v",
+      "reference": "4.583333333333333",
+      "rust": "Ok(4.583333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "g9",
+      "reference": "12543.853951415975",
+      "rust": "Ok(12543.853951415975)",
+      "status": "match"
+    },
+    {
+      "expression": "g9v",
+      "reference": "5.583333333333333",
+      "rust": "Ok(5.583333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "gs",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "gsv",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "gs0",
+      "reference": "25.95654359874656",
+      "rust": "Ok(25.95654359874656)",
+      "status": "match"
+    },
+    {
+      "expression": "gs0v",
+      "reference": "-3.3333333333333335",
+      "rust": "Ok(-3.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "gs1",
+      "reference": "51.913087197493141",
+      "rust": "Ok(51.91308719749314)",
+      "status": "match"
+    },
+    {
+      "expression": "gs1v",
+      "reference": "-2.3333333333333335",
+      "rust": "Ok(-2.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "gs2",
+      "reference": "103.82617439498628",
+      "rust": "Ok(103.82617439498628)",
+      "status": "match"
+    },
+    {
+      "expression": "gs2v",
+      "reference": "-1.3333333333333335",
+      "rust": "Ok(-1.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "gs3",
+      "reference": "207.65234878997256",
+      "rust": "Ok(207.65234878997256)",
+      "status": "match"
+    },
+    {
+      "expression": "gs3v",
+      "reference": "-0.33333333333333337",
+      "rust": "Ok(-0.33333333333333337)",
+      "status": "match"
+    },
+    {
+      "expression": "gs4",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "gs4v",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "gs5",
+      "reference": "830.60939515989025",
+      "rust": "Ok(830.6093951598903)",
+      "status": "match"
+    },
+    {
+      "expression": "gs5v",
+      "reference": "1.6666666666666665",
+      "rust": "Ok(1.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "gs6",
+      "reference": "1661.2187903197805",
+      "rust": "Ok(1661.2187903197805)",
+      "status": "match"
+    },
+    {
+      "expression": "gs6v",
+      "reference": "2.6666666666666665",
+      "rust": "Ok(2.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "gs7",
+      "reference": "3322.437580639561",
+      "rust": "Ok(3322.437580639561)",
+      "status": "match"
+    },
+    {
+      "expression": "gs7v",
+      "reference": "3.6666666666666665",
+      "rust": "Ok(3.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "gs8",
+      "reference": "6644.8751612791229",
+      "rust": "Ok(6644.875161279123)",
+      "status": "match"
+    },
+    {
+      "expression": "gs8v",
+      "reference": "4.666666666666667",
+      "rust": "Ok(4.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "gs9",
+      "reference": "13289.750322558246",
+      "rust": "Ok(13289.750322558246)",
+      "status": "match"
+    },
+    {
+      "expression": "gs9v",
+      "reference": "5.666666666666667",
+      "rust": "Ok(5.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "gb",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "gbv",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb0",
+      "reference": "23.12465141947715",
+      "rust": "Ok(23.12465141947715)",
+      "status": "match"
+    },
+    {
+      "expression": "gb0v",
+      "reference": "-3.5",
+      "rust": "Ok(-3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb1",
+      "reference": "46.2493028389543",
+      "rust": "Ok(46.2493028389543)",
+      "status": "match"
+    },
+    {
+      "expression": "gb1v",
+      "reference": "-2.5",
+      "rust": "Ok(-2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb2",
+      "reference": "92.4986056779086",
+      "rust": "Ok(92.4986056779086)",
+      "status": "match"
+    },
+    {
+      "expression": "gb2v",
+      "reference": "-1.5",
+      "rust": "Ok(-1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb3",
+      "reference": "184.9972113558172",
+      "rust": "Ok(184.9972113558172)",
+      "status": "match"
+    },
+    {
+      "expression": "gb3v",
+      "reference": "-0.5",
+      "rust": "Ok(-0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb4",
+      "reference": "369.9944227116344",
+      "rust": "Ok(369.9944227116344)",
+      "status": "match"
+    },
+    {
+      "expression": "gb4v",
+      "reference": "0.5",
+      "rust": "Ok(0.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb5",
+      "reference": "739.9888454232688",
+      "rust": "Ok(739.9888454232688)",
+      "status": "match"
+    },
+    {
+      "expression": "gb5v",
+      "reference": "1.5",
+      "rust": "Ok(1.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb6",
+      "reference": "1479.9776908465376",
+      "rust": "Ok(1479.9776908465376)",
+      "status": "match"
+    },
+    {
+      "expression": "gb6v",
+      "reference": "2.5",
+      "rust": "Ok(2.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb7",
+      "reference": "2959.9553816930752",
+      "rust": "Ok(2959.955381693075)",
+      "status": "match"
+    },
+    {
+      "expression": "gb7v",
+      "reference": "3.5",
+      "rust": "Ok(3.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb8",
+      "reference": "5919.9107633861504",
+      "rust": "Ok(5919.91076338615)",
+      "status": "match"
+    },
+    {
+      "expression": "gb8v",
+      "reference": "4.5",
+      "rust": "Ok(4.5)",
+      "status": "match"
+    },
+    {
+      "expression": "gb9",
+      "reference": "11839.821526772301",
+      "rust": "Ok(11839.8215267723)",
+      "status": "match"
+    },
+    {
+      "expression": "gb9v",
+      "reference": "5.5",
+      "rust": "Ok(5.5)",
+      "status": "match"
+    },
+    {
+      "expression": "g#",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "g#v",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "g#0",
+      "reference": "25.95654359874656",
+      "rust": "Ok(25.95654359874656)",
+      "status": "match"
+    },
+    {
+      "expression": "g#0v",
+      "reference": "-3.3333333333333335",
+      "rust": "Ok(-3.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g#1",
+      "reference": "51.913087197493141",
+      "rust": "Ok(51.91308719749314)",
+      "status": "match"
+    },
+    {
+      "expression": "g#1v",
+      "reference": "-2.3333333333333335",
+      "rust": "Ok(-2.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g#2",
+      "reference": "103.82617439498628",
+      "rust": "Ok(103.82617439498628)",
+      "status": "match"
+    },
+    {
+      "expression": "g#2v",
+      "reference": "-1.3333333333333335",
+      "rust": "Ok(-1.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "g#3",
+      "reference": "207.65234878997256",
+      "rust": "Ok(207.65234878997256)",
+      "status": "match"
+    },
+    {
+      "expression": "g#3v",
+      "reference": "-0.33333333333333337",
+      "rust": "Ok(-0.33333333333333337)",
+      "status": "match"
+    },
+    {
+      "expression": "g#4",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "g#4v",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "g#5",
+      "reference": "830.60939515989025",
+      "rust": "Ok(830.6093951598903)",
+      "status": "match"
+    },
+    {
+      "expression": "g#5v",
+      "reference": "1.6666666666666665",
+      "rust": "Ok(1.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g#6",
+      "reference": "1661.2187903197805",
+      "rust": "Ok(1661.2187903197805)",
+      "status": "match"
+    },
+    {
+      "expression": "g#6v",
+      "reference": "2.6666666666666665",
+      "rust": "Ok(2.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g#7",
+      "reference": "3322.437580639561",
+      "rust": "Ok(3322.437580639561)",
+      "status": "match"
+    },
+    {
+      "expression": "g#7v",
+      "reference": "3.6666666666666665",
+      "rust": "Ok(3.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "g#8",
+      "reference": "6644.8751612791229",
+      "rust": "Ok(6644.875161279123)",
+      "status": "match"
+    },
+    {
+      "expression": "g#8v",
+      "reference": "4.666666666666667",
+      "rust": "Ok(4.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "g#9",
+      "reference": "13289.750322558246",
+      "rust": "Ok(13289.750322558246)",
+      "status": "match"
+    },
+    {
+      "expression": "g#9v",
+      "reference": "5.666666666666667",
+      "rust": "Ok(5.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "a",
+      "reference": "440",
+      "rust": "Ok(440.0)",
+      "status": "match"
+    },
+    {
+      "expression": "av",
+      "reference": "0.75",
+      "rust": "Ok(0.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a0",
+      "reference": "27.5",
+      "rust": "Ok(27.5)",
+      "status": "match"
+    },
+    {
+      "expression": "a0v",
+      "reference": "-3.25",
+      "rust": "Ok(-3.25)",
+      "status": "match"
+    },
+    {
+      "expression": "a1",
+      "reference": "55",
+      "rust": "Ok(55.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a1v",
+      "reference": "-2.25",
+      "rust": "Ok(-2.25)",
+      "status": "match"
+    },
+    {
+      "expression": "a2",
+      "reference": "110",
+      "rust": "Ok(110.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a2v",
+      "reference": "-1.25",
+      "rust": "Ok(-1.25)",
+      "status": "match"
+    },
+    {
+      "expression": "a3",
+      "reference": "220",
+      "rust": "Ok(220.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a3v",
+      "reference": "-0.25",
+      "rust": "Ok(-0.25)",
+      "status": "match"
+    },
+    {
+      "expression": "a4",
+      "reference": "440",
+      "rust": "Ok(440.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a4v",
+      "reference": "0.75",
+      "rust": "Ok(0.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a5",
+      "reference": "880",
+      "rust": "Ok(880.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a5v",
+      "reference": "1.75",
+      "rust": "Ok(1.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a6",
+      "reference": "1760",
+      "rust": "Ok(1760.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a6v",
+      "reference": "2.75",
+      "rust": "Ok(2.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a7",
+      "reference": "3520",
+      "rust": "Ok(3520.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a7v",
+      "reference": "3.75",
+      "rust": "Ok(3.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a8",
+      "reference": "7040",
+      "rust": "Ok(7040.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a8v",
+      "reference": "4.75",
+      "rust": "Ok(4.75)",
+      "status": "match"
+    },
+    {
+      "expression": "a9",
+      "reference": "14080",
+      "rust": "Ok(14080.0)",
+      "status": "match"
+    },
+    {
+      "expression": "a9v",
+      "reference": "5.75",
+      "rust": "Ok(5.75)",
+      "status": "match"
+    },
+    {
+      "expression": "as",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "asv",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "as0",
+      "reference": "29.13523509488062",
+      "rust": "Ok(29.13523509488062)",
+      "status": "match"
+    },
+    {
+      "expression": "as0v",
+      "reference": "-3.1666666666666665",
+      "rust": "Ok(-3.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "as1",
+      "reference": "58.270470189761241",
+      "rust": "Ok(58.27047018976124)",
+      "status": "match"
+    },
+    {
+      "expression": "as1v",
+      "reference": "-2.1666666666666665",
+      "rust": "Ok(-2.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "as2",
+      "reference": "116.54094037952248",
+      "rust": "Ok(116.54094037952248)",
+      "status": "match"
+    },
+    {
+      "expression": "as2v",
+      "reference": "-1.1666666666666665",
+      "rust": "Ok(-1.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "as3",
+      "reference": "233.08188075904496",
+      "rust": "Ok(233.08188075904496)",
+      "status": "match"
+    },
+    {
+      "expression": "as3v",
+      "reference": "-0.16666666666666663",
+      "rust": "Ok(-0.16666666666666663)",
+      "status": "match"
+    },
+    {
+      "expression": "as4",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "as4v",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "as5",
+      "reference": "932.32752303617985",
+      "rust": "Ok(932.3275230361799)",
+      "status": "match"
+    },
+    {
+      "expression": "as5v",
+      "reference": "1.8333333333333335",
+      "rust": "Ok(1.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "as6",
+      "reference": "1864.6550460723597",
+      "rust": "Ok(1864.6550460723597)",
+      "status": "match"
+    },
+    {
+      "expression": "as6v",
+      "reference": "2.8333333333333335",
+      "rust": "Ok(2.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "as7",
+      "reference": "3729.3100921447194",
+      "rust": "Ok(3729.3100921447194)",
+      "status": "match"
+    },
+    {
+      "expression": "as7v",
+      "reference": "3.8333333333333335",
+      "rust": "Ok(3.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "as8",
+      "reference": "7458.620184289437",
+      "rust": "Ok(7458.620184289437)",
+      "status": "match"
+    },
+    {
+      "expression": "as8v",
+      "reference": "4.833333333333333",
+      "rust": "Ok(4.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "as9",
+      "reference": "14917.240368578874",
+      "rust": "Ok(14917.240368578874)",
+      "status": "match"
+    },
+    {
+      "expression": "as9v",
+      "reference": "5.833333333333333",
+      "rust": "Ok(5.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "ab",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "abv",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "ab0",
+      "reference": "25.95654359874656",
+      "rust": "Ok(25.95654359874656)",
+      "status": "match"
+    },
+    {
+      "expression": "ab0v",
+      "reference": "-3.3333333333333335",
+      "rust": "Ok(-3.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "ab1",
+      "reference": "51.913087197493141",
+      "rust": "Ok(51.91308719749314)",
+      "status": "match"
+    },
+    {
+      "expression": "ab1v",
+      "reference": "-2.3333333333333335",
+      "rust": "Ok(-2.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "ab2",
+      "reference": "103.82617439498628",
+      "rust": "Ok(103.82617439498628)",
+      "status": "match"
+    },
+    {
+      "expression": "ab2v",
+      "reference": "-1.3333333333333335",
+      "rust": "Ok(-1.3333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "ab3",
+      "reference": "207.65234878997256",
+      "rust": "Ok(207.65234878997256)",
+      "status": "match"
+    },
+    {
+      "expression": "ab3v",
+      "reference": "-0.33333333333333337",
+      "rust": "Ok(-0.33333333333333337)",
+      "status": "match"
+    },
+    {
+      "expression": "ab4",
+      "reference": "415.30469757994513",
+      "rust": "Ok(415.3046975799451)",
+      "status": "match"
+    },
+    {
+      "expression": "ab4v",
+      "reference": "0.66666666666666663",
+      "rust": "Ok(0.6666666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "ab5",
+      "reference": "830.60939515989025",
+      "rust": "Ok(830.6093951598903)",
+      "status": "match"
+    },
+    {
+      "expression": "ab5v",
+      "reference": "1.6666666666666665",
+      "rust": "Ok(1.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "ab6",
+      "reference": "1661.2187903197805",
+      "rust": "Ok(1661.2187903197805)",
+      "status": "match"
+    },
+    {
+      "expression": "ab6v",
+      "reference": "2.6666666666666665",
+      "rust": "Ok(2.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "ab7",
+      "reference": "3322.437580639561",
+      "rust": "Ok(3322.437580639561)",
+      "status": "match"
+    },
+    {
+      "expression": "ab7v",
+      "reference": "3.6666666666666665",
+      "rust": "Ok(3.6666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "ab8",
+      "reference": "6644.8751612791229",
+      "rust": "Ok(6644.875161279123)",
+      "status": "match"
+    },
+    {
+      "expression": "ab8v",
+      "reference": "4.666666666666667",
+      "rust": "Ok(4.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "ab9",
+      "reference": "13289.750322558246",
+      "rust": "Ok(13289.750322558246)",
+      "status": "match"
+    },
+    {
+      "expression": "ab9v",
+      "reference": "5.666666666666667",
+      "rust": "Ok(5.666666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "a#",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "a#v",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "a#0",
+      "reference": "29.13523509488062",
+      "rust": "Ok(29.13523509488062)",
+      "status": "match"
+    },
+    {
+      "expression": "a#0v",
+      "reference": "-3.1666666666666665",
+      "rust": "Ok(-3.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "a#1",
+      "reference": "58.270470189761241",
+      "rust": "Ok(58.27047018976124)",
+      "status": "match"
+    },
+    {
+      "expression": "a#1v",
+      "reference": "-2.1666666666666665",
+      "rust": "Ok(-2.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "a#2",
+      "reference": "116.54094037952248",
+      "rust": "Ok(116.54094037952248)",
+      "status": "match"
+    },
+    {
+      "expression": "a#2v",
+      "reference": "-1.1666666666666665",
+      "rust": "Ok(-1.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "a#3",
+      "reference": "233.08188075904496",
+      "rust": "Ok(233.08188075904496)",
+      "status": "match"
+    },
+    {
+      "expression": "a#3v",
+      "reference": "-0.16666666666666663",
+      "rust": "Ok(-0.16666666666666663)",
+      "status": "match"
+    },
+    {
+      "expression": "a#4",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "a#4v",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "a#5",
+      "reference": "932.32752303617985",
+      "rust": "Ok(932.3275230361799)",
+      "status": "match"
+    },
+    {
+      "expression": "a#5v",
+      "reference": "1.8333333333333335",
+      "rust": "Ok(1.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "a#6",
+      "reference": "1864.6550460723597",
+      "rust": "Ok(1864.6550460723597)",
+      "status": "match"
+    },
+    {
+      "expression": "a#6v",
+      "reference": "2.8333333333333335",
+      "rust": "Ok(2.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "a#7",
+      "reference": "3729.3100921447194",
+      "rust": "Ok(3729.3100921447194)",
+      "status": "match"
+    },
+    {
+      "expression": "a#7v",
+      "reference": "3.8333333333333335",
+      "rust": "Ok(3.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "a#8",
+      "reference": "7458.620184289437",
+      "rust": "Ok(7458.620184289437)",
+      "status": "match"
+    },
+    {
+      "expression": "a#8v",
+      "reference": "4.833333333333333",
+      "rust": "Ok(4.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "a#9",
+      "reference": "14917.240368578874",
+      "rust": "Ok(14917.240368578874)",
+      "status": "match"
+    },
+    {
+      "expression": "a#9v",
+      "reference": "5.833333333333333",
+      "rust": "Ok(5.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "b",
+      "reference": "493.88330125612413",
+      "rust": "Ok(493.8833012561241)",
+      "status": "match"
+    },
+    {
+      "expression": "bv",
+      "reference": "0.91666666666666663",
+      "rust": "Ok(0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "b0",
+      "reference": "30.867706328507751",
+      "rust": "Ok(30.86770632850775)",
+      "status": "match"
+    },
+    {
+      "expression": "b0v",
+      "reference": "-3.0833333333333335",
+      "rust": "Ok(-3.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "b1",
+      "reference": "61.735412657015502",
+      "rust": "Ok(61.7354126570155)",
+      "status": "match"
+    },
+    {
+      "expression": "b1v",
+      "reference": "-2.0833333333333335",
+      "rust": "Ok(-2.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "b2",
+      "reference": "123.470825314031",
+      "rust": "Ok(123.470825314031)",
+      "status": "match"
+    },
+    {
+      "expression": "b2v",
+      "reference": "-1.0833333333333335",
+      "rust": "Ok(-1.0833333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "b3",
+      "reference": "246.94165062806206",
+      "rust": "Ok(246.94165062806206)",
+      "status": "match"
+    },
+    {
+      "expression": "b3v",
+      "reference": "-0.08333333333333337",
+      "rust": "Ok(-0.08333333333333337)",
+      "status": "match"
+    },
+    {
+      "expression": "b4",
+      "reference": "493.88330125612413",
+      "rust": "Ok(493.8833012561241)",
+      "status": "match"
+    },
+    {
+      "expression": "b4v",
+      "reference": "0.91666666666666663",
+      "rust": "Ok(0.9166666666666666)",
+      "status": "match"
+    },
+    {
+      "expression": "b5",
+      "reference": "987.76660251224803",
+      "rust": "Ok(987.766602512248)",
+      "status": "match"
+    },
+    {
+      "expression": "b5v",
+      "reference": "1.9166666666666665",
+      "rust": "Ok(1.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "b6",
+      "reference": "1975.5332050244961",
+      "rust": "Ok(1975.533205024496)",
+      "status": "match"
+    },
+    {
+      "expression": "b6v",
+      "reference": "2.9166666666666665",
+      "rust": "Ok(2.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "b7",
+      "reference": "3951.0664100489921",
+      "rust": "Ok(3951.066410048992)",
+      "status": "match"
+    },
+    {
+      "expression": "b7v",
+      "reference": "3.9166666666666665",
+      "rust": "Ok(3.9166666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "b8",
+      "reference": "7902.1328200979879",
+      "rust": "Ok(7902.132820097988)",
+      "status": "match"
+    },
+    {
+      "expression": "b8v",
+      "reference": "4.916666666666667",
+      "rust": "Ok(4.916666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "b9",
+      "reference": "15804.265640195976",
+      "rust": "Ok(15804.265640195976)",
+      "status": "match"
+    },
+    {
+      "expression": "b9v",
+      "reference": "5.916666666666667",
+      "rust": "Ok(5.916666666666667)",
+      "status": "match"
+    },
+    {
+      "expression": "bs",
+      "reference": "523.25113060119725",
+      "rust": "Ok(523.2511306011972)",
+      "status": "match"
+    },
+    {
+      "expression": "bsv",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs0",
+      "reference": "32.703195662574828",
+      "rust": "Ok(32.70319566257483)",
+      "status": "match"
+    },
+    {
+      "expression": "bs0v",
+      "reference": "-3",
+      "rust": "Ok(-3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs1",
+      "reference": "65.406391325149656",
+      "rust": "Ok(65.40639132514966)",
+      "status": "match"
+    },
+    {
+      "expression": "bs1v",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs2",
+      "reference": "130.81278265029931",
+      "rust": "Ok(130.8127826502993)",
+      "status": "match"
+    },
+    {
+      "expression": "bs2v",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs3",
+      "reference": "261.62556530059862",
+      "rust": "Ok(261.6255653005986)",
+      "status": "match"
+    },
+    {
+      "expression": "bs3v",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs4",
+      "reference": "523.25113060119725",
+      "rust": "Ok(523.2511306011972)",
+      "status": "match"
+    },
+    {
+      "expression": "bs4v",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs5",
+      "reference": "1046.5022612023945",
+      "rust": "Ok(1046.5022612023945)",
+      "status": "match"
+    },
+    {
+      "expression": "bs5v",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs6",
+      "reference": "2093.004522404789",
+      "rust": "Ok(2093.004522404789)",
+      "status": "match"
+    },
+    {
+      "expression": "bs6v",
+      "reference": "3",
+      "rust": "Ok(3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs7",
+      "reference": "4186.009044809578",
+      "rust": "Ok(4186.009044809578)",
+      "status": "match"
+    },
+    {
+      "expression": "bs7v",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs8",
+      "reference": "8372.0180896191559",
+      "rust": "Ok(8372.018089619156)",
+      "status": "match"
+    },
+    {
+      "expression": "bs8v",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bs9",
+      "reference": "16744.036179238312",
+      "rust": "Ok(16744.036179238312)",
+      "status": "match"
+    },
+    {
+      "expression": "bs9v",
+      "reference": "6",
+      "rust": "Ok(6.0)",
+      "status": "match"
+    },
+    {
+      "expression": "bb",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "bbv",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "bb0",
+      "reference": "29.13523509488062",
+      "rust": "Ok(29.13523509488062)",
+      "status": "match"
+    },
+    {
+      "expression": "bb0v",
+      "reference": "-3.1666666666666665",
+      "rust": "Ok(-3.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "bb1",
+      "reference": "58.270470189761241",
+      "rust": "Ok(58.27047018976124)",
+      "status": "match"
+    },
+    {
+      "expression": "bb1v",
+      "reference": "-2.1666666666666665",
+      "rust": "Ok(-2.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "bb2",
+      "reference": "116.54094037952248",
+      "rust": "Ok(116.54094037952248)",
+      "status": "match"
+    },
+    {
+      "expression": "bb2v",
+      "reference": "-1.1666666666666665",
+      "rust": "Ok(-1.1666666666666665)",
+      "status": "match"
+    },
+    {
+      "expression": "bb3",
+      "reference": "233.08188075904496",
+      "rust": "Ok(233.08188075904496)",
+      "status": "match"
+    },
+    {
+      "expression": "bb3v",
+      "reference": "-0.16666666666666663",
+      "rust": "Ok(-0.16666666666666663)",
+      "status": "match"
+    },
+    {
+      "expression": "bb4",
+      "reference": "466.16376151808993",
+      "rust": "Ok(466.1637615180899)",
+      "status": "match"
+    },
+    {
+      "expression": "bb4v",
+      "reference": "0.83333333333333337",
+      "rust": "Ok(0.8333333333333334)",
+      "status": "match"
+    },
+    {
+      "expression": "bb5",
+      "reference": "932.32752303617985",
+      "rust": "Ok(932.3275230361799)",
+      "status": "match"
+    },
+    {
+      "expression": "bb5v",
+      "reference": "1.8333333333333335",
+      "rust": "Ok(1.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "bb6",
+      "reference": "1864.6550460723597",
+      "rust": "Ok(1864.6550460723597)",
+      "status": "match"
+    },
+    {
+      "expression": "bb6v",
+      "reference": "2.8333333333333335",
+      "rust": "Ok(2.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "bb7",
+      "reference": "3729.3100921447194",
+      "rust": "Ok(3729.3100921447194)",
+      "status": "match"
+    },
+    {
+      "expression": "bb7v",
+      "reference": "3.8333333333333335",
+      "rust": "Ok(3.8333333333333335)",
+      "status": "match"
+    },
+    {
+      "expression": "bb8",
+      "reference": "7458.620184289437",
+      "rust": "Ok(7458.620184289437)",
+      "status": "match"
+    },
+    {
+      "expression": "bb8v",
+      "reference": "4.833333333333333",
+      "rust": "Ok(4.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "bb9",
+      "reference": "14917.240368578874",
+      "rust": "Ok(14917.240368578874)",
+      "status": "match"
+    },
+    {
+      "expression": "bb9v",
+      "reference": "5.833333333333333",
+      "rust": "Ok(5.833333333333333)",
+      "status": "match"
+    },
+    {
+      "expression": "b#",
+      "reference": "523.25113060119725",
+      "rust": "Ok(523.2511306011972)",
+      "status": "match"
+    },
+    {
+      "expression": "b#v",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#0",
+      "reference": "32.703195662574828",
+      "rust": "Ok(32.70319566257483)",
+      "status": "match"
+    },
+    {
+      "expression": "b#0v",
+      "reference": "-3",
+      "rust": "Ok(-3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#1",
+      "reference": "65.406391325149656",
+      "rust": "Ok(65.40639132514966)",
+      "status": "match"
+    },
+    {
+      "expression": "b#1v",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#2",
+      "reference": "130.81278265029931",
+      "rust": "Ok(130.8127826502993)",
+      "status": "match"
+    },
+    {
+      "expression": "b#2v",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#3",
+      "reference": "261.62556530059862",
+      "rust": "Ok(261.6255653005986)",
+      "status": "match"
+    },
+    {
+      "expression": "b#3v",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#4",
+      "reference": "523.25113060119725",
+      "rust": "Ok(523.2511306011972)",
+      "status": "match"
+    },
+    {
+      "expression": "b#4v",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#5",
+      "reference": "1046.5022612023945",
+      "rust": "Ok(1046.5022612023945)",
+      "status": "match"
+    },
+    {
+      "expression": "b#5v",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#6",
+      "reference": "2093.004522404789",
+      "rust": "Ok(2093.004522404789)",
+      "status": "match"
+    },
+    {
+      "expression": "b#6v",
+      "reference": "3",
+      "rust": "Ok(3.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#7",
+      "reference": "4186.009044809578",
+      "rust": "Ok(4186.009044809578)",
+      "status": "match"
+    },
+    {
+      "expression": "b#7v",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#8",
+      "reference": "8372.0180896191559",
+      "rust": "Ok(8372.018089619156)",
+      "status": "match"
+    },
+    {
+      "expression": "b#8v",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "b#9",
+      "reference": "16744.036179238312",
+      "rust": "Ok(16744.036179238312)",
+      "status": "match"
+    },
+    {
+      "expression": "b#9v",
+      "reference": "6",
+      "rust": "Ok(6.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(-100)",
+      "reference": "100",
+      "rust": "Ok(100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(-2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(-1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(-0.1)",
+      "reference": "0.10000000000000001",
+      "rust": "Ok(0.1)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(0.1)",
+      "reference": "0.10000000000000001",
+      "rust": "Ok(0.1)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(20)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(21)",
+      "reference": "21",
+      "rust": "Ok(21.0)",
+      "status": "match"
+    },
+    {
+      "expression": "abs(100)",
+      "reference": "100",
+      "rust": "Ok(100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(-1)",
+      "reference": "3.1415926535897931",
+      "rust": "Ok(3.141592653589793)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(-0.1)",
+      "reference": "1.6709637479564563",
+      "rust": "Ok(1.6709637479564563)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(0.1)",
+      "reference": "1.4706289056333368",
+      "rust": "Ok(1.4706289056333368)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(21)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "acos(100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(-1)",
+      "reference": "-1.5707963267948966",
+      "rust": "Ok(-1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(-0.1)",
+      "reference": "-0.1001674211615598",
+      "rust": "Ok(-0.1001674211615598)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(0.1)",
+      "reference": "0.1001674211615598",
+      "rust": "Ok(0.1001674211615598)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(1)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(21)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "asin(100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(-100)",
+      "reference": "-1.5607966601082315",
+      "rust": "Ok(-1.5607966601082315)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(-2)",
+      "reference": "-1.1071487177940906",
+      "rust": "Ok(-1.1071487177940906)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(-1)",
+      "reference": "-0.78539816339744828",
+      "rust": "Ok(-0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(-0.1)",
+      "reference": "-0.099668652491162038",
+      "rust": "Ok(-0.09966865249116204)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(0.1)",
+      "reference": "0.099668652491162038",
+      "rust": "Ok(0.09966865249116204)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(1)",
+      "reference": "0.78539816339744828",
+      "rust": "Ok(0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(2)",
+      "reference": "1.1071487177940906",
+      "rust": "Ok(1.1071487177940906)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(20)",
+      "reference": "1.5208379310729538",
+      "rust": "Ok(1.5208379310729538)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(21)",
+      "reference": "1.5232132235179132",
+      "rust": "Ok(1.5232132235179132)",
+      "status": "match"
+    },
+    {
+      "expression": "atan(100)",
+      "reference": "1.5607966601082315",
+      "rust": "Ok(1.5607966601082315)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(-100)",
+      "reference": "-100",
+      "rust": "Ok(-100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(-2)",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(-1)",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(-0.1)",
+      "reference": "-0",
+      "rust": "Ok(-0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(0.1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(20)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(21)",
+      "reference": "21",
+      "rust": "Ok(21.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ceil(100)",
+      "reference": "100",
+      "rust": "Ok(100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(-100)",
+      "reference": "0.86231887228768389",
+      "rust": "Ok(0.8623188722876839)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(-2)",
+      "reference": "-0.41614683654714241",
+      "rust": "Ok(-0.4161468365471424)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(-1)",
+      "reference": "0.54030230586813977",
+      "rust": "Ok(0.5403023058681398)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(-0.1)",
+      "reference": "0.99500416527802582",
+      "rust": "Ok(0.9950041652780258)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(0.1)",
+      "reference": "0.99500416527802582",
+      "rust": "Ok(0.9950041652780258)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(1)",
+      "reference": "0.54030230586813977",
+      "rust": "Ok(0.5403023058681398)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(2)",
+      "reference": "-0.41614683654714241",
+      "rust": "Ok(-0.4161468365471424)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(20)",
+      "reference": "0.40808206181339202",
+      "rust": "Ok(0.408082061813392)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(21)",
+      "reference": "-0.54772926022426838",
+      "rust": "Ok(-0.5477292602242684)",
+      "status": "match"
+    },
+    {
+      "expression": "cos(100)",
+      "reference": "0.86231887228768389",
+      "rust": "Ok(0.8623188722876839)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(-100)",
+      "reference": "1.3440585709080678e+43",
+      "rust": "Ok(1.3440585709080678e43)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(-2)",
+      "reference": "3.7621956910836314",
+      "rust": "Ok(3.7621956910836314)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(-1)",
+      "reference": "1.5430806348152437",
+      "rust": "Ok(1.5430806348152437)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(-0.1)",
+      "reference": "1.0050041680558035",
+      "rust": "Ok(1.0050041680558035)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(0.1)",
+      "reference": "1.0050041680558035",
+      "rust": "Ok(1.0050041680558035)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(1)",
+      "reference": "1.5430806348152437",
+      "rust": "Ok(1.5430806348152437)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(2)",
+      "reference": "3.7621956910836314",
+      "rust": "Ok(3.7621956910836314)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(20)",
+      "reference": "242582597.70489514",
+      "rust": "Ok(242582597.70489514)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(21)",
+      "reference": "659407867.24160731",
+      "rust": "Ok(659407867.2416073)",
+      "status": "match"
+    },
+    {
+      "expression": "cosh(100)",
+      "reference": "1.3440585709080678e+43",
+      "rust": "Ok(1.3440585709080678e43)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(-100)",
+      "reference": "3.7200759760208361e-44",
+      "rust": "Ok(3.720075976020836e-44)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(-2)",
+      "reference": "0.1353352832366127",
+      "rust": "Ok(0.1353352832366127)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(-1)",
+      "reference": "0.36787944117144233",
+      "rust": "Ok(0.36787944117144233)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(-0.1)",
+      "reference": "0.90483741803595952",
+      "rust": "Ok(0.9048374180359595)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(0.1)",
+      "reference": "1.1051709180756477",
+      "rust": "Ok(1.1051709180756477)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(1)",
+      "reference": "2.7182818284590451",
+      "rust": "Ok(2.718281828459045)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(2)",
+      "reference": "7.3890560989306504",
+      "rust": "Ok(7.38905609893065)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(20)",
+      "reference": "485165195.40979028",
+      "rust": "Ok(485165195.4097903)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(21)",
+      "reference": "1318815734.4832146",
+      "rust": "Ok(1318815734.4832146)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(100)",
+      "reference": "2.6881171418161356e+43",
+      "rust": "Ok(2.6881171418161356e43)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(0.1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(20)",
+      "reference": "2.43290200817664e+18",
+      "rust": "Ok(2.43290200817664e18)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(21)",
+      "reference": "inf",
+      "rust": "Ok(inf)",
+      "status": "match"
+    },
+    {
+      "expression": "fac(100)",
+      "reference": "inf",
+      "rust": "Ok(inf)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(-100)",
+      "reference": "-100",
+      "rust": "Ok(-100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(-2)",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(-1)",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(-0.1)",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(0.1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(20)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(21)",
+      "reference": "21",
+      "rust": "Ok(21.0)",
+      "status": "match"
+    },
+    {
+      "expression": "floor(100)",
+      "reference": "100",
+      "rust": "Ok(100.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(0.1)",
+      "reference": "-2.3025850929940455",
+      "rust": "Ok(-2.3025850929940455)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(2)",
+      "reference": "0.69314718055994529",
+      "rust": "Ok(0.6931471805599453)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(20)",
+      "reference": "2.9957322735539909",
+      "rust": "Ok(2.995732273553991)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(21)",
+      "reference": "3.044522437723423",
+      "rust": "Ok(3.044522437723423)",
+      "status": "match"
+    },
+    {
+      "expression": "ln(100)",
+      "reference": "4.6051701859880918",
+      "rust": "Ok(4.605170185988092)",
+      "status": "match"
+    },
+    {
+      "expression": "log(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "log(0.1)",
+      "reference": "-2.3025850929940455",
+      "rust": "Ok(-2.3025850929940455)",
+      "status": "match"
+    },
+    {
+      "expression": "log(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log(2)",
+      "reference": "0.69314718055994529",
+      "rust": "Ok(0.6931471805599453)",
+      "status": "match"
+    },
+    {
+      "expression": "log(20)",
+      "reference": "2.9957322735539909",
+      "rust": "Ok(2.995732273553991)",
+      "status": "match"
+    },
+    {
+      "expression": "log(21)",
+      "reference": "3.044522437723423",
+      "rust": "Ok(3.044522437723423)",
+      "status": "match"
+    },
+    {
+      "expression": "log(100)",
+      "reference": "4.6051701859880918",
+      "rust": "Ok(4.605170185988092)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(0.1)",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(2)",
+      "reference": "0.3010299956639812",
+      "rust": "Ok(0.3010299956639812)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(20)",
+      "reference": "1.3010299956639813",
+      "rust": "Ok(1.3010299956639813)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(21)",
+      "reference": "1.3222192947339193",
+      "rust": "Ok(1.3222192947339193)",
+      "status": "match"
+    },
+    {
+      "expression": "log10(100)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(0.1)",
+      "reference": "-3.3219280948873622",
+      "rust": "Ok(-3.321928094887362)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(2)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(20)",
+      "reference": "4.3219280948873626",
+      "rust": "Ok(4.321928094887363)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(21)",
+      "reference": "4.3923174227787607",
+      "rust": "Ok(4.392317422778761)",
+      "status": "match"
+    },
+    {
+      "expression": "log2(100)",
+      "reference": "6.6438561897747244",
+      "rust": "Ok(6.643856189774724)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(-100)",
+      "reference": "0.50636564110975879",
+      "rust": "Ok(0.5063656411097588)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(-2)",
+      "reference": "-0.90929742682568171",
+      "rust": "Ok(-0.9092974268256817)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(-1)",
+      "reference": "-0.8414709848078965",
+      "rust": "Ok(-0.8414709848078965)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(-0.1)",
+      "reference": "-0.099833416646828155",
+      "rust": "Ok(-0.09983341664682815)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(0.1)",
+      "reference": "0.099833416646828155",
+      "rust": "Ok(0.09983341664682815)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(1)",
+      "reference": "0.8414709848078965",
+      "rust": "Ok(0.8414709848078965)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(2)",
+      "reference": "0.90929742682568171",
+      "rust": "Ok(0.9092974268256817)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(20)",
+      "reference": "0.91294525072762767",
+      "rust": "Ok(0.9129452507276277)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(21)",
+      "reference": "0.83665563853605596",
+      "rust": "Ok(0.836655638536056)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(100)",
+      "reference": "-0.50636564110975879",
+      "rust": "Ok(-0.5063656411097588)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(-100)",
+      "reference": "-1.3440585709080678e+43",
+      "rust": "Ok(-1.3440585709080678e43)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(-2)",
+      "reference": "-3.6268604078470186",
+      "rust": "Ok(-3.6268604078470186)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(-1)",
+      "reference": "-1.1752011936438014",
+      "rust": "Ok(-1.1752011936438014)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(-0.1)",
+      "reference": "-0.10016675001984403",
+      "rust": "Ok(-0.10016675001984403)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(0.1)",
+      "reference": "0.10016675001984403",
+      "rust": "Ok(0.10016675001984403)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(1)",
+      "reference": "1.1752011936438014",
+      "rust": "Ok(1.1752011936438014)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(2)",
+      "reference": "3.6268604078470186",
+      "rust": "Ok(3.6268604078470186)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(20)",
+      "reference": "242582597.70489514",
+      "rust": "Ok(242582597.70489514)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(21)",
+      "reference": "659407867.24160731",
+      "rust": "Ok(659407867.2416073)",
+      "status": "match"
+    },
+    {
+      "expression": "sinh(100)",
+      "reference": "1.3440585709080678e+43",
+      "rust": "Ok(1.3440585709080678e43)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(0.1)",
+      "reference": "0.31622776601683794",
+      "rust": "Ok(0.31622776601683794)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(2)",
+      "reference": "1.4142135623730951",
+      "rust": "Ok(1.4142135623730951)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(20)",
+      "reference": "4.4721359549995796",
+      "rust": "Ok(4.47213595499958)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(21)",
+      "reference": "4.5825756949558398",
+      "rust": "Ok(4.58257569495584)",
+      "status": "match"
+    },
+    {
+      "expression": "sqrt(100)",
+      "reference": "10",
+      "rust": "Ok(10.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(-100)",
+      "reference": "0.58721391515692911",
+      "rust": "Ok(0.5872139151569291)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(-2)",
+      "reference": "2.1850398632615189",
+      "rust": "Ok(2.185039863261519)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(-1)",
+      "reference": "-1.5574077246549021",
+      "rust": "Ok(-1.557407724654902)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(-0.1)",
+      "reference": "-0.10033467208545054",
+      "rust": "Ok(-0.10033467208545054)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(0.1)",
+      "reference": "0.10033467208545054",
+      "rust": "Ok(0.10033467208545054)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(1)",
+      "reference": "1.5574077246549021",
+      "rust": "Ok(1.557407724654902)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(2)",
+      "reference": "-2.1850398632615189",
+      "rust": "Ok(-2.185039863261519)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(20)",
+      "reference": "2.2371609442247427",
+      "rust": "Ok(2.2371609442247427)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(21)",
+      "reference": "-1.5274985276366031",
+      "rust": "Ok(-1.527498527636603)",
+      "status": "match"
+    },
+    {
+      "expression": "tan(100)",
+      "reference": "-0.58721391515692911",
+      "rust": "Ok(-0.5872139151569291)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(-100)",
+      "reference": "-1",
+      "rust": "Ok(-1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(-2)",
+      "reference": "-0.9640275800758169",
+      "rust": "Ok(-0.9640275800758169)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(-1)",
+      "reference": "-0.76159415595576485",
+      "rust": "Ok(-0.7615941559557649)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(-0.1)",
+      "reference": "-0.099667994624955819",
+      "rust": "Ok(-0.09966799462495582)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(0.1)",
+      "reference": "0.099667994624955819",
+      "rust": "Ok(0.09966799462495582)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(1)",
+      "reference": "0.76159415595576485",
+      "rust": "Ok(0.7615941559557649)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(2)",
+      "reference": "0.9640275800758169",
+      "rust": "Ok(0.9640275800758169)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(20)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(21)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "tanh(100)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(0.1)",
+      "reference": "-20",
+      "rust": "Ok(-20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(2)",
+      "reference": "6.0205999132796242",
+      "rust": "Ok(6.020599913279624)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(20)",
+      "reference": "26.020599913279625",
+      "rust": "Ok(26.020599913279625)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(21)",
+      "reference": "26.444385894678387",
+      "rust": "Ok(26.444385894678387)",
+      "status": "match"
+    },
+    {
+      "expression": "gaintodb(100)",
+      "reference": "40",
+      "rust": "Ok(40.0)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(-100)",
+      "reference": "1.0000000000000001e-05",
+      "rust": "Ok(1e-5)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(-2)",
+      "reference": "0.79432823472428149",
+      "rust": "Ok(0.7943282347242815)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(-1)",
+      "reference": "0.89125093813374556",
+      "rust": "Ok(0.8912509381337456)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(-0.1)",
+      "reference": "0.98855309465693886",
+      "rust": "Ok(0.9885530946569389)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(0.1)",
+      "reference": "1.0115794542598986",
+      "rust": "Ok(1.0115794542598986)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(1)",
+      "reference": "1.1220184543019633",
+      "rust": "Ok(1.1220184543019633)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(2)",
+      "reference": "1.2589254117941673",
+      "rust": "Ok(1.2589254117941673)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(20)",
+      "reference": "10",
+      "rust": "Ok(10.0)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(21)",
+      "reference": "11.220184543019636",
+      "rust": "Ok(11.220184543019636)",
+      "status": "match"
+    },
+    {
+      "expression": "dbtogain(100)",
+      "reference": "100000",
+      "rust": "Ok(100000.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(-100)",
+      "reference": "2.0638621581093331e-28",
+      "rust": "Ok(2.063862158109333e-28)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(-2)",
+      "reference": "65.406402587890625",
+      "rust": "Ok(65.40640258789063)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(-1)",
+      "reference": "130.81280517578125",
+      "rust": "Ok(130.81280517578125)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(-0.1)",
+      "reference": "244.10532588896149",
+      "rust": "Ok(244.1053258889615)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(0)",
+      "reference": "261.6256103515625",
+      "rust": "Ok(261.6256103515625)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(0.1)",
+      "reference": "280.40338629466521",
+      "rust": "Ok(280.4033862946652)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(1)",
+      "reference": "523.251220703125",
+      "rust": "Ok(523.251220703125)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(2)",
+      "reference": "1046.50244140625",
+      "rust": "Ok(1046.50244140625)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(20)",
+      "reference": "274334336",
+      "rust": "Ok(274334336.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(21)",
+      "reference": "548668672",
+      "rust": "Ok(548668672.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtof(100)",
+      "reference": "3.3164986199723507e+32",
+      "rust": "Ok(3.316498619972351e32)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(0.1)",
+      "reference": "-11.353288056838801",
+      "rust": "Ok(-11.353288056838801)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(1)",
+      "reference": "-8.0313599619514395",
+      "rust": "Ok(-8.03135996195144)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(2)",
+      "reference": "-7.0313599619514386",
+      "rust": "Ok(-7.031359961951439)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(20)",
+      "reference": "-3.7094318670640765",
+      "rust": "Ok(-3.7094318670640765)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(21)",
+      "reference": "-3.6390425391726784",
+      "rust": "Ok(-3.6390425391726784)",
+      "status": "match"
+    },
+    {
+      "expression": "ftov(100)",
+      "reference": "-1.3875037721767141",
+      "rust": "Ok(-1.387503772176714)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(-100)",
+      "reference": "9.4663308626521417e-29",
+      "rust": "Ok(9.466330862652142e-29)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(-2)",
+      "reference": "30",
+      "rust": "Ok(30.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(-1)",
+      "reference": "60",
+      "rust": "Ok(60.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(-0.1)",
+      "reference": "111.96395898441689",
+      "rust": "Ok(111.96395898441689)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(0)",
+      "reference": "120",
+      "rust": "Ok(120.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(0.1)",
+      "reference": "128.61281550435518",
+      "rust": "Ok(128.61281550435518)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(1)",
+      "reference": "240",
+      "rust": "Ok(240.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(2)",
+      "reference": "480",
+      "rust": "Ok(480.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(20)",
+      "reference": "125829120",
+      "rust": "Ok(125829120.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(21)",
+      "reference": "251658240",
+      "rust": "Ok(251658240.0)",
+      "status": "match"
+    },
+    {
+      "expression": "vtobpm(100)",
+      "reference": "1.5211807202738753e+32",
+      "rust": "Ok(1.5211807202738753e32)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(-100)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(-2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(-1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(-0.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(0)",
+      "reference": "-inf",
+      "rust": "Ok(-inf)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(0.1)",
+      "reference": "-10.228818690495881",
+      "rust": "Ok(-10.228818690495881)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(1)",
+      "reference": "-6.9068905956085187",
+      "rust": "Ok(-6.906890595608519)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(2)",
+      "reference": "-5.9068905956085187",
+      "rust": "Ok(-5.906890595608519)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(20)",
+      "reference": "-2.5849625007211561",
+      "rust": "Ok(-2.584962500721156)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(21)",
+      "reference": "-2.5145731728297585",
+      "rust": "Ok(-2.5145731728297585)",
+      "status": "match"
+    },
+    {
+      "expression": "bpmtov(100)",
+      "reference": "-0.26303440583379378",
+      "rust": "Ok(-0.2630344058337938)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(-2,0)",
+      "reference": "-1.5707963267948966",
+      "rust": "Ok(-1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(-2,1)",
+      "reference": "-1.1071487177940904",
+      "rust": "Ok(-1.1071487177940904)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(-2,2)",
+      "reference": "-0.78539816339744828",
+      "rust": "Ok(-0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(-2,4.1)",
+      "reference": "-0.45384400152151017",
+      "rust": "Ok(-0.45384400152151017)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(-2,20)",
+      "reference": "-0.099668652491162024",
+      "rust": "Ok(-0.09966865249116202)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(0,0)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(0,1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(0,2)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(0,4.1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(0,20)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(1,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(1,1)",
+      "reference": "0.78539816339744828",
+      "rust": "Ok(0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(1,2)",
+      "reference": "0.46364760900080609",
+      "rust": "Ok(0.4636476090008061)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(1,4.1)",
+      "reference": "0.23923159996366058",
+      "rust": "Ok(0.23923159996366058)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(1,20)",
+      "reference": "0.049958395721942758",
+      "rust": "Ok(0.04995839572194276)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(2,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(2,1)",
+      "reference": "1.1071487177940904",
+      "rust": "Ok(1.1071487177940904)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(2,2)",
+      "reference": "0.78539816339744828",
+      "rust": "Ok(0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(2,4.1)",
+      "reference": "0.45384400152151017",
+      "rust": "Ok(0.45384400152151017)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(2,20)",
+      "reference": "0.099668652491162024",
+      "rust": "Ok(0.09966865249116202)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(4.1,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(4.1,1)",
+      "reference": "1.3315647268312361",
+      "rust": "Ok(1.331564726831236)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(4.1,2)",
+      "reference": "1.1169523252733864",
+      "rust": "Ok(1.1169523252733864)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(4.1,4.1)",
+      "reference": "0.78539816339744828",
+      "rust": "Ok(0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(4.1,20)",
+      "reference": "0.20219859688286149",
+      "rust": "Ok(0.2021985968828615)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(5.9,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(5.9,1)",
+      "reference": "1.4029004035445221",
+      "rust": "Ok(1.402900403544522)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(5.9,2)",
+      "reference": "1.2439696738649559",
+      "rust": "Ok(1.243969673864956)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(5.9,4.1)",
+      "reference": "0.96349110162864593",
+      "rust": "Ok(0.9634911016286459)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(5.9,20)",
+      "reference": "0.28686334952267839",
+      "rust": "Ok(0.2868633495226784)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(20,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(20,1)",
+      "reference": "1.5208379310729538",
+      "rust": "Ok(1.5208379310729538)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(20,2)",
+      "reference": "1.4711276743037347",
+      "rust": "Ok(1.4711276743037347)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(20,4.1)",
+      "reference": "1.3685977299120351",
+      "rust": "Ok(1.368597729912035)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(20,20)",
+      "reference": "0.78539816339744828",
+      "rust": "Ok(0.7853981633974483)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(30,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(30,1)",
+      "reference": "1.5374753309166493",
+      "rust": "Ok(1.5374753309166493)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(30,2)",
+      "reference": "1.5042281630190728",
+      "rust": "Ok(1.5042281630190728)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(30,4.1)",
+      "reference": "1.4349711265769103",
+      "rust": "Ok(1.4349711265769103)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(30,20)",
+      "reference": "0.98279372324732905",
+      "rust": "Ok(0.982793723247329)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(67,0)",
+      "reference": "1.5707963267948966",
+      "rust": "Ok(1.5707963267948966)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(67,1)",
+      "reference": "1.5558720618048116",
+      "rust": "Ok(1.5558720618048116)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(67,2)",
+      "reference": "1.5409544421277872",
+      "rust": "Ok(1.5409544421277872)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(67,4.1)",
+      "reference": "1.5096785103963068",
+      "rust": "Ok(1.5096785103963068)",
+      "status": "match"
+    },
+    {
+      "expression": "atan2(67,20)",
+      "reference": "1.2807093944738686",
+      "rust": "Ok(1.2807093944738686)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(-2,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(-2,1)",
+      "reference": "-2",
+      "rust": "Ok(-2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(-2,2)",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(-2,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(-2,20)",
+      "reference": "1048576",
+      "rust": "Ok(1048576.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(0,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(0,1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(0,2)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(0,4.1)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(0,20)",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(1,1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(1,2)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(1,4.1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(1,20)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,1)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,2)",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,4.1)",
+      "reference": "17.148375400580687",
+      "rust": "Ok(17.148375400580687)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,20)",
+      "reference": "1048576",
+      "rust": "Ok(1048576.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(4.1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(4.1,1)",
+      "reference": "4.0999999999999996",
+      "rust": "Ok(4.1)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(4.1,2)",
+      "reference": "16.809999999999999",
+      "rust": "Ok(16.81)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(4.1,4.1)",
+      "reference": "325.39720073483062",
+      "rust": "Ok(325.3972007348306)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(4.1,20)",
+      "reference": "1801677829564.2061",
+      "rust": "Ok(1801677829564.206)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(5.9,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(5.9,1)",
+      "reference": "5.9000000000000004",
+      "rust": "Ok(5.9)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(5.9,2)",
+      "reference": "34.810000000000002",
+      "rust": "Ok(34.81)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(5.9,4.1)",
+      "reference": "1447.0823541613813",
+      "rust": "Ok(1447.0823541613813)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(5.9,20)",
+      "reference": "2612403355045890.5",
+      "rust": "Ok(2612403355045890.5)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(20,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(20,1)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(20,2)",
+      "reference": "400",
+      "rust": "Ok(400.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(20,4.1)",
+      "reference": "215885.25562776989",
+      "rust": "Ok(215885.2556277699)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(20,20)",
+      "reference": "1.048576e+26",
+      "rust": "Ok(1.048576e26)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(30,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(30,1)",
+      "reference": "30",
+      "rust": "Ok(30.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(30,2)",
+      "reference": "900",
+      "rust": "Ok(900.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(30,4.1)",
+      "reference": "1138143.8194517519",
+      "rust": "Ok(1138143.819451752)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(30,20)",
+      "reference": "3.4867844009999997e+29",
+      "rust": "Ok(3.486784401e29)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(67,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(67,1)",
+      "reference": "67",
+      "rust": "Ok(67.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(67,2)",
+      "reference": "4489",
+      "rust": "Ok(4489.0)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(67,4.1)",
+      "reference": "30683626.744961385",
+      "rust": "Ok(30683626.744961385)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(67,20)",
+      "reference": "3.3227376617030857e+36",
+      "rust": "Ok(3.3227376617030857e36)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(-2,0)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(-2,1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(-2,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(-2,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(-2,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(0,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(0,1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(0,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(0,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(0,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(1,1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(1,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(1,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(1,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(2,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(2,1)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(2,2)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(2,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(2,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(4.1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(4.1,1)",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(4.1,2)",
+      "reference": "6",
+      "rust": "Ok(6.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(4.1,4.1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(4.1,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(5.9,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(5.9,1)",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(5.9,2)",
+      "reference": "10",
+      "rust": "Ok(10.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(5.9,4.1)",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(5.9,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(20,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(20,1)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(20,2)",
+      "reference": "190",
+      "rust": "Ok(190.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(20,4.1)",
+      "reference": "4845",
+      "rust": "Ok(4845.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(20,20)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(30,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(30,1)",
+      "reference": "30",
+      "rust": "Ok(30.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(30,2)",
+      "reference": "435",
+      "rust": "Ok(435.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(30,4.1)",
+      "reference": "27405",
+      "rust": "Ok(27405.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(30,20)",
+      "reference": "30045015",
+      "rust": "Ok(30045015.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(67,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(67,1)",
+      "reference": "67",
+      "rust": "Ok(67.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(67,2)",
+      "reference": "2211",
+      "rust": "Ok(2211.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(67,4.1)",
+      "reference": "766480",
+      "rust": "Ok(766480.0)",
+      "status": "match"
+    },
+    {
+      "expression": "ncr(67,20)",
+      "reference": "57963796707857040",
+      "rust": "Ok(5.796379670785704e16)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(-2,0)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(-2,1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(-2,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(-2,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(-2,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(0,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(0,1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(0,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(0,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(0,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(1,1)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(1,2)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(1,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(1,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(2,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(2,1)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(2,2)",
+      "reference": "2",
+      "rust": "Ok(2.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(2,4.1)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(2,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(4.1,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(4.1,1)",
+      "reference": "4",
+      "rust": "Ok(4.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(4.1,2)",
+      "reference": "12",
+      "rust": "Ok(12.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(4.1,4.1)",
+      "reference": "24",
+      "rust": "Ok(24.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(4.1,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(5.9,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(5.9,1)",
+      "reference": "5",
+      "rust": "Ok(5.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(5.9,2)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(5.9,4.1)",
+      "reference": "120",
+      "rust": "Ok(120.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(5.9,20)",
+      "reference": "nan",
+      "rust": "Err(Domain)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(20,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(20,1)",
+      "reference": "20",
+      "rust": "Ok(20.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(20,2)",
+      "reference": "380",
+      "rust": "Ok(380.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(20,4.1)",
+      "reference": "116280",
+      "rust": "Ok(116280.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(20,20)",
+      "reference": "2.43290200817664e+18",
+      "rust": "Ok(2.43290200817664e18)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(30,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(30,1)",
+      "reference": "30",
+      "rust": "Ok(30.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(30,2)",
+      "reference": "870",
+      "rust": "Ok(870.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(30,4.1)",
+      "reference": "657720",
+      "rust": "Ok(657720.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(30,20)",
+      "reference": "7.3096577329197275e+25",
+      "rust": "Ok(7.3096577329197275e25)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(67,0)",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(67,1)",
+      "reference": "67",
+      "rust": "Ok(67.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(67,2)",
+      "reference": "4422",
+      "rust": "Ok(4422.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(67,4.1)",
+      "reference": "18395520",
+      "rust": "Ok(18395520.0)",
+      "status": "match"
+    },
+    {
+      "expression": "npr(67,20)",
+      "reference": "1.4102023741208791e+35",
+      "rust": "Ok(1.410202374120879e35)",
+      "status": "match"
+    },
+    {
+      "expression": "sin 2^2",
+      "reference": "0.82682181043180603",
+      "rust": "Ok(0.826821810431806)",
+      "status": "match"
+    },
+    {
+      "expression": "sin -2^2",
+      "reference": "0.82682181043180603",
+      "rust": "Ok(0.826821810431806)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(-2)^2",
+      "reference": "0.82682181043180603",
+      "rust": "Ok(0.826821810431806)",
+      "status": "match"
+    },
+    {
+      "expression": "sin cos -2",
+      "reference": "-0.40423915385226578",
+      "rust": "Ok(-0.4042391538522658)",
+      "status": "match"
+    },
+    {
+      "expression": "pow(2,(1,3))",
+      "reference": "8",
+      "rust": "Ok(8.0)",
+      "status": "match"
+    },
+    {
+      "expression": "sin(1,2)",
+      "reference": "0.90929742682568171",
+      "rust": "Ok(0.9092974268256817)",
+      "status": "match"
+    },
+    {
+      "expression": "pi()",
+      "reference": "3.1415926535897931",
+      "rust": "Ok(3.141592653589793)",
+      "status": "match"
+    },
+    {
+      "expression": "c()",
+      "reference": "ERROR 2",
+      "rust": "Err(Syntax)",
+      "status": "match"
+    },
+    {
+      "expression": "e()",
+      "reference": "ERROR 2",
+      "rust": "Err(Syntax)",
+      "status": "match"
+    },
+    {
+      "expression": "exp(log(0))",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "(-2)^2",
+      "reference": "-4",
+      "rust": "Ok(4.0)",
+      "status": "intentional_difference"
+    },
+    {
+      "expression": "(-1)^0",
+      "reference": "-1",
+      "rust": "Ok(1.0)",
+      "status": "intentional_difference"
+    },
+    {
+      "expression": "2^-2^2",
+      "reference": "16",
+      "rust": "Ok(0.0625)",
+      "status": "intentional_difference"
+    },
+    {
+      "expression": "0x0p9999",
+      "reference": "0",
+      "rust": "Ok(0.0)",
+      "status": "match"
+    },
+    {
+      "expression": "0x0.1p1024",
+      "reference": "1.1235582092889474e+307",
+      "rust": "Ok(1.1235582092889474e307)",
+      "status": "match"
+    },
+    {
+      "expression": "0x10p-1078",
+      "reference": "4.9406564584124654e-324",
+      "rust": "Ok(5e-324)",
+      "status": "match"
+    },
+    {
+      "expression": "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000p-1120",
+      "reference": "1",
+      "rust": "Ok(1.0)",
+      "status": "match"
+    }
+  ]
+}

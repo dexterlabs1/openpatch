@@ -123,6 +123,7 @@ struct ParameterEdit {
     max: f32,
     step: Option<f32>,
     display_scale: f32,
+    display_unit: String,
     slew_min: Option<f32>,
     gain_power: Option<f32>,
     raw_max: f32,
@@ -1762,6 +1763,18 @@ impl Rack {
                     },
                     step: step.map(|step| step * display_scale),
                     display_scale,
+                    display_unit: if gain_power.is_some() {
+                        "dB"
+                    } else if slew_min.is_some() {
+                        "ms/V"
+                    } else if clock_ratio || (scaled_gain && multiplier != 1.0) {
+                        "x"
+                    } else if display_scale == 100.0 {
+                        "%"
+                    } else {
+                        spec["unit"].as_str().unwrap_or("")
+                    }
+                    .into(),
                     slew_min,
                     gain_power,
                     raw_max: max,
@@ -3980,12 +3993,30 @@ fn parameter_edit_action(edit: &ParameterEdit, value: f32) -> RackAction {
 
 fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> ParameterEditOutcome {
     ui.label(format!("Range: {} to {}", edit.min, edit.max));
-    let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
+    let mut field = egui::TextEdit::singleline(&mut edit.text)
+        .desired_width(244.0)
+        .char_limit(512)
+        .show(ui);
+    let input = &field.response;
     if edit.focus {
         input.request_focus();
+        field
+            .state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::two(
+                egui::text::CCursor::new(0),
+                egui::text::CCursor::new(edit.text.chars().count()),
+            )));
+        field.state.store(ui.ctx(), input.id);
         edit.focus = false;
     }
-    let parsed = parsed_parameter_value(edit);
+    let result = parsed_parameter_result(edit);
+    let parsed = result.as_ref().ok().copied();
+    if let Some(value) = parsed {
+        ui.label(format!("Result: {value} {}", edit.display_unit).trim_end());
+    }
+    ui.weak("Numbers, expressions, or notes · e.g. 440*2, A4, C4v")
+        .on_hover_text("Notes yield Hz; notes ending in v yield volts (C4v = 0).\nThe result uses this control's displayed units.");
     if edit.gain_power.is_some() {
         ui.label("Enter dB. -inf sets the gain to zero.");
     }
@@ -4030,8 +4061,8 @@ fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> Par
             .clicked();
         cancel = ui.button("Cancel").clicked();
     });
-    if parsed.is_none() {
-        ui.colored_label(Color32::LIGHT_RED, "Enter a finite value within the range.");
+    if let Err(error) = result {
+        ui.colored_label(Color32::LIGHT_RED, error);
     }
     if cancel || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         ParameterEditOutcome::Cancel
@@ -4299,31 +4330,43 @@ fn is_signal_utility(kind: &str) -> bool {
     matches!(kind, "logic" | "compare" | "process" | "rescale")
 }
 
-fn parsed_parameter_value(edit: &ParameterEdit) -> Option<f32> {
-    let text = if edit.gain_power.is_some() {
-        edit.text
-            .trim()
-            .trim_end_matches("dB")
-            .trim()
-            .replace('−', "-")
+fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
+    let mut text = edit.text.trim();
+    if edit.gain_power.is_some()
+        && text.len() > 2
+        && text
+            .get(text.len().saturating_sub(2)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case("db"))
+    {
+        text = text[..text.len() - 2].trim_end();
+    }
+    let evaluated = crate::expression::evaluate(text).map_err(|error| error.to_string())?;
+    let gain_zero = edit.gain_power.is_some() && evaluated == f64::NEG_INFINITY;
+    let value = evaluated as f32;
+    if !gain_zero && (!evaluated.is_finite() || !value.is_finite()) {
+        return Err("Enter a finite result within this control's range.".into());
+    }
+    let allowance = if edit.gain_power.is_some() {
+        0.000_01
     } else {
-        edit.text.clone()
+        0.0
     };
-    text.parse::<f32>().ok().filter(|value| {
-        let gain_zero = edit.gain_power.is_some() && *value == f32::NEG_INFINITY;
-        (value.is_finite() || gain_zero)
-            && *value >= edit.min
-            && *value
-                <= edit.max
-                    + if edit.gain_power.is_some() {
-                        0.000_01
-                    } else {
-                        0.0
-                    }
-            && edit.step.is_none_or(|step| {
-                ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01
-            })
-    })
+    if value < edit.min || value > edit.max + allowance {
+        return Err(format!(
+            "Result must be between {} and {}.",
+            edit.min, edit.max
+        ));
+    }
+    if let Some(step) = edit.step {
+        let steps = (value - edit.min) / step;
+        if (steps - steps.round()).abs() >= 0.000_01 {
+            return Err(format!(
+                "Result must use steps of {step} from {}.",
+                edit.min
+            ));
+        }
+    }
+    Ok(value)
 }
 
 fn gain_db(value: f32, power: f32) -> f32 {
@@ -7679,6 +7722,7 @@ mod tests {
                         max: 10.0,
                         step: None,
                         display_scale: 1.0,
+                        display_unit: String::new(),
                         slew_min: None,
                         gain_power: None,
                         raw_max: 10.0,
@@ -10904,6 +10948,265 @@ mod tests {
                 }
                 assert!(rack.editing.as_ref().unwrap().stale);
             }
+        }
+    }
+
+    fn expression_enter() -> egui::Event {
+        egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn expression_popup_typing_replaces_selection_and_commits_once_at_captured_revision() {
+        for (text, expected) in [("220 * 2", 440.0), ("A4", 440.0)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"vco","kind":"multi_vco"}]}))
+            .unwrap();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
+            right_click_parameter(&ctx, &mut rack, &patch, 17, pos2(99.0, 137.0), 1.0);
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Text(text.into())],
+                true,
+                true,
+                17
+            )
+            .0
+            .is_none());
+            assert_eq!(
+                rack.editing.as_ref().unwrap().text,
+                text,
+                "opening must select the old value so typing replaces it without Cmd+A"
+            );
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![expression_enter()],
+                true,
+                true,
+                17,
+            )
+            .0;
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", args))
+                if args["id"] == "vco" && args["parameter"] == "frequency"
+                && args["value"] == expected && args["expected_revision"] == 17
+                && args.get("history_group").is_none()),
+                "{text}"
+            );
+            assert!(rack.editing.is_none());
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.5,
+                vec![expression_enter()],
+                true,
+                true,
+                17
+            )
+            .0
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn expression_popup_invalid_or_stale_draft_never_emits_a_command() {
+        for (text, step, stale) in [
+            ("220 *", None, false),
+            ("sqrt(-1)", None, false),
+            ("1e9", None, false),
+            ("0.5", Some(1.0), false),
+            ("220 * 2", None, true),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let kind = if step.is_some() {
+                "analog_vco"
+            } else {
+                "multi_vco"
+            };
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"vco","kind":kind}]}))
+            .unwrap();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
+            let target = if step.is_some() {
+                pos2(129.0, 204.0)
+            } else {
+                pos2(99.0, 137.0)
+            };
+            right_click_parameter(&ctx, &mut rack, &patch, 17, target, 1.0);
+            if step.is_some() {
+                assert_eq!(rack.editing.as_ref().unwrap().parameter, "waveform");
+                assert_eq!(rack.editing.as_ref().unwrap().step, step);
+            }
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Text(text.into())],
+                true,
+                true,
+                17,
+            );
+            assert_eq!(rack.editing.as_ref().unwrap().text, text);
+            let revision = if stale { 18 } else { 17 };
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![],
+                true,
+                true,
+                revision
+            )
+            .0
+            .is_none());
+            assert!(
+                frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.5,
+                    vec![expression_enter()],
+                    true,
+                    true,
+                    revision
+                )
+                .0
+                .is_none(),
+                "{text}"
+            );
+            assert!(
+                rack.editing.is_some(),
+                "invalid draft remains editable: {text}"
+            );
+            assert_eq!(rack.editing.as_ref().unwrap().stale, stale);
+        }
+    }
+
+    #[test]
+    fn expression_legacy_value_double_click_preserves_display_unit_conversions() {
+        for (kind, target, text, parameter, expected, clocked) in [
+            (
+                "vca_mix",
+                pos2(61.5, 171.0),
+                "gaintodb(0)",
+                "level1",
+                0.0,
+                false,
+            ),
+            (
+                "rescale",
+                pos2(84.0, 173.0),
+                "dbtogain(-inf)",
+                "gain",
+                0.0,
+                false,
+            ),
+            (
+                "multi_vco",
+                pos2(249.0, 169.0),
+                "25 + 10",
+                "pulse_width",
+                0.35,
+                false,
+            ),
+            (
+                "process",
+                pos2(144.0, 170.0),
+                "1000 * 2",
+                "slew",
+                1.0,
+                false,
+            ),
+            (
+                "multi_lfo",
+                pos2(99.0, 169.0),
+                "1 + 1",
+                "frequency",
+                4.0,
+                true,
+            ),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"target","kind":kind},{"id":"clock","kind":"gate"}]}))
+            .unwrap();
+            if clocked {
+                patch.cables.push(Cable {
+                    id: None,
+                    from: "clock".into(),
+                    output: "out".into(),
+                    to: "target".into(),
+                    input: "clock".into(),
+                });
+            }
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
+            for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)] {
+                frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![egui::Event::PointerMoved(target), button(target, pressed)],
+                    true,
+                    true,
+                    17,
+                );
+            }
+            assert_eq!(
+                rack.editing
+                    .as_ref()
+                    .expect("double click opens value editor")
+                    .parameter,
+                parameter
+            );
+            frame_revision_state(&ctx, &mut rack, &patch, 1.3, vec![], true, true, 17);
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![egui::Event::Text(text.into())],
+                true,
+                true,
+                17,
+            );
+            assert_eq!(rack.editing.as_ref().unwrap().text, text, "{kind}");
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.5,
+                vec![expression_enter()],
+                true,
+                true,
+                17,
+            )
+            .0;
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", args))
+                if args["parameter"] == parameter && args["expected_revision"] == 17
+                && (args["value"].as_f64().unwrap() - expected).abs() < 0.0001
+                && args.get("history_group").is_none()),
+                "{kind}: {text}"
+            );
         }
     }
 }

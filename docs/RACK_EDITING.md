@@ -58,7 +58,10 @@ Clicking outside the parameter menu cancels it. Losing app focus or opening
 a modal editor also discards the draft. The editor shows the control's units
 and accepted range. Gain controls accept
 decibels, including `-inf` for silence; stepped controls require a permitted step.
-Expressions and musical note names are not supported yet.
+Type a number, expression, or note name: `220*2`, `A4`, `C#4`, or `C4v`.
+The current value is selected when the editor opens, and **Result** previews the
+evaluated value in the control's entry units. Typing does not change the patch
+until Apply or Enter. See [expression syntax and compatibility](PARAMETER_EXPRESSIONS.md).
 
 An open draft belongs to the patch revision at which it was opened. If another
 edit, including an MCP command, changes that revision, reopen the control before

@@ -3732,6 +3732,13 @@ impl eframe::App for OpenPatch {
             input
                 .events
                 .retain(|event| !matches!(event, egui::Event::WindowFocused(_)));
+            if self
+                .smoke_test
+                .as_ref()
+                .is_some_and(|(_, frame, _)| *frame == 612)
+            {
+                input.events.push(egui::Event::Text("A4*2".into()));
+            }
         }
     }
 
@@ -3945,6 +3952,7 @@ mod project_workflow_tests {
         app.sync();
         let mut output = None;
         for frame in 0..18 {
+            app.smoke_test.as_mut().unwrap().1 = 606 + frame;
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -3961,6 +3969,8 @@ mod project_workflow_tests {
         let output = output.unwrap();
         preset_text(&output, "Apply");
         preset_text(&output, "Enter frequency in Hz.");
+        preset_text(&output, "Result: 880 Hz");
+        assert_eq!(app.patch.nodes[0].params["frequency"], 523.251);
         assert!(egui::Popup::is_any_open(&ctx));
         app.smoke_test = None;
         let mut real_input = egui::RawInput {

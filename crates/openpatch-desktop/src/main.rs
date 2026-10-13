@@ -3,6 +3,7 @@ mod app;
 mod audio;
 mod chrome;
 mod document_state;
+mod expression;
 mod keyboard;
 mod library;
 mod midi;

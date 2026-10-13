@@ -32,7 +32,7 @@ are relative to `crates/openpatch-desktop/src/`.
 
 | Priority | Reference behavior | Current evidence and acceptance work |
 |---|---|---|
-| 1 | Right-click parameter entry, including expressions and note values. [Key commands](https://vcvrack.com/manual/KeyCommands) | Direct numeric entry in a knob context menu and the value-label double-click editor share conversions and revision checks. Expressions and note values remain missing. [Editing contract](RACK_EDITING.md#exact-parameter-values). |
+| 1 | Right-click parameter entry, including expressions and note values. [Key commands](https://vcvrack.com/manual/KeyCommands) | Both entry paths share a bounded expression/note evaluator, conversions, and revision checks. Pinned evaluator comparisons and intentional precedence corrections are documented; whole-application parity is not claimed. [Expression contract](PARAMETER_EXPRESSIONS.md), [editing contract](RACK_EDITING.md#exact-parameter-values). |
 | 2 | Cmd/Ctrl output cable stacking and plug dragging. [Getting started](https://vcvrack.com/manual/GettingStarted) | `rack.rs` supports cable editing and Shift-drop stacking. Qualify the documented modifier workflow, occupied ports, stacked-plug selection, detach/cancel, and undo using actual pointer events. |
 | 3 | 25–400% zoom, keyboard zoom/pan, and module-position locking. [Menu bar](https://vcvrack.com/manual/MenuBar), [Key commands](https://vcvrack.com/manual/KeyCommands) | Current rack zoom is 40–180%; Cmd/Ctrl+0 and mouse navigation exist. Extend the range and shortcuts, add a movement lock, and test cursor anchoring and text-entry/keyboard conflicts. |
 | 4 | Hovered-module deletion and clearing patch cables. [Key commands](https://vcvrack.com/manual/KeyCommands), [Menu bar](https://vcvrack.com/manual/MenuBar) | Current deletion requires selection; `app.rs` lacks Clear cables. Add a hovered fallback and a single shared-history clear action. Preserve selection semantics and reject stale MCP/UI edits. |
@@ -87,7 +87,7 @@ precedence. It evaluates `-2^2` as `-4`, `2^3^2` as `512`, and `2^-2` as `0.25`.
 The same evaluator incorrectly produces `-4` for `(-2)^2`; its upstream tests
 explicitly omit known problematic parentheses cases. These are isolated
 dependency results, not a test of the complete Rack application. OpenPatch's
-future parser should document deliberate corrections alongside supported syntax.
+parser uses conventional exponent grouping and documents these corrections alongside supported syntax.
 [Reproducible reference results](benchmarks/parameter-expression-reference.json),
 [pinned dependency tests](https://github.com/codeplea/tinyexpr/blob/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/smoke.c#L575-L594).
 
