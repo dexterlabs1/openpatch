@@ -1,0 +1,947 @@
+{
+  "reference": {
+    "fundamental_commit": "e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e",
+    "rack_sdk": "2.6.4"
+  },
+  "method": "Direct simultaneous four-jack voltage comparison, no cable delay, discard first 512 samples. Includes real passband/phase differences and accumulated tuning drift; these residuals are not alias-only measurements.",
+  "measurement_kind": "diagnostic_residuals_not_parity_pass",
+  "wave_order": [
+    "sine",
+    "triangle",
+    "saw",
+    "square"
+  ],
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "binary_sha256": {
+    "rust": "3950612e985cd2ae32e145ec7e5a9c7f13053babc0bfb3dfd5c704b5cd38976b",
+    "reference": "7bd4a9d7f6f87e09c9926926f989ff0964d4be4560e25eeb629bb8a09556057a"
+  },
+  "exporter_timeout_seconds": 120.0,
+  "cases": {
+    "default_44100": {
+      "rms_error_volts": [
+        0.0005972207875941749,
+        0.0006218554916293181,
+        0.18448760070734013,
+        0.24719248065919472
+      ],
+      "max_error_volts": [
+        0.0017318204045295715,
+        0.002124309539794922,
+        0.9054632186889648,
+        0.8696932792663574
+      ],
+      "rust_mean_volts": [
+        0.03192587785248027,
+        0.014687928397847827,
+        2.088512179945307,
+        0.03286688685384433
+      ],
+      "reference_mean_volts": [
+        0.03192901621417453,
+        0.014686891109568024,
+        2.1424494739673796,
+        0.03296914136396178
+      ],
+      "validation": {
+        "sample_rate": 44100,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "0e64724784df853daf9bc46de5dd3d7f65f527a2c7c3a6290d8439851cfebcf1",
+        "reference_input_sha256": "bf42b6a36d8133c895d969409d5c2d6c45da431c05bbdb0f0c82425ef8541b78",
+        "rust_trace_sha256": "8e1ba71cd51dbec8475c05dbdb56872931ff06ea7d502a20f413d861f4bacb4d",
+        "reference_trace_sha256": "7ff67875147b3d395638fe5778ab2b94d2ff175e88efd82b5709fd0a79cf40ef"
+      }
+    },
+    "default_48000": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.23703279126845025
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        0.8998570442199707
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        0.008252688832726562
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        0.008116507652691023
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "b140aaa41b9d10700c51e9293ecdf86c59761ce4672bd91ebe0cfb9724b18a22",
+        "reference_input_sha256": "bf42b6a36d8133c895d969409d5c2d6c45da431c05bbdb0f0c82425ef8541b78",
+        "rust_trace_sha256": "8cfe9f21f1a42c0e754ffac0dc2989cc87c9a5da28c9df213a993c7cf4e4a280",
+        "reference_trace_sha256": "d1cb194a6a6bc79b3c1f60f9562a03410278732755692d01f118cd8875fc6877"
+      }
+    },
+    "default_96000": {
+      "rms_error_volts": [
+        0.000976654337441185,
+        0.0010248297900821743,
+        0.12405495610948236,
+        0.16676810251314494
+      ],
+      "max_error_volts": [
+        0.002868298441171646,
+        0.0035610198974609375,
+        0.876248836517334,
+        0.8336958885192871
+      ],
+      "rust_mean_volts": [
+        -0.013264992182424369,
+        -0.0017699646779012332,
+        1.9707142019885244,
+        -0.04476040355608954
+      ],
+      "reference_mean_volts": [
+        -0.013297613966278732,
+        -0.0017869313176864428,
+        1.9953613439853597,
+        -0.045118797250809924
+      ],
+      "validation": {
+        "sample_rate": 96000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "0cecbe11399898f654351ce4d6a513e27547c728133fd917853f0dc0379a4562",
+        "reference_input_sha256": "bf42b6a36d8133c895d969409d5c2d6c45da431c05bbdb0f0c82425ef8541b78",
+        "rust_trace_sha256": "4f5923688ef79b59b22c373bdbc6f7ae6f8d1ac16279c9d055e9a743e21b5de5",
+        "reference_trace_sha256": "586b6b9376da2862466fb33ac03ae41d8672c5efff9c0b8df1723be33666d0a4"
+      }
+    },
+    "hz_110": {
+      "rms_error_volts": [
+        0.0010219539731195243,
+        0.001058450536503273,
+        0.11634943306785593,
+        0.15354251473884667
+      ],
+      "max_error_volts": [
+        0.0029205605387687683,
+        0.00372314453125,
+        0.9963712692260742,
+        0.952174186706543
+      ],
+      "rust_mean_volts": [
+        0.01387018473809154,
+        -0.039137259783759266,
+        1.9563735414933034,
+        -0.018498146970523523
+      ],
+      "reference_mean_volts": [
+        0.013853271569435796,
+        -0.039147738139831745,
+        1.9775133395710782,
+        -0.01757222884722675
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "37c14452bd3e2c98b72db2c51dc95333c02b99137f6e9765ced89ce8de3ccc18",
+        "reference_input_sha256": "8ea5ed81f7f71d2dfb953fb53bafc5abd6055302767814798f70f6bd82da2879",
+        "rust_trace_sha256": "411475a93ee0b485712193470dad653edb98b07b00041d8a7bcf88377ee0bc9f",
+        "reference_trace_sha256": "5dc5ff74e5d17dc85fa975e1babbf7b497efff32615154ae9bf0d2f902a7ac0f"
+      }
+    },
+    "hz_1000": {
+      "rms_error_volts": [
+        0.00954661104509219,
+        0.009496853607469236,
+        0.339873988595207,
+        0.46176432230236103
+      ],
+      "max_error_volts": [
+        0.02760648727869519,
+        0.031795501708984375,
+        0.7871917486190796,
+        0.7729206085205078
+      ],
+      "rust_mean_volts": [
+        7.308968245448947e-17,
+        0.0,
+        2.5165324844419956,
+        -0.002356120936262111
+      ],
+      "reference_mean_volts": [
+        1.924497385819753e-05,
+        1.849314721766859e-05,
+        2.704595695853156,
+        -0.0024925719345143685
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "5890755304c0f0818d46eb4d72ea4e6757424b8ce37a54e4ee8dc3e30b994da5",
+        "reference_input_sha256": "5c281e22c7b1974fd7bf8354dd9dba46a4028138c68f5f20924d983ff6defe7a",
+        "rust_trace_sha256": "68fdf7dcff5dddbc64ba7aa661dd3197dea6522f58775fabdf780032f1f250cf",
+        "reference_trace_sha256": "77f37d14fd95e6adaee2162ddb320adf75f91061ccef8d12ebc25e86bc0feb2a"
+      }
+    },
+    "hz_5000": {
+      "rms_error_volts": [
+        0.03982467294506814,
+        0.039826755192239195,
+        0.9935385956413182,
+        0.5364721538050855
+      ],
+      "max_error_volts": [
+        0.11478066444094104,
+        0.1334233283996582,
+        1.4874860048294067,
+        0.745685338973999
+      ],
+      "rust_mean_volts": [
+        7.424616477180734e-17,
+        0.0,
+        4.989796581988533,
+        -0.0007925903929087023
+      ],
+      "reference_mean_volts": [
+        -1.1510417486230533e-05,
+        -6.796167387316624e-06,
+        5.929869264162456,
+        -0.0009619355284182044
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "9efb029e90655c66de8644664a010e5761ac32b9cc87bc7dff158764895465bd",
+        "reference_input_sha256": "7cbdf0d00dda900f7a301bcc831081b437e4908a89d48c719b2d2ae23c82c539",
+        "rust_trace_sha256": "7253e97b18029ed1ee10f2bc29b9950f1a4d230f613272b8c69277cb180092ab",
+        "reference_trace_sha256": "2bf8ffb7c726e825f70ddcaf05798c9d2b2eb24f667bae6d2454878129f535f5"
+      }
+    },
+    "sync_0": {
+      "rms_error_volts": [
+        0.005349503246095852,
+        0.0964430032639463,
+        0.18182631507213828,
+        0.23769087512067513
+      ],
+      "max_error_volts": [
+        0.02659428119659424,
+        0.4794952869415283,
+        0.8789763450622559,
+        0.8401813507080078
+      ],
+      "rust_mean_volts": [
+        1.0917071322561243,
+        0.7035967644595076,
+        2.821050431250963,
+        -0.01976526917036002
+      ],
+      "reference_mean_volts": [
+        1.093207967079555,
+        0.6765697215819576,
+        2.882018248082022,
+        -0.018936561038329577
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "d915c6dc2a61193d8911cc9c8605c32de1e3d12373d768e4bf60277711695176",
+        "reference_input_sha256": "06d1fe619e61724efa99479a3f0b8c389db80c8f92aecb3687d108c1a86e150c",
+        "rust_trace_sha256": "74e43312ff4e54a56641f0c22f2784319060a27bc471c371331dd45fd1f52121",
+        "reference_trace_sha256": "397797e1451d0f4f0a27a1245a71a97c68ffa021ed99e56158294932421c5559"
+      }
+    },
+    "sync_1": {
+      "rms_error_volts": [
+        3.8055056872637277e-05,
+        3.676059075907243e-05,
+        0.2501401436777825,
+        0.29165773980936677
+      ],
+      "max_error_volts": [
+        0.0001248680055141449,
+        0.00013637542724609375,
+        0.8552899360656738,
+        0.8224186897277832
+      ],
+      "rust_mean_volts": [
+        -0.582084066576014,
+        -0.9776268994607865,
+        1.4187761569586048,
+        0.012828871042559815
+      ],
+      "reference_mean_volts": [
+        -0.5820919782777007,
+        -0.9776295564724327,
+        1.4179250513475077,
+        0.013039659882512449
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "681f87bc858eef5616b431125af420bb6a6e872e5ac515896e85a91188de1c57",
+        "reference_input_sha256": "84e196a5d4c94819be1fd9ca0d2092f87a328571d72cfdcd57936ecff6b06230",
+        "rust_trace_sha256": "eebc0e07a88c177bee7d577fbd8a4702b46253d3db199c0d6b2e75027a47ee2b",
+        "reference_trace_sha256": "82b11e4a1f9d22ce4e065b09d59391a250351e96243f5b65c628304f943c55bb"
+      }
+    },
+    "linear_stop": {
+      "rms_error_volts": [
+        0.0,
+        0.0,
+        0.0,
+        7.745093117238983e-05
+      ],
+      "max_error_volts": [
+        0.0,
+        0.0,
+        0.0,
+        0.00011381276184274647
+      ],
+      "rust_mean_volts": [
+        0.0,
+        2.8125,
+        2.8125,
+        0.06183431000586706
+      ],
+      "reference_mean_volts": [
+        0.0,
+        2.8125,
+        2.8125,
+        0.06189003792370329
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "e3e5ce6af9fd9849772446a3922a59a291547e99ada089324473b8076614b2c2",
+        "reference_input_sha256": "a02797269a348e8889eb78742dae6a0724ec09a43add4e19cfcc18a6c6145f10",
+        "rust_trace_sha256": "eb23a0427d79fe226ab9b131f1da8a149ec0ea93fd036758efaea61f6cb974e0",
+        "reference_trace_sha256": "19f7d021f173f97a58505bfe2c6c72929bc03330549983d0b57e404685dc728d"
+      }
+    },
+    "poly16": {
+      "rms_error_volts": [
+        0.002418489393204213,
+        0.002520474191980238,
+        0.22825474881317762,
+        0.3063196650413846
+      ],
+      "max_error_volts": [
+        0.01671450585126877,
+        0.02067279815673828,
+        1.0143165588378906,
+        0.969998836517334
+      ],
+      "rust_mean_volts": [
+        -0.0008798777090348153,
+        -0.0036097359390786805,
+        2.170129716517638,
+        -0.005497435798317696
+      ],
+      "reference_mean_volts": [
+        -0.0008851928733444463,
+        -0.0036153655910860986,
+        2.2529746460042874,
+        -0.005404370657250486
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 16,
+        "case_sha256": "fe6b17ea26bc3eadaeb5d3632744109a2355fe5ed08d8579bc01abaae96bb96b",
+        "reference_input_sha256": "36abf95571f8f8a2eee87d01b67830ca42b0d82a54b5dc0dd46e9ddbeef0d51b",
+        "rust_trace_sha256": "7003cf80b762f8c7c423e78d9fc943c60f77fe0f4aad04f3eff9495043928d17",
+        "reference_trace_sha256": "7eaa3d092cc4fe9e8a359e64f585b49d722cfca8538bedf7f123e0d9fcc47df8"
+      }
+    },
+    "width_0.01": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.09880734908278625
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        1.0428438186645508
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        -0.0613800203026661
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        -0.06167739966592004
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "2dd134ee0a8cf188327a3f903bfb177eddd0a9502f380ddc8736b1d4cf24267c",
+        "reference_input_sha256": "8fae5edf638d89fb659a26867919096bf454fdb277e22a3fcc58890f982982fa",
+        "rust_trace_sha256": "b2b69e423ea6a5a58d119fb7806fb1c3733e2fa2d226f851122ed1ef37cd4990",
+        "reference_trace_sha256": "511483aa71873c760ef48e4f11786de26adbd25822d3d9f2f9d6fc618a0902c2"
+      }
+    },
+    "width_0.1": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.23784440178828642
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        0.9175271987915039
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        -0.04978760993334011
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        -0.050057981223411235
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "d4a2f051301adcc3402f73408ecf3a35cf6da20f28bc5f48b04a4ecb02d595fe",
+        "reference_input_sha256": "3d4e79a1c2e1e86db6dc8249b34fccbb45a971ac8fdd09040e47838582bffcd4",
+        "rust_trace_sha256": "e4a07f56dc8a923dccd0cc568887339efbe1d8ef28be156a15a1ef6f882f4cf2",
+        "reference_trace_sha256": "fe9edb01d3a57a26071b8b9434e068e6028eae5031e3f6cdd6e20624702f4525"
+      }
+    },
+    "width_0.9": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.2378359353616914
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        0.9147876501083374
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        0.04374983096543777
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        0.04370769635376443
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "507ee783da0400fb57e114fd1591f108c0c39ddff5b2887bdeac77cf0a0180f4",
+        "reference_input_sha256": "0c5932417bc30bae36cfbed0ecd6b298d97004d530730f0ac8e7d755428ec6ba",
+        "rust_trace_sha256": "90d812344b18b4d972be907b8a8649814101208975c7cae2778480ff8a1e4289",
+        "reference_trace_sha256": "7b3613fa5b1dd1f38f9fbcbbad8b46c30170aac967719d101c2c1e169acde6e3"
+      }
+    },
+    "width_0.99": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.09880574032061028
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        1.0609941482543945
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        0.05998653150691856
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        0.05998245194271779
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "7e37dee12c88b4836c265317495631ea7e9f99868a77b68c2f78ebd86156dca1",
+        "reference_input_sha256": "9617a9963965ce2245e34d7e240a5ec499daaa29b2902f2bd753532b88b18c41",
+        "rust_trace_sha256": "6513ddece9bd486929975b0a024b640443175622aa2d3ee8dfff5c0989965d46",
+        "reference_trace_sha256": "21a121011e05c19355ce57efcab60da8c0fec3ce83d2d447d149d0ccd54ce86c"
+      }
+    },
+    "pwm_audio": {
+      "rms_error_volts": [
+        0.0011382477420481076,
+        0.0011804244813488239,
+        0.17687695344215582,
+        0.8267509768877839
+      ],
+      "max_error_volts": [
+        0.003261670470237732,
+        0.004028797149658203,
+        0.9399814605712891,
+        9.439806938171387
+      ],
+      "rust_mean_volts": [
+        0.01608725837803604,
+        0.01526178881119904,
+        2.069502976176414,
+        0.006488735267218241
+      ],
+      "reference_mean_volts": [
+        0.016081653465516866,
+        0.015256432967782984,
+        2.1188360330757177,
+        0.001994171536838015
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "d9902adc9578ae93f14b9d39f79ee511b06b56e6c904f7a51b0d976eeb881070",
+        "reference_input_sha256": "7f4e9da4ca61f2c316c43d8898830049f05625994f29f5f1154463e4161c9ee8",
+        "rust_trace_sha256": "eb36e3864cea979d67a23401c9a5d3d4918255305396fd730de282a44aa38377",
+        "reference_trace_sha256": "b8db4c607e595acf9c1d28a23072f4c35849cc6a14e18ab45bf0c1b0e6db9015"
+      }
+    },
+    "sync_disconnect": {
+      "rms_error_volts": [
+        0.024292121463740688,
+        0.04433329591234612,
+        0.17438592182043708,
+        0.2379033131217111
+      ],
+      "max_error_volts": [
+        0.318117618560791,
+        0.5805730819702148,
+        0.8677582740783691,
+        0.8526644706726074
+      ],
+      "rust_mean_volts": [
+        0.13338559576247158,
+        0.13044687222054563,
+        2.114131868047631,
+        -0.1455674825259242
+      ],
+      "reference_mean_volts": [
+        0.1310471793015798,
+        0.12616851515228214,
+        2.158282816453872,
+        -0.15236377909847457
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 2048,
+        "raw_shape": [
+          2048,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 524288,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 1536,
+        "compared_voices": 1,
+        "case_sha256": "eacd1951d0eb24ccfd60213b722f3ebf81e1bae7ec58def4065e253beb8ba9fb",
+        "reference_input_sha256": "360963030302a7c2cd6dc9602f46ecaffd6bc1466dd941dd415318440bcaa698",
+        "rust_trace_sha256": "faa614ac300eb931a4a37228efc99c06bd52947a69770b9cc6d58c3a73bc105e",
+        "reference_trace_sha256": "90492104204a0649fc64d88d0396c4646320db2c458a657643869a7aa7b36dd0"
+      }
+    },
+    "mode_switch": {
+      "rms_error_volts": [
+        0.0002798458193735804,
+        0.0002833613597116496,
+        0.12570141357223713,
+        0.1726803047629721
+      ],
+      "max_error_volts": [
+        0.000967102125287056,
+        0.00119781494140625,
+        0.8869495391845703,
+        0.8491201400756836
+      ],
+      "rust_mean_volts": [
+        -0.014876630790565417,
+        0.034199882276642564,
+        1.9924149638151059,
+        0.044938192482472265
+      ],
+      "reference_mean_volts": [
+        -0.014905456619869386,
+        0.03417697336393693,
+        2.0175689959833756,
+        0.042270523772458546
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 4096,
+        "raw_shape": [
+          4096,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 1048576,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 3584,
+        "compared_voices": 1,
+        "case_sha256": "4368d4153a1a8ad653fbfcf9880630fd38c8fb15bbd34fc75f2792f6567c452f",
+        "reference_input_sha256": "2bb86e7f4e92d258f3e2f47fa5263b0f2125ff8ceb7fcbde6cbad9e5095019d3",
+        "rust_trace_sha256": "24b9f1662177c1edf3b0c29567954ac2088cbdef81bbe23597229ff9c24cccc0",
+        "reference_trace_sha256": "4e038a405358690be03942aa422c935c4337de18ecd18497edcdabd090235ecd"
+      }
+    },
+    "voice_retirement": {
+      "rms_error_volts": [
+        4.380178793964429,
+        4.103932801653657,
+        3.168892334064087,
+        5.605133041828737
+      ],
+      "max_error_volts": [
+        9.823803424835205,
+        9.765692710876465,
+        11.356069564819336,
+        12.459112644195557
+      ],
+      "rust_mean_volts": [
+        0.024198926013673776,
+        0.023040149931016378,
+        1.8608634619468887,
+        -0.008078367581514303
+      ],
+      "reference_mean_volts": [
+        0.008210705094305533,
+        0.01567035345295818,
+        1.9074935012735605,
+        -4.290406153424036e-05
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 4096,
+        "raw_shape": [
+          4096,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 1048576,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 3584,
+        "compared_voices": 8,
+        "case_sha256": "cdf627a2c3dcfb931316a2276d8429e3a5ccd172cc57733bdad1aa8289d4f9aa",
+        "reference_input_sha256": "3b56f6d5915dc9569b04b7f6b920d6136915aa2561fa00d57fb2f2ecb02a8c7c",
+        "rust_trace_sha256": "de29460e82b184e25833ad2781af333a4847d8cdfc48509bb78bcf6423b551ee",
+        "reference_trace_sha256": "63519dd691d7871070a3a5f46a94fb39ab13b5187a253d01e2ad316266cc3b3c"
+      }
+    },
+    "narrow_pulse_802.734375_0.99": {
+      "rms_error_volts": [
+        0.0017842929431538222,
+        0.0018606982313322045,
+        0.3076005528751836,
+        1.1962529066884706
+      ],
+      "max_error_volts": [
+        0.005162954330444336,
+        0.00623321533203125,
+        0.8755450248718262,
+        9.373092532157898
+      ],
+      "rust_mean_volts": [
+        -0.012263808927188317,
+        -0.007000071098688446,
+        2.388307837709048,
+        0.06080181098699408
+      ],
+      "reference_mean_volts": [
+        -0.012261385346452396,
+        -0.007001280037638935,
+        2.5398119603759066,
+        0.05845273279699844
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "86c608e5062991834f21ccf714560d0ca14272eb51ea9916a00188f5b3ba98c2",
+        "reference_input_sha256": "6d6f4024db84bb84a7751576c806c28dc4a300e228671d4b49d7171f91d72d52",
+        "rust_trace_sha256": "d9dcc43a0be642c93e35e7f047c9e783b9403ca108e34eab2ffef92ba619d881",
+        "reference_trace_sha256": "741fc6dba3713ad2312af2b7c5e827e9f1c82a3102ce4b8c1d5daec924a2bf39"
+      }
+    },
+    "narrow_pulse_4798.828125_0.99": {
+      "rms_error_volts": [
+        0.052445947587431256,
+        0.05306479084154369,
+        0.9699758436582587,
+        3.7946547799752746
+      ],
+      "max_error_volts": [
+        0.15117496252059937,
+        0.1545729637145996,
+        1.5604497194290161,
+        9.198703050613403
+      ],
+      "rust_mean_volts": [
+        -0.0009580310434103012,
+        -0.001087710699842622,
+        4.867360083514359,
+        0.060567176883694174
+      ],
+      "reference_mean_volts": [
+        -0.0009489868767559529,
+        -0.0010714659675822229,
+        5.76961653130129,
+        -0.09945088056289629
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "fa8741d9828573c7cae1a627d35c959a8b388c612ec598dd5f79e0da0284528f",
+        "reference_input_sha256": "0feb0fa43bb5787cb61ed8475d3777eb9c008d396e1ccd411d22fc4df6d43edd",
+        "rust_trace_sha256": "cbdf20dac91c4eebb66314315d4bb6f158fbb1f9c96b898de1bfb9a48f355074",
+        "reference_trace_sha256": "0b19f2603aa05d419c3f0ff7280d7f1e6813f6570d02d798d69b0168776396a6"
+      }
+    },
+    "narrow_pulse_16798.828125_0.9": {
+      "rms_error_volts": [
+        0.051766485126607954,
+        0.054491979212839194,
+        3.1853195371048355,
+        3.599086613353975
+      ],
+      "max_error_volts": [
+        0.1492542028427124,
+        0.18636655807495117,
+        3.7712039947509766,
+        7.908517502248287
+      ],
+      "rust_mean_volts": [
+        -0.0005634088379641374,
+        0.00012968337396159768,
+        12.285973560313384,
+        0.0493787785343405
+      ],
+      "reference_mean_volts": [
+        -0.0005535953445360064,
+        0.00012414293507845287,
+        15.443389955783884,
+        -0.07239760335608783
+      ],
+      "validation": {
+        "sample_rate": 48000,
+        "frames": 8192,
+        "raw_shape": [
+          8192,
+          16,
+          4
+        ],
+        "expected_bytes_per_trace": 2097152,
+        "finite_float32_traces": true,
+        "discarded_frames": 512,
+        "compared_frames": 7680,
+        "compared_voices": 1,
+        "case_sha256": "2f0ca128e54f17272a5ee89244a5aeb04e89fca2274a33cd49646416f84625f3",
+        "reference_input_sha256": "d19ace1fa9fd0614aa066936a59b1eda4c2bf72bdea726e058e4a1d5b41f8004",
+        "rust_trace_sha256": "5890979fff2d64c741547f73306e5e370036a1489842c3faa5bc62dfce26cec2",
+        "reference_trace_sha256": "d96ad61afd80997f893beb4b12cb31e56f6b1ebc8a218dfe263240bc57cd4806"
+      }
+    }
+  },
+  "note": "Development measurement on macOS ARM64. Functional tests pass, but these diagnostics do not establish VCV parity or calibrated hardware fidelity."
+}

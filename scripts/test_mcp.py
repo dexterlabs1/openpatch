@@ -7,6 +7,7 @@ Set ``OPENPATCH_BIN`` to override the default release binary location.
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import subprocess
@@ -560,6 +561,136 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("undo")
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
         self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
+
+    def test_multi_vco_catalog_named_outputs_and_version_boundary(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        modules = {module["kind"]: module for module in catalog["modules"]}
+        module = modules["multi_vco"]
+        self.assertEqual(module["model"], "functional")
+        self.assertEqual(module["min_patch_version"], 2)
+        self.assertEqual(module["inputs"], ["pitch", "fm", "sync", "pwm"])
+        self.assertEqual(module["outputs"], ["sine", "triangle", "saw", "square"])
+        self.assertEqual(set(module["params"]), {
+            "frequency", "fm_amount", "pulse_width", "pwm_amount", "linear_fm", "soft_sync",
+        })
+        for flag in ("linear_fm", "soft_sync"):
+            self.assertEqual([module["params"][flag][key] for key in ("default", "min", "max", "step")], [0, 0, 1, 1])
+        self.assertEqual(modules["analog_vco"]["min_patch_version"], 1)
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 1, "nodes": [{"id": "old", "kind": "constant"}], "output": "old",
+        }})
+        legacy = self.patch_snapshot()
+        self.require_tool_error("add_module", {"id": "vco", "kind": "multi_vco"})
+        self.require_tool_error("replace_patch", {"patch": {
+            "version": 1, "nodes": [{"id": "vco", "kind": "multi_vco"}],
+            "output": "vco", "output_port": "sine",
+        }})
+        self.assertEqual(self.patch_snapshot(), legacy)
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "vco", "kind": "multi_vco", "params": {"frequency": 220}}],
+            "output": "vco", "output_port": "sine",
+        }})
+        before = self.patch_snapshot()
+        traces = []
+        for port in module["outputs"]:
+            captured = self.payload(self.require_tool_success("capture_signal", {
+                "id": "vco", "port": port, "seconds": 0.01, "points": 128,
+                "expected_revision": before["revision"],
+            }))
+            self.assertEqual(captured["port"], port)
+            self.assertEqual(captured["summary"]["active_frames"], 480)
+            self.assertGreater(captured["summary"]["rms"], 0)
+            self.assertTrue(all(math.isfinite(captured["summary"][key]) for key in ("dc", "rms", "peak", "min", "max")))
+            traces.append(tuple(point["mean"] for point in captured["bins"]))
+        self.assertEqual(len(set(traces)), 4, "Named VCO jacks must expose distinct waveform traces")
+        for tool, arguments in [
+            ("set_output", {"id": "vco", "port": "out"}),
+            ("capture_signal", {"id": "vco", "port": "missing", "seconds": 0.001}),
+            ("set_parameter", {"id": "vco", "parameter": "waveform", "value": 1}),
+        ]:
+            self.require_tool_error(tool, arguments)
+        self.assertEqual(self.patch_snapshot(), before)
+
+    def test_multi_vco_polyphonic_render_and_atomic_mode_edit_roundtrip(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 48000,
+            "nodes": [
+                {"id": "pitch", "kind": "poly_constant", "params": {"channels": 4, "v1": 0, "v2": 1, "v3": -1, "v4": 0.5}},
+                {"id": "aux", "kind": "constant", "params": {"value": 0.25}},
+                {"id": "sync", "kind": "multi_lfo", "params": {"frequency": 97}},
+                {"id": "vco", "kind": "multi_vco", "params": {"frequency": 220, "fm_amount": 0.25, "pulse_width": 0.35, "pwm_amount": 0.5}},
+                {"id": "audio", "kind": "audio_stereo"},
+            ],
+            "cables": [
+                {"from": "pitch", "to": "vco", "input": "pitch"},
+                {"from": "aux", "to": "vco", "input": "fm"},
+                {"from": "aux", "to": "vco", "input": "pwm"},
+                {"from": "sync", "output": "sine", "to": "vco", "input": "sync"},
+                {"from": "vco", "output": "sine", "to": "audio", "input": "left"},
+                {"from": "vco", "output": "square", "to": "audio", "input": "right"},
+            ], "output": "audio",
+        }})
+        before = self.patch_snapshot()
+        for port in ("sine", "triangle", "saw", "square"):
+            measured = self.payload(self.require_tool_success("analyze_signal", {
+                "id": "vco", "port": port, "seconds": 0.02,
+            }))
+            self.assertEqual(measured["max_channels"], 4)
+            self.assertEqual([channel["channel"] for channel in measured["channels"]], [1, 2, 3, 4])
+            self.assertTrue(all(channel["active_frames"] > 900 and channel["rms"] > 0 for channel in measured["channels"]))
+        rendered = self.payload(self.require_tool_success("render_audio", {"filename": "multi-vco-before.wav", "seconds": 0.02}))
+        self.assertEqual((rendered["frames"], rendered["channels"]), (960, 2))
+        with wave.open(str(self.workspace / "multi-vco-before.wav")) as wav:
+            self.assertEqual((wav.getframerate(), wav.getnchannels(), wav.getnframes()), (48000, 2, 960))
+            samples = struct.unpack("<1920h", wav.readframes(960))
+        self.assertTrue(any(abs(sample) > 100 for sample in samples[::2]))
+        self.assertTrue(any(abs(sample) > 100 for sample in samples[1::2]))
+        self.assertNotEqual(samples[::2], samples[1::2])
+        self.assertEqual(self.patch_snapshot(), before)
+        edits = [
+            {"tool": "set_parameter", "arguments": {"id": "vco", "parameter": "linear_fm", "value": 1}},
+            {"tool": "set_parameter", "arguments": {"id": "vco", "parameter": "soft_sync", "value": 1}},
+        ]
+        arguments = {"edits": edits, "expected_revision": before["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", arguments))
+        self.assertEqual(self.patch_snapshot(), before)
+        changed = self.payload(self.require_tool_success("apply_edits", arguments))
+        self.assertEqual(changed["patch"], preview["patch"])
+        self.assertEqual(changed["revision"], before["revision"] + 1)
+        self.assertEqual(changed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        parameters = next(node for node in changed["patch"]["nodes"] if node["id"] == "vco")["params"]
+        self.assertEqual((parameters["linear_fm"], parameters["soft_sync"]), (1, 1))
+        self.require_tool_error("apply_edits", arguments)
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "vco", "parameter": "linear_fm", "value": 0}},
+            {"tool": "set_parameter", "arguments": {"id": "vco", "parameter": "soft_sync", "value": 0.5}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), changed)
+        self.require_tool_success("render_audio", {"filename": "multi-vco-modes.wav", "seconds": 0.02})
+        self.assertNotEqual((self.workspace / "multi-vco-modes.wav").read_bytes(),
+                            (self.workspace / "multi-vco-before.wav").read_bytes())
+        self.assertEqual(self.patch_snapshot(), changed)
+        self.require_tool_success("undo", {"expected_revision": changed["revision"]})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("render_audio", {"filename": "multi-vco-restored.wav", "seconds": 0.02})
+        self.assertEqual((self.workspace / "multi-vco-restored.wav").read_bytes(),
+                         (self.workspace / "multi-vco-before.wav").read_bytes())
+        self.require_tool_success("redo")
+        self.require_tool_success("save_patch", {"filename": "multi-vco.json"})
+        saved_patch = json.loads((self.workspace / "multi-vco.json").read_text())
+        # File serialization uses f32's shortest round-trip decimal; MCP Values
+        # expose the same stored parameters widened to f64. Compare exact f32
+        # values while retaining every node, parameter key, cable ID and port.
+        for node in saved_patch["nodes"]:
+            node["params"] = {
+                name: struct.unpack("<f", struct.pack("<f", value))[0]
+                for name, value in node["params"].items()
+            }
+        self.assertEqual(saved_patch, changed["patch"])
+        self.require_tool_success("set_parameter", {"id": "vco", "parameter": "frequency", "value": 330})
+        self.require_tool_success("load_patch", {"filename": "multi-vco.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
 
     def test_capture_signal_calibration_bins_activity_and_snapshot_safety(self) -> None:
         self.require_tool_success("replace_patch", {"patch": {

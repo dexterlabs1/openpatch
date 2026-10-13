@@ -1026,6 +1026,42 @@ impl Rack {
                     );
                     continue;
                 }
+                if node.kind == "multi_vco" && matches!(*name, "linear_fm" | "soft_sync") {
+                    let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
+                    let rect = Rect::from_min_size(
+                        point(
+                            if *name == "linear_fm" {
+                                20.0
+                            } else {
+                                width * 0.5 + 5.0
+                            },
+                            279.0,
+                        ),
+                        vec2(width * 0.5 - 25.0, 25.0) * self.zoom,
+                    );
+                    let response = ui.put(
+                        rect,
+                        egui::Button::new(if *name == "linear_fm" { "LFM" } else { "SOFT" })
+                            .selected(enabled),
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::Checkbox,
+                            true,
+                            enabled,
+                            format!("{} {}", node.id, name),
+                        )
+                    });
+                    if response.clicked() {
+                        self.select_primary(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":if enabled{0.0}else{1.0}}),
+                        ));
+                    }
+                    response.on_hover_text(if *name=="linear_fm"{"Use linear FM. Off selects exponential FM. This mode is saved with the patch."}else{"Use soft sync. Off selects hard sync. This mode is saved with the patch."});
+                    continue;
+                }
                 if node.kind == "multi_lfo" && matches!(*name, "unipolar" | "invert") {
                     let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
                     let rect = Rect::from_min_size(
@@ -1165,7 +1201,7 @@ impl Rack {
                     )
                 } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
-                } else if node.kind == "multi_lfo" {
+                } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
                     (
                         pos2(
                             width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
@@ -1193,8 +1229,10 @@ impl Rack {
                         .filter(|step| *step > 0.0)
                         .map(|step| step as f32)
                 };
-                let geometric = node.kind == "multi_lfo" && *name == "frequency";
-                let clock_ratio = geometric
+                let geometric =
+                    matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
+                let clock_ratio = node.kind == "multi_lfo"
+                    && geometric
                     && patch
                         .cables
                         .iter()
@@ -1205,6 +1243,8 @@ impl Rack {
                     2.0
                 });
                 let fade_percent = node.kind == "fade";
+                let vco_percent = node.kind == "multi_vco"
+                    && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount");
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
@@ -1216,7 +1256,7 @@ impl Rack {
                     } else {
                         multiplier
                     }
-                } else if fade_percent {
+                } else if fade_percent || vco_percent {
                     100.0
                 } else {
                     1.0
@@ -2934,8 +2974,10 @@ impl Rack {
             if edit.gain_power.is_some() { ui.label("Enter dB. -inf sets the gain to zero."); }
             if edit.slew_min.is_some() { ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored)."); }
             if edit.display_scale == 0.5 { ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive."); }
+            if edit.parameter == "frequency" && edit.display_scale != 0.5 { ui.label("Enter frequency in Hz."); }
             if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
-            if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
+            if edit.display_scale==100.0&&matches!(edit.parameter.as_str(),"pulse_width"|"fm_amount"|"pwm_amount") {ui.label("Enter a percentage.");}
+            else if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
             if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") { ui.label("Enter time in seconds."); }
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
@@ -3864,7 +3906,7 @@ fn panel_width(kind: &str) -> f32 {
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
         "audio_stereo" | "octave" => HP * 12.0,
-        "mid_side" | "mult" | "multi_lfo" => HP * 20.0,
+        "mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
         "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
@@ -3918,6 +3960,7 @@ fn title(kind: &str) -> &str {
         "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
         "multi_lfo" => "LFO",
+        "multi_vco" => "MULTI VCO",
         "seq3" => "SEQUENCE 3",
         "lfo" => "SINE LFO",
         "gain" => "VCA",
@@ -4042,6 +4085,14 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "adsr" => &["attack", "decay", "sustain", "release"],
         "gate" => &["frequency", "duty"],
         "lfo" => &["frequency", "amplitude", "offset"],
+        "multi_vco" => &[
+            "frequency",
+            "pulse_width",
+            "fm_amount",
+            "pwm_amount",
+            "linear_fm",
+            "soft_sync",
+        ],
         "multi_lfo" => &[
             "frequency",
             "pulse_width",
@@ -4744,6 +4795,162 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn multi_vco_controls_modes_and_every_named_jack_have_independent_pointer_targets() {
+        let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"vco","kind":"multi_vco"},{"id":"source","kind":"constant"},{"id":"sink","kind":"audio_stereo"}]})).unwrap();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let source = fixture_jack(&rack, &patch, "source", "out", false);
+        for (index, name) in ["pitch", "fm", "sync", "pwm"].into_iter().enumerate() {
+            let input = fixture_jack(&rack, &patch, "vco", name, true);
+            let action = drag(&ctx, &mut rack, &patch, 1.0 + index as f64, source, input);
+            assert!(
+                matches!(action,Some(RackAction::Command("connect",ref args)) if args["to"]=="vco"&&args["input"]==name),
+                "input {name}"
+            );
+        }
+        let sink = fixture_jack(&rack, &patch, "sink", "left", true);
+        for (index, name) in ["sine", "triangle", "saw", "square"]
+            .into_iter()
+            .enumerate()
+        {
+            let output = fixture_jack(&rack, &patch, "vco", name, false);
+            let action = drag(&ctx, &mut rack, &patch, 6.0 + index as f64, output, sink);
+            assert!(
+                matches!(action,Some(RackAction::Command("connect",ref args)) if args["from"]=="vco"&&args["output"]==name),
+                "output {name}"
+            );
+        }
+        for (index, (name, position)) in [
+            ("frequency", pos2(99.0, 137.0)),
+            ("pulse_width", pos2(249.0, 137.0)),
+            ("fm_amount", pos2(99.0, 237.0)),
+            ("pwm_amount", pos2(249.0, 237.0)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let time = 12.0 + index as f64;
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(position), button(position, true)],
+            );
+            let moved = position - vec2(0.0, if name == "frequency" { 37.037037 } else { 10.0 });
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![egui::Event::PointerMoved(moved)],
+            );
+            let Some(RackAction::Command("set_parameter", args)) = action else {
+                panic!("knob {name}")
+            };
+            assert_eq!(args["parameter"], name);
+            if name == "frequency" {
+                assert!(
+                    (args["value"].as_f64().unwrap() - 523.25116).abs() < 0.02,
+                    "One-ninth of the nine-octave knob span must double Hz"
+                );
+            } else {
+                assert!(
+                    args["value"].as_f64().unwrap() > if name == "pulse_width" { 0.5 } else { 0.0 }
+                );
+            }
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.2,
+                vec![button(moved, false)],
+            );
+        }
+        for (index, name) in ["linear_fm", "soft_sync"].into_iter().enumerate() {
+            let target = pos2(106.5 + index as f32 * 135.0, 303.5);
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                18.0 + index as f64,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                18.1 + index as f64,
+                vec![button(target, false)],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==name&&args["value"]==1.0),
+                "mode {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn multi_vco_value_editors_use_hz_and_percentages_without_clock_ratio_conversion() {
+        for (name, position, text, scale, expected) in [
+            ("frequency", pos2(99.0, 169.0), "440", 1.0, 440.0),
+            ("pulse_width", pos2(249.0, 169.0), "35", 100.0, 0.35),
+            ("fm_amount", pos2(99.0, 269.0), "-25", 100.0, -0.25),
+            ("pwm_amount", pos2(249.0, 269.0), "75", 100.0, 0.75),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"vco","kind":"multi_vco"}]}),
+            )
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(position),
+                        button(position, pressed),
+                    ],
+                );
+            }
+            let edit = rack
+                .editing
+                .as_mut()
+                .expect("value editor must be distinct from knob and mode buttons");
+            assert_eq!(edit.parameter, name);
+            assert_eq!(edit.display_scale, scale);
+            if name == "frequency" {
+                assert!((edit.text.parse::<f32>().unwrap() - 261.62558).abs() < 0.001);
+            }
+            if name == "pulse_width" {
+                assert!((edit.min - 1.0).abs() < 0.001 && (edit.max - 99.0).abs() < 0.001);
+            }
+            edit.text = text.into();
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==name&&(args["value"].as_f64().unwrap()-expected).abs()<0.0001)
+            );
+        }
     }
 
     fn stacked_fixture() -> Patch {

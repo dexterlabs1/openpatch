@@ -661,6 +661,10 @@ impl OpenPatch {
                 self.sequence_layout();
             } else if title == "Switched stereo voice" {
                 self.switched_stereo_layout();
+            } else if title == "Synced waveform voice" {
+                self.rack
+                    .restore_layout(&Self::waveform_layout())
+                    .expect("bundled waveform layout");
             } else if title == "Stacked pitch voice" {
                 self.rack
                     .restore_layout(&Self::stacked_layout())
@@ -683,6 +687,13 @@ impl OpenPatch {
             }}),
         );
     }
+    fn waveform_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "notes":[0,0],"master":[360,0],"voice":[660,0],
+            "motion":[0,420],"mix":[300,420],"out":[690,420]
+        }})
+    }
+
     fn stacked_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
             "notes":[0,0],"vco":[360,0],"out":[570,0],
@@ -1112,6 +1123,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Synced waveform voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/synced-waveform-voice.json"
+                            ))
+                            .expect("valid bundled waveform voice");
+                            self.replace_from_menu(patch, "Synced waveform voice");
                             ui.close();
                         }
                         if ui.button("Stacked pitch voice").clicked() {
@@ -2077,6 +2096,28 @@ impl OpenPatch {
                 .expect("stacked fixture layout");
             self.title = "Stacked pitch voice · three cables at V/OCT".into();
         }
+        if *frame == 356 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/synced-waveform-voice.json"))
+                    .expect("valid waveform fixture");
+            let mut engine = patch.compile().expect("waveform fixture compiles");
+            engine.process_block(&mut vec![0.0; 48_000]);
+            let handle = engine
+                .resolve_module_lights("mix")
+                .expect("waveform meter handle");
+            let lights = engine
+                .module_lights(handle)
+                .expect("waveform meter snapshot");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("waveform fixture publishes");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&Self::waveform_layout())
+                .expect("waveform fixture layout");
+            self.rack
+                .set_module_states(BTreeMap::from([("mix".into(), lights)]), BTreeMap::new());
+            self.title = "Synced waveform voice · offline DSP snapshot".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2104,6 +2145,7 @@ impl OpenPatch {
                 | 296
                 | 320
                 | 344
+                | 368
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2144,7 +2186,8 @@ impl OpenPatch {
                 19 => path.with_file_name("rack-manual-gates.png"),
                 20 => path.with_file_name("rack-vca-mix-fade.png"),
                 21 => path.with_file_name("rack-duplication.png"),
-                _ => path.with_file_name("rack-stacked-routing.png"),
+                22 => path.with_file_name("rack-stacked-routing.png"),
+                _ => path.with_file_name("rack-multi-vco.png"),
             };
             image::save_buffer(
                 target,
@@ -2155,12 +2198,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 23 {
+            if *captures == 24 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 370, "Native screenshot timeout");
+        assert!(*frame < 394, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2477,6 +2520,57 @@ mod project_workflow_tests {
                     && p.extension().is_some_and(|ext| ext == "openpatch")
             })
             .collect()
+    }
+
+    #[test]
+    fn waveform_demo_modes_and_placement_survive_native_save_and_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/synced-waveform-voice.json"))
+                .unwrap();
+        app.replace_now(patch, "Synced waveform voice");
+        let geometry = app.rack.layout();
+        assert_eq!(app.rack.zoom(), 0.85);
+        for (parameter, value) in [
+            ("linear_fm", 1.0),
+            ("soft_sync", 1.0),
+            ("frequency", 523.25116),
+            ("pulse_width", 0.35),
+        ] {
+            assert!(app.command(
+                "set_parameter",
+                json!({"id":"voice","parameter":parameter,"value":value})
+            ));
+        }
+        app.save_document("waveforms.openpatch", true);
+        let saved = app.capture_document();
+        let loaded = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("waveforms.openpatch")
+            .unwrap();
+        assert!(loaded.document.equivalent(&saved));
+        assert_eq!(loaded.document.layout, geometry);
+        assert_eq!(loaded.document.patch.cables.len(), 10);
+        let voice = loaded
+            .document
+            .patch
+            .nodes
+            .iter()
+            .find(|n| n.id == "voice")
+            .unwrap();
+        assert_eq!(voice.params["linear_fm"], 1.0);
+        assert_eq!(voice.params["soft_sync"], 1.0);
+        assert_eq!(voice.params["pulse_width"], 0.35);
+        app.history(false);
+        app.capture_document();
+        assert!(app.dirty());
+        assert_eq!(app.rack.layout(), geometry);
+        app.history(true);
+        assert!(app.capture_document().equivalent(&saved));
+        assert!(!app.dirty());
     }
 
     #[test]

@@ -23,6 +23,7 @@ pub mod ladder;
 pub mod midi;
 mod mixing;
 mod multi_lfo;
+mod multi_vco;
 mod poly;
 mod routing;
 mod sequence;
@@ -212,6 +213,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(multi_lfo::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(multi_vco::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

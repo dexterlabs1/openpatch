@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **41 built-in kinds**: seven legacy utilities, six reference-voice
+There are **42 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, and two CV-controlled audio mixers. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, and a four-output audio oscillator. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -71,6 +71,14 @@ See [MODULATION.md](MODULATION.md) for its exact timing and state contracts,
 native controls, example voice, validation and remaining parity work. The legacy
 `lfo` is unchanged. This is a functional digital oscillator, not a circuit model.
 
+## Audio-rate modulation
+
+`multi_vco` adds four audio outputs, exponential/linear FM, a latched PWM
+square, and fractional hard/soft sync. Its behavior is compared with an actual
+Fundamental 2.6.4 reference; reconstruction and voice-retirement differences
+remain. See [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). It is functional DSP,
+separate from the idealized capacitor/comparator `analog_vco` model.
+
 ## Voltage banks and bypass
 
 `attenuverter8`, `mutes10`, and `cv_mix` add the specified row and mixing
@@ -113,7 +121,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 
 | Module | Group | Rust status | Next acceptance test or prerequisite |
 |---|---|---|---|
-| VCO | Oscillator | Partial: reference ramp VCO implemented; related legacy sine | Voltage pitch tracking, waveform spectra/alias error; then modulation and sync matrix |
+| VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
 | Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
 | VCF | Filter | Partial: reference ladder implemented; legacy one-pole is separate | Analytic small-signal response, drive/IMD, resonance and numerical convergence; inventory missing ports/features |
 | VCA | Amplifier | Partial: reference OTA VCA implemented; related legacy gain | Voltage gain law, saturation and CV response; distinguish circuit model from VCV behavior |

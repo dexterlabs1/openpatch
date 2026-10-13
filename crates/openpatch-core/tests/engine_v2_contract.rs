@@ -8,6 +8,38 @@ thread_local! {
     static TRACK_MEMORY: Cell<bool> = const { Cell::new(false) };
     static MEMORY_OPERATIONS: Cell<usize> = const { Cell::new(0) };
 }
+
+#[test]
+fn multi_vco_first_callback_and_state_adoption_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node("pitch", "poly_constant", &[("channels", 16.0)]),
+            node(
+                "vco",
+                "multi_vco",
+                &[("frequency", 220.0), ("pulse_width", 0.3)],
+            ),
+        ],
+        vec![cable("pitch", "out", "vco", "pitch")],
+        "vco",
+    );
+    p.output_port = "sine".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_poly_block(&mut frames[..length]);
+        replacement.adopt_state_from(&old);
+        replacement.process_poly_block(&mut frames[..length]);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.values.iter().all(|value| value.is_finite())));
+}
 fn record_memory_operation() {
     let _ = TRACK_MEMORY.try_with(|active| {
         if active.get() {

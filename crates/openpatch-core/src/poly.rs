@@ -4,6 +4,7 @@
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::mixing::{self, Mixing};
 use crate::multi_lfo::{self, MultiLfo};
+use crate::multi_vco::{self, MultiVco};
 use crate::routing::{self, Routing};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
@@ -64,6 +65,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "midi_cv"
                 | "audio_stereo"
                 | "multi_lfo"
+                | "multi_vco"
                 | "seq3"
         )
 }
@@ -93,6 +95,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
     match kind {
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
+        "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" => None,
         "audio_stereo" => match name {
@@ -125,6 +128,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         sequence::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
         multi_lfo::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "multi_vco" {
+        multi_vco::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "midi_cv" {
         MIDI_OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "poly_split" {
@@ -203,6 +208,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "multi_vco" {
+        multi_vco::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
     } else if kind == "midi_cv" {
         MIDI_OUTPUTS
             .iter()
@@ -270,6 +280,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
+    if kind == "multi_vco" {
+        multi_vco::annotate(module);
+    }
     if kind == "seq3" {
         sequence::annotate(module);
     }
@@ -291,6 +304,7 @@ enum Model {
     Stereo(f32),
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
+    MultiVco(Box<MultiVco>),
     Seq3(Box<Seq3>),
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
@@ -316,6 +330,9 @@ impl Model {
         }
         if node.kind == "multi_lfo" {
             return Ok(Self::MultiLfo(Box::new(MultiLfo::build(node, rate)?)));
+        }
+        if node.kind == "multi_vco" {
+            return Ok(Self::MultiVco(Box::new(MultiVco::build(node, rate)?)));
         }
         if let Some(model) = Routing::build(node) {
             return model.map(Self::Routing);
@@ -666,6 +683,7 @@ impl PolyEngine {
                     "poly_split" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
+                    "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     _ => 1,
                 }
@@ -986,6 +1004,19 @@ impl PolyEngine {
                             [node.output_start..node.output_start + multi_lfo::OUTPUTS.len()],
                     );
                 }
+                Model::MultiVco(vco) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    vco.process(
+                        &inputs,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + multi_vco::OUTPUTS.len()],
+                    );
+                }
                 Model::Routing(routing) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -1117,6 +1148,11 @@ impl PolyEngine {
             } else {
                 (true, true)
             };
+            let sync_unchanged = if self.nodes[*index].kind == "multi_vco" {
+                self.input_unchanged(*index, old, *old_index, 2)
+            } else {
+                true
+            };
             let seq_unchanged = if self.nodes[*index].kind == "seq3" {
                 [
                     self.input_unchanged(*index, old, *old_index, 1),
@@ -1172,6 +1208,11 @@ impl PolyEngine {
                 (&mut node.model, &previous.model)
             {
                 lfo.adopt(previous, reset_unchanged, clock_unchanged);
+            }
+            if let (Model::MultiVco(vco), Model::MultiVco(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                vco.adopt(previous, sync_unchanged);
             }
             if let (Model::Midi(midi), Model::Midi(previous)) = (&mut node.model, &previous.model) {
                 midi.adopt(previous);

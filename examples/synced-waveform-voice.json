@@ -1,0 +1,131 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "notes",
+      "kind": "poly_constant",
+      "params": {
+        "channels": 3,
+        "v1": 0,
+        "v2": 0.3333333333333333,
+        "v3": 0.5833333333333334
+      }
+    },
+    {
+      "id": "master",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "voice",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 392.4384,
+        "fm_amount": 0.08,
+        "pwm_amount": 0.5
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 0.17
+      }
+    },
+    {
+      "id": "mix",
+      "kind": "vca_mix",
+      "params": {
+        "level1": 0.6,
+        "level2": 0.45,
+        "level3": 0.55,
+        "level4": 0.35,
+        "mix_level": 0.75
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.12
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "notes-master",
+      "from": "notes",
+      "output": "out",
+      "to": "master",
+      "input": "pitch"
+    },
+    {
+      "id": "notes-voice",
+      "from": "notes",
+      "output": "out",
+      "to": "voice",
+      "input": "pitch"
+    },
+    {
+      "id": "master-sync",
+      "from": "master",
+      "output": "sine",
+      "to": "voice",
+      "input": "sync"
+    },
+    {
+      "id": "motion-fm",
+      "from": "motion",
+      "output": "sine",
+      "to": "voice",
+      "input": "fm"
+    },
+    {
+      "id": "motion-pwm",
+      "from": "motion",
+      "output": "triangle",
+      "to": "voice",
+      "input": "pwm"
+    },
+    {
+      "id": "wave-sine",
+      "from": "voice",
+      "output": "sine",
+      "to": "mix",
+      "input": "in1"
+    },
+    {
+      "id": "wave-triangle",
+      "from": "voice",
+      "output": "triangle",
+      "to": "mix",
+      "input": "in2"
+    },
+    {
+      "id": "wave-saw",
+      "from": "voice",
+      "output": "saw",
+      "to": "mix",
+      "input": "in3"
+    },
+    {
+      "id": "wave-square",
+      "from": "voice",
+      "output": "square",
+      "to": "mix",
+      "input": "in4"
+    },
+    {
+      "id": "mix-left",
+      "from": "mix",
+      "output": "mix",
+      "to": "out",
+      "input": "left"
+    }
+  ],
+  "output": "out",
+  "output_port": "out"
+}

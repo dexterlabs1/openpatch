@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--seconds", type=float, default=1.0)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--stacked", action="store_true", help="also measure stacked routing at 1/16 voices and 1/16/1024 cables")
+    parser.add_argument("--oscillators", action="store_true", help="also measure four-output VCOs at 1/16 voices and the synced waveform example")
     args = parser.parse_args()
     if not 0.01 <= args.seconds <= 5 or not 1 <= args.runs <= 20:
         parser.error("seconds must be 0.01..5 and runs 1..20")
@@ -41,6 +42,14 @@ def main():
                 ], "cables": [{"id": f"route_{i + 1}", "from": "source", "to": "out", "input": "signal"} for i in range(count)], "output": "out"}
                 scenarios.append((f"v2_routing_{count}_cables_{width}_voices", routing))
         scenarios.append(("v2_stacked_pitch_voice", json.loads((root / "examples/stacked-pitch-voice.json").read_text())))
+    if args.oscillators:
+        for width in [1, 16]:
+            oscillator = {"version": 2, "sample_rate": 48000, "nodes": [
+                {"id": "pitch", "kind": "poly_constant", "params": {"channels": width, **{f"v{i + 1}": i / 12 for i in range(width)}}},
+                {"id": "vco", "kind": "multi_vco"},
+            ], "cables": [{"from": "pitch", "to": "vco", "input": "pitch"}], "output": "vco", "output_port": "saw"}
+            scenarios.append((f"v2_multi_vco_{width}_voices", oscillator))
+        scenarios.append(("v2_synced_waveform_voice", json.loads((root / "examples/synced-waveform-voice.json").read_text())))
     with tempfile.TemporaryDirectory(prefix="openpatch-benchmark-") as workspace:
         with subprocess.Popen([str(args.binary), "mcp", "--workspace", workspace], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as process:
             request_id = 0
