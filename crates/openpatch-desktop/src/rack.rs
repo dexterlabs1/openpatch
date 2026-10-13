@@ -984,6 +984,13 @@ impl Rack {
                 ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(234, 235, 228);
                 ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(244, 246, 238);
                 ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(181, 215, 195);
+                // DragValue paints a Button at rest and a TextEdit while typing.
+                // Set both surfaces so the dark panel text stays legible.
+                let visuals = ui.visuals_mut();
+                visuals.widgets.inactive.weak_bg_fill = visuals.widgets.inactive.bg_fill;
+                visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
+                visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
+                visuals.text_edit_bg_color = Some(Color32::from_rgb(244, 246, 238));
                 ui.add_sized(
                     rect.size(),
                     egui::DragValue::new(&mut value)
