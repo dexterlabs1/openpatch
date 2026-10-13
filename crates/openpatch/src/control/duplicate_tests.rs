@@ -148,7 +148,7 @@ fn duplicate_rejects_malformed_mappings_and_stale_edits_atomically() {
         json!({"modules":[{"id":"a","new_id":"copy"},{"id":"b","new_id":"copy"}]}),
         json!({"modules":oversized}),
         json!({"modules":mappings(),"cable_mode":true}),
-        json!({"modules":mappings(),"cable_mode":"all"}),
+        json!({"modules":mappings(),"cable_mode":"outputs"}),
         json!({"modules":mappings(),"cable_mode":null}),
         json!({"modules":mappings(),"include_inputs":true}),
         json!({"modules":mappings(),"expected_revision":1}),
@@ -285,4 +285,229 @@ fn duplicate_roundtrips_bypass_polyphony_and_named_ports_through_save_load() {
         .unwrap();
     assert_eq!(session.snapshot()["patch"], expected);
     fs::remove_dir_all(root).unwrap();
+}
+
+fn incident_patch() -> Patch {
+    serde_json::from_value(json!({"version":2,"nodes":[
+        {"id":"external","kind":"poly_constant","params":{"channels":2,"v1":2,"v2":-3}},
+        {"id":"a","kind":"mult","bypassed":true},
+        {"id":"b","kind":"mid_side","params":{"encode_width":1.5,"decode_width":0.25}},
+        {"id":"sink","kind":"mult"},{"id":"unrelated","kind":"mult"}],
+        "cables":[
+            {"id":"incoming1","from":"external","to":"a","input":"signal"},
+            {"id":"incoming2","from":"external","to":"a","input":"signal"},
+            {"id":"internal","from":"a","output":"out2","to":"b","input":"left"},
+            {"id":"self","from":"a","output":"out3","to":"a","input":"signal"},
+            {"id":"incoming_b","from":"external","to":"b","input":"right"},
+            {"id":"outgoing_a","from":"a","output":"out4","to":"sink","input":"signal"},
+            {"id":"outgoing_b","from":"b","output":"side","to":"sink","input":"signal"},
+            {"id":"unrelated","from":"external","to":"unrelated","input":"signal"}
+        ],"output":"b","output_port":"side"}))
+    .unwrap()
+}
+
+fn route(cable: &Cable) -> (&str, &str, &str, &str) {
+    (&cable.from, &cable.output, &cable.to, &cable.input)
+}
+
+#[test]
+fn all_mode_copies_incident_routes_once_with_independent_expected_order() {
+    for single in [false, true] {
+        let mut session = Session::new(&std::env::temp_dir()).unwrap();
+        session.replace_patch(incident_patch(), None).unwrap();
+        let before = session.snapshot();
+        let modules = if single {
+            json!([{"id":"a","new_id":"a_copy"}])
+        } else {
+            mappings()
+        };
+        let edits = json!([{"tool":"duplicate_modules","arguments":{"modules":modules,"cable_mode":"all"}}]);
+        let preview = session
+            .execute(
+                "preview_edits",
+                json!({"edits":edits,"expected_revision":1}),
+            )
+            .unwrap();
+        assert_eq!(session.snapshot(), before);
+        let proposed: Patch = serde_json::from_value(preview["patch"].clone()).unwrap();
+        let originals = session.patch.cables.len();
+        let copied = &proposed.cables[originals..];
+        let expected = if single {
+            vec![
+                ("external", "out", "a_copy", "signal"),
+                ("external", "out", "a_copy", "signal"),
+                ("a_copy", "out2", "b", "left"),
+                ("a_copy", "out3", "a_copy", "signal"),
+                ("a_copy", "out4", "sink", "signal"),
+            ]
+        } else {
+            vec![
+                ("external", "out", "a_copy", "signal"),
+                ("external", "out", "a_copy", "signal"),
+                ("a_copy", "out2", "b_copy", "left"),
+                ("a_copy", "out3", "a_copy", "signal"),
+                ("external", "out", "b_copy", "right"),
+                ("a_copy", "out4", "sink", "signal"),
+                ("b_copy", "side", "sink", "signal"),
+            ]
+        };
+        assert_eq!(copied.iter().map(route).collect::<Vec<_>>(), expected);
+        assert_eq!(
+            serde_json::to_value(&proposed.cables[..originals]).unwrap(),
+            before["patch"]["cables"]
+        );
+        let old_ids: BTreeSet<_> = session
+            .patch
+            .cables
+            .iter()
+            .map(|cable| cable.id.as_ref().unwrap())
+            .collect();
+        let all_ids: BTreeSet<_> = proposed
+            .cables
+            .iter()
+            .map(|cable| cable.id.as_ref().unwrap())
+            .collect();
+        assert_eq!(all_ids.len(), proposed.cables.len());
+        assert!(copied
+            .iter()
+            .all(|cable| !old_ids.contains(cable.id.as_ref().unwrap())));
+        assert!(
+            proposed
+                .nodes
+                .iter()
+                .find(|node| node.id == "a_copy")
+                .unwrap()
+                .bypassed
+        );
+        assert_eq!(proposed.output.as_deref(), Some("b"));
+        assert_eq!(proposed.output_port, "side");
+        let committed = session
+            .execute("apply_edits", json!({"edits":edits,"expected_revision":1}))
+            .unwrap();
+        assert_eq!(committed["patch"], preview["patch"]);
+        assert_eq!(committed["history"]["undo_steps"], 2);
+        session.execute("undo", json!({})).unwrap();
+        assert_eq!(session.snapshot()["patch"], before["patch"]);
+        session.execute("redo", json!({})).unwrap();
+        assert_eq!(session.snapshot()["patch"], committed["patch"]);
+    }
+}
+
+#[test]
+fn all_mode_rejects_stale_and_invalid_batches_without_changing_history() {
+    let mut session = session(2);
+    session
+        .execute(
+            "set_parameter",
+            json!({"id":"b","parameter":"encode_width","value":1}),
+        )
+        .unwrap();
+    session.execute("undo", json!({})).unwrap();
+    let before = session.snapshot();
+    assert!(session
+        .execute(
+            "duplicate_modules",
+            json!({"modules":mappings(),"cable_mode":"all","expected_revision":1})
+        )
+        .is_err());
+    for tool in ["preview_edits", "apply_edits"] {
+        assert!(session.execute(tool,json!({"edits":[
+            {"tool":"duplicate_modules","arguments":{"modules":mappings(),"cable_mode":"all"}},
+            {"tool":"set_parameter","arguments":{"id":"missing","parameter":"value","value":1}}
+        ]})).is_err());
+        assert_eq!(session.snapshot(), before);
+    }
+}
+
+#[test]
+fn all_mode_version_one_uses_final_validation_without_silent_downgrade() {
+    let mut session = session(1);
+    let before = session.snapshot();
+    let args = json!({"modules":mappings(),"cable_mode":"all"});
+    assert!(session.execute("duplicate_modules", args.clone()).is_err());
+    assert_eq!(session.snapshot(), before);
+    let output_cable = session.patch.cables[2].id.clone().unwrap();
+    // Removing the original outgoing route makes the final legacy graph valid.
+    let repaired = session
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"duplicate_modules","arguments":args},
+                {"tool":"disconnect","arguments":{"cable_id":output_cable}}
+            ]}),
+        )
+        .unwrap();
+    let routes: Vec<_> = session.patch.cables.iter().map(route).collect();
+    assert!(routes.contains(&("b_copy", "out", "sink", "signal")));
+    assert!(!routes.contains(&("b", "out", "sink", "signal")));
+    assert_eq!(repaired["patch"]["version"], 1);
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(session.snapshot()["patch"], before["patch"]);
+    let sink = session
+        .execute(
+            "duplicate_modules",
+            json!({"modules":[{"id":"sink","new_id":"sink_copy"}],"cable_mode":"all"}),
+        )
+        .unwrap();
+    assert_eq!(sink["patch"]["version"], 1);
+    assert_eq!(session.patch.cables.len(), 4);
+    assert_eq!(
+        route(session.patch.cables.last().unwrap()),
+        ("b", "out", "sink_copy", "signal")
+    );
+}
+
+#[test]
+fn all_mode_outgoing_multiplicity_obeys_exact_cable_limit_and_atomic_repair() {
+    let mut session = Session::new(&std::env::temp_dir()).unwrap();
+    let cables: Vec<_> = (0..513).map(|index| json!({"id":format!("route{index}"),"from":"source","to":"sink","input":"signal"})).collect();
+    session
+        .execute(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+        {"id":"source","kind":"constant","params":{"value":1}},
+        {"id":"sink","kind":"gain"}],"cables":cables,"output":"sink"}}),
+        )
+        .unwrap();
+    let before = session.snapshot();
+    let args = json!({"modules":[{"id":"source","new_id":"copy"}],"cable_mode":"all"});
+    assert!(session
+        .execute("duplicate_modules", args.clone())
+        .unwrap_err()
+        .contains("cables"));
+    assert_eq!(session.snapshot(), before);
+    let repaired = session
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"duplicate_modules","arguments":args},
+                {"tool":"disconnect","arguments":{"cable_id":"route0"}},
+                {"tool":"disconnect","arguments":{"cable_id":"route1"}}
+            ]}),
+        )
+        .unwrap();
+    assert_eq!(session.patch.cables.len(), 1024);
+    assert_eq!(
+        session
+            .patch
+            .cables
+            .iter()
+            .filter(|cable| cable.from == "copy")
+            .count(),
+        513
+    );
+    assert_eq!(
+        session
+            .patch
+            .cables
+            .iter()
+            .filter(|cable| cable.from == "source")
+            .count(),
+        511
+    );
+    assert_eq!(session.patch.output.as_deref(), Some("sink"));
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(session.snapshot()["patch"], before["patch"]);
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.snapshot()["patch"], repaired["patch"]);
 }

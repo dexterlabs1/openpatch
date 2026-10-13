@@ -307,7 +307,7 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"modules": [{"id": "octave", "new_id": "source"}]},
             {"modules": [{"id": "missing", "new_id": "new"}]},
             {"modules": [{"id": "octave", "new_id": "new", "extra": True}]},
-            {"modules": mapping, "cable_mode": "all"},
+            {"modules": mapping, "cable_mode": "outputs"},
             {"modules": mapping, "cable_mode": False},
             {"modules": mapping, "include_inputs": True},
             {"modules": [mapping[0], mapping[0]]},
@@ -332,6 +332,84 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("remove_module", {"id": "octave_copy"})
         self.require_tool_success("load_patch", {"filename": "duplicated.json"})
         self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+
+    def test_duplicate_all_preserves_outgoing_stacks_and_sums_actual_sink_audio(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "source", "kind": "poly_constant", "params": {"channels": 2, "v1": 1, "v2": 2}},
+                {"id": "bus", "kind": "mult"}, {"id": "sink", "kind": "audio_out"},
+            ], "cables": [
+                {"id": "input", "from": "source", "to": "bus", "input": "signal"},
+                {"id": "output1", "from": "bus", "output": "out2", "to": "sink", "input": "signal"},
+                {"id": "output2", "from": "bus", "output": "out2", "to": "sink", "input": "signal"},
+            ], "output": "sink",
+        }})
+        before = self.patch_snapshot()
+
+        def sink_channels() -> list[float]:
+            return [self.payload(self.require_tool_success("capture_signal", {
+                "id": "sink", "channel": channel, "seconds": 0.002, "points": 64,
+            }))["bins"][-1]["mean"] for channel in (1, 2)]
+
+        for actual, expected in zip(sink_channels(), (0.2, 0.4)):
+            self.assertAlmostEqual(actual, expected, places=6)
+        arguments = {"modules": [{"id": "bus", "new_id": "bus_copy"}], "cable_mode": "all"}
+        request = {"edits": [{"tool": "duplicate_modules", "arguments": arguments}],
+                   "expected_revision": before["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", request))
+        self.assertEqual(self.patch_snapshot(), before)
+        duplicated = self.payload(self.require_tool_success("apply_edits", request))
+        self.assertEqual(duplicated["patch"], preview["patch"])
+        self.assertEqual(duplicated["patch"]["cables"][:3], before["patch"]["cables"])
+        copied = duplicated["patch"]["cables"][3:]
+        self.assertEqual([(c["from"], c.get("output", "out"), c["to"], c["input"]) for c in copied], [
+            ("source", "out", "bus_copy", "signal"),
+            ("bus_copy", "out2", "sink", "signal"),
+            ("bus_copy", "out2", "sink", "signal"),
+        ])
+        ids = [c["id"] for c in duplicated["patch"]["cables"]]
+        self.assertEqual(len(set(ids)), 6)
+        self.assertEqual(duplicated["patch"]["output"], "sink")
+        for actual, expected in zip(sink_channels(), (0.4, 0.8)):
+            self.assertAlmostEqual(actual, expected, places=6)
+        rendered = self.payload(self.require_tool_success("render_audio", {"filename": "all-outgoing.wav", "seconds": 0.002}))
+        self.assertAlmostEqual(rendered["peak"], 0.4, places=6)
+        with wave.open(str(self.workspace / "all-outgoing.wav"), "rb") as wav:
+            self.assertEqual(wav.getnchannels(), 1)
+            frames = wav.readframes(wav.getnframes())
+        self.assertAlmostEqual(struct.unpack("<h", frames[-2:])[0] / 32767, 0.4, places=4)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], duplicated["patch"])
+        stable = self.patch_snapshot()
+        self.require_tool_error("duplicate_modules", {**arguments, "expected_revision": before["revision"]})
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "duplicate_modules", "arguments": {"modules": [{"id": "bus", "new_id": "failed"}], "cable_mode": "all"}},
+            {"tool": "set_output", "arguments": {"id": "missing"}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), stable)
+        schemas = self.client.request("tools/list")["result"]["tools"]
+        schema = next(tool["inputSchema"] for tool in schemas if tool["name"] == "duplicate_modules")
+        self.assertIn("all", schema["properties"]["cable_mode"]["enum"])
+
+    def test_duplicate_all_version_one_rejects_outgoing_stack_without_partial_edit(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 1, "nodes": [{"id": "source", "kind": "constant", "params": {"value": 0.25}},
+                                       {"id": "sink", "kind": "output"}],
+            "cables": [{"from": "source", "to": "sink", "input": "signal"}], "output": "sink",
+        }})
+        before = self.patch_snapshot()
+        self.require_tool_error("duplicate_modules", {
+            "modules": [{"id": "source", "new_id": "source_copy"}], "cable_mode": "all",
+        })
+        self.assertEqual(self.patch_snapshot(), before)
+        copied_sink = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "sink", "new_id": "sink_copy"}], "cable_mode": "all",
+        }))
+        self.assertEqual(len(copied_sink["patch"]["cables"]), 2)
+        self.assertEqual(copied_sink["patch"]["cables"][-1]["to"], "sink_copy")
+        self.assertEqual(copied_sink["patch"]["output"], "sink")
 
     def test_stacked_cables_sum_polyphony_and_edit_by_identity_atomically(self) -> None:
         self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [

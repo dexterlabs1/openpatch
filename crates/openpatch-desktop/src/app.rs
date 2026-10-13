@@ -4,7 +4,10 @@ use crate::{
     keyboard::Keyboard,
     midi::{MidiInputManager, MidiPortInfo},
     project::{Document, FileToken, Store},
-    rack::{parameter_label, parameter_value, title as module_title, PresetMode, Rack, RackAction},
+    rack::{
+        duplicate_all_supported, parameter_label, parameter_value, title as module_title,
+        DuplicateCableMode, PresetMode, Rack, RackAction,
+    },
     scope::Scope,
     visuals::{Visualizer, DEFAULT_SHADER},
 };
@@ -1104,7 +1107,21 @@ impl OpenPatch {
             self.browser_open = false;
         }
     }
-    fn duplicate_modules(&mut self, ids: &[String], with_inputs: bool) -> bool {
+    fn duplicate_modules(
+        &mut self,
+        ids: &[String],
+        cable_mode: DuplicateCableMode,
+        expected_revision: u64,
+        select_copies: bool,
+    ) -> bool {
+        if expected_revision != self.revision {
+            self.status = "Rack changed; retry duplication from the current patch".into();
+            return false;
+        }
+        if cable_mode == DuplicateCableMode::All && !duplicate_all_supported(&self.patch, ids) {
+            self.status = "Copying outgoing cables requires engine v2. Duplicate without cables remains available.".into();
+            return false;
+        }
         let mut reserved: BTreeSet<String> = self
             .patch
             .nodes
@@ -1143,7 +1160,7 @@ impl OpenPatch {
         let receipt = match execute_shared(
             &self.shared,
             "duplicate_modules",
-            json!({"modules":modules,"cable_mode":if with_inputs{"inputs"}else{"none"},"expected_revision":self.revision}),
+            json!({"modules":modules,"cable_mode":cable_mode.as_str(),"expected_revision":expected_revision}),
         ) {
             Ok(receipt) => receipt,
             Err(error) => {
@@ -1151,14 +1168,24 @@ impl OpenPatch {
                 return false;
             }
         };
-        self.install_duplicate_receipt(&receipt, placement, base_state_id, base_layout)
-            .expect("shared duplicate command returns a committed graph snapshot");
+        self.install_duplicate_receipt(
+            &receipt,
+            placement,
+            base_state_id,
+            base_layout,
+            select_copies,
+        )
+        .expect("shared duplicate command returns a committed graph snapshot");
         self.sync();
         self.status = format!(
             "Duplicated {} module{}{}",
             ids.len(),
             if ids.len() == 1 { "" } else { "s" },
-            if with_inputs { " with inputs" } else { "" }
+            match cable_mode {
+                DuplicateCableMode::None => "",
+                DuplicateCableMode::Inputs => " with inputs",
+                DuplicateCableMode::All => " with cables",
+            }
         );
         true
     }
@@ -1171,6 +1198,7 @@ impl OpenPatch {
         placement: BTreeMap<String, egui::Pos2>,
         base_state_id: u64,
         base_layout: Value,
+        select_copies: bool,
     ) -> Result<(), String> {
         let patch: Patch =
             serde_json::from_value(receipt["patch"].clone()).map_err(|error| error.to_string())?;
@@ -1190,7 +1218,8 @@ impl OpenPatch {
         self.can_redo = receipt["history"]["redo_steps"]
             .as_u64()
             .is_some_and(|count| count > 0);
-        self.rack.apply_duplicate_placement(placement);
+        self.rack
+            .apply_duplicate_placement(placement, select_copies);
         self.capture_document();
         self.history_layouts.insert(state_id, self.rack.layout());
         Ok(())
@@ -2549,7 +2578,7 @@ impl OpenPatch {
                 .duplicate_placement(&patch, &mapping)
                 .expect("duplicate group placement");
             execute_shared(&self.shared,"duplicate_modules",json!({"modules":[{"id":"tone","new_id":"tone-copy-1"},{"id":"filter","new_id":"filter-copy-1"}],"cable_mode":"inputs"})).expect("duplicate group fixture");
-            self.rack.apply_duplicate_placement(placement);
+            self.rack.apply_duplicate_placement(placement, true);
             self.title = "Duplicated voice pair · two selected".into();
         }
         if frame == 332 {
@@ -2652,6 +2681,46 @@ impl OpenPatch {
                 dialog.preview_filename = Some("warm-vco.opreset".into());
             }
         }
+        if frame == 422 {
+            self.preset_dialog = None;
+            let patch: Patch = serde_json::from_value(json!({
+                "version":2,"sample_rate":48000,
+                "nodes":[
+                    {"id":"pitch","kind":"constant","params":{"value":0.0}},
+                    {"id":"tone","kind":"analog_vco","params":{"frequency":220.0}},
+                    {"id":"out","kind":"audio_out"}
+                ],
+                "cables":[
+                    {"from":"pitch","to":"tone","input":"pitch"},
+                    {"from":"tone","to":"out","input":"signal"}
+                ],
+                "output":"out"
+            }))
+            .expect("outgoing duplicate fixture");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("outgoing duplicate fixture compiles");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({
+                    "version":1,"zoom":0.85,"pan":[24,12],
+                    "positions":{"pitch":[0,0],"tone":[150,0],"out":[720,0]}
+                }))
+                .expect("outgoing duplicate layout");
+            let placement = self
+                .rack
+                .duplicate_placement(&patch, &[("tone".into(), "tone-copy".into())])
+                .expect("outgoing clone placement");
+            execute_shared(
+                &self.shared,
+                "duplicate_modules",
+                json!({
+                    "modules":[{"id":"tone","new_id":"tone-copy"}],"cable_mode":"all"
+                }),
+            )
+            .expect("outgoing duplicate with cables");
+            self.rack.apply_duplicate_placement(placement, false);
+            self.title = "VCO copy · incoming pitch and outgoing audio cables".into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2682,6 +2751,7 @@ impl OpenPatch {
                 | 368
                 | 392
                 | 416
+                | 432
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2725,7 +2795,8 @@ impl OpenPatch {
                 22 => path.with_file_name("rack-stacked-routing.png"),
                 23 => path.with_file_name("rack-multi-vco.png"),
                 24 => path.with_file_name("module-preset-save.png"),
-                _ => path.with_file_name("module-preset-browser.png"),
+                25 => path.with_file_name("module-preset-browser.png"),
+                _ => path.with_file_name("rack-duplication-outgoing.png"),
             };
             image::save_buffer(
                 target,
@@ -2737,12 +2808,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 26 {
+            if captures == 27 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 442, "Native screenshot timeout");
+        assert!(frame < 458, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2857,8 +2928,13 @@ impl eframe::App for OpenPatch {
             Some(RackAction::Command(name, args)) => {
                 self.command(name, args);
             }
-            Some(RackAction::Duplicate { ids, with_inputs }) => {
-                self.duplicate_modules(&ids, with_inputs);
+            Some(RackAction::Duplicate {
+                ids,
+                cable_mode,
+                revision,
+                select_copies,
+            }) => {
+                self.duplicate_modules(&ids, cable_mode, revision, select_copies);
             }
             Some(RackAction::OpenBrowser) => self.browse(),
             Some(RackAction::Preset {
@@ -3580,7 +3656,12 @@ mod project_workflow_tests {
         let steps = app.shared.lock().unwrap().snapshot()["history"]["undo_steps"]
             .as_u64()
             .unwrap();
-        assert!(app.duplicate_modules(&["tone".into(), "filter".into()], true));
+        assert!(app.duplicate_modules(
+            &["tone".into(), "filter".into()],
+            DuplicateCableMode::Inputs,
+            app.revision,
+            true,
+        ));
         let duplicated = app.capture_document();
         assert_eq!(
             app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
@@ -3623,6 +3704,91 @@ mod project_workflow_tests {
     }
 
     #[test]
+    fn duplicate_single_with_all_cables_preserves_other_selection_and_undo_is_one_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command("replace_patch", json!({"patch":duplication_patch()})));
+        app.rack.restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"tone":[0,0],"filter":[210,0],"pitch":[0,420],"out":[210,420]}})).unwrap();
+        app.rack.select_only("pitch".into());
+        let before = app.capture_document();
+        let steps = app.shared.lock().unwrap().snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap();
+        assert!(app.duplicate_modules(
+            &["filter".into()],
+            DuplicateCableMode::All,
+            app.revision,
+            false,
+        ));
+        let after = app.capture_document();
+        assert_eq!(app.rack.selected_ids(), vec!["pitch"]);
+        assert_eq!(app.patch.output, before.patch.output);
+        assert_eq!(app.patch.cables.len(), before.patch.cables.len() + 2);
+        assert!(app.patch.cables.iter().any(|cable| cable.from == "tone"
+            && cable.to == "filter-copy-1"
+            && cable.input == "signal"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|cable| cable.from == "filter-copy-1"
+                && cable.to == "out"
+                && cable.input == "signal"));
+        for id in ["tone", "filter", "pitch", "out"] {
+            assert_eq!(
+                after.layout["positions"][id],
+                before.layout["positions"][id]
+            );
+        }
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
+            steps + 1
+        );
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+        app.history(true);
+        assert!(app.capture_document().equivalent(&after));
+    }
+
+    #[test]
+    fn duplicate_all_legacy_guard_allows_incoming_only_and_preserves_rejected_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({
+            "version":1,"nodes":[
+                {"id":"pitch","kind":"constant"},
+                {"id":"tone","kind":"analog_vco"}
+            ],
+            "cables":[{"from":"pitch","to":"tone","input":"pitch"}]
+        }))
+        .unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        app.rack.select_only("tone".into());
+        let before = app.capture_document();
+        assert!(!app.duplicate_modules(
+            &["pitch".into()],
+            DuplicateCableMode::All,
+            app.revision,
+            false,
+        ));
+        assert!(app.status.contains("engine v2"));
+        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.selected_ids(), vec!["tone"]);
+        assert!(app.duplicate_modules(
+            &["tone".into()],
+            DuplicateCableMode::All,
+            app.revision,
+            false,
+        ));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|cable| cable.from == "pitch" && cable.to == "tone-copy-1"));
+        assert_eq!(app.rack.selected_ids(), vec!["tone"]);
+    }
+
+    #[test]
     fn stale_duplicate_and_node_limit_failure_preserve_layout_selection_and_graph_history() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
@@ -3638,7 +3804,12 @@ mod project_workflow_tests {
         )
         .unwrap();
         let snapshot = app.shared.lock().unwrap().snapshot();
-        assert!(!app.duplicate_modules(&["tone".into()], false));
+        assert!(!app.duplicate_modules(
+            &["tone".into()],
+            DuplicateCableMode::None,
+            app.revision,
+            true,
+        ));
         assert_eq!(app.rack.layout(), layout);
         assert_eq!(app.rack.selected_ids(), selection);
         assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
@@ -3659,7 +3830,12 @@ mod project_workflow_tests {
         app.rack.select_only("node0".into());
         let layout = app.rack.layout();
         let snapshot = app.shared.lock().unwrap().snapshot();
-        assert!(!app.duplicate_modules(&["node0".into()], false));
+        assert!(!app.duplicate_modules(
+            &["node0".into()],
+            DuplicateCableMode::None,
+            app.revision,
+            true,
+        ));
         assert_eq!(app.rack.layout(), layout);
         assert_eq!(app.rack.selected_ids(), vec!["node0"]);
         assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
@@ -3694,7 +3870,7 @@ mod project_workflow_tests {
         };
         assert!(app.command("replace_patch", json!({"patch":patch})));
         app.capture_document();
-        assert!(app.duplicate_modules(&sources, false));
+        assert!(app.duplicate_modules(&sources, DuplicateCableMode::None, app.revision, true));
         assert_eq!(app.patch.nodes.len(), 11);
         let ids: BTreeSet<_> = app.patch.nodes.iter().map(|n| &n.id).collect();
         assert_eq!(ids.len(), 11);
@@ -3723,7 +3899,7 @@ mod project_workflow_tests {
         let mut live = shared.lock().unwrap();
         live.execute("remove_module", json!({"id":"copy"})).unwrap();
         let later_revision = live.revision();
-        app.install_duplicate_receipt(&receipt, placement, base_state, before.layout.clone())
+        app.install_duplicate_receipt(&receipt, placement, base_state, before.layout.clone(), true)
             .unwrap();
         let committed = app.capture_document();
         assert_eq!(app.state_id, committed_state);

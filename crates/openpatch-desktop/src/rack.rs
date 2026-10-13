@@ -37,7 +37,9 @@ pub enum RackAction {
     },
     Duplicate {
         ids: Vec<String>,
-        with_inputs: bool,
+        cable_mode: DuplicateCableMode,
+        revision: u64,
+        select_copies: bool,
     },
     LayoutChanged,
     Inspect {
@@ -51,6 +53,23 @@ pub enum RackAction {
 pub enum PresetMode {
     Save,
     Browse,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DuplicateCableMode {
+    None,
+    Inputs,
+    All,
+}
+
+impl DuplicateCableMode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Inputs => "inputs",
+            Self::All => "all",
+        }
+    }
 }
 
 struct ParameterEdit {
@@ -124,6 +143,7 @@ pub struct Rack {
     selection: BTreeSet<String>,
     group_drag: Option<GroupDrag>,
     reveal_group_once: bool,
+    reveal_module_once: Option<String>,
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
     zoom: f32,
@@ -149,6 +169,7 @@ impl Default for Rack {
             selection: BTreeSet::new(),
             group_drag: None,
             reveal_group_once: false,
+            reveal_module_once: None,
             positions: BTreeMap::new(),
             pan: vec2(24.0, 12.0),
             zoom: 1.0,
@@ -240,10 +261,13 @@ impl Rack {
         }
     }
 
-    fn shortcut_ids(&self, patch: &Patch, canvas: Rect, pointer: Option<Pos2>) -> Vec<String> {
-        let Some(pointer) = pointer.filter(|position| canvas.contains(*position)) else {
-            return Vec::new();
-        };
+    fn shortcut_target(
+        &self,
+        patch: &Patch,
+        canvas: Rect,
+        pointer: Option<Pos2>,
+    ) -> Option<(Vec<String>, bool)> {
+        let pointer = pointer.filter(|position| canvas.contains(*position))?;
         if let Some(node) = patch.nodes.iter().rev().find(|node| {
             self.positions.get(&node.id).is_some_and(|position| {
                 Rect::from_min_size(
@@ -253,9 +277,31 @@ impl Rack {
                 .contains(pointer)
             })
         }) {
-            self.context_ids(&node.id)
+            Some((
+                self.context_ids(&node.id),
+                !self.selection.contains(&node.id),
+            ))
         } else {
-            self.selected_ids()
+            Some((self.selected_ids(), false))
+        }
+    }
+
+    fn shortcut_ids(&self, patch: &Patch, canvas: Rect, pointer: Option<Pos2>) -> Vec<String> {
+        self.shortcut_target(patch, canvas, pointer)
+            .map_or_else(Vec::new, |(ids, _)| ids)
+    }
+
+    fn duplicate_shortcut_target(
+        &self,
+        patch: &Patch,
+        canvas: Rect,
+        pointer: Option<Pos2>,
+    ) -> Option<(Vec<String>, bool)> {
+        pointer.filter(|position| canvas.contains(*position))?;
+        if self.selection.is_empty() {
+            self.shortcut_target(patch, canvas, pointer)
+        } else {
+            Some((self.selected_ids(), false))
         }
     }
 
@@ -325,13 +371,22 @@ impl Rack {
             .collect())
     }
 
-    pub(crate) fn apply_duplicate_placement(&mut self, positions: BTreeMap<String, Pos2>) {
-        self.selection = positions.keys().cloned().collect();
-        self.selected = self.selection.iter().next().cloned();
+    pub(crate) fn apply_duplicate_placement(
+        &mut self,
+        positions: BTreeMap<String, Pos2>,
+        select_copies: bool,
+    ) {
+        if select_copies {
+            self.selection = positions.keys().cloned().collect();
+            self.selected = self.selection.iter().next().cloned();
+            self.reveal_module_once = None;
+        } else {
+            self.reveal_module_once = positions.keys().next().cloned();
+        }
         self.positions.extend(positions);
         self.pending = None;
         self.group_drag = None;
-        self.reveal_group_once = true;
+        self.reveal_group_once = select_copies;
         self.suppress_reveal_once = false;
         self.layout_revision = self.layout_revision.wrapping_add(1);
     }
@@ -444,6 +499,7 @@ impl Rack {
         self.dragging_cable = false;
         self.suppress_reveal_once = true;
         self.reveal_group_once = false;
+        self.reveal_module_once = None;
         self.group_drag = None;
         Ok(())
     }
@@ -495,6 +551,13 @@ impl Rack {
         if !suppress_reveal {
             if std::mem::take(&mut self.reveal_group_once) {
                 self.reveal_selected_group(patch, canvas);
+            }
+            if let Some(node) = self
+                .reveal_module_once
+                .take()
+                .and_then(|id| patch.nodes.iter().find(|node| node.id == id))
+            {
+                self.reveal_module(node, canvas);
             }
             if let Some(node) =
                 newly_selected.and_then(|id| patch.nodes.iter().find(|node| node.id == id))
@@ -554,8 +617,8 @@ impl Rack {
             && self.group_drag.is_none()
             && !ui.input(|i| i.pointer.primary_down())
         {
-            let shortcut_ids =
-                self.shortcut_ids(patch, canvas, ui.input(|i| i.pointer.hover_pos()));
+            let pointer = ui.input(|i| i.pointer.hover_pos());
+            let shortcut_ids = self.shortcut_ids(patch, canvas, pointer);
             if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::A)) {
                 self.selection = patch.nodes.iter().map(|node| node.id.clone()).collect();
                 self.selected = self
@@ -567,12 +630,26 @@ impl Rack {
                     i.consume_key(i.modifiers, egui::Key::A);
                 });
             }
-            if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::D))
-                && !self.selection.is_empty()
+            let duplicate_target = self.duplicate_shortcut_target(patch, canvas, pointer);
+            if ui.input(|i| i.modifiers.command && !i.modifiers.alt && i.key_pressed(egui::Key::D))
+                && duplicate_target
+                    .as_ref()
+                    .is_some_and(|(ids, _)| !ids.is_empty())
             {
+                let (ids, hovered_unselected) = duplicate_target.unwrap();
                 action = Some(RackAction::Duplicate {
-                    ids: self.selected_ids(),
-                    with_inputs: ui.input(|i| i.modifiers.shift),
+                    ids,
+                    cable_mode: if ui.input(|i| i.modifiers.shift) {
+                        if hovered_unselected {
+                            DuplicateCableMode::All
+                        } else {
+                            DuplicateCableMode::Inputs
+                        }
+                    } else {
+                        DuplicateCableMode::None
+                    },
+                    revision: self.observed_revision,
+                    select_copies: !hovered_unselected,
                 });
                 ui.input_mut(|i| {
                     i.consume_key(i.modifiers, egui::Key::D);
@@ -740,6 +817,8 @@ impl Rack {
                     ui,
                     &self.context_ids(&node.id),
                     self.observed_revision,
+                    self.selection.contains(&node.id),
+                    patch,
                     &mut action,
                 );
             });
@@ -782,9 +861,6 @@ impl Rack {
                         .collect(),
                     delta: Vec2::ZERO,
                 });
-            }
-            if header_response.secondary_clicked() {
-                self.select_primary(node.id.clone());
             }
             if header_response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -876,6 +952,8 @@ impl Rack {
                     ui,
                     &self.context_ids(&node.id),
                     self.observed_revision,
+                    self.selection.contains(&node.id),
+                    patch,
                     &mut action,
                 );
             });
@@ -3184,6 +3262,8 @@ fn selection_menu(
     ui: &mut egui::Ui,
     ids: &[String],
     revision: u64,
+    selected_context: bool,
+    patch: &Patch,
     action: &mut Option<RackAction>,
 ) {
     ui.separator();
@@ -3214,17 +3294,33 @@ fn selection_menu(
         }
     }
     ui.separator();
-    for (with_inputs, label, shortcut) in [
-        (false, "Duplicate", "Cmd/Ctrl+D"),
-        (true, "Duplicate with inputs", "Cmd/Ctrl+Shift+D"),
+    let context_mode = if selected_context {
+        DuplicateCableMode::Inputs
+    } else {
+        DuplicateCableMode::All
+    };
+    for (mode, label, shortcut) in [
+        (DuplicateCableMode::None, "Duplicate", "Cmd/Ctrl+D"),
+        (
+            context_mode,
+            if selected_context {
+                "Duplicate with inputs"
+            } else {
+                "Duplicate with cables"
+            },
+            "Cmd/Ctrl+Shift+D",
+        ),
     ] {
-        if ui
-            .add(egui::Button::new(label).shortcut_text(shortcut))
+        let supported = mode != DuplicateCableMode::All || duplicate_all_supported(patch, ids);
+        if ui.add_enabled(supported, egui::Button::new(label).shortcut_text(shortcut))
+            .on_disabled_hover_text("Copying outgoing cables requires engine v2. Duplicate without cables remains available.")
             .clicked()
         {
             *action = Some(RackAction::Duplicate {
                 ids: ids.to_vec(),
-                with_inputs,
+                cable_mode: mode,
+                revision,
+                select_copies: selected_context,
             });
             ui.close();
         }
@@ -3240,6 +3336,15 @@ fn selection_menu(
         *action = Some(remove_selection_action(ids));
         ui.close();
     }
+}
+
+pub(crate) fn duplicate_all_supported(patch: &Patch, ids: &[String]) -> bool {
+    patch.version >= 2
+        || (ids.len() == 1
+            && !patch
+                .cables
+                .iter()
+                .any(|cable| cable.from == ids[0] && cable.to != ids[0]))
 }
 
 fn same_route(a: &Cable, b: &Cable) -> bool {
@@ -5681,6 +5786,226 @@ mod tests {
         }
     }
 
+    fn duplicate_key_at(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        pointer: Pos2,
+        shift: bool,
+    ) -> Option<RackAction> {
+        let action = frame(
+            ctx,
+            rack,
+            patch,
+            time,
+            vec![
+                egui::Event::PointerMoved(pointer),
+                selection_key(egui::Key::D, shift),
+            ],
+        );
+        frame(
+            ctx,
+            rack,
+            patch,
+            time + 0.1,
+            vec![egui::Event::Key {
+                key: egui::Key::D,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        action
+    }
+
+    #[test]
+    fn duplicate_shortcuts_prioritize_selection_then_hover_and_require_rack_pointer() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[
+                {"id":"a","kind":"constant"},
+                {"id":"b","kind":"constant"}
+            ]
+        }))
+        .unwrap();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        rack.select_only("a".into());
+        for (time, pointer, shift, mode) in [
+            (1.0, pos2(204.0, 44.0), false, DuplicateCableMode::None),
+            (2.0, pos2(204.0, 44.0), true, DuplicateCableMode::Inputs),
+            (3.0, pos2(800.0, 650.0), true, DuplicateCableMode::Inputs),
+        ] {
+            assert!(matches!(
+                duplicate_key_at(&ctx, &mut rack, &patch, time, pointer, shift),
+                Some(RackAction::Duplicate { ids, cable_mode, select_copies: true, .. })
+                    if ids == ["a"] && cable_mode == mode
+            ));
+        }
+        assert!(
+            duplicate_key_at(&ctx, &mut rack, &patch, 4.0, pos2(1100.0, 900.0), true).is_none()
+        );
+        rack.selection.clear();
+        rack.selected = None;
+        for (time, shift, mode) in [
+            (5.0, false, DuplicateCableMode::None),
+            (6.0, true, DuplicateCableMode::All),
+        ] {
+            assert!(matches!(
+                duplicate_key_at(&ctx, &mut rack, &patch, time, pos2(204.0, 44.0), shift),
+                Some(RackAction::Duplicate { ids, cable_mode, select_copies: false, .. })
+                    if ids == ["b"] && cable_mode == mode
+            ));
+        }
+        assert!(duplicate_key_at(&ctx, &mut rack, &patch, 7.0, pos2(800.0, 650.0), true).is_none());
+        assert!(
+            duplicate_key_at(&ctx, &mut rack, &patch, 8.0, pos2(1100.0, 900.0), false).is_none()
+        );
+        let alt_command = egui::Event::Key {
+            key: egui::Key::D,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers {
+                command: true,
+                ctrl: true,
+                alt: true,
+                ..Default::default()
+            },
+        };
+        assert!(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            9.0,
+            vec![egui::Event::PointerMoved(pos2(204.0, 44.0)), alt_command,]
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn version_one_all_mode_needs_no_external_outgoing_cable() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":1,
+            "nodes":[{"id":"source","kind":"constant"},{"id":"sink","kind":"analog_vco"}],
+            "cables":[{"from":"source","to":"sink","input":"pitch"}]
+        }))
+        .unwrap();
+        assert!(!duplicate_all_supported(&patch, &["source".into()]));
+        assert!(duplicate_all_supported(&patch, &["sink".into()]));
+    }
+
+    #[test]
+    fn header_and_panel_duplicate_menus_keep_clicked_module_context() {
+        fn text_center(output: &egui::FullOutput, label: &str) -> Option<Pos2> {
+            fn in_shape(shape: &egui::Shape, label: &str) -> Option<Pos2> {
+                match shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    egui::Shape::Vec(shapes) => {
+                        shapes.iter().find_map(|shape| in_shape(shape, label))
+                    }
+                    _ => None,
+                }
+            }
+            output
+                .shapes
+                .iter()
+                .find_map(|shape| in_shape(&shape.shape, label))
+        }
+        fn visible_text(output: &egui::FullOutput) -> Vec<String> {
+            fn collect(shape: &egui::Shape, texts: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            collect(shape, texts);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut texts = Vec::new();
+            for shape in &output.shapes {
+                collect(&shape.shape, &mut texts);
+            }
+            texts
+        }
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[
+                {"id":"a","kind":"constant"},
+                {"id":"b","kind":"constant"}
+            ]
+        }))
+        .unwrap();
+        for (menu_position, selected_context) in [
+            (pos2(204.0, 44.0), false),
+            (pos2(204.0, 300.0), false),
+            (pos2(84.0, 44.0), true),
+            (pos2(84.0, 300.0), true),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            rack.select_only("a".into());
+            if selected_context {
+                rack.toggle_selection("b".into());
+            }
+            let before = rack.selected_ids();
+            for (time, pressed) in [(1.0, true), (1.1, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(menu_position),
+                        egui::Event::PointerButton {
+                            pos: menu_position,
+                            button: PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            assert_eq!(
+                rack.selected_ids(),
+                before,
+                "right click must preserve selection"
+            );
+            frame_output(&ctx, &mut rack, &patch, 1.2, vec![]);
+            let (_, output) = frame_output(&ctx, &mut rack, &patch, 1.25, vec![]);
+            let label = if selected_context {
+                "Duplicate with inputs"
+            } else {
+                "Duplicate with cables"
+            };
+            let target = text_center(&output, label).unwrap_or_else(|| panic!(
+                "missing {label} at {menu_position:?}, selected_context={selected_context}, selection={:?}, popup_open={}, visible_text={:?}",
+                rack.selected_ids(), egui::Popup::is_any_open(&ctx), visible_text(&output)
+            ));
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            let action = frame(&ctx, &mut rack, &patch, 1.4, vec![button(target, false)]);
+            assert!(matches!(action,
+                Some(RackAction::Duplicate { ids, cable_mode, select_copies, .. })
+                    if ids == if selected_context { vec!["a", "b"] } else { vec!["b"] }
+                    && cable_mode == if selected_context { DuplicateCableMode::Inputs } else { DuplicateCableMode::All }
+                    && select_copies == selected_context
+            ));
+            assert_eq!(rack.selected_ids(), before);
+        }
+    }
+
     #[test]
     fn shift_headers_group_drag_shortcuts_and_empty_click_keep_selection_coherent() {
         let ctx = egui::Context::default();
@@ -5742,7 +6067,7 @@ mod tests {
                 vec![selection_key(egui::Key::D, shift)],
             );
             assert!(
-                matches!(action,Some(RackAction::Duplicate{ref ids,with_inputs}) if ids==&vec!["a".to_owned(),"b".to_owned()]&&with_inputs==shift)
+                matches!(action,Some(RackAction::Duplicate{ref ids,cable_mode,select_copies:true,..}) if ids==&vec!["a".to_owned(),"b".to_owned()]&&cable_mode==if shift {DuplicateCableMode::Inputs} else {DuplicateCableMode::None})
             );
             frame(
                 &ctx,
@@ -5838,7 +6163,7 @@ mod tests {
                 );
             }
         }
-        rack.apply_duplicate_placement(placement);
+        rack.apply_duplicate_placement(placement, true);
         assert_eq!(rack.selected_ids(), vec!["small-copy", "wide-copy"]);
         let mut updated = patch;
         updated.nodes.push(Node {
@@ -5854,7 +6179,7 @@ mod tests {
     #[test]
     fn selection_shortcuts_ignore_modal_focus_loss_text_editing_and_active_cable_gestures() {
         for key in [egui::Key::D, egui::Key::I, egui::Key::R] {
-            for cause in ["modal", "focus", "browser", "editor", "cable"] {
+            for cause in ["modal", "focus", "browser", "editor", "cable", "drag"] {
                 let ctx = egui::Context::default();
                 let mut rack = Rack::default();
                 let patch: Patch = serde_json::from_value(json!({
@@ -5889,6 +6214,13 @@ mod tests {
                         },
                         &patch,
                     ));
+                }
+                if cause == "drag" {
+                    rack.group_drag = Some(GroupDrag {
+                        anchor: "a".into(),
+                        origins: BTreeMap::from([("a".into(), rack.positions["a"])]),
+                        delta: Vec2::ZERO,
+                    });
                 }
                 let action = frame_state(
                     &ctx,

@@ -3595,6 +3595,78 @@ mod tests {
     }
 
     #[test]
+    fn outgoing_duplicate_preserves_original_phase_and_delays_and_restarts_only_copy_on_redo() {
+        for source in ["b", "osc"] {
+            let patch = stacked_history_patch();
+            let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+            let mut packets = callback.scope_packets.take().unwrap();
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(patch, Some(0)).unwrap();
+            session.set_live_module_events(Some(callback.performance.clone()));
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+            let original_routes = [
+                callback.graphs.active.modules.cables[0].unwrap().token,
+                callback.graphs.active.modules.cables[1].unwrap().token,
+            ];
+            let mut reference = oscillator_reference();
+            let mut prior = [[0.0; 2]; 80];
+            reference.process_audio_block(&mut prior);
+            let mut last_original = prior[79][0];
+            session
+                .execute(
+                    "duplicate_modules",
+                    serde_json::json!({
+                        "modules":[{"id":source,"new_id":"copy"}],"cable_mode":"all"
+                    }),
+                )
+                .unwrap();
+            for generation in [2, 3] {
+                if generation == 3 {
+                    // The callback never sees the intermediate removal. Both
+                    // the recreated module and its route must nevertheless
+                    // start fresh, without clearing the original routes.
+                    session.execute("undo", serde_json::json!({})).unwrap();
+                    session.execute("redo", serde_json::json!({})).unwrap();
+                }
+                let graph =
+                    scoped_route_graph(&callback, session.patch(), session.revision(), generation);
+                for (slot, token) in original_routes.iter().enumerate() {
+                    assert_eq!(graph.modules.cables[slot].unwrap().token, *token);
+                }
+                assert!(updates.push(graph).is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+                let packet = packets.pop().unwrap();
+                let mut original = [[0.0; 2]; 256];
+                reference.process_audio_block(&mut original);
+                let mut fresh = oscillator_reference();
+                let mut copied = [[0.0; 2]; SCOPE_PACKET_SIZE];
+                fresh.process_audio_block(&mut copied);
+                for index in 0..SCOPE_PACKET_SIZE {
+                    let original_delay = if index == 0 {
+                        last_original
+                    } else {
+                        original[index - 1][0]
+                    };
+                    let copy_delay = if index == 0 {
+                        0.0
+                    } else if source == "b" {
+                        3.0
+                    } else {
+                        copied[index - 1][0]
+                    };
+                    assert_eq!(packet.y[index], original[index][0]);
+                    assert_eq!(packet.x[index], original_delay + 3.0 + copy_delay);
+                    assert!(packet.x_active[index] && packet.y_active[index]);
+                }
+                last_original = original[255][0];
+                while packets.pop().is_ok() {}
+                while disposal.pop().is_ok() {}
+            }
+        }
+    }
+
+    #[test]
     fn cable_recreation_clears_only_its_delay_and_retains_source_state_and_sibling_history() {
         for through_history in [false, true] {
             let patch = stacked_history_patch();

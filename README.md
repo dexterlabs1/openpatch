@@ -69,7 +69,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Play the sequencer example | **File → Sequenced analog voice** |
 | Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
 | Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
-| Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** to include internal and incoming cables |
+| Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** adds inputs for a selection, or all cables for a hovered module when nothing is selected |
 | Save / browse module presets | Right-click a module → **Presets**; preview settings before applying |
 | Initialize / randomize | **Cmd-I** / **Cmd-R**, or the module context menu; one undo step per group |
 | Remove | **Delete** the selection, or use the module context menu |

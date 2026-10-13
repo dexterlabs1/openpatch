@@ -34,13 +34,13 @@ This plan starts from the code inspected on the baseline date:
 |---|---|---|
 | Named ports and multiple outputs | Foundation implemented in v2; Split provides 16 named outputs | Extend native interaction and persistence coverage across every multi-output module; retain invalid-port/direction and legacy-file tests as the catalog grows. |
 | Polyphonic engine | Foundation implemented; 0–16-channel frames, voice policies and retirement tested | Broaden cross-talk and shrink/regrowth tests across every stateful model; measure 16-voice callback deadlines and memory; qualify actual multichannel device sinks separately. |
-| Stacked input cables | Foundation implemented in v2: summed delayed frames, stable IDs, per-cable editing and incarnation-aware history | Qualify native device workflows and broader large-rack performance; complete Rack plug-order behavior and hovered-module outgoing duplication. [Contract and controls](STACKED_CABLES.md). |
+| Stacked input cables | Foundation implemented in v2: summed delayed frames, stable IDs, per-cable editing and incarnation-aware history | Qualify native device workflows and broader large-rack performance; complete Rack plug-order behavior and duplication placement parity. [Contract and controls](STACKED_CABLES.md). |
 | Cable timing and feedback | Foundation implemented; per-cable value/count delay and deterministic loops tested | Retain node-order/callback invariance; add clock/reset and longer modulated feedback fixtures as those modules arrive; test feedback during live graph replacement. |
 | Voltage and event contracts | Partial; reference modules use volts | Catalog every port's units, normaling, thresholds and channel policy; test gate/trigger edges, clock/reset ordering, pitch calibration and legacy conversions. |
 | DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
-| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion, Initialize/Randomize, a native module preset library and saved bypass | Rack preset conversion/templates, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
+| Rack construction | Partial; group selection, selected-group and hovered-module duplication with explicit cable policies, group movement/deletion, Initialize/Randomize, a native module preset library and saved bypass | Rack preset conversion/templates, exact duplication placement and complete layout history remain open; [editing contract](RACK_EDITING.md). |
 | Parameter/cable interaction | Partial | Precise entry, fine control, reset, reconnect/delete/fan-out, keyboard shortcuts and cable presentation work together; no swallowed gestures or accidental edits behind dialogs. |
 | History | Partial; shared 128-step patch undo/redo, explicit parameter grouping and observed-state layout restoration implemented | Complete project history including layout movement; verify restored geometry, gesture boundaries, branching and concurrent MCP edits without lost updates, including states the GUI has not observed. |
 | Browser/navigation | Partial | Search, filters/favorites, keyboard access, contextual help, zoom/pan and large-rack navigation; selections and newly created modules remain visible. |
@@ -83,11 +83,12 @@ tested contracts, not a 16-voice live performance guarantee.
 
 The next gates are:
 
-1. **Complete rack construction workflows.** With stacked inputs available,
-   add Rack's hovered-single-module duplication of outgoing connections while
-   retaining selected-group semantics. Initialize, Randomize and native presets now share the UI/MCP transaction path;
-   add Rack preset conversion/templates and complete layout-movement history. These actions must
-   share the UI/MCP transaction path and preserve unrelated live state.
+1. **Complete rack construction workflows.** Selected-group and hovered-single
+   duplication now use distinct cable policies, including outgoing stacked
+   connections for a single-module copy. Initialize, Randomize and native presets
+   share the UI/MCP transaction path. Add Rack preset conversion/templates,
+   exact duplication placement and complete layout-movement history while
+   preserving unrelated live state.
 2. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported
    hardware. Preserve the reference timing when introducing SIMD or scheduling

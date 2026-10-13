@@ -58,6 +58,9 @@ Preview's `changes.cable_order_changed` flags a pure reordering of the same
 cable multiset; additions and removals use their existing change lists instead.
 `duplicate_modules` preserves cable multiplicity and assigns fresh IDs to every
 copied cable. Its existing `none`, `internal`, and `inputs` policies are unchanged.
+The `all` policy also copies external outgoing connections to their existing
+destinations. Single-module **Duplicate with cables** uses it; selected-group
+shortcuts retain the inputs-only policy. See [rack editing](RACK_EDITING.md).
 
 ## Signal and identity contract
 
@@ -89,5 +92,5 @@ DSP state continue. Full document replacement starts fresh. The callback uses
 precompiled routing and bounded storage; ID allocation and migration happen on
 the control thread.
 
-This does not add `.vcv` import, plugin compatibility, or Rack's hovered-single-
-module duplication of outgoing cables. Those remain separate parity work.
+This does not add `.vcv` import, plugin compatibility, or complete Rack plug-order
+behavior. Those remain separate parity work.

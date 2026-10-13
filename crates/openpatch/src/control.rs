@@ -1246,8 +1246,8 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
         return Err(format!("modules must contain 1..{MAX_EDITS} mappings"));
     }
     let cable_mode = optional_string(args, "cable_mode", "none")?;
-    if !matches!(cable_mode, "none" | "internal" | "inputs") {
-        return Err("cable_mode must be none, internal, or inputs".into());
+    if !matches!(cable_mode, "none" | "internal" | "inputs" | "all") {
+        return Err("cable_mode must be none, internal, inputs, or all".into());
     }
     let mut mapping = BTreeMap::new();
     let mut destinations = BTreeSet::new();
@@ -1295,17 +1295,22 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
         .cables
         .iter()
         .filter_map(|original| {
-            if cable_mode == "none" {
-                return None;
-            }
-            let destination = mapping.get(original.to.as_str())?;
+            let destination = mapping.get(original.to.as_str());
             let source = mapping.get(original.from.as_str());
-            if source.is_none() && cable_mode != "inputs" {
+            let copy = match cable_mode {
+                "internal" => source.is_some() && destination.is_some(),
+                "inputs" => destination.is_some(),
+                "all" => source.is_some() || destination.is_some(),
+                _ => false,
+            };
+            if !copy {
                 return None;
             }
             let mut cable = original.clone();
             cable.id = None;
-            cable.to = (*destination).to_owned();
+            if let Some(destination) = destination {
+                cable.to = (*destination).to_owned();
+            }
             if let Some(source) = source {
                 cable.from = (*source).to_owned();
             }
@@ -1368,7 +1373,7 @@ pub fn tools() -> Value {
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
-        tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, and inputs also copies external incoming cables. Does not copy external outgoing cables or change the selected output. Runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs"],"default":"none"},"expected_revision":rev}),&["modules"],false),
+        tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run is copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"expected_revision":rev}),&["from","to","input"],false),
         disconnect_tool(&s, &module_id, &rev),

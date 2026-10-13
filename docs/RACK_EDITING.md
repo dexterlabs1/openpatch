@@ -11,16 +11,30 @@ The module context menu and keyboard offer:
 | Action | Shortcut | Copied cables |
 |---|---|---|
 | Duplicate | Cmd-D | None |
-| Duplicate with inputs | Shift-Cmd-D | Internal connections and incoming connections from outside the selection |
+| Duplicate selection with inputs | Shift-Cmd-D with a selection | Internal connections and incoming connections from outside the selection |
+| Duplicate hovered module with cables | Shift-Cmd-D with no selection | All incoming and outgoing connections; self-patches become self-patches on the copy |
 | Remove selected modules | Delete / Backspace | Removes the selection and its incident cables |
 
-Copies retain saved parameters and bypass flags. Their IDs are new, and their
-running DSP states start fresh. Existing modules keep their live state during
-the edit. Cloning does not change the patch's selected audio output or connect
-the new group's outputs to existing downstream modules.
+Keyboard duplication gives any nonempty selection priority, including a single
+selected module. With no selection, hover a module to duplicate it. The pointer
+must be inside the rack; text editing, dialogs and active drags suppress these
+shortcuts. Right-clicking an unselected module instead targets that module,
+without replacing a selection elsewhere. Its menu offers **Duplicate with
+cables**; a selected module's menu offers **Duplicate with inputs**.
 
-The new group is placed on free rack grid space while preserving its relative
-geometry, then selected and brought into view. Placement and selection change
+Copies retain saved parameters, bypass flags and captured SEQ-3 Run state. Their
+IDs are new; other running DSP state starts fresh. Existing modules retain their
+live state. Group duplication leaves external destinations alone. Single-module
+duplication with cables adds the copy's outputs to the existing destinations,
+stacking them with the original connections. The selected audio output remains
+unchanged. Legacy version-1 patches cannot stack inputs: the native single-module
+with-cables action is unavailable when it would copy an external outgoing cable.
+Incoming-only copies still work in version 1.
+
+Copies are placed on free rack grid space to the right, preserving group
+geometry. Group duplication selects the copies; single-module duplication
+preserves the previous selection. The new copies are brought into view.
+Placement and selection change
 only after the revision-checked graph edit succeeds. A stale GUI snapshot or
 invalid candidate leaves the current layout intact. Duplication and group
 deletion are each one graph undo/redo action. Layout snapshots restore the
@@ -46,9 +60,14 @@ and every destination must be a valid unused module ID.
 
 Use the revision returned by `inspect_patch`, rather than the example value.
 `cable_mode` defaults to `none`; `internal` copies only connections with both
-ends selected, and `inputs` also copies external incoming connections. Named
-ports are preserved. A selected self-loop becomes a self-loop on its copy.
-External outgoing cables remain attached to the originals.
+ends selected, and `inputs` also copies external incoming connections. `all`
+copies every connection touching a mapped module, including external outgoing
+connections. It remaps each selected endpoint and retains each external endpoint.
+Each original cable produces at most one copy, so self-loops and internal edges
+are not doubled. The multi-module `all` mode is an explicit MCP extension beyond
+Rack's group shortcut. Named ports, repeated routes and source cable order are
+preserved; copied cables receive fresh IDs and start with empty delay buffers.
+Original cables retain their IDs and order.
 
 The operation works in `preview_edits` and `apply_edits`. Later operations in
 the same transaction can edit the copies. Validation covers the final graph,
@@ -150,14 +169,14 @@ control mutex, allocation, deallocation, or JSON operation runs in the callback.
 
 ## Rack parity boundary
 
-The two duplication shortcuts follow the pinned Rack **selected-group**
-behavior. Rack's hovered-single-module duplication with cables also copies
-outgoing cables, relying on stacked inputs. OpenPatch supports
-[stacked inputs](STACKED_CABLES.md), but continues to use selected-group
-duplication semantics for single and multiple selections. That hovered-module
-shortcut behavior remains explicit parity work, as do Rack preset conversion,
-factory templates and complete project-layout history.
+The shortcut cable policies and selection priority follow pinned Rack 2.6.4.
+OpenPatch places groups to their right rather than centering them around the
+pointer, and resolves collisions using its existing rack-grid placement policy.
+It preserves global source cable order rather than appending internal cables
+before external inputs. Cable colors are derived from each fresh ID and can
+differ from the source cable. Full plug-order/color behavior, Rack preset conversion,
+factory templates and complete project-layout history remain open.
 
-References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/app/RackWidget.cpp),
-[hovered-module cloning](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/app/ModuleWidget.cpp),
-and [input cable summing](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/engine/Engine.cpp).
+References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/RackWidget.cpp),
+[hovered-module cloning](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/ModuleWidget.cpp),
+and [keyboard dispatch](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/Scene.cpp).

@@ -398,9 +398,13 @@ break the group. Omit this field inside transactions.
 
 `duplicate_modules` atomically copies a module group using explicit
 `modules: [{id, new_id}]` mappings. `cable_mode` is `none` (default), `internal`,
-or `inputs` (internal plus external incoming cables). Saved parameters and
-bypass are copied; new runtime instances start fresh. The selected patch output
-and external outgoing connections remain unchanged. It supports
+`inputs` (internal plus external incoming cables), or `all` (every incident cable,
+including outgoing connections to existing destinations). Selected endpoints
+are remapped; external endpoints stay attached. Each cable is copied once with
+a fresh ID, preserving repeated routes and order. Saved parameters, bypass and
+current SEQ-3 Run are copied; other runtime state starts fresh. The selected
+patch output remains unchanged. Version-1 stacking restrictions still apply to
+the final graph. The tool supports
 `expected_revision`, transaction previews, batches, and one-step undo/redo.
 See [duplication arguments and native workflows](RACK_EDITING.md).
 
