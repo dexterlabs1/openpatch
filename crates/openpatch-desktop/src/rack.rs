@@ -305,12 +305,8 @@ impl Rack {
         }
     }
 
-    /// Pure proposal against the observed graph/layout. Never publishes partial clone positions.
-    pub(crate) fn duplicate_placement(
-        &self,
-        patch: &Patch,
-        mappings: &[(String, String)],
-    ) -> Result<BTreeMap<String, Pos2>, String> {
+    /// Predict the same default positions as reconcile without changing layout.
+    fn positions_for_patch(&self, patch: &Patch) -> BTreeMap<String, Pos2> {
         let mut positions = self.positions.clone();
         for node in &patch.nodes {
             if !positions.contains_key(&node.id) {
@@ -327,6 +323,16 @@ impl Rack {
                 positions.insert(node.id.clone(), pos2(x, 0.0));
             }
         }
+        positions
+    }
+
+    /// Pure proposal against the observed graph/layout. Never publishes partial clone positions.
+    pub(crate) fn duplicate_placement(
+        &self,
+        patch: &Patch,
+        mappings: &[(String, String)],
+    ) -> Result<BTreeMap<String, Pos2>, String> {
+        let positions = self.positions_for_patch(patch);
         let mut source = Vec::new();
         for (id, new_id) in mappings {
             let node = patch
@@ -369,6 +375,107 @@ impl Rack {
             .zip(members)
             .map(|((id, _, _), (relative, _))| (id, origin + relative.to_vec2()))
             .collect())
+    }
+
+    /// Propose a library drop on the rack grid. The pointer is in screen space;
+    /// the returned panel origin is in world space. Graph and layout stay intact.
+    pub(crate) fn library_placement(
+        &self,
+        patch: &Patch,
+        kind: &str,
+        canvas: Rect,
+        pointer: Pos2,
+    ) -> Result<Pos2, String> {
+        if !pointer.is_finite()
+            || !canvas.min.is_finite()
+            || !canvas.max.is_finite()
+            || !canvas.is_positive()
+            || !canvas.contains(pointer)
+            || !self.zoom.is_finite()
+            || self.zoom <= 0.0
+            || !self.pan.is_finite()
+        {
+            return Err("Drop inside the rack canvas".into());
+        }
+        static KINDS: OnceLock<BTreeSet<String>> = OnceLock::new();
+        let kinds = KINDS.get_or_init(|| {
+            openpatch_core::catalog()["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|module| module["kind"].as_str().unwrap().to_owned())
+                .collect()
+        });
+        if !kinds.contains(kind) {
+            return Err("Unknown library module kind".into());
+        }
+        let width = panel_width(kind);
+        let world = (pointer - canvas.min - self.pan) / self.zoom;
+        if !world.is_finite() {
+            return Err("Drop position is outside rack bounds".into());
+        }
+        let positions = self.positions_for_patch(patch);
+        let others: Vec<_> = patch
+            .nodes
+            .iter()
+            .map(|node| (positions[&node.id], panel_width(&node.kind)))
+            .collect();
+        settle_group(
+            pos2(world.x - width * 0.5, world.y),
+            &[(Pos2::ZERO, width)],
+            &others,
+        )
+        .ok_or_else(|| "No free rack position within project bounds".into())
+    }
+
+    /// Apply a previously validated proposal only after the shared add succeeds.
+    /// Drops preserve the viewport; click-add may request a one-shot reveal.
+    pub(crate) fn place_added_module(&mut self, id: String, position: Pos2, reveal: bool) {
+        if !position.is_finite() || position.x.abs() > 100_000.0 || position.y.abs() > 100_000.0 {
+            return;
+        }
+        self.positions.insert(id.clone(), position);
+        self.select_only(id.clone());
+        self.pending = None;
+        self.dragging_cable = false;
+        self.group_drag = None;
+        self.editing = None;
+        self.reveal_group_once = false;
+        self.reveal_module_once = reveal.then_some(id);
+        self.suppress_reveal_once = !reveal;
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// A clipped ghost uses the actual panel dimensions and creates no widgets.
+    pub(crate) fn paint_library_preview(
+        &self,
+        painter: &egui::Painter,
+        kind: &str,
+        canvas: Rect,
+        position: Pos2,
+    ) {
+        if !position.is_finite()
+            || !canvas.min.is_finite()
+            || !canvas.max.is_finite()
+            || !canvas.is_positive()
+            || !self.zoom.is_finite()
+            || self.zoom <= 0.0
+            || !self.pan.is_finite()
+        {
+            return;
+        }
+        let rect = Rect::from_min_size(
+            canvas.min + self.pan + position.to_vec2() * self.zoom,
+            vec2(panel_width(kind), PANEL_HEIGHT) * self.zoom,
+        );
+        let painter = painter.with_clip_rect(painter.clip_rect().intersect(canvas));
+        painter.rect_filled(rect, 3.0, Color32::from_black_alpha(36));
+        painter.rect_stroke(
+            rect,
+            3.0,
+            Stroke::new(1.5_f32, Color32::from_rgba_unmultiplied(226, 175, 88, 210)),
+            egui::StrokeKind::Inside,
+        );
     }
 
     pub(crate) fn apply_duplicate_placement(
@@ -8510,6 +8617,202 @@ mod tests {
             pos2(0.0, 420.0)
         );
         assert_eq!(settle(pos2(400.0, 0.0), 180.0, &occupied), pos2(540.0, 0.0));
+    }
+
+    #[test]
+    fn library_drop_converts_zoom_pan_and_centers_actual_panel_width_without_mutation() {
+        let patch = Patch::new_v2();
+        let canvas = Rect::from_min_size(pos2(200.0, 100.0), vec2(3000.0, 2000.0));
+        for zoom in [0.4, 0.85, 1.0, 1.8] {
+            for pan in [vec2(24.0, 12.0), vec2(-170.0, 60.0)] {
+                for kind in ["constant", "seq3", "multi_vco", "vca_mix"] {
+                    let mut rack = Rack {
+                        pan,
+                        zoom,
+                        ..Default::default()
+                    };
+                    rack.select_only("existing-selection".into());
+                    let before = rack.layout();
+                    let revision = rack.layout_revision();
+                    let pointer =
+                        canvas.min + pan + vec2(392.0 + panel_width(kind) * 0.5, ROW + 95.0) * zoom;
+                    let position = rack
+                        .library_placement(&patch, kind, canvas, pointer)
+                        .unwrap();
+                    assert_eq!(position, pos2(390.0, ROW), "{kind}, {zoom}, {pan:?}");
+                    assert_eq!(rack.layout(), before);
+                    assert_eq!(rack.layout_revision(), revision);
+                    assert_eq!(rack.selected.as_deref(), Some("existing-selection"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn library_drop_uses_free_grid_gaps_and_adjacent_rows_and_predicts_missing_layout() {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"a","kind":"oscillator"},{"id":"b","kind":"gain"},
+            {"id":"c","kind":"seq3"}]}))
+        .unwrap();
+        let mut rack = Rack::default();
+        rack.restore_layout(&json!({"version":1,"zoom":1,"pan":[24,12],"positions":{
+            "a":[0,0],"b":[390,0],"c":[0,420]}}))
+            .unwrap();
+        let canvas = Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 1200.0));
+        let before = rack.layout();
+        let position = rack
+            .library_placement(
+                &patch,
+                "audio_stereo",
+                canvas,
+                pos2(24.0 + 230.0 + 90.0, 12.0 + 17.0),
+            )
+            .unwrap();
+        assert_eq!(position, pos2(210.0, 0.0));
+        let adjacent = rack
+            .library_placement(
+                &patch,
+                "audio_stereo",
+                canvas,
+                pos2(24.0 + 90.0, 12.0 + ROW),
+            )
+            .unwrap();
+        assert_eq!(adjacent, pos2(0.0, ROW * 2.0));
+        for proposed in [position, adjacent] {
+            let proposed =
+                Rect::from_min_size(proposed, vec2(panel_width("audio_stereo"), PANEL_HEIGHT));
+            for node in &patch.nodes {
+                let other = Rect::from_min_size(
+                    rack.positions[&node.id],
+                    vec2(panel_width(&node.kind), PANEL_HEIGHT),
+                );
+                assert!(!proposed.intersect(other).is_positive());
+            }
+        }
+        assert_eq!(rack.layout(), before);
+        let empty_layout = Rack::default();
+        let requested = pos2(24.0 + 60.0, 12.0);
+        let proposal = empty_layout
+            .library_placement(&patch, "constant", canvas, requested)
+            .unwrap();
+        let mut reconciled = Rack::default();
+        reconciled.reconcile(&patch, &openpatch_core::catalog());
+        assert_eq!(
+            proposal,
+            reconciled
+                .library_placement(&patch, "constant", canvas, requested)
+                .unwrap()
+        );
+        assert!(empty_layout.positions.is_empty());
+    }
+
+    #[test]
+    fn library_drop_rejects_invalid_points_canvas_and_kind_without_layout_changes() {
+        let rack = Rack::default();
+        let patch = Patch::new_v2();
+        let canvas = Rect::from_min_size(pos2(200.0, 100.0), vec2(900.0, 700.0));
+        let before = rack.layout();
+        for pointer in [
+            pos2(199.0, 300.0),
+            pos2(1101.0, 300.0),
+            pos2(400.0, 99.0),
+            pos2(400.0, 801.0),
+            pos2(f32::NAN, 300.0),
+            pos2(400.0, f32::INFINITY),
+        ] {
+            assert!(rack
+                .library_placement(&patch, "constant", canvas, pointer)
+                .is_err());
+        }
+        for canvas in [
+            Rect::NOTHING,
+            Rect::from_min_max(pos2(f32::NAN, 0.0), pos2(1000.0, 1000.0)),
+            Rect::from_min_size(Pos2::ZERO, Vec2::ZERO),
+        ] {
+            assert!(rack
+                .library_placement(&patch, "constant", canvas, pos2(400.0, 300.0))
+                .is_err());
+        }
+        assert!(rack
+            .library_placement(&patch, "unknown-kind", canvas, pos2(400.0, 300.0))
+            .is_err());
+        assert_eq!(rack.layout(), before);
+        assert_eq!(rack.layout_revision(), 0);
+        assert!(rack.selected.is_none());
+    }
+
+    #[test]
+    fn successful_library_placement_selects_module_and_reveals_only_when_requested() {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"old","kind":"gain"},{"id":"new","kind":"constant"}]}))
+        .unwrap();
+        for reveal in [false, true] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.restore_layout(
+                &json!({"version":1,"zoom":0.85,"pan":[70,-200],"positions":{"old":[0,0]}}),
+            )
+            .unwrap();
+            rack.select_only("old".into());
+            let revision = rack.layout_revision();
+            let pan = rack.pan;
+            rack.place_added_module("new".into(), pos2(2400.0, ROW * 2.0), reveal);
+            assert_eq!(rack.layout_revision(), revision + 1);
+            assert_eq!(rack.positions["new"], pos2(2400.0, ROW * 2.0));
+            assert_eq!(rack.selected_ids(), vec!["new"]);
+            assert_eq!(rack.pan, pan);
+            frame(&ctx, &mut rack, &patch, 1.0, vec![]);
+            if reveal {
+                assert_ne!(rack.pan, pan);
+                let start = rack.pan + rack.positions["new"].to_vec2() * rack.zoom;
+                assert!(start.x >= 12.0 && start.y >= 12.0);
+                assert!(start.x + panel_width("constant") * rack.zoom <= 1088.0);
+                assert!(start.y + PANEL_HEIGHT * rack.zoom <= 688.0);
+            } else {
+                assert_eq!(rack.pan, pan, "drop must keep the viewport");
+            }
+            rack.pan = vec2(-300.0, 80.0);
+            frame(&ctx, &mut rack, &patch, 2.0, vec![]);
+            assert_eq!(rack.pan, vec2(-300.0, 80.0), "reveal runs only once");
+            assert_eq!(rack.zoom, 0.85);
+        }
+    }
+
+    #[test]
+    fn library_preview_is_clipped_to_canvas_and_matches_real_panel_geometry() {
+        let ctx = egui::Context::default();
+        let rack = Rack {
+            pan: vec2(-80.0, 35.0),
+            zoom: 0.85,
+            ..Default::default()
+        };
+        let canvas = Rect::from_min_size(pos2(180.0, 90.0), vec2(500.0, 400.0));
+        let position = pos2(15.0, 0.0);
+        let before = rack.layout();
+        for kind in ["constant", "seq3", "vca_mix"] {
+            let expected = Rect::from_min_size(
+                canvas.min + rack.pan + position.to_vec2() * rack.zoom,
+                vec2(panel_width(kind), PANEL_HEIGHT) * rack.zoom,
+            );
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let painter = ctx.layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        egui::Id::new("library-preview-test"),
+                    ));
+                    rack.paint_library_preview(&painter, kind, canvas, position);
+                },
+            );
+            let rectangles: Vec<_> = output.shapes.iter().filter(|shape| matches!(&shape.shape,egui::epaint::Shape::Rect(rect) if rect.rect == expected)).collect();
+            assert_eq!(rectangles.len(), 2);
+            assert!(rectangles.iter().all(|shape| shape.clip_rect == canvas));
+            assert_eq!(rack.layout(), before);
+            assert_eq!(rack.layout_revision(), 0);
+        }
     }
     #[test]
     fn sidecar_restores_atomically_and_rejects_bad_values() {

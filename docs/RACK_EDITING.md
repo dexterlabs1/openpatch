@@ -180,3 +180,21 @@ factory templates and complete project-layout history remain open.
 References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/RackWidget.cpp),
 [hovered-module cloning](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/ModuleWidget.cpp),
 and [keyboard dispatch](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/Scene.cpp).
+
+## Docked module library
+
+Open **+ Add** (or press Enter with the rack focused) to browse modules in the
+resizable right sidebar. Search names, descriptions, tags, controls and ports;
+filter by musical role or star favorites. Favorites are saved with host preferences.
+The library stays open while you patch cables or edit the rack.
+
+Click a module or use Up/Down and Enter in search to add it near the visible rack
+center and reveal it. Drag a tile onto the rack to preview its snapped placement,
+then release to add it without changing the view. Occupied module positions are
+avoided. Dropping outside the rack, pressing Escape during a drag or losing window
+focus cancels the add. Escape with library keyboard focus closes the sidebar.
+
+An add is one undoable host transaction, including the new module's placement.
+A conflicting concurrent MCP edit rejects the stale add without moving modules or
+changing selection. Modules requiring the polyphonic engine offer the existing
+upgrade confirmation before they can be added to a version-1 patch.

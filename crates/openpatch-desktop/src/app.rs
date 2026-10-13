@@ -2,6 +2,7 @@ use crate::{
     audio::Audio,
     document_state::{apply_document, DocumentState},
     keyboard::Keyboard,
+    library::{LibraryAction, LibraryDrag, ModuleLibrary},
     midi::{MidiInputManager, MidiPortInfo},
     project::{Document, FileToken, Store},
     rack::{
@@ -223,9 +224,8 @@ pub struct OpenPatch {
     file_mode: Option<FileMode>,
     file_focus: bool,
     browser_open: bool,
-    browser_focus: bool,
+    library: ModuleLibrary,
     preset_dialog: Option<PresetDialog>,
-    search: String,
     catalog: Value,
     start: Instant,
     mcp: bool,
@@ -358,9 +358,8 @@ impl OpenPatch {
             file_mode: None,
             file_focus: false,
             browser_open: false,
-            browser_focus: false,
+            library: ModuleLibrary::default(),
             preset_dialog: None,
-            search: String::new(),
             catalog: catalog(),
             start: Instant::now(),
             mcp,
@@ -389,6 +388,13 @@ impl OpenPatch {
             app.status = format!("Project storage unavailable: {error}");
         }
         app.refresh_recovery_list();
+        let favorites: Vec<String> = preferences["module_favorites"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        app.library.set_favorites(&favorites, &app.catalog);
         app.refresh_files();
         app.refresh_devices();
         app.connect_selected_midi();
@@ -429,7 +435,8 @@ impl OpenPatch {
         ));
         let result = (|| -> Result<(), String> {
             let data = serde_json::to_vec_pretty(&json!({
-                "output_device": self.output_device, "midi_device": self.midi_device
+                "output_device": self.output_device, "midi_device": self.midi_device,
+                "module_favorites": self.library.favorites()
             }))
             .map_err(|e| e.to_string())?;
             let mut file = std::fs::OpenOptions::new()
@@ -442,8 +449,7 @@ impl OpenPatch {
             std::fs::rename(&temporary, &path).map_err(|e| e.to_string())
         })();
         if let Err(error) = result {
-            self.settings_status =
-                format!("Device selected; preferences could not be saved: {error}");
+            self.settings_status = format!("Preferences could not be saved: {error}");
         }
     }
     fn refresh_devices(&mut self) {
@@ -523,7 +529,7 @@ impl OpenPatch {
             && self.audio.as_ref().is_some_and(Audio::is_playing)
             && !ctx.wants_keyboard_input()
             && ctx.input(|i| i.focused)
-            && !self.browser_open
+            && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
             && self.preset_dialog.is_none()
             && self.file_mode.is_none()
             && !self.shader_open
@@ -753,7 +759,7 @@ impl OpenPatch {
     }
     fn browse(&mut self) {
         self.browser_open = true;
-        self.browser_focus = true;
+        self.library.request_focus();
     }
     fn file_dialog(&mut self, mode: FileMode) {
         self.refresh_files();
@@ -1103,7 +1109,7 @@ impl OpenPatch {
             }
         }
     }
-    fn add_module(&mut self, kind: &str) {
+    fn add_module(&mut self, kind: &str, placement: Option<(egui::Pos2, bool)>) -> bool {
         let id = (1..)
             .map(|i| format!("{kind}-{i}"))
             .find(|id| !self.patch.nodes.iter().any(|node| node.id == *id))
@@ -1112,11 +1118,64 @@ impl OpenPatch {
         if matches!(kind, "output" | "audio_out" | "audio_stereo") && self.patch.output.is_none() {
             edits.push(json!({"tool":"set_output","arguments":{"id":id,"port":"out"}}));
         }
-        if self.command("apply_edits", json!({"edits":edits})) {
-            self.rack.select_only(id);
-            self.browser_open = false;
-        }
+        let base_state_id = self.state_id;
+        let base_layout = self.rack.layout();
+        let receipt = match execute_shared(
+            &self.shared,
+            "apply_edits",
+            json!({"edits":edits,"expected_revision":self.revision}),
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        self.install_add_receipt(&receipt, id, placement, base_state_id, base_layout)
+            .expect("shared add command returns a committed graph snapshot");
+        self.sync();
+        self.status = format!("Added {}", module_title(kind));
+        true
     }
+
+    fn install_add_receipt(
+        &mut self,
+        receipt: &Value,
+        id: String,
+        placement: Option<(egui::Pos2, bool)>,
+        base_state_id: u64,
+        base_layout: Value,
+    ) -> Result<(), String> {
+        let patch: Patch =
+            serde_json::from_value(receipt["patch"].clone()).map_err(|error| error.to_string())?;
+        let revision = receipt["revision"]
+            .as_u64()
+            .ok_or("add receipt has no revision")?;
+        let state_id = receipt["state_id"]
+            .as_u64()
+            .ok_or("add receipt has no state identity")?;
+        if !patch.nodes.iter().any(|node| node.id == id) {
+            return Err("add receipt is missing the new module".into());
+        }
+        self.history_layouts.insert(base_state_id, base_layout);
+        self.patch = patch;
+        self.revision = revision;
+        self.state_id = state_id;
+        self.can_undo = receipt["history"]["undo_steps"]
+            .as_u64()
+            .is_some_and(|n| n > 0);
+        self.can_redo = receipt["history"]["redo_steps"]
+            .as_u64()
+            .is_some_and(|n| n > 0);
+        match placement {
+            Some((position, reveal)) => self.rack.place_added_module(id, position, reveal),
+            None => self.rack.select_only(id),
+        }
+        self.capture_document();
+        self.history_layouts.insert(state_id, self.rack.layout());
+        Ok(())
+    }
+
     fn duplicate_modules(
         &mut self,
         ids: &[String],
@@ -1619,213 +1678,142 @@ impl OpenPatch {
                 }
             });
     }
-    fn browser(&mut self, ctx: &egui::Context) {
-        if !self.browser_open {
-            return;
+    fn rack_workspace(&mut self, ctx: &egui::Context, library_action: Option<LibraryAction>) {
+        let mut action = None;
+        let mut pending_add = None;
+        if !self.library_enabled() || !ctx.input(|i| i.focused) {
+            egui::DragAndDrop::clear_payload(ctx);
         }
-        let mut open = true;
-        let mut chosen: Option<String> = None;
-        let modules = self.catalog["modules"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        egui::Window::new("Add a module")
-            .open(&mut open)
-            .default_size([800.0, 560.0])
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .collapsible(false)
+        let drag = egui::DragAndDrop::payload::<LibraryDrag>(ctx);
+        self.rack.set_shortcuts_enabled(
+            drag.is_none()
+                && !self.settings_open
+                && !self.shader_open
+                && self.preset_dialog.is_none(),
+        );
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().inner_margin(0))
             .show(ctx, |ui| {
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text("Search names, models, controls, or inputs")
-                        .desired_width(f32::INFINITY),
-                );
-                if self.browser_focus {
-                    response.request_focus();
-                    self.browser_focus = false;
-                }
-                ui.label(
-                    RichText::new("OpenPatch built-in modules")
-                        .color(MUTED)
-                        .size(11.0),
-                );
-                if self.patch.version == 1 {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Legacy timing: polyphonic modules require engine v2.");
-                        if ui.button("Enable polyphony…").clicked() {
-                            self.confirm_engine_upgrade = true;
-                            self.browser_open = false;
+                let rate = self
+                    .audio
+                    .as_ref()
+                    .map_or(self.patch.sample_rate, |a| a.sample_rate);
+                let interactive = self.file_mode.is_none()
+                    && self.confirm_discard.is_none()
+                    && !self.recovery_open
+                    && !self.confirm_engine_upgrade
+                    && self.preset_dialog.is_none()
+                    && !self.allow_close;
+                let canvas = ui.available_rect_before_wrap();
+                ui.add_enabled_ui(interactive && drag.is_none(), |ui| {
+                    action = self
+                        .rack
+                        .show(ui, &self.patch, &self.catalog, rate, self.revision);
+                });
+                if self.library_enabled() {
+                    if let Some(payload) = &drag {
+                        if let Some(pointer) = ctx.input(|i| i.pointer.hover_pos()) {
+                            let over_rack = canvas.contains(pointer)
+                                && ctx.layer_id_at(pointer) == Some(ui.layer_id());
+                            if over_rack {
+                                match self.rack.library_placement(
+                                    &self.patch,
+                                    &payload.kind,
+                                    canvas,
+                                    pointer,
+                                ) {
+                                    Ok(position) => {
+                                        self.rack.paint_library_preview(
+                                            ui.painter(),
+                                            &payload.kind,
+                                            canvas,
+                                            position,
+                                        );
+                                        if ctx.input(|i| {
+                                            i.pointer.button_released(egui::PointerButton::Primary)
+                                        }) {
+                                            egui::DragAndDrop::take_payload::<LibraryDrag>(ctx);
+                                            pending_add =
+                                                Some((payload.kind.clone(), position, false));
+                                        }
+                                    }
+                                    Err(error) => self.status = error,
+                                }
+                            }
                         }
-                    });
-                }
-                let query = self.search.trim().to_lowercase();
-                let visible: Vec<_> = modules
-                    .iter()
-                    .filter(|module| {
-                        module["min_patch_version"].as_u64().unwrap_or(1)
-                            <= self.patch.version as u64
-                    })
-                    .filter(|module| {
-                        let kind = module["kind"].as_str().unwrap_or("");
-                        let title = module["title"].as_str().unwrap_or(kind);
-                        let description = module["description"].as_str().unwrap_or("");
-                        let model = module["model"].as_str().unwrap_or("legacy");
-                        let inputs = module["inputs"].to_string();
-                        let params = module["params"]
-                            .as_object()
-                            .map(|params| params.keys().cloned().collect::<Vec<_>>().join(" "))
-                            .unwrap_or_default();
-                        let tags = module["tags"].to_string();
-                        format!("{kind} {title} {description} {model} {inputs} {params} {tags}")
-                            .to_lowercase()
-                            .contains(&query)
-                    })
-                    .collect();
-                let mut categories: Vec<String> = ["circuit-derived", "idealized", "legacy"]
-                    .into_iter()
-                    .map(str::to_owned)
-                    .collect();
-                for module in &visible {
-                    let category = module["model"].as_str().unwrap_or("legacy");
-                    if !categories.iter().any(|item| item == category) {
-                        categories.push(category.into());
+                    } else if let Some(LibraryAction::Add(kind)) = &library_action {
+                        match self.rack.library_placement(
+                            &self.patch,
+                            kind,
+                            canvas,
+                            canvas.center(),
+                        ) {
+                            Ok(position) => pending_add = Some((kind.clone(), position, true)),
+                            Err(error) => self.status = error,
+                        }
                     }
                 }
-                egui::ScrollArea::vertical()
-                    .max_height(440.0)
-                    .show(ui, |ui| {
-                        if visible.is_empty() {
-                            ui.add_space(20.0);
-                            ui.label("No modules match this search.");
-                        }
-                        for category in &categories {
-                            let members: Vec<_> = visible
-                                .iter()
-                                .filter(|module| {
-                                    module["model"].as_str().unwrap_or("legacy") == category
-                                })
-                                .collect();
-                            if members.is_empty() {
-                                continue;
-                            }
-                            ui.add_space(10.0);
-                            ui.label(
-                                RichText::new(match category.as_str() {
-                                    "circuit-derived" => "Circuit-derived models",
-                                    "idealized" => "Idealized utilities",
-                                    "legacy" => "Legacy modules",
-                                    "functional" => "Voltage utilities",
-                                    other => other,
-                                })
-                                .strong()
-                                .size(12.0),
-                            );
-                            ui.add_space(4.0);
-                            ui.horizontal_wrapped(|ui| {
-                                for module in members {
-                                    let Some(kind) = module["kind"].as_str() else {
-                                        continue;
-                                    };
-                                    let title = module["title"].as_str().unwrap_or(kind);
-                                    let desc = module["description"]
-                                        .as_str()
-                                        .unwrap_or("Built-in OpenPatch module");
-                                    let (rect, response) = ui.allocate_exact_size(
-                                        Vec2::new(178.0, 212.0),
-                                        egui::Sense::click(),
-                                    );
-                                    let p = ui.painter();
-                                    p.rect_filled(
-                                        rect,
-                                        2.0,
-                                        if response.hovered() {
-                                            Color32::from_rgb(238, 233, 219)
-                                        } else {
-                                            Color32::from_rgb(220, 217, 204)
-                                        },
-                                    );
-                                    p.rect_stroke(
-                                        rect,
-                                        2.0,
-                                        egui::Stroke::new(1.0_f32, Color32::from_gray(90)),
-                                        egui::StrokeKind::Inside,
-                                    );
-                                    let mut title_job = egui::text::LayoutJob::simple(
-                                        title.into(),
-                                        egui::FontId::proportional(15.0),
-                                        Color32::from_gray(31),
-                                        rect.width() - 18.0,
-                                    );
-                                    title_job.wrap.max_rows = 1;
-                                    let title_galley = p.layout_job(title_job);
-                                    p.galley(
-                                        rect.center_top()
-                                            + Vec2::new(-title_galley.size().x * 0.5, 14.0),
-                                        title_galley,
-                                        Color32::from_gray(31),
-                                    );
-                                    p.text(
-                                        rect.center_top() + Vec2::new(0.0, 41.0),
-                                        egui::Align2::CENTER_CENTER,
-                                        category,
-                                        egui::FontId::monospace(9.0),
-                                        Color32::from_rgb(63, 89, 83),
-                                    );
-                                    let knob = rect.center_top() + Vec2::new(0.0, 82.0);
-                                    p.circle_filled(
-                                        knob + Vec2::new(1.0, 2.0),
-                                        23.0,
-                                        Color32::from_black_alpha(50),
-                                    );
-                                    p.circle_filled(knob, 22.0, Color32::from_gray(41));
-                                    p.circle_stroke(
-                                        knob,
-                                        20.0,
-                                        egui::Stroke::new(1.5_f32, Color32::from_gray(74)),
-                                    );
-                                    p.line_segment(
-                                        [knob - Vec2::new(0.0, 7.0), knob - Vec2::new(0.0, 17.0)],
-                                        egui::Stroke::new(2.0_f32, Color32::from_gray(230)),
-                                    );
-                                    let mut description_job = egui::text::LayoutJob::simple(
-                                        desc.into(),
-                                        egui::FontId::proportional(11.0),
-                                        Color32::from_gray(53),
-                                        rect.width() - 22.0,
-                                    );
-                                    description_job.wrap.max_rows = 4;
-                                    p.galley(
-                                        rect.left_top() + Vec2::new(11.0, 117.0),
-                                        p.layout_job(description_job),
-                                        Color32::from_gray(53),
-                                    );
-                                    p.text(
-                                        rect.center_bottom() - Vec2::new(0.0, 16.0),
-                                        egui::Align2::CENTER_CENTER,
-                                        kind,
-                                        egui::FontId::monospace(9.0),
-                                        Color32::from_gray(86),
-                                    );
-                                    response.widget_info(|| {
-                                        egui::WidgetInfo::labeled(
-                                            egui::WidgetType::Button,
-                                            true,
-                                            format!("Add {title}, {category}. {desc}"),
-                                        )
-                                    });
-                                    if response.clicked() {
-                                        chosen = Some(kind.into());
-                                    }
-                                    response.on_hover_text(format!("{title}\n{category}\n{desc}"));
-                                }
-                            });
-                        }
-                    });
             });
-        self.browser_open = open;
-        if let Some(kind) = chosen {
-            self.add_module(&kind);
+        match action {
+            Some(RackAction::Command(name, args)) => {
+                self.command(name, args);
+            }
+            Some(RackAction::Duplicate {
+                ids,
+                cable_mode,
+                revision,
+                select_copies,
+            }) => {
+                self.duplicate_modules(&ids, cable_mode, revision, select_copies);
+            }
+            Some(RackAction::OpenBrowser) => self.browse(),
+            Some(RackAction::Preset {
+                id,
+                kind,
+                revision,
+                mode,
+            }) => {
+                self.preset_dialog = Some(PresetDialog::new(id, kind, revision, mode));
+            }
+            Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
+            Some(RackAction::LayoutChanged) => {
+                self.status = "Module moved".into();
+            }
+            None => {}
         }
+        if self.library_enabled() {
+            if let Some((kind, position, reveal)) = pending_add {
+                self.add_module(&kind, Some((position, reveal)));
+            } else if matches!(library_action, Some(LibraryAction::EnablePolyphony)) {
+                self.confirm_engine_upgrade = true;
+            }
+        }
+    }
+
+    fn library_enabled(&self) -> bool {
+        self.file_mode.is_none()
+            && self.confirm_discard.is_none()
+            && !self.recovery_open
+            && !self.confirm_engine_upgrade
+            && self.preset_dialog.is_none()
+            && !self.settings_open
+            && !self.shader_open
+            && !self.allow_close
+    }
+
+    fn browser(&mut self, ctx: &egui::Context) -> Option<LibraryAction> {
+        let enabled = self.library_enabled();
+        let action = self.library.show(
+            ctx,
+            &mut self.browser_open,
+            &self.catalog,
+            self.patch.version,
+            enabled,
+        );
+        if self.library.take_favorites_changed() {
+            self.save_host_settings();
+        }
+        action
     }
 
     fn load_preset_dialog(&self, dialog: &mut PresetDialog) {
@@ -2734,6 +2722,9 @@ impl OpenPatch {
         if frame == 438 {
             self.browse();
         }
+        if frame == 454 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(940.0, 680.0)));
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2766,6 +2757,7 @@ impl OpenPatch {
                 | 416
                 | 432
                 | 448
+                | 466
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2811,7 +2803,8 @@ impl OpenPatch {
                 24 => path.with_file_name("module-preset-save.png"),
                 25 => path.with_file_name("module-preset-browser.png"),
                 26 => path.with_file_name("rack-duplication-outgoing.png"),
-                _ => path.with_file_name("module-browser.png"),
+                27 => path.with_file_name("module-browser.png"),
+                _ => path.with_file_name("module-library-compact.png"),
             };
             image::save_buffer(
                 target,
@@ -2823,12 +2816,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 28 {
+            if captures == 29 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 474, "Native screenshot timeout");
+        assert!(frame < 492, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2838,7 +2831,11 @@ impl eframe::App for OpenPatch {
         }
         self.sync();
         self.observe_document();
+        self.toolbar(ctx);
+        self.footer(ctx);
+        let library_action = self.browser(ctx);
         if !ctx.wants_keyboard_input()
+            && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
             && !self.confirm_engine_upgrade
             && !self.recovery_open
             && self.preset_dialog.is_none()
@@ -2869,9 +2866,6 @@ impl eframe::App for OpenPatch {
                 self.rack.reset_view();
             }
         }
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.browser_open = false;
-        }
         if let Some(action) = self.deferred_action.take() {
             self.request_action(action);
         }
@@ -2879,8 +2873,6 @@ impl eframe::App for OpenPatch {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.request_action(PendingAction::Close);
         }
-        self.toolbar(ctx);
-        self.footer(ctx);
         self.performance_keyboard(ctx);
         self.visual_dock(ctx);
         self.scope
@@ -2913,61 +2905,8 @@ impl eframe::App for OpenPatch {
             }
             self.rack.set_module_states(lights, controls);
         }
-        let mut action = None;
-        self.rack.set_shortcuts_enabled(
-            !self.browser_open
-                && !self.settings_open
-                && !self.shader_open
-                && self.preset_dialog.is_none(),
-        );
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(0))
-            .show(ctx, |ui| {
-                let rate = self
-                    .audio
-                    .as_ref()
-                    .map_or(self.patch.sample_rate, |a| a.sample_rate);
-                let interactive = self.file_mode.is_none()
-                    && self.confirm_discard.is_none()
-                    && !self.recovery_open
-                    && !self.confirm_engine_upgrade
-                    && self.preset_dialog.is_none()
-                    && !self.allow_close;
-                ui.add_enabled_ui(interactive, |ui| {
-                    action = self
-                        .rack
-                        .show(ui, &self.patch, &self.catalog, rate, self.revision);
-                });
-            });
-        match action {
-            Some(RackAction::Command(name, args)) => {
-                self.command(name, args);
-            }
-            Some(RackAction::Duplicate {
-                ids,
-                cable_mode,
-                revision,
-                select_copies,
-            }) => {
-                self.duplicate_modules(&ids, cable_mode, revision, select_copies);
-            }
-            Some(RackAction::OpenBrowser) => self.browse(),
-            Some(RackAction::Preset {
-                id,
-                kind,
-                revision,
-                mode,
-            }) => {
-                self.preset_dialog = Some(PresetDialog::new(id, kind, revision, mode));
-            }
-            Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
-            Some(RackAction::LayoutChanged) => {
-                self.status = "Module moved".into();
-            }
-            None => {}
-        }
+        self.rack_workspace(ctx, library_action);
         self.observe_document();
-        self.browser(ctx);
         self.files_window(ctx);
         self.preset_window(ctx);
         self.shader_window(ctx);
@@ -3071,9 +3010,8 @@ mod project_workflow_tests {
             file_mode: None,
             file_focus: false,
             browser_open: false,
-            browser_focus: false,
+            library: ModuleLibrary::default(),
             preset_dialog: None,
-            search: String::new(),
             catalog: catalog(),
             start: Instant::now(),
             mcp: true,
@@ -3479,6 +3417,307 @@ mod project_workflow_tests {
         assert_eq!(dialog.total, 1);
         assert_eq!(dialog.entries[0]["filename"], "z-needle.opreset");
     }
+    fn library_frame(
+        app: &mut OpenPatch,
+        ctx: &egui::Context,
+        time: f64,
+        events: Vec<egui::Event>,
+        focused: bool,
+    ) {
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1100.0, 800.0),
+                )),
+                time: Some(time),
+                modifiers: events
+                    .iter()
+                    .rev()
+                    .find_map(|event| match event {
+                        egui::Event::Key { modifiers, .. } => Some(*modifiers),
+                        _ => None,
+                    })
+                    .unwrap_or_default(),
+                events,
+                focused,
+                ..Default::default()
+            },
+            |ctx| {
+                let action = app.browser(ctx);
+                app.rack_workspace(ctx, action);
+            },
+        );
+    }
+
+    fn pointer_event(position: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos: position,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn library_drop_is_one_history_step_and_preserves_view_and_open_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command("replace_patch", json!({"patch":Patch::new_v2()})));
+        app.rack
+            .restore_layout(&json!({"version":1,"zoom":0.8,"pan":[24,12],"positions":{}}))
+            .unwrap();
+        app.browse();
+        let ctx = egui::Context::default();
+        library_frame(&mut app, &ctx, 0.0, vec![], true);
+        let before = app.capture_document();
+        let undo = app.shared.lock().unwrap().snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap();
+        let point = egui::pos2(300.0, 250.0);
+        egui::DragAndDrop::set_payload(
+            &ctx,
+            LibraryDrag {
+                kind: "constant".into(),
+            },
+        );
+        library_frame(
+            &mut app,
+            &ctx,
+            1.0,
+            vec![egui::Event::PointerMoved(point), pointer_event(point, true)],
+            true,
+        );
+        assert!(app.patch.nodes.is_empty(), "Preview must not commit");
+        library_frame(&mut app, &ctx, 1.1, vec![pointer_event(point, false)], true);
+        library_frame(&mut app, &ctx, 1.2, vec![], true);
+        assert_eq!(app.patch.nodes.len(), 1);
+        assert_eq!(app.patch.nodes[0].kind, "constant");
+        assert!(app.browser_open);
+        let after = app.capture_document();
+        assert_eq!(after.layout["pan"], before.layout["pan"]);
+        assert_eq!(after.layout["zoom"], before.layout["zoom"]);
+        assert_eq!(
+            after.layout["positions"]["constant-1"],
+            json!([285.0, 420.0])
+        );
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
+            undo + 1
+        );
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+        app.history(true);
+        assert!(app.capture_document().equivalent(&after));
+    }
+
+    #[test]
+    fn library_drop_cancellation_never_mutates_patch_or_geometry() {
+        for cancel in ["outside", "escape", "focus", "modal"] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            app.browse();
+            let ctx = egui::Context::default();
+            library_frame(&mut app, &ctx, 0.0, vec![], true);
+            let before = app.capture_document();
+            let snapshot = app.shared.lock().unwrap().snapshot();
+            let point = egui::pos2(300.0, 250.0);
+            egui::DragAndDrop::set_payload(
+                &ctx,
+                LibraryDrag {
+                    kind: "constant".into(),
+                },
+            );
+            library_frame(
+                &mut app,
+                &ctx,
+                1.0,
+                vec![egui::Event::PointerMoved(point), pointer_event(point, true)],
+                true,
+            );
+            let mut events = Vec::new();
+            if cancel == "escape" {
+                events.push(egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            if cancel == "modal" {
+                app.file_mode = Some(FileMode::Save);
+            }
+            let released = if cancel == "outside" {
+                egui::pos2(1090.0, 790.0)
+            } else {
+                point
+            };
+            events.extend([
+                egui::Event::PointerMoved(released),
+                pointer_event(released, false),
+            ]);
+            library_frame(&mut app, &ctx, 1.1, events, cancel != "focus");
+            assert!(app.capture_document().equivalent(&before), "{cancel}");
+            assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot, "{cancel}");
+            assert!(!egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(&ctx));
+        }
+    }
+
+    #[test]
+    fn library_add_failure_preserves_geometry_selection_and_newer_mcp_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.capture_document();
+        let original = app.patch.nodes[0].id.clone();
+        app.rack.select_only(original.clone());
+        let layout = app.rack.layout();
+        execute_shared(
+            &app.shared,
+            "add_module",
+            json!({"id":"external","kind":"constant"}),
+        )
+        .unwrap();
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert!(!app.add_module("constant", Some((egui::pos2(300.0, 420.0), false))));
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), vec![original]);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+        app.sync();
+        let full = Patch {
+            nodes: (0..openpatch_core::MAX_NODES)
+                .map(|i| openpatch_core::Node {
+                    id: format!("node{i}"),
+                    kind: "constant".into(),
+                    params: Default::default(),
+                    bypassed: false,
+                })
+                .collect(),
+            ..Patch::new_v2()
+        };
+        assert!(app.command("replace_patch", json!({"patch":full})));
+        app.capture_document();
+        let layout = app.rack.layout();
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert!(!app.add_module("constant", Some((egui::pos2(300.0, 420.0), false))));
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+    }
+
+    #[test]
+    fn library_add_receipt_keeps_placement_with_its_commit_during_mcp_race() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let before = app.capture_document();
+        let base = app.state_id;
+        let receipt=execute_shared(&app.shared,"apply_edits",json!({"edits":[{"tool":"add_module","arguments":{"id":"library-add","kind":"constant"}}],"expected_revision":app.revision})).unwrap();
+        let committed_state = receipt["state_id"].as_u64().unwrap();
+        let shared = app.shared.clone();
+        let mut live = shared.lock().unwrap();
+        live.execute("remove_module", json!({"id":"library-add"}))
+            .unwrap();
+        app.install_add_receipt(
+            &receipt,
+            "library-add".into(),
+            Some((egui::pos2(300.0, 420.0), false)),
+            base,
+            before.layout.clone(),
+        )
+        .unwrap();
+        let committed = app.capture_document();
+        assert_eq!(
+            committed.layout["positions"]["library-add"],
+            json!([300.0, 420.0])
+        );
+        assert_eq!(app.history_layouts[&committed_state], committed.layout);
+        app.sync();
+        assert_eq!(app.state_id, committed_state);
+        drop(live);
+        app.sync();
+        assert!(!app.patch.nodes.iter().any(|node| node.id == "library-add"));
+        app.history(false);
+        assert!(app.capture_document().equivalent(&committed));
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+    }
+
+    #[test]
+    fn docked_library_allows_rack_shortcuts_but_search_owns_keyboard_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[{"id":"a","kind":"constant"}]}})
+        ));
+        app.rack
+            .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"a":[0,0]}}))
+            .unwrap();
+        app.browse();
+        let ctx = egui::Context::default();
+        library_frame(&mut app, &ctx, 0.0, vec![], true);
+        let header = egui::pos2(84.0, 44.0);
+        library_frame(
+            &mut app,
+            &ctx,
+            1.0,
+            vec![
+                egui::Event::PointerMoved(header),
+                pointer_event(header, true),
+            ],
+            true,
+        );
+        library_frame(
+            &mut app,
+            &ctx,
+            1.1,
+            vec![pointer_event(header, false)],
+            true,
+        );
+        let key = |pressed| egui::Event::Key {
+            key: egui::Key::D,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        };
+        library_frame(&mut app, &ctx, 1.2, vec![key(true)], true);
+        assert_eq!(
+            app.patch.nodes.len(),
+            2,
+            "An open library must not disable rack duplication"
+        );
+        assert!(app.browser_open);
+        library_frame(&mut app, &ctx, 1.3, vec![key(false)], true);
+        app.library.request_focus();
+        library_frame(&mut app, &ctx, 2.0, vec![], true);
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        library_frame(&mut app, &ctx, 2.1, vec![key(true)], true);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot(),
+            snapshot,
+            "Search typing must not edit rack modules"
+        );
+    }
+
+    #[test]
+    fn library_favorites_share_host_preferences_without_changing_device_choices() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.output_device = Some("Chosen output".into());
+        app.midi_device = Some("Chosen input".into());
+        app.library.set_favorites(
+            &["analog_vco".into(), "constant".into(), "unknown".into()],
+            &app.catalog,
+        );
+        app.save_host_settings();
+        let value: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(".host-settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(value["output_device"], "Chosen output");
+        assert_eq!(value["midi_device"], "Chosen input");
+        assert_eq!(value["module_favorites"], json!(["analog_vco", "constant"]));
+    }
+
     #[test]
     fn browser_add_preserves_runtime_identities_and_sets_first_output_atomically() {
         use openpatch::control::LiveModuleEvents;
@@ -3508,12 +3747,12 @@ mod project_workflow_tests {
             .unwrap()
             .set_live_module_events(Some(counter.clone()));
         let revision = app.revision;
-        app.add_module("constant");
+        app.add_module("constant", None);
         assert_eq!(counter.0.load(Ordering::Relaxed), 0);
         assert_eq!(app.revision, revision + 1);
         assert_eq!(app.patch.nodes.len(), 3);
         assert_eq!(app.rack.selected.as_deref(), Some("constant-1"));
-        app.add_module("audio_stereo");
+        app.add_module("audio_stereo", None);
         assert_eq!(app.patch.output.as_deref(), Some("audio_stereo-1"));
         assert_eq!(app.revision, revision + 2);
         assert_eq!(counter.0.load(Ordering::Relaxed), 0);

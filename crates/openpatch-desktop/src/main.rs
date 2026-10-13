@@ -3,6 +3,7 @@ mod app;
 mod audio;
 mod document_state;
 mod keyboard;
+mod library;
 mod midi;
 mod project;
 #[cfg(test)]
