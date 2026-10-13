@@ -19,6 +19,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
             &[("signal", "out")]
         }
         "crossfade" => &[("a", "out")],
+        "fade" => &[("a", "out"), ("b", "complement")],
         _ => &[],
     }
 }

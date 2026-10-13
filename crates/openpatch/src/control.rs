@@ -209,6 +209,7 @@ impl Session {
                         | "compare"
                         | "process"
                         | "rescale"
+                        | "vca_mix"
                 )
             })
             .map(|node| node.id.clone())

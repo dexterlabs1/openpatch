@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **39 built-in kinds**: seven legacy utilities, six reference-voice
+There are **41 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, and four gate/voltage processors. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, and two CV-controlled audio mixers. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -122,7 +122,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
 | ADSR EG | Envelope | Partial: reference RC ADSR implemented | Capacitor trajectories, timing convention, sustain, release and retrigger from every stage |
 | Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity and VCV differential acceptance remain open |
-| VCA Mix | Mixing | Planned | Per-channel/master CV, independent outputs, headroom |
+| VCA Mix | Mixing | Implemented signal role: `vca_mix`, four squared-gain strips, independent outputs, master VCA, linear/quartic CV and live meters | Direct reference traces, Rack import/state mapping, native qualification; [contract](VOLTAGE_MIXING.md) |
 | 8vert | Voltage utility | Implemented signal role: `attenuverter8`, eight gains, downward input/polyphony propagation, voltage/percent presentation | Direct reference traces and Rack import/UI parity; [contract](VOLTAGE_UTILITIES.md) |
 | Mutes | Routing | Implemented signal role: `mutes10`, ten flags, atomic invert, pinned mono inheritance and direct bypass | Direct reference traces, legacy state polarity migration and native qualification; [contract](VOLTAGE_UTILITIES.md) |
 | Pulses | Gate utility | Clock-gate interface implemented; not equivalent | Pulse duration and held-gate behavior across sample rates |
@@ -140,7 +140,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Noise | Source | Partial: seeded Gaussian `white_noise` with RMS control | Colored outputs, spectral-density budget and VCV level calibration |
 | Random | Modulation | Planned | Trigger timing, distribution and repeatability |
 | CV Mix | Mixing | Implemented signal role: `cv_mix`, three bipolar gains and independent 10 V normals | Direct reference traces, Rack import and native qualification; [contract](VOLTAGE_UTILITIES.md) |
-| Fade | Mixing | Partial: `crossfade`, linear/square-root laws and v2 voices | CV modulation and complementary output |
+| Fade | Mixing | Implemented signal role: `fade`, bipolar CV depth, complementary outputs, linear/square-root laws and independent bypass routes; legacy `crossfade` remains unchanged | Direct reference traces, Rack state mapping and native qualification; [contract](VOLTAGE_MIXING.md) |
 | Logic | Gate processing | Implemented signal role: `logic`, eight Boolean outputs, 1 V threshold, manual B and mono/poly indicators | Direct reference traces, native qualification; no hysteresis in this reference role; [contract](SIGNAL_PROCESSING.md) |
 | Compare | Voltage processing | Implemented signal role: `compare`, eight outputs, B offset, raw mono zero-padding and strict comparisons | Direct reference traces and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Gates | Gate processing | Planned | Timing, retrigger and overlapping-event cases |

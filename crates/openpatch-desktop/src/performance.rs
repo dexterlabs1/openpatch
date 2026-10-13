@@ -34,6 +34,7 @@ enum ModuleKind {
     Compare,
     Process,
     Rescale,
+    VcaMix,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -45,6 +46,7 @@ impl ModuleKind {
             "compare" => Some(Self::Compare),
             "process" => Some(Self::Process),
             "rescale" => Some(Self::Rescale),
+            "vca_mix" => Some(Self::VcaMix),
             _ => None,
         }
     }
@@ -57,6 +59,7 @@ impl ModuleKind {
             Self::Compare => "compare",
             Self::Process => "process",
             Self::Rescale => "rescale",
+            Self::VcaMix => "vca_mix",
         }
     }
     fn manual(self) -> bool {

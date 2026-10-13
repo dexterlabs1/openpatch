@@ -21,6 +21,7 @@ mod analog;
 mod bypass;
 pub mod ladder;
 pub mod midi;
+mod mixing;
 mod multi_lfo;
 mod poly;
 mod routing;
@@ -199,6 +200,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(signal::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(mixing::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");

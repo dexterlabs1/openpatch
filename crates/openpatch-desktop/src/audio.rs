@@ -2496,10 +2496,10 @@ mod tests {
 
     #[test]
     fn read_only_signal_module_lights_are_published_without_sequence_state() {
-        for (kind, count) in [("compare", 4), ("rescale", 2)] {
+        for (kind, count) in [("compare", 4), ("rescale", 2), ("vca_mix", 4)] {
             let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
                 "nodes":[{"id":"meter","kind":kind}],"output":"meter",
-                "output_port":if kind=="compare" {"max"} else {"out"}}))
+                "output_port":match kind {"compare" => "max", "vca_mix" => "mix", _ => "out"}}))
             .unwrap();
             let (mut callback, _, _) = sequence_callback(&patch);
             assert!(callback
@@ -2518,6 +2518,99 @@ mod tests {
                 kind
             );
         }
+    }
+
+    #[test]
+    fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"source","kind":"constant","params":{"value":0.5}},
+                     {"id":"mixer","kind":"vca_mix"}],
+            "cables":[{"from":"source","to":"mixer","input":"in1"}],
+            "output":"mixer","output_port":"mix"}))
+        .unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        assert!(callback.performance.module_lights("mixer").is_none());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 512], 1));
+        let original = callback.performance.module_lights("mixer").unwrap();
+        assert_eq!(original.count, 4);
+        assert!((original.brightness[0][0] - 0.668_383_36).abs() < 1e-5);
+        assert_eq!(original.brightness[0][1], 0.0);
+        assert_eq!(&original.brightness[1..4], &[[0.0; 2]; 3]);
+        let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+
+        session
+            .execute(
+                "set_parameter",
+                serde_json::json!({
+            "id":"mixer","parameter":"level1","value":0.5}),
+            )
+            .unwrap();
+        assert!(callback.performance.module_lights("mixer").is_none());
+        // An old callback publication must not masquerade as the new revision.
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert!(callback.performance.module_lights("mixer").is_none());
+        let graph = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(graph.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        // Parameter edits retain the actual peak envelope and divider phase.
+        assert_eq!(
+            callback.performance.module_lights("mixer").unwrap(),
+            original
+        );
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["mixer"]["revision"],
+            session.revision()
+        );
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 4096], 1));
+        let decayed = callback.performance.module_lights("mixer").unwrap();
+        assert!(decayed.brightness[0][0] < original.brightness[0][0]);
+        assert!(decayed.brightness[0][0] > 0.0);
+
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"mixer","bypassed":true}),
+            )
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1024], 1));
+        assert_eq!(
+            callback.performance.module_lights("mixer").unwrap(),
+            decayed
+        );
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["mixer"]["bypassed"],
+            true
+        );
+
+        // Reopening a document, even with the same IDs, starts fresh meters.
+        session
+            .replace_patch(patch, Some(session.revision()))
+            .unwrap();
+        assert!(callback.performance.module_lights("mixer").is_none());
+        let graph = sequence_graph(&callback, session.patch(), session.revision());
+        assert_ne!(graph.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback
+                .performance
+                .module_lights("mixer")
+                .unwrap()
+                .brightness,
+            [[0.0; 2]; 8]
+        );
     }
 
     #[test]

@@ -497,3 +497,35 @@ fn gate_shaping_settings_and_bypass_roundtrip_without_saved_manual_button_state(
         }
     }
 }
+
+#[test]
+fn layered_stereo_morph_native_roundtrip_preserves_all_mixing_settings_and_named_routes() {
+    let (_directory, store) = store();
+    let mut patch: Patch =
+        serde_json::from_str(include_str!("../../../examples/layered-stereo-morph.json")).unwrap();
+    let mix = patch.nodes.iter_mut().find(|n| n.id == "mix").unwrap();
+    mix.params.insert("mix_exp".into(), 1.0);
+    mix.params.insert("level4".into(), 0.0);
+    mix.bypassed = true;
+    let fade = patch.nodes.iter_mut().find(|n| n.id == "morph").unwrap();
+    fade.params.insert("law".into(), 0.0);
+    fade.params.insert("cv_amount".into(), -0.75);
+    let document = Document::new(
+        patch,
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{"mix":[0,0],"morph":[390,0]}}),
+    )
+    .unwrap();
+    store.save_new("morph.openpatch", &document).unwrap();
+    let loaded = store.load("morph.openpatch").unwrap().document;
+    assert!(loaded.equivalent(&document));
+    assert!(loaded
+        .patch
+        .cables
+        .iter()
+        .any(|c| c.from == "mix" && c.output == "out4" && c.to == "morph" && c.input == "b"));
+    assert!(loaded
+        .patch
+        .cables
+        .iter()
+        .any(|c| c.from == "morph" && c.output == "complement" && c.input == "right"));
+}

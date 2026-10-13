@@ -820,3 +820,54 @@ fn signal_utilities_manual_controls_lights_and_adoption_are_allocation_free() {
     TRACK_MEMORY.with(|t| t.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn vca_mix_fade_meters_bypass_and_state_adoption_do_not_allocate_or_free() {
+    let mut p = patch(
+        vec![
+            node("poly", "poly_constant", &[("channels", 16.0)]),
+            node("cv", "gate", &[("frequency", 100.0)]),
+            node("mix", "vca_mix", &[("channel_exp", 1.0), ("mix_exp", 1.0)]),
+            node("fade", "fade", &[("cv_amount", 1.0), ("law", 1.0)]),
+            node("out", "audio_stereo", &[]),
+        ],
+        vec![
+            cable("poly", "out", "mix", "in1"),
+            cable("cv", "out", "mix", "cv1"),
+            cable("cv", "out", "mix", "mix_cv"),
+            cable("mix", "mix", "fade", "a"),
+            cable("mix", "out1", "fade", "b"),
+            cable("cv", "out", "fade", "cv"),
+            cable("fade", "out", "out", "left"),
+            cable("fade", "complement", "out", "right"),
+        ],
+        "out",
+    );
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let old_h = old.resolve_module_lights("mix").unwrap();
+    let new_h = replacement.resolve_module_lights("mix").unwrap();
+    p.nodes[2].bypassed = true;
+    p.nodes[3].bypassed = true;
+    let mut bypassed = p.compile().unwrap();
+    let bypass_h = bypassed.resolve_module_lights("mix").unwrap();
+    let mut audio = [[0.0; 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            old.process_audio_block(&mut audio[..count]);
+            replacement.adopt_state_from(&old);
+            bypassed.adopt_state_from(&old);
+            assert!(old.module_lights(old_h).is_some());
+            assert!(replacement.module_lights(new_h).is_some());
+            assert!(bypassed.module_lights(bypass_h).is_some());
+            replacement.process_poly_block(&mut frames[..count]);
+            bypassed.process_audio_block(&mut audio[..count]);
+            assert!(replacement.reset_module_state(new_h));
+        }
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

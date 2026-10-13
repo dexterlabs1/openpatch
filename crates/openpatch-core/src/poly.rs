@@ -2,6 +2,7 @@
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
+use crate::mixing::{self, Mixing};
 use crate::multi_lfo::{self, MultiLfo};
 use crate::routing::{self, Routing};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
@@ -53,6 +54,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || switch::input_names(kind).is_some()
         || utility_bank::input_names(kind).is_some()
         || signal::input_names(kind).is_some()
+        || mixing::input_names(kind).is_some()
         || matches!(
             kind,
             "poly_constant"
@@ -74,6 +76,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if let Some(ports) = mixing::input_names(kind) {
+        return ports.iter().position(|p| *p == name);
+    }
     if let Some(ports) = signal::input_names(kind) {
         return ports.iter().position(|p| *p == name);
     }
@@ -101,6 +106,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if let Some(ports) = mixing::output_names(kind) {
+        return ports.iter().position(|p| *p == name);
+    }
     if let Some(ports) = signal::output_names(kind) {
         return ports.iter().position(|p| *p == name);
     }
@@ -175,7 +183,9 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if let Some(names) = signal::output_names(&kind) {
+    let outputs = if let Some(names) = mixing::output_names(&kind) {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if let Some(names) = signal::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if let Some(names) = utility_bank::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
@@ -256,6 +266,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     switch::annotate(module);
     utility_bank::annotate(module);
     signal::annotate(module);
+    mixing::annotate(module);
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
@@ -284,9 +295,13 @@ enum Model {
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
     Signal(Box<Signal>),
+    Mixing(Mixing),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if mixing::input_names(&node.kind).is_some() {
+            return Mixing::build(node, rate).map(Self::Mixing);
+        }
         if signal::input_names(&node.kind).is_some() {
             return Signal::build(node, rate).map(|s| Self::Signal(Box::new(s)));
         }
@@ -421,7 +436,7 @@ impl PolyEngine {
             .node_lookup
             .get(id)
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
-        if !matches!(self.nodes[index].model, Model::Signal(_)) {
+        if self.module_lights(index).is_none() {
             return Err(format!("module '{id}' has no signal utility lights"));
         }
         Ok(index)
@@ -435,6 +450,7 @@ impl PolyEngine {
     pub(crate) fn module_lights(&self, index: usize) -> Option<ModuleLightState> {
         match self.nodes.get(index).map(|n| &n.model) {
             Some(Model::Signal(s)) => Some(s.lights()),
+            Some(Model::Mixing(m)) => m.lights(),
             _ => None,
         }
     }
@@ -533,6 +549,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::Mixing(m) => {
+                m.reset_state();
+                node.output_count
+            }
             _ => return false,
         };
         self.outputs[node.output_start..node.output_start + count].fill(PortFrame::default());
@@ -602,7 +622,9 @@ impl PolyEngine {
                 bypassed: node.bypassed,
                 bypass_inputs: [None; MAX_PORTS],
             });
-            let count = if let Some(ports) = signal::output_names(&node.kind) {
+            let count = if let Some(ports) = mixing::output_names(&node.kind) {
+                ports.len()
+            } else if let Some(ports) = signal::output_names(&node.kind) {
                 ports.len()
             } else if let Some(ports) = utility_bank::output_names(&node.kind) {
                 ports.len()
@@ -740,6 +762,18 @@ impl PolyEngine {
                 .map(|edge| self.edge_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
+                Model::Mixing(mixing) => {
+                    let mut inputs = [PortFrame::default(); 9];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    mixing.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
                 Model::Signal(signal) => {
                     let mut inputs = [PortFrame::default(); 3];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -978,6 +1012,11 @@ impl PolyEngine {
                 continue;
             }
             let bypass_changed = node.bypassed != previous.bypassed;
+            if let (Model::Mixing(mixing), Model::Mixing(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                mixing.adopt(previous);
+            }
             if let (Model::Signal(signal), Model::Signal(previous)) =
                 (&mut node.model, &previous.model)
             {

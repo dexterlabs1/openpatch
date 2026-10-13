@@ -42,6 +42,8 @@ struct ParameterEdit {
     step: Option<f32>,
     display_scale: f32,
     slew_min: Option<f32>,
+    gain_power: Option<f32>,
+    raw_max: f32,
     focus: bool,
 }
 
@@ -512,6 +514,9 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if matches!(node.kind.as_str(), "vca_mix" | "fade") {
+                self.mixing_panel(ui, node, rect);
+            }
             if is_signal_utility(&node.kind) {
                 if let Some(edit) = self.signal_panel(ui, node, rect, released_manual.is_none()) {
                     action = Some(edit);
@@ -643,6 +648,8 @@ impl Rack {
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if is_voltage_utility(&node.kind)
+                    || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
+                    || (node.kind == "fade" && *name == "law")
                     || (node.kind == "rescale"
                         && matches!(*name, "multiplier" | "reflect_min" | "reflect_max"))
                     || is_sequential_switch(&node.kind)
@@ -830,6 +837,23 @@ impl Rack {
                         pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
                         17.0,
                     )
+                } else if node.kind == "vca_mix" {
+                    (
+                        pos2(
+                            if *name == "mix_level" {
+                                345.0
+                            } else {
+                                37.5 + index as f32 * 75.0
+                            },
+                            126.0,
+                        ),
+                        if *name == "mix_level" { 27.0 } else { 22.0 },
+                    )
+                } else if node.kind == "fade" {
+                    (
+                        pos2(120.0, if *name == "position" { 121.0 } else { 236.0 }),
+                        if *name == "position" { 31.0 } else { 24.0 },
+                    )
                 } else if node.kind == "compare" {
                     (pos2(width * 0.5, 125.0), 27.0)
                 } else if node.kind == "process" {
@@ -880,6 +904,12 @@ impl Rack {
                         .cables
                         .iter()
                         .any(|c| c.to == node.id && c.input == "clock");
+                let gain_power = (node.kind == "vca_mix").then_some(if *name == "mix_level" {
+                    1.0
+                } else {
+                    2.0
+                });
+                let fade_percent = node.kind == "fade";
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
@@ -891,10 +921,16 @@ impl Rack {
                     } else {
                         multiplier
                     }
+                } else if fade_percent {
+                    100.0
                 } else {
                     1.0
                 };
-                let display_value = if clock_ratio {
+                let display_value = if let Some(power) = gain_power {
+                    gain_db_display(value, power)
+                } else if fade_percent {
+                    format!("{:.1}%", value * 100.0)
+                } else if clock_ratio {
                     format!("{:.4}x", value * display_scale)
                 } else if let Some(min) = slew_min {
                     format!("{:.2} ms/V", slew_display(value, min))
@@ -1004,13 +1040,29 @@ impl Rack {
                         ""
                     } else if clock_ratio {
                         "CLOCK RATIO"
+                    } else if node.kind == "vca_mix" {
+                        match *name {
+                            "level1" => "CH 1",
+                            "level2" => "CH 2",
+                            "level3" => "CH 3",
+                            "level4" => "CH 4",
+                            _ => "MASTER",
+                        }
                     } else {
                         parameter_label(name)
                     },
                     FontId::proportional(10.0 * self.zoom),
                     INK,
                 );
-                let value_offset = if count >= 3 { 9.0 } else { 15.0 };
+                let value_offset = if node.kind == "vca_mix" {
+                    11.0
+                } else if node.kind == "fade" {
+                    10.0
+                } else if count >= 3 {
+                    9.0
+                } else {
+                    15.0
+                };
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
                 painter.text(
                     value_center,
@@ -1023,7 +1075,9 @@ impl Rack {
                     Rect::from_center_size(
                         value_center,
                         vec2(
-                            if node.kind == "seq3" {
+                            if node.kind == "vca_mix" {
+                                70.0
+                            } else if node.kind == "seq3" {
                                 54.0
                             } else if count >= 4 || node.kind == "mid_side" {
                                 width * 0.5 - 12.0
@@ -1047,15 +1101,23 @@ impl Rack {
                     self.editing = Some(ParameterEdit {
                         id: node.id.clone(),
                         parameter: name.to_string(),
-                        text: slew_min
-                            .map_or(value * display_scale, |min| slew_display(value, min))
-                            .to_string(),
-                        min: if slew_min.is_some() {
+                        text: if let Some(power) = gain_power {
+                            gain_db(value, power).to_string()
+                        } else {
+                            slew_min
+                                .map_or(value * display_scale, |min| slew_display(value, min))
+                                .to_string()
+                        },
+                        min: if gain_power.is_some() {
+                            f32::NEG_INFINITY
+                        } else if slew_min.is_some() {
                             0.0
                         } else {
                             min * display_scale
                         },
-                        max: if slew_min.is_some() {
+                        max: if let Some(power) = gain_power {
+                            gain_db(max, power)
+                        } else if slew_min.is_some() {
                             max.exp2() * 1000.0
                         } else {
                             max * display_scale
@@ -1063,6 +1125,8 @@ impl Rack {
                         step: step.map(|step| step * display_scale),
                         display_scale,
                         slew_min,
+                        gain_power,
+                        raw_max: max,
                         focus: true,
                     });
                 }
@@ -1382,6 +1446,119 @@ impl Rack {
         }
         self.parameter_editor(ui.ctx(), &mut action);
         released_manual.or(if interactive { action } else { None })
+    }
+
+    fn mixing_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
+        let zoom = self.zoom;
+        let painter = ui.painter();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        if node.kind == "vca_mix" {
+            for x in [75.0, 150.0, 225.0, 300.0] {
+                painter.line_segment(
+                    [point(x, 77.0), point(x, 378.0)],
+                    Stroke::new(
+                        if x == 300.0 { 1.0 } else { 0.5 } * zoom,
+                        Color32::from_gray(178),
+                    ),
+                );
+            }
+            let state = self.module_lights.get(&node.id).filter(|s| s.count >= 4);
+            for channel in 0..4 {
+                let center = point(37.5 + channel as f32 * 75.0, 183.0);
+                let value = state
+                    .map_or(0.0, |s| s.brightness[channel][0])
+                    .clamp(0.0, 1.0);
+                for segment in 0..12 {
+                    let lit = state.is_some() && value > (segment as f32 / 12.0);
+                    let color = if segment >= 10 {
+                        Color32::from_rgb(223, 151, 58)
+                    } else {
+                        Color32::from_rgb(76, 163, 112)
+                    };
+                    painter.rect_filled(
+                        Rect::from_min_size(
+                            center + vec2(-25.0 + segment as f32 * 4.2, -3.0) * zoom,
+                            vec2(3.1, 6.0) * zoom,
+                        ),
+                        0.5,
+                        color.gamma_multiply(if lit { 1.0 } else { 0.16 }),
+                    );
+                }
+                ui.interact(Rect::from_center_size(center,vec2(54.0,13.0)*zoom),ui.id().with((&node.id,"strip-vu",channel)),Sense::hover()).on_hover_text("DSP strip VU: signed channel sum / 5 V, peak smoothing, -24 to 0 dB brightness. Polyphonic lanes can cancel. This is the signal meter, not the knob gain.");
+            }
+            painter.text(
+                point(150.0, 194.0),
+                Align2::CENTER_CENTER,
+                if state.is_some() {
+                    "POST-CV STRIP VU"
+                } else {
+                    "VU UNAVAILABLE"
+                },
+                FontId::proportional(7.0 * zoom),
+                MUTED,
+            );
+            let channel_exp = node.params.get("channel_exp").copied().unwrap_or(0.0) >= 0.5;
+            let mix_exp = node.params.get("mix_exp").copied().unwrap_or(0.0) >= 0.5;
+            painter.text(
+                point(150.0, 254.0),
+                Align2::CENTER_CENTER,
+                if channel_exp {
+                    "CHANNEL CV: EXP"
+                } else {
+                    "CHANNEL CV: LINEAR"
+                },
+                FontId::proportional(8.0 * zoom),
+                MUTED,
+            );
+            painter.text(
+                point(345.0, 215.0),
+                Align2::CENTER_CENTER,
+                "SUM",
+                FontId::proportional(10.0 * zoom),
+                MUTED,
+            );
+            painter.text(
+                point(345.0, 244.0),
+                Align2::CENTER_CENTER,
+                if mix_exp { "EXP CV" } else { "LINEAR CV" },
+                FontId::proportional(8.0 * zoom),
+                MUTED,
+            );
+            painter.text(
+                point(345.0, 182.0),
+                Align2::CENTER_CENTER,
+                "Right-click",
+                FontId::proportional(7.0 * zoom),
+                MUTED,
+            );
+            painter.text(
+                point(345.0, 194.0),
+                Align2::CENTER_CENTER,
+                "CV response",
+                FontId::proportional(7.0 * zoom),
+                MUTED,
+            );
+        } else {
+            let square_root = node.params.get("law").copied().unwrap_or(0.0) >= 0.5;
+            painter.text(
+                point(120.0, 292.0),
+                Align2::CENTER_CENTER,
+                if square_root {
+                    "SQUARE-ROOT LAW"
+                } else {
+                    "LINEAR LAW"
+                },
+                FontId::proportional(9.0 * zoom),
+                MUTED,
+            );
+            painter.text(
+                point(120.0, 177.0),
+                Align2::CENTER_CENTER,
+                "A  <  MORPH  >  B",
+                FontId::proportional(8.0 * zoom),
+                MUTED,
+            );
+        }
     }
 
     fn signal_panel(
@@ -2224,7 +2401,8 @@ impl Rack {
             ui.label(format!("Range: {} to {}", edit.min, edit.max));
             let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
             if edit.focus { input.request_focus(); edit.focus = false; }
-            let parsed = edit.text.parse::<f32>().ok().filter(|value| value.is_finite() && *value >= edit.min && *value <= edit.max && edit.step.is_none_or(|step| ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01));
+            let parsed = parsed_parameter_value(edit);
+            if edit.gain_power.is_some() { ui.label("Enter dB. -inf sets the gain to zero."); }
             if edit.slew_min.is_some() { ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored)."); }
             if edit.display_scale == 0.5 { ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive."); }
             if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
@@ -2233,7 +2411,7 @@ impl Rack {
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
                 if ui.add_enabled(parsed.is_some(), egui::Button::new("Apply")).clicked() || (enter && parsed.is_some()) {
-                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":edit.slew_min.map_or(parsed.unwrap() / edit.display_scale, |min| if parsed.unwrap() == 0.0 {min} else {(parsed.unwrap()/1000.0).log2().max(min)})}))); close = true;
+                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":edit.gain_power.map_or_else(|| edit.slew_min.map_or(parsed.unwrap() / edit.display_scale, |min| if parsed.unwrap() == 0.0 {min} else {(parsed.unwrap()/1000.0).log2().max(min)}), |power| if parsed.unwrap() == f32::NEG_INFINITY {0.0} else {10.0_f32.powf(parsed.unwrap()/(20.0*power)).min(edit.raw_max)})}))); close = true;
                 }
                 if ui.button("Cancel").clicked() { close = true; }
             });
@@ -2316,6 +2494,48 @@ fn is_signal_utility(kind: &str) -> bool {
     matches!(kind, "logic" | "compare" | "process" | "rescale")
 }
 
+fn parsed_parameter_value(edit: &ParameterEdit) -> Option<f32> {
+    let text = if edit.gain_power.is_some() {
+        edit.text
+            .trim()
+            .trim_end_matches("dB")
+            .trim()
+            .replace('−', "-")
+    } else {
+        edit.text.clone()
+    };
+    text.parse::<f32>().ok().filter(|value| {
+        let gain_zero = edit.gain_power.is_some() && *value == f32::NEG_INFINITY;
+        (value.is_finite() || gain_zero)
+            && *value >= edit.min
+            && *value
+                <= edit.max
+                    + if edit.gain_power.is_some() {
+                        0.000_01
+                    } else {
+                        0.0
+                    }
+            && edit.step.is_none_or(|step| {
+                ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01
+            })
+    })
+}
+
+fn gain_db(value: f32, power: f32) -> f32 {
+    if value <= 0.0 {
+        f32::NEG_INFINITY
+    } else {
+        20.0 * power * value.log10()
+    }
+}
+fn gain_db_display(value: f32, power: f32) -> String {
+    if value <= 0.0 {
+        "-inf dB".into()
+    } else {
+        format!("{:.2} dB", gain_db(value, power))
+    }
+}
+
 fn slew_display(value: f32, min: f32) -> f32 {
     if value <= min {
         0.0
@@ -2362,6 +2582,36 @@ fn utility_menu(ui: &mut egui::Ui, node: &Node, action: &mut Option<RackAction>)
         ));
         ui.close();
     }
+    if node.kind == "vca_mix" {
+        ui.separator();
+        for (parameter, label) in [
+            ("channel_exp", "Exponential channel CV"),
+            ("mix_exp", "Exponential mix CV"),
+        ] {
+            let enabled = node.params.get(parameter).copied().unwrap_or(0.0) >= 0.5;
+            if ui.selectable_label(enabled, label).clicked() {
+                *action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":parameter,"value":if enabled{0.0}else{1.0}}),
+                ));
+                ui.close();
+            }
+        }
+    }
+    if node.kind == "fade" {
+        ui.separator();
+        ui.label("Pan law");
+        let law = node.params.get("law").copied().unwrap_or(0.0);
+        for (value, label) in [(0, "Linear law"), (1, "Square-root law")] {
+            if ui.selectable_label(law == value as f32, label).clicked() {
+                *action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":"law","value":value}),
+                ));
+                ui.close();
+            }
+        }
+    }
     if node.kind == "rescale" {
         ui.separator();
         ui.label("Gain multiplier");
@@ -2405,6 +2655,27 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "vca_mix" if input => {
+            return if index < 4 {
+                pos2(37.5 + index as f32 * 75.0, 226.0)
+            } else if index < 8 {
+                pos2(37.5 + (index - 4) as f32 * 75.0, 294.0)
+            } else {
+                pos2(345.0, 294.0)
+            }
+        }
+        "vca_mix" => {
+            return pos2(
+                if index < 4 {
+                    37.5 + index as f32 * 75.0
+                } else {
+                    345.0
+                },
+                360.0,
+            )
+        }
+        "fade" if input => return pos2(45.0 + index as f32 * 75.0, 330.0),
+        "fade" => return pos2(75.0 + index as f32 * 90.0, 374.0),
         "logic" if input => return pos2(width * (0.25 + index as f32 * 0.5), 115.0),
         "logic" => {
             return pos2(
@@ -2939,6 +3210,8 @@ fn panel_button(
 
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "vca_mix" => HP * 26.0,
+        "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
         "attenuverter8" | "mutes10" | "cv_mix" => HP * 16.0,
         "seq3" => HP * 52.0,
@@ -2966,6 +3239,8 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "vca_mix" => "VCA MIX",
+        "fade" => "FADE",
         "logic" => "LOGIC",
         "compare" => "COMPARE",
         "process" => "PROCESS",
@@ -3010,6 +3285,8 @@ fn title(kind: &str) -> &str {
 }
 fn parameter_label(name: &str) -> &str {
     match name {
+        "position" => "POSITION",
+        "cv_amount" => "CV DEPTH",
         "b_offset" => "B OFFSET",
         "slew" => "SLEW",
         "min" => "MINIMUM",
@@ -3047,6 +3324,8 @@ fn parameter_label(name: &str) -> &str {
 }
 fn port_label(name: &str) -> &str {
     match name {
+        "complement" => "COMP",
+        "mix_cv" => "MIX CV",
         "not_a" => "NOT A",
         "not_b" => "NOT B",
         "clip_gate" => "CLIP G",
@@ -3084,6 +3363,16 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "vca_mix" => &[
+            "level1",
+            "level2",
+            "level3",
+            "level4",
+            "mix_level",
+            "channel_exp",
+            "mix_exp",
+        ],
+        "fade" => &["position", "cv_amount", "law"],
         "rescale" => &[
             "gain",
             "offset",
@@ -3725,6 +4014,252 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn vca_mix_and_fade_all_jacks_and_controls_have_independent_targets() {
+        let catalog = openpatch_core::catalog();
+        for kind in ["vca_mix", "fade"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"utility","kind":kind},{"id":"source","kind":"constant"},{"id":"sink","kind":"audio_out"}]})).unwrap();
+            let module = catalog["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["kind"] == kind)
+                .unwrap();
+            let inputs = module["inputs"].as_array().unwrap();
+            let outputs = module["outputs"].as_array().unwrap();
+            let width = panel_width(kind);
+            let origin = pos2(24.0, 12.0);
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            for (index, input) in inputs.iter().enumerate() {
+                let target =
+                    origin + port_position(kind, true, index, inputs.len(), width).to_vec2();
+                let action = drag(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.0 + index as f64,
+                    pos2(24.0 + width + 60.0, 386.0),
+                    target,
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("connect",ref args)) if &args["input"]==input),
+                    "{kind} input {input}"
+                );
+            }
+            for (index, output) in outputs.iter().enumerate() {
+                let target =
+                    origin + port_position(kind, false, index, outputs.len(), width).to_vec2();
+                let action = drag(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    15.0 + index as f64,
+                    target,
+                    pos2(24.0 + width + 180.0, 344.0),
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("connect",ref args)) if &args["output"]==output),
+                    "{kind} output {output}"
+                );
+            }
+            let controls: Vec<_> = if kind == "vca_mix" {
+                (0..5)
+                    .map(|i| {
+                        (
+                            pos2(
+                                if i == 4 {
+                                    345.0
+                                } else {
+                                    37.5 + i as f32 * 75.0
+                                },
+                                126.0,
+                            ),
+                            if i == 4 {
+                                "mix_level".into()
+                            } else {
+                                format!("level{}", i + 1)
+                            },
+                        )
+                    })
+                    .collect()
+            } else {
+                vec![
+                    (pos2(120.0, 121.0), "position".into()),
+                    (pos2(120.0, 236.0), "cv_amount".into()),
+                ]
+            };
+            for (index, (point, parameter)) in controls.iter().enumerate() {
+                let knob = origin + point.to_vec2();
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    25.0 + index as f64,
+                    vec![egui::Event::PointerMoved(knob), button(knob, true)],
+                );
+                let moved = knob - vec2(0.0, 10.0);
+                let action = frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    25.1 + index as f64,
+                    vec![egui::Event::PointerMoved(moved)],
+                );
+                assert!(
+                    matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==*parameter),
+                    "{kind} knob {parameter}"
+                );
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    25.2 + index as f64,
+                    vec![button(moved, false)],
+                );
+            }
+            let ports: Vec<_> = (0..inputs.len())
+                .map(|i| port_position(kind, true, i, inputs.len(), width))
+                .chain(
+                    (0..outputs.len()).map(|i| port_position(kind, false, i, outputs.len(), width)),
+                )
+                .collect();
+            for (index, point) in ports.iter().enumerate() {
+                assert!(point.x >= 20.0 && point.x <= width - 20.0 && point.y <= 374.0);
+                for other in &ports[index + 1..] {
+                    assert!(point.distance(*other) >= 29.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mixing_context_settings_emit_saved_parameter_edits() {
+        for (kind, label, parameter) in [
+            ("vca_mix", "Exponential channel CV", "channel_exp"),
+            ("vca_mix", "Exponential mix CV", "mix_exp"),
+            ("fade", "Square-root law", "law"),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch =
+                serde_json::from_value(json!({"version":2,"nodes":[{"id":"utility","kind":kind}]}))
+                    .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let header = pos2(144.0, 44.0);
+            for (time, pressed) in [(1.0, true), (1.1, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(header),
+                        egui::Event::PointerButton {
+                            pos: header,
+                            button: PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+            let (_, output) = frame_output(&ctx, &mut rack, &patch, 1.2, vec![]);
+            let target = output
+                .shapes
+                .iter()
+                .find_map(|s| {
+                    if let egui::epaint::Shape::Text(t) = &s.shape {
+                        (t.galley.text() == label).then_some(t.pos + t.galley.size() * 0.5)
+                    } else {
+                        None
+                    }
+                })
+                .expect("context setting label");
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            let action = frame(&ctx, &mut rack, &patch, 1.4, vec![button(target, false)]);
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==parameter && args["value"]==1.0)
+            );
+        }
+    }
+
+    #[test]
+    fn mixer_decibel_editor_handles_squared_channel_gain_master_and_zero() {
+        assert_eq!(gain_db_display(0.0, 2.0), "-inf dB");
+        assert!((gain_db(0.5, 2.0) + 12.0412).abs() < 0.0001);
+        assert!((gain_db(0.5, 1.0) + 6.0206).abs() < 0.0001);
+        for (parameter, x, power, text, expected) in [
+            ("level4", 262.5, 2.0, "-inf", 0.0),
+            ("level2", 112.5, 2.0, "−inf", 0.0),
+            ("level1", 37.5, 2.0, "-12.0412", 0.5),
+            (
+                "level3",
+                187.5,
+                2.0,
+                "+6.02dB",
+                std::f32::consts::SQRT_2 as f64,
+            ),
+            (
+                "level3",
+                187.5,
+                2.0,
+                "+6.0206 dB",
+                std::f32::consts::SQRT_2 as f64,
+            ),
+            ("mix_level", 345.0, 1.0, "-6.0206", 0.5),
+            ("mix_level", 345.0, 1.0, "+6.0206", 2.0),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"mix","kind":"vca_mix"}]}),
+            )
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(
+                24.0 + x,
+                12.0 + 126.0 + if parameter == "mix_level" { 38.0 } else { 33.0 },
+            );
+            for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![egui::Event::PointerMoved(target), button(target, pressed)],
+                );
+            }
+            let edit = rack.editing.as_mut().expect("decibel value opens editor");
+            assert_eq!(edit.parameter, parameter);
+            assert_eq!(edit.gain_power, Some(power));
+            edit.text = text.into();
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if (args["value"].as_f64().unwrap()-expected).abs()<0.0001)
+            );
+        }
     }
 
     #[test]

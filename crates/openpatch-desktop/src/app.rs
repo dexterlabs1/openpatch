@@ -659,6 +659,10 @@ impl OpenPatch {
                 self.sequence_layout();
             } else if title == "Switched stereo voice" {
                 self.switched_stereo_layout();
+            } else if title == "Layered stereo morph" {
+                self.rack
+                    .restore_layout(&Self::mixing_layout())
+                    .expect("bundled mixer layout");
             }
             self.documents.mark_unsaved();
             self.autosave_needed = true;
@@ -673,6 +677,13 @@ impl OpenPatch {
             }}),
         );
     }
+    fn mixing_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "mix":[0,0],"morph":[390,0],"motion":[630,0],"out":[930,0],
+            "voice1":[0,420],"voice2":[210,420],"voice3":[420,420],"voice4":[630,420]
+        }})
+    }
+
     fn sequence_layout(&mut self) {
         let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
             "sequence":[0,0],"vco":[780,0],"filter":[990,0],"envelope":[0,420],"vca":[240,420],"accent":[390,420],"out":[540,420]
@@ -996,6 +1007,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Layered stereo morph").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/layered-stereo-morph.json"
+                            ))
+                            .expect("valid bundled layered stereo morph");
+                            self.replace_from_menu(patch, "Layered stereo morph");
                             ui.close();
                         }
                         if ui.button("Gate shaping voice").clicked() {
@@ -1881,6 +1900,26 @@ impl OpenPatch {
             }
             .into();
         }
+        if *frame == 284 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/layered-stereo-morph.json"))
+                    .expect("valid layered stereo fixture");
+            let mut engine = patch.compile().expect("layered stereo fixture compiles");
+            engine.process_block(&mut vec![0.0; 48_000]);
+            let handle = engine
+                .resolve_module_lights("mix")
+                .expect("mixer meter handle");
+            let lights = engine.module_lights(handle).expect("mixer meter snapshot");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("layered stereo fixture publishes");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&Self::mixing_layout())
+                .expect("fixture mixer layout");
+            self.rack
+                .set_module_states(BTreeMap::from([("mix".into(), lights)]), BTreeMap::new());
+            self.title = "Layered stereo morph · offline DSP snapshot".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
@@ -1905,6 +1944,7 @@ impl OpenPatch {
                 | 232
                 | 256
                 | 272
+                | 296
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1942,7 +1982,8 @@ impl OpenPatch {
                 16 => path.with_file_name("rack-voltage-utilities.png"),
                 17 => path.with_file_name("rack-bypass.png"),
                 18 => path.with_file_name("rack-gate-shaping.png"),
-                _ => path.with_file_name("rack-manual-gates.png"),
+                19 => path.with_file_name("rack-manual-gates.png"),
+                _ => path.with_file_name("rack-vca-mix-fade.png"),
             };
             image::save_buffer(
                 target,
@@ -1953,12 +1994,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 20 {
+            if *captures == 21 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 298, "Native screenshot timeout");
+        assert!(*frame < 322, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2267,6 +2308,29 @@ mod project_workflow_tests {
                     && p.extension().is_some_and(|ext| ext == "openpatch")
             })
             .collect()
+    }
+
+    #[test]
+    fn layered_demo_replacement_applies_visible_layout_and_saves_connected_stereo_graph() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/layered-stereo-morph.json"))
+                .unwrap();
+        app.replace_now(patch, "Layered stereo morph");
+        assert_eq!(app.rack.zoom(), 0.85);
+        assert_eq!(app.rack.layout()["positions"]["morph"], json!([390.0, 0.0]));
+        assert_eq!(app.patch.nodes.len(), 8);
+        assert_eq!(app.patch.cables.len(), 11);
+        app.save_document("morph.openpatch", true);
+        let loaded = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("morph.openpatch")
+            .unwrap();
+        assert!(loaded.document.equivalent(&app.capture_document()));
+        assert!(!app.dirty());
     }
 
     #[test]

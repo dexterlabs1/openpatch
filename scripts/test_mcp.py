@@ -633,6 +633,65 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "switches.json"})
         self.assertEqual(self.patch_snapshot()["patch"], saved)
 
+    def test_voltage_mixing_controls_both_fade_outputs_and_roundtrips_settings(self) -> None:
+        patch = {"version": 2, "nodes": [
+            {"id": "source", "kind": "constant", "params": {"value": 2}},
+            {"id": "other", "kind": "constant", "params": {"value": -0.25}},
+            {"id": "cv", "kind": "constant", "params": {"value": 5}},
+            {"id": "mixer", "kind": "vca_mix", "params": {"level1": 0.5, "mix_level": 0.5}},
+            {"id": "fade", "kind": "fade", "params": {"position": 0.5, "cv_amount": 0.5}},
+        ], "cables": [
+            {"from": "source", "to": "mixer", "input": "in1"},
+            {"from": "mixer", "output": "mix", "to": "fade", "input": "a"},
+            {"from": "other", "to": "fade", "input": "b"},
+            {"from": "cv", "to": "fade", "input": "cv"},
+        ], "output": "fade"}
+        self.require_tool_success("replace_patch", {"patch": patch})
+
+        def settled(module: str, port: str) -> float:
+            capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": module, "port": port, "seconds": 0.002, "points": 64,
+            }))
+            return capture["bins"][-1]["mean"]
+
+        self.assertEqual(settled("mixer", "out1"), 0.5)
+        self.assertEqual(settled("mixer", "mix"), 0.25)
+        self.assertEqual(settled("fade", "out"), -0.125)
+        self.assertEqual(settled("fade", "complement"), 0.125)
+        before = self.patch_snapshot()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "mixer", "parameter": "channel_exp", "value": 1}},
+            {"tool": "set_parameter", "arguments": {"id": "fade", "parameter": "law", "value": 0.5}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "mixer", "parameter": "channel_exp", "value": 1}},
+            {"tool": "set_parameter", "arguments": {"id": "mixer", "parameter": "mix_exp", "value": 1}},
+            {"tool": "set_parameter", "arguments": {"id": "fade", "parameter": "law", "value": 1}},
+        ]})
+        self.assertAlmostEqual(settled("fade", "out"), 0.125 - 0.25 * (0.75 ** 0.5), places=6)
+        saved = self.patch_snapshot()["patch"]
+        self.require_tool_success("save_patch", {"filename": "mixing.json"})
+        self.require_tool_success("set_bypass", {"id": "fade", "bypassed": True})
+        self.assertEqual(settled("fade", "out"), 0.25)
+        self.assertEqual(settled("fade", "complement"), -0.25)
+        self.require_tool_success("load_patch", {"filename": "mixing.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], saved)
+        self.require_tool_error("trigger_module", {"id": "mixer", "action": "gate_press"})
+        demo = json.loads((REPOSITORY / "examples" / "layered-stereo-morph.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": demo})
+        self.require_tool_success("render_audio", {"filename": "morph.wav", "seconds": 0.2})
+        with wave.open(str(self.workspace / "morph.wav"), "rb") as rendered:
+            self.assertEqual(rendered.getnchannels(), 2)
+            self.assertEqual(rendered.getsampwidth(), 2)
+            samples = struct.unpack("<" + "h" * rendered.getnframes() * 2,
+                                    rendered.readframes(rendered.getnframes()))
+        left, right = samples[0::2], samples[1::2]
+        for channel in (left, right):
+            self.assertGreater(max(abs(v) for v in channel), 100)
+            self.assertLess(max(abs(v) for v in channel), 32767)
+        self.assertNotEqual(left, right)
+
     def test_voltage_utility_demo_mute_and_bypass_render_actual_signal(self) -> None:
         patch = json.loads((REPOSITORY / "examples" / "voltage-utilities.json").read_text())
         self.require_tool_success("replace_patch", {"patch": patch})

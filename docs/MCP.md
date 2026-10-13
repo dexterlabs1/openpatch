@@ -240,11 +240,13 @@ not proof that audio has processed it. No live backend means these requests are
 unsupported; offline event traces remain available.
 
 `inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, and the four signal processors. Each entry has
+sequencer, sequential switches, the four signal processors, and VCA Mix. Each entry has
 `kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
 `state`, `controls`, and `lights`. Sequence state retains step/running/length.
 Manual `controls` reports `pressed`; indicator `lights` provides `count`, eight
-fixed-capacity mono/poly brightness pairs, and a `manual` flag. Only the first
+fixed-capacity brightness pairs, and a `manual` flag. Signal processors use
+mono/poly pairs; VCA Mix uses the first value for each channel meter and leaves
+the second value zero. Only the first
 `count` pairs are meaningful; names and interpretation come from the catalog's
 `light_names` and `light_policy`. Unsupported fields are null.
 

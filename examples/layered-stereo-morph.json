@@ -1,0 +1,148 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "mix",
+      "kind": "vca_mix",
+      "params": {
+        "level1": 0.5,
+        "level2": 0.45,
+        "level3": 0.4,
+        "level4": 0.35,
+        "mix_level": 0.7,
+        "channel_exp": 1,
+        "mix_exp": 0
+      }
+    },
+    {
+      "id": "morph",
+      "kind": "fade",
+      "params": {
+        "position": 0.2,
+        "cv_amount": 0.6,
+        "law": 1
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 0.2,
+        "unipolar": 1
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.35
+      }
+    },
+    {
+      "id": "voice1",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128,
+        "waveform": 0,
+        "pulse_width": 0.5
+      }
+    },
+    {
+      "id": "voice2",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 164.8138,
+        "waveform": 1,
+        "pulse_width": 0.4
+      }
+    },
+    {
+      "id": "voice3",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 195.9977,
+        "waveform": 0,
+        "pulse_width": 0.5
+      }
+    },
+    {
+      "id": "voice4",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 261.6256,
+        "waveform": 1,
+        "pulse_width": 0.3
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "voice1",
+      "output": "out",
+      "to": "mix",
+      "input": "in1"
+    },
+    {
+      "from": "voice2",
+      "output": "out",
+      "to": "mix",
+      "input": "in2"
+    },
+    {
+      "from": "voice3",
+      "output": "out",
+      "to": "mix",
+      "input": "in3"
+    },
+    {
+      "from": "voice4",
+      "output": "out",
+      "to": "mix",
+      "input": "in4"
+    },
+    {
+      "from": "motion",
+      "output": "sine",
+      "to": "mix",
+      "input": "cv1"
+    },
+    {
+      "from": "motion",
+      "output": "triangle",
+      "to": "mix",
+      "input": "cv3"
+    },
+    {
+      "from": "motion",
+      "output": "saw",
+      "to": "morph",
+      "input": "cv"
+    },
+    {
+      "from": "mix",
+      "output": "mix",
+      "to": "morph",
+      "input": "a"
+    },
+    {
+      "from": "mix",
+      "output": "out4",
+      "to": "morph",
+      "input": "b"
+    },
+    {
+      "from": "morph",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "morph",
+      "output": "complement",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}
