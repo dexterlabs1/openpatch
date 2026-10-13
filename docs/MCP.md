@@ -176,7 +176,9 @@ automatically normalized, calibrated hardware measurements, or a live probe.
 CV controls, voltage units, and timing in `catalog`. `tempo` is BPM (15–960,
 default 120); `steps` selects 1–8 columns. `running` sets the initial run state
 for a fresh engine. Live run toggles belong to performance state and do not
-rewrite that parameter. Loading or fully replacing a patch starts sequencers and sequential switches
+rewrite that parameter. An explicit `set_parameter` assignment of `running`
+also assigns the live state, even when its saved value already matches.
+Loading or fully replacing a patch starts sequencers and sequential switches
 from fresh runtime state and invalidates their old queued actions, even when
 module IDs match. Ordinary parameter/routing edits preserve compatible state.
 

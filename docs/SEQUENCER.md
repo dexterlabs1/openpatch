@@ -59,9 +59,10 @@ manual Clock supplies a 1 ms pulse. Pausing or guarding suppresses these gates.
 ## Editing, replacement, and saving
 
 Pattern cells, enabled flags, tempo, length, amounts, passthrough, and initial
-running state are saved as patch parameters. Runtime position and Run-button
-state are not saved. **Start running on load** sets initial running state and
-also applies immediately when its value or explicit presence changes. Ordinary
+running state are saved as patch parameters. Whole-project saves do not capture
+runtime position or the current Run-button state. **Start running on load** sets
+the initial state; an explicit `running` parameter assignment also applies that
+state immediately, even when the saved value already matches. Ordinary
 compatible edits retain the current position, phase, run state, and pulses.
 Changing a clock/run/reset source independently rearms that input's detector.
 
@@ -69,10 +70,18 @@ Deleting and recreating a module gives it a new performance identity, even if
 one atomic edit batch recreates the same ID and kind. Old queued actions cannot
 target it; its incident delayed cable samples and runtime state are reset.
 Loading or fully replacing a document also retires its sequencer identities,
-so a fresh preset honors its initial running state even when IDs match.
+so a fresh document honors its initial running state even when IDs match.
 Compatible parameter/routing edits preserve performance state.
 Graph replacement cannot transfer core action queues. The host dispatches new
 actions to compatible active and retiring graphs during a crossfade.
+
+[Native module presets](MODULE_PRESETS.md) separately capture the actual current
+Run state. Applying an explicit preset Run value assigns it without rewinding
+the step or producing a Run pulse. Preset, Initialize and Randomize history
+restore captured Run states; ordinary knob and rotation history remain
+parameter-only. Current Run is also preserved when copying a sequencer or
+undoing its removal. This does not extend whole-project serialization to live
+custom state.
 
 ## MCP performances
 
@@ -115,7 +124,7 @@ It is **partial SEQ 3 coverage**, not sample-identical equivalence. In particula
   index; OpenPatch pulses every accepted tick, including length one.
 - OpenPatch's manual clock observes the reset guard. Its CV detectors also
   track while paused/guarded, rather than deferring ignored edges.
-- Saved runtime Run state, exact internal clock phase conventions, parameter
+- Whole-project serialization of current Run, exact internal clock phase conventions, parameter
   mappings, and direct differential traces against the pinned target remain
   parity work. Native hardware playback and device lifecycle qualification
   remain separate from headless tests.
