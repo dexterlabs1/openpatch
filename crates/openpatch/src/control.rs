@@ -182,22 +182,22 @@ impl Session {
     }
 
     /// Replace the document through the same validation and revision boundary.
-    /// Sequencers start fresh even when IDs match the previous document.
+    /// Stateful telemetry modules start fresh even when IDs match the previous document.
     /// Failed validation or a stale revision leaves the live patch unchanged.
     pub fn replace_patch(
         &mut self,
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        let retired = self.sequence_ids();
+        let retired = self.telemetry_module_ids();
         self.commit(candidate, expected_revision, None, &retired)
     }
 
-    fn sequence_ids(&self) -> Vec<String> {
+    fn telemetry_module_ids(&self) -> Vec<String> {
         self.patch
             .nodes
             .iter()
-            .filter(|node| node.kind == "seq3")
+            .filter(|node| matches!(node.kind.as_str(), "seq3" | "switch_1to4" | "switch_4to1"))
             .map(|node| node.id.clone())
             .collect()
     }
@@ -517,7 +517,7 @@ impl Session {
         self.check_revision(expected_revision)?;
         let mut candidate = self.patch.clone();
         let mut retired = if matches!(name, "replace_patch" | "load_patch") {
-            self.sequence_ids()
+            self.telemetry_module_ids()
         } else {
             Vec::new()
         };

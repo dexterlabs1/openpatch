@@ -24,6 +24,7 @@ mod multi_lfo;
 mod poly;
 mod routing;
 mod sequence;
+mod switch;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
 pub use sequence::{
     validate_module_events, ModuleAction, ModuleHandle, ModuleTelemetry, TimedModuleEvent,
@@ -177,6 +178,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(sequence::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(switch::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -819,6 +824,19 @@ impl Engine {
         let node = match &self.inner {
             EngineKind::Poly(engine) => engine.resolve_module_event(id)?,
             _ => return Err("module actions require patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    /// Resolve a fixed-copy runtime meter on the control thread. Sequencers and
+    /// sequential switches expose selected step and length. This does not grant
+    /// action support: switches reject handle_module_event.
+    pub fn resolve_module_telemetry(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(engine) => engine.resolve_module_telemetry(id)?,
+            _ => return Err("module telemetry requires patch version 2".into()),
         };
         Ok(ModuleHandle {
             generation: self.identity,

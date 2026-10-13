@@ -657,11 +657,21 @@ impl OpenPatch {
             self.rack = Rack::default();
             if title == "Sequenced analog voice" {
                 self.sequence_layout();
+            } else if title == "Switched stereo voice" {
+                self.switched_stereo_layout();
             }
             self.documents.mark_unsaved();
             self.autosave_needed = true;
             self.capture_document();
         }
+    }
+    fn switched_stereo_layout(&mut self) {
+        let _ = self.rack.restore_layout(
+            &json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
+                "pitches":[0,0],"split":[360,0],"select":[660,0],"clock":[840,0],
+                "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
+            }}),
+        );
     }
     fn sequence_layout(&mut self) {
         let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -904,16 +914,11 @@ impl OpenPatch {
             .map(|i| format!("{kind}-{i}"))
             .find(|id| !self.patch.nodes.iter().any(|node| node.id == *id))
             .unwrap();
-        let mut patch = self.patch.clone();
-        patch.nodes.push(openpatch_core::Node {
-            id: id.clone(),
-            kind: kind.into(),
-            params: Default::default(),
-        });
-        if matches!(kind, "output" | "audio_out" | "audio_stereo") && patch.output.is_none() {
-            patch.output = Some(id.clone());
+        let mut edits = vec![json!({"tool":"add_module","arguments":{"id":id,"kind":kind}})];
+        if matches!(kind, "output" | "audio_out" | "audio_stereo") && self.patch.output.is_none() {
+            edits.push(json!({"tool":"set_output","arguments":{"id":id,"port":"out"}}));
         }
-        if self.command("replace_patch", json!({"patch":patch})) {
+        if self.command("apply_edits", json!({"edits":edits})) {
             self.rack.selected = Some(id);
             self.browser_open = false;
         }
@@ -991,6 +996,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Switched stereo voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/switched-stereo-voice.json"
+                            ))
+                            .expect("valid bundled switching voice");
+                            self.replace_from_menu(patch, "Switched stereo voice");
                             ui.close();
                         }
                         if ui.button("Sequenced analog voice").clicked() {
@@ -1765,12 +1778,35 @@ impl OpenPatch {
                 .set_sequence_states(BTreeMap::from([("sequence".into(), telemetry)]), false);
             self.title = "Sequenced analog voice · offline preview".into();
         }
+        if *frame == 188 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/switched-stereo-voice.json"))
+                    .unwrap();
+            let mut engine = patch.compile().unwrap();
+            engine.process_block(&mut [0.0; 128]);
+            let states = ["select", "route"]
+                .into_iter()
+                .map(|id| {
+                    let handle = engine.resolve_module_telemetry(id).unwrap();
+                    (id.to_owned(), engine.module_telemetry(handle).unwrap())
+                })
+                .collect();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("switching voice compiles");
+            self.rack = Rack::default();
+            let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":{
+                "pitches":[0,0],"split":[360,0],"select":[660,0],"clock":[840,0],
+                "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
+            }}));
+            self.rack.set_sequence_states(states, false);
+            self.title = "Switched stereo voice · offline preview".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
         if matches!(
             *frame,
-            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168 | 184
+            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168 | 184 | 200
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1803,7 +1839,8 @@ impl OpenPatch {
                 11 => path.with_file_name("project-unsaved.png"),
                 12 => path.with_file_name("signal-scope.png"),
                 13 => path.with_file_name("signal-scope-xy.png"),
-                _ => path.with_file_name("rack-sequencer.png"),
+                14 => path.with_file_name("rack-sequencer.png"),
+                _ => path.with_file_name("rack-switches.png"),
             };
             image::save_buffer(
                 target,
@@ -1814,12 +1851,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 15 {
+            if *captures == 16 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 210, "Native screenshot timeout");
+        assert!(*frame < 226, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -1877,7 +1914,7 @@ impl eframe::App for OpenPatch {
                 .patch
                 .nodes
                 .iter()
-                .filter(|n| n.kind == "seq3")
+                .filter(|n| matches!(n.kind.as_str(), "seq3" | "switch_1to4" | "switch_4to1"))
                 .filter_map(|n| {
                     self.audio
                         .as_ref()?
@@ -2046,6 +2083,49 @@ mod project_workflow_tests {
             smoke_test: None,
         }
     }
+    #[test]
+    fn browser_add_preserves_runtime_identities_and_sets_first_output_atomically() {
+        use openpatch::control::LiveModuleEvents;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct RetirementCounter(AtomicUsize);
+        impl LiveModuleEvents for RetirementCounter {
+            fn trigger(&self, _: &str, _: openpatch_core::ModuleAction) -> Result<Value, String> {
+                Ok(json!({}))
+            }
+            fn snapshot(&self) -> Value {
+                json!({})
+            }
+            fn retire_modules(&self, ids: &[String]) {
+                self.0.fetch_add(ids.len(), Ordering::Relaxed);
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let mut app = host(root.path());
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[{"id":"seq","kind":"seq3"},{"id":"route","kind":"switch_1to4"}]})).unwrap();
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        let counter = Arc::new(RetirementCounter(AtomicUsize::new(0)));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(counter.clone()));
+        let revision = app.revision;
+        app.add_module("constant");
+        assert_eq!(counter.0.load(Ordering::Relaxed), 0);
+        assert_eq!(app.revision, revision + 1);
+        assert_eq!(app.patch.nodes.len(), 3);
+        assert_eq!(app.rack.selected.as_deref(), Some("constant-1"));
+        app.add_module("audio_stereo");
+        assert_eq!(app.patch.output.as_deref(), Some("audio_stereo-1"));
+        assert_eq!(app.revision, revision + 2);
+        assert_eq!(counter.0.load(Ordering::Relaxed), 0);
+        assert!(app.command("undo", json!({})));
+        assert!(app.patch.output.is_none());
+        assert!(!app.patch.nodes.iter().any(|n| n.id == "audio_stereo-1"));
+    }
+
     fn edit(app: &mut OpenPatch, value: f32) {
         assert!(app.command(
             "set_parameter",

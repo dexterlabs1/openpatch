@@ -634,3 +634,68 @@ fn sequencer_actions_telemetry_identity_reset_and_adoption_neither_allocate_nor_
     TRACK_MEMORY.with(|tracking| tracking.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn sequential_switch_callbacks_telemetry_reset_and_adoption_neither_allocate_nor_free() {
+    use openpatch_core::{MidiEvent, ModuleAction};
+    let mut p = patch(
+        vec![
+            node("clock", "midi_cv", &[("channels", 1.0)]),
+            node("poly", "poly_constant", &[("channels", 16.0)]),
+            node("a", "switch_1to4", &[("declick", 1.0)]),
+            node("b", "switch_4to1", &[("declick", 1.0)]),
+            node("out", "audio_stereo", &[]),
+        ],
+        vec![
+            cable("clock", "gate", "a", "clock"),
+            cable("clock", "gate", "b", "reset"),
+            cable("poly", "out", "a", "signal"),
+            cable("a", "out1", "b", "in1"),
+            cable("a", "out2", "b", "in2"),
+            cable("a", "out3", "b", "in3"),
+            cable("a", "out4", "b", "in4"),
+            cable("b", "out", "out", "left"),
+        ],
+        "out",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let old_h = old.resolve_module_telemetry("a").unwrap();
+    let new_h = new.resolve_module_telemetry("b").unwrap();
+    p.nodes.reverse();
+    let mut reordered = p.compile().unwrap();
+    let re_h = reordered.resolve_module_telemetry("a").unwrap();
+    let mut audio = [[0.0; 2]; 129];
+    let mut poly = [PortFrame::default(); 129];
+    let mut mono = [0.0; 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            old.handle_midi(MidiEvent::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 100,
+            });
+            old.process_audio_block(&mut audio[..count]);
+            old.handle_midi(MidiEvent::NoteOff {
+                channel: 0,
+                note: 60,
+                velocity: 0,
+            });
+            old.process_poly_block(&mut poly[..count]);
+            new.adopt_state_from(&old);
+            reordered.adopt_state_from(&old);
+            assert!(old.module_telemetry(old_h).is_some());
+            assert!(new.module_telemetry(new_h).is_some());
+            assert!(reordered.module_telemetry(re_h).is_some());
+            assert!(!new.handle_module_event(new_h, ModuleAction::Clock));
+            assert!(!reordered.reset_module_state(old_h));
+            assert!(reordered.reset_module_state(re_h));
+            new.process_block(&mut mono[..count]);
+            reordered.process_audio_block(&mut audio[..count]);
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

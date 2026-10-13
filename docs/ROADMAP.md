@@ -1,12 +1,12 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 30 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 32 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds, five functional utilities, four polyphonic routing/source utilities, MIDI input, stereo output, four additional stereo/pitch/routing processors, a four-output clocked LFO and a three-row sequencer do not constitute 30 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds, five functional utilities, four polyphonic routing/source utilities, MIDI input, stereo output, four additional stereo/pitch/routing processors, a four-output clocked LFO a three-row sequencer and two sequential switches do not constitute 32 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -117,6 +117,16 @@ Remaining gates are direct differential traces against the pinned VCV version,
 runtime state persistence, parameter/phase mapping alignment, and actual native
 playback/device qualification. Current policy differences remain explicit;
 passing OpenPatch tests does not promote SEQ 3 to complete VCV equivalence.
+
+## Clocked routing
+
+Two sequential switches now supply the documented 1-to-4 and 4-to-1 signal
+roles, including step count, clock/reset priority, polyphony, de-click ramps
+and actual engine route indicators. The [switch contract](SWITCHING.md) records
+mode-specific mono behavior, detector initialization and gain-state rules.
+A connected stereo example exercises both signal directions. Complete parity
+still requires reference traces, legacy import/state mapping, host bypass and
+native-device qualification.
 
 ## MCP and visuals beyond the baseline
 

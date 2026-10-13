@@ -5,6 +5,7 @@ use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::multi_lfo::{self, MultiLfo};
 use crate::routing::{self, Routing};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
+use crate::switch::{self, SequentialSwitch};
 use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -47,6 +48,7 @@ impl PortFrame {
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
     routing::input_names(kind).is_some()
+        || switch::input_names(kind).is_some()
         || matches!(
             kind,
             "poly_constant"
@@ -68,6 +70,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if let Some(ports) = switch::input_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if let Some(ports) = routing::input_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -86,6 +91,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if let Some(ports) = switch::output_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if let Some(ports) = routing::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -151,7 +159,9 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if let Some(names) = routing::output_names(&kind) {
+    let outputs = if let Some(names) = switch::output_names(&kind) {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if let Some(names) = routing::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if kind == "seq3" {
         sequence::OUTPUTS
@@ -223,6 +233,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     }
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
     routing::annotate(module);
+    switch::annotate(module);
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
@@ -248,9 +259,13 @@ enum Model {
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
     Seq3(Box<Seq3>),
+    Switch(SequentialSwitch),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if switch::input_names(&node.kind).is_some() {
+            return Ok(Self::Switch(SequentialSwitch::build(node, rate)?));
+        }
         if node.kind == "seq3" {
             return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
         }
@@ -361,6 +376,16 @@ pub(crate) struct PolyEngine {
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_module_telemetry(&self, id: &str) -> Result<usize, String> {
+        let node = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("module '{id}' does not exist"))?;
+        if !matches!(self.nodes[node].model, Model::Seq3(_) | Model::Switch(_)) {
+            return Err(format!("module '{id}' does not expose runtime telemetry"));
+        }
+        Ok(node)
+    }
     pub(crate) fn resolve_module_event(&self, id: &str) -> Result<usize, String> {
         let node = *self
             .node_lookup
@@ -380,6 +405,7 @@ impl PolyEngine {
     pub(crate) fn module_telemetry(&self, node: usize) -> Option<ModuleTelemetry> {
         match self.nodes.get(node).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(seq.telemetry()),
+            Some(Model::Switch(switch)) => Some(switch.telemetry()),
             _ => None,
         }
     }
@@ -387,12 +413,18 @@ impl PolyEngine {
         let Some(node) = self.nodes.get_mut(index) else {
             return false;
         };
-        let Model::Seq3(seq) = &mut node.model else {
-            return false;
+        let count = match &mut node.model {
+            Model::Seq3(seq) => {
+                seq.reset_state();
+                sequence::OUTPUTS.len()
+            }
+            Model::Switch(switch) => {
+                switch.reset_state();
+                switch.output_count()
+            }
+            _ => return false,
         };
-        seq.reset_state();
-        self.outputs[node.output_start..node.output_start + sequence::OUTPUTS.len()]
-            .fill(PortFrame::default());
+        self.outputs[node.output_start..node.output_start + count].fill(PortFrame::default());
         for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
             if edge.source_node == index || edge.destination_node == index {
                 *frame = PortFrame::default();
@@ -456,7 +488,9 @@ impl PolyEngine {
                 inputs: [None; MAX_PORTS],
                 output_start: output_count,
             });
-            output_count += if let Some(ports) = routing::output_names(&node.kind) {
+            output_count += if let Some(ports) = switch::output_names(&node.kind) {
+                ports.len()
+            } else if let Some(ports) = routing::output_names(&node.kind) {
                 ports.len()
             } else {
                 match node.kind.as_str() {
@@ -610,6 +644,19 @@ impl PolyEngine {
                     }
                     self.outputs[node.output_start] = frame;
                 }
+                Model::Switch(switch) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    let count = switch.output_count();
+                    switch.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + count],
+                    );
+                }
                 Model::Seq3(seq) => {
                     let mut inputs = [PortFrame::default(); 5];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -750,10 +797,23 @@ impl PolyEngine {
             } else {
                 [true; 3]
             };
+            let switch_unchanged = if switch::input_names(&self.nodes[*index].kind).is_some() {
+                [
+                    self.input_unchanged(*index, old, *old_index, 0),
+                    self.input_unchanged(*index, old, *old_index, 1),
+                ]
+            } else {
+                [true; 2]
+            };
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
                 continue;
+            }
+            if let (Model::Switch(switch), Model::Switch(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                switch.adopt(previous, switch_unchanged);
             }
             if let (Model::Seq3(seq), Model::Seq3(previous)) = (&mut node.model, &previous.model) {
                 seq.adopt(previous, seq_unchanged);

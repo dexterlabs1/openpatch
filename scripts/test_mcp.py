@@ -605,6 +605,32 @@ class OpenPatchMCPTests(unittest.TestCase):
         undone = self.payload(self.require_tool_success("undo", {"expected_revision": rotated["revision"]}))
         self.assertEqual(undone["patch"], before["patch"])
 
+    def test_switched_stereo_voice_routes_channels_and_rejects_sequencer_actions(self) -> None:
+        patch = json.loads((REPOSITORY / "examples" / "switched-stereo-voice.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        self.require_tool_error("trigger_module", {"id": "route", "action": "clock"})
+        self.require_tool_error("render_audio", {"filename": "invalid-switch.wav", "seconds": 0.01,
+            "module_events": [{"frame": 0, "id": "route", "action": "clock"}]})
+        self.assertFalse((self.workspace / "invalid-switch.wav").exists())
+        self.require_tool_success("render_audio", {"filename": "switches.wav", "seconds": 1})
+        with wave.open(str(self.workspace / "switches.wav"), "rb") as rendered:
+            self.assertEqual(rendered.getnchannels(), 2)
+            self.assertEqual(rendered.getsampwidth(), 2)
+            frames = rendered.getnframes()
+            data = struct.unpack("<" + "h" * frames * 2, rendered.readframes(frames))
+        # Exclude the 2.5 ms transitions: successive half-second routes are isolated.
+        for start, stop, audible in [(2400, 21600, 1), (26400, 45600, 0)]:
+            selected = data[start * 2 + audible:stop * 2:2]
+            silent = data[start * 2 + 1 - audible:stop * 2:2]
+            self.assertGreater(max(abs(v) for v in selected), 100)
+            self.assertLess(max(abs(v) for v in selected), 32767)
+            self.assertTrue(all(v == 0 for v in silent))
+        saved = self.patch_snapshot()["patch"]
+        self.require_tool_success("save_patch", {"filename": "switches.json"})
+        self.require_tool_success("set_parameter", {"id": "route", "parameter": "steps", "value": 2})
+        self.require_tool_success("load_patch", {"filename": "switches.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], saved)
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

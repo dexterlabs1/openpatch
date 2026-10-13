@@ -1,4 +1,4 @@
-//! Control-thread registry and bounded sequencer performance events. The only
+//! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{Engine, ModuleAction, ModuleHandle, ModuleTelemetry, Patch, MAX_NODES};
@@ -21,11 +21,28 @@ struct Event {
     revision: u64,
     deadline: u64,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ModuleKind {
+    Sequence,
+    Switch1To4,
+    Switch4To1,
+}
+impl ModuleKind {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "seq3" => Some(Self::Sequence),
+            "switch_1to4" => Some(Self::Switch1To4),
+            "switch_4to1" => Some(Self::Switch4To1),
+            _ => None,
+        }
+    }
+}
 #[derive(Clone, Copy)]
 struct Entry {
     slot: usize,
     token: u64,
     born_revision: u64,
+    kind: ModuleKind,
 }
 struct Control {
     queue: Producer<Event>,
@@ -181,13 +198,16 @@ impl Performance {
         for (id, entry) in &control.entries {
             // A stale UI snapshot must not bind a newly reincarnated instance.
             if revision < entry.born_revision
-                || !patch.nodes.iter().any(|n| n.id == *id && n.kind == "seq3")
+                || !patch
+                    .nodes
+                    .iter()
+                    .any(|n| n.id == *id && ModuleKind::from_name(&n.kind) == Some(entry.kind))
             {
                 continue;
             }
             plan.bindings[entry.slot] = Some(Binding {
                 token: entry.token,
-                handle: engine.resolve_module_event(id)?,
+                handle: engine.resolve_module_telemetry(id)?,
             });
         }
         Ok(plan)
@@ -238,10 +258,9 @@ impl LiveModuleEvents for Performance {
         }
         control.entries.retain(|id, entry| {
             let retained = patch.version == 2
-                && patch
-                    .nodes
-                    .iter()
-                    .any(|node| node.id == *id && node.kind == "seq3");
+                && patch.nodes.iter().any(|node| {
+                    node.id == *id && ModuleKind::from_name(&node.kind) == Some(entry.kind)
+                });
             if !retained {
                 self.shared.desired[entry.slot].store(0, Ordering::Release);
             }
@@ -252,7 +271,11 @@ impl LiveModuleEvents for Performance {
             used[entry.slot] = true;
         }
         if patch.version == 2 {
-            for node in patch.nodes.iter().filter(|node| node.kind == "seq3") {
+            for (node, kind) in patch
+                .nodes
+                .iter()
+                .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
+            {
                 if control.entries.contains_key(&node.id) {
                     continue;
                 }
@@ -268,6 +291,7 @@ impl LiveModuleEvents for Performance {
                         slot,
                         token,
                         born_revision: revision,
+                        kind,
                     },
                 );
                 self.shared.desired[slot].store(token, Ordering::Release);
@@ -288,6 +312,12 @@ impl LiveModuleEvents for Performance {
             self.shared.rejected.fetch_add(1, Ordering::Relaxed);
             return Err(format!("Module '{id}' has no live sequencer instance"));
         };
+        if entry.kind != ModuleKind::Sequence {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!(
+                "Module '{id}' is a sequential switch with read-only telemetry; module actions require seq3"
+            ));
+        }
         let sequence = control.next_sequence;
         control.next_sequence = control.next_sequence.wrapping_add(1).max(1);
         let revision = control.revision;

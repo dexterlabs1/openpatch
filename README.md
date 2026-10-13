@@ -56,6 +56,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value | Double-click the displayed value |
+| Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
 | Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
 | Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |

@@ -544,6 +544,7 @@ impl Audio {
         self.performance.clone()
     }
     /// Actual DSP telemetry; step is ONE-based and length is the active count.
+    /// Read-only sequencer or sequential-switch state from the current graph.
     /// Unavailable while a newer registry revision awaits audio publication.
     pub fn sequence_state(&self, id: &str) -> Option<SequenceTelemetry> {
         self.performance.sequence_state(id)
@@ -1773,6 +1774,142 @@ mod tests {
             .unwrap();
         graph.revision = revision;
         graph
+    }
+
+    fn switch_patch(kind: &str) -> Patch {
+        serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"clock","kind":"constant","params":{"value":10}},
+                {"id":"switch","kind":kind,"params":{"steps":4,"declick":0}}],
+            "cables":[{"from":"clock","to":"switch","input":"clock"}],
+            "output":"clock"}))
+        .unwrap()
+    }
+
+    #[test]
+    fn switch_telemetry_reports_dsp_steps_and_rejects_actions_before_queueing() {
+        for kind in ["switch_1to4", "switch_4to1"] {
+            let patch = switch_patch(kind);
+            let (mut callback, _, _) = sequence_callback(&patch);
+            assert!(callback.performance.sequence_state("switch").is_none());
+            for action in [ModuleAction::Clock, ModuleAction::Reset, ModuleAction::Run] {
+                assert!(callback
+                    .performance
+                    .trigger("switch", action)
+                    .unwrap_err()
+                    .contains("read-only telemetry"));
+            }
+            let status = callback.performance.snapshot();
+            assert_eq!(status["queued"], 0);
+            assert_eq!(status["pending"], 0);
+            assert_eq!(status["rejected"], 3);
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            let state = callback.performance.sequence_state("switch").unwrap();
+            assert_eq!((state.step, state.length, state.running), (2, 4, true));
+        }
+    }
+
+    #[test]
+    fn switch_compatible_edits_retain_state_and_wait_for_current_graph_telemetry() {
+        for kind in ["switch_1to4", "switch_4to1"] {
+            let mut patch = switch_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+            patch.nodes[1].params.insert("declick".into(), 1.0);
+            patch.nodes[1].params.insert("steps".into(), 3.0);
+            callback.performance.sync_patch(&patch, 2);
+            assert!(callback.performance.sequence_state("switch").is_none());
+            // The old graph may publish again while its successor is prepared.
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(callback.performance.sequence_state("switch").is_none());
+            let graph = sequence_graph(&callback, &patch, 2);
+            assert_eq!(graph.modules.bindings[0].unwrap().token, token);
+            assert!(updates.push(graph).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            let state = callback.performance.sequence_state("switch").unwrap();
+            assert_eq!((state.step, state.length, state.running), (2, 3, true));
+        }
+    }
+
+    #[test]
+    fn switch_retyping_and_skipped_remove_readd_reset_identity_and_delayed_clock() {
+        for kind in ["switch_1to4", "switch_4to1"] {
+            let patch = switch_patch(kind);
+            for retype in [false, true] {
+                let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+                assert_eq!(
+                    callback.performance.sequence_state("switch").unwrap().step,
+                    2
+                );
+                let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+                if retype {
+                    let mut opposite = patch.clone();
+                    opposite.nodes[1].kind = if kind == "switch_1to4" {
+                        "switch_4to1".into()
+                    } else {
+                        "switch_1to4".into()
+                    };
+                    callback.performance.sync_patch(&opposite, 2);
+                    let opposite_graph = sequence_graph(&callback, &opposite, 2);
+                    assert_ne!(opposite_graph.modules.bindings[0].unwrap().token, token);
+                    let stale = sequence_graph(&callback, &patch, 2);
+                    assert!(stale.modules.bindings.iter().all(Option::is_none));
+                } else {
+                    callback.performance.sync_patch(&Patch::new_v2(), 2);
+                }
+                callback.performance.sync_patch(&patch, 3);
+                assert!(callback.performance.sequence_state("switch").is_none());
+                let stale = sequence_graph(&callback, &patch, 1);
+                assert!(stale.modules.bindings.iter().all(Option::is_none));
+                let graph = sequence_graph(&callback, &patch, 3);
+                assert_ne!(graph.modules.bindings[0].unwrap().token, token);
+                assert!(updates.push(graph).is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                assert_eq!(
+                    callback.performance.sequence_state("switch").unwrap().step,
+                    1
+                );
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                assert_eq!(
+                    callback.performance.sequence_state("switch").unwrap().step,
+                    2
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn identical_switch_document_replacement_resets_state_and_clock_edges() {
+        for kind in ["switch_1to4", "switch_4to1"] {
+            let patch = switch_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(patch.clone(), Some(0)).unwrap();
+            session.set_live_module_events(Some(callback.performance.clone()));
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            assert_eq!(
+                callback.performance.sequence_state("switch").unwrap().step,
+                2
+            );
+            let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+            session.replace_patch(patch.clone(), Some(1)).unwrap();
+            assert!(callback.performance.sequence_state("switch").is_none());
+            let graph = sequence_graph(&callback, session.patch(), session.revision());
+            assert_ne!(graph.modules.bindings[0].unwrap().token, token);
+            assert!(updates.push(graph).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert_eq!(
+                callback.performance.sequence_state("switch").unwrap().step,
+                1
+            );
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert_eq!(
+                callback.performance.sequence_state("switch").unwrap().step,
+                2
+            );
+        }
     }
 
     #[test]

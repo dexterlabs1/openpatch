@@ -1,0 +1,159 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "pitches",
+      "kind": "poly_constant",
+      "params": {
+        "channels": 4,
+        "v1": 0,
+        "v2": 0.3333333333333333,
+        "v3": 0.5833333333333334,
+        "v4": 1
+      }
+    },
+    {
+      "id": "split",
+      "kind": "poly_split"
+    },
+    {
+      "id": "select",
+      "kind": "switch_4to1",
+      "params": {
+        "steps": 4
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 2,
+        "duty": 0.25
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "route",
+      "kind": "switch_1to4",
+      "params": {
+        "steps": 4,
+        "declick": 1
+      }
+    },
+    {
+      "id": "left",
+      "kind": "mixer"
+    },
+    {
+      "id": "right",
+      "kind": "mixer"
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.6
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "pitches",
+      "output": "out",
+      "to": "split",
+      "input": "signal"
+    },
+    {
+      "from": "split",
+      "output": "out1",
+      "to": "select",
+      "input": "in1"
+    },
+    {
+      "from": "split",
+      "output": "out2",
+      "to": "select",
+      "input": "in2"
+    },
+    {
+      "from": "split",
+      "output": "out3",
+      "to": "select",
+      "input": "in3"
+    },
+    {
+      "from": "split",
+      "output": "out4",
+      "to": "select",
+      "input": "in4"
+    },
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "select",
+      "input": "clock"
+    },
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "route",
+      "input": "clock"
+    },
+    {
+      "from": "select",
+      "output": "out",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "route",
+      "input": "signal"
+    },
+    {
+      "from": "route",
+      "output": "out1",
+      "to": "left",
+      "input": "a"
+    },
+    {
+      "from": "route",
+      "output": "out2",
+      "to": "right",
+      "input": "a"
+    },
+    {
+      "from": "route",
+      "output": "out3",
+      "to": "left",
+      "input": "b"
+    },
+    {
+      "from": "route",
+      "output": "out4",
+      "to": "right",
+      "input": "b"
+    },
+    {
+      "from": "left",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "right",
+      "output": "out",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

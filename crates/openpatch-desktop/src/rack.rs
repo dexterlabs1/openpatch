@@ -453,6 +453,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if is_sequential_switch(&node.kind) {
+                if let Some(edit) = self.switch_panel(ui, node, rect) {
+                    action = Some(edit);
+                }
+            }
             let parameters = ordered_parameters(node, module);
             let count = parameters.len();
             if node.kind == "poly_constant" {
@@ -573,7 +578,9 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if node.kind == "seq3" && sequence_cell(name).is_none() {
+                if is_sequential_switch(&node.kind)
+                    || (node.kind == "seq3" && sequence_cell(name).is_none())
+                {
                     continue;
                 }
                 if node.kind == "midi_cv" {
@@ -1248,6 +1255,99 @@ impl Rack {
         }
     }
 
+    fn switch_panel(&mut self, ui: &mut egui::Ui, node: &Node, rect: Rect) -> Option<RackAction> {
+        let painter = ui.painter().clone();
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let configured_length = node.params.get("steps").copied().unwrap_or(4.0) as u8;
+        let state = self.sequence_states.get(&node.id).copied();
+        let length = state.map_or(configured_length, |s| s.length);
+        let selected = state.map(|s| s.step);
+        let declick = node.params.get("declick").copied().unwrap_or(0.0) != 0.0;
+        let mut action = None;
+        painter.text(
+            point(90.0, 80.0),
+            Align2::CENTER_CENTER,
+            "STEPS",
+            FontId::proportional(10.0 * zoom),
+            INK,
+        );
+        for (index, steps) in [2, 3, 4].into_iter().enumerate() {
+            if panel_button(
+                ui,
+                &painter,
+                Rect::from_min_size(
+                    point(24.0 + index as f32 * 44.0, 94.0),
+                    vec2(38.0, 24.0) * zoom,
+                ),
+                ui.id().with((&node.id, "length", steps)),
+                &steps.to_string(),
+                configured_length == steps,
+                true,
+                zoom,
+            ) {
+                self.selected = Some(node.id.clone());
+                action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":"steps","value":steps}),
+                ));
+            }
+        }
+        if panel_button(
+            ui,
+            &painter,
+            Rect::from_min_size(point(24.0, 128.0), vec2(132.0, 24.0) * zoom),
+            ui.id().with((&node.id, "declick")),
+            "De-click",
+            declick,
+            true,
+            zoom,
+        ) {
+            self.selected = Some(node.id.clone());
+            action = Some(RackAction::Command(
+                "set_parameter",
+                json!({"id":node.id,"parameter":"declick","value":if declick {0.0} else {1.0}}),
+            ));
+        }
+        let status = selected.map_or("Waiting for engine".into(), |step| {
+            format!("Route {step} / {length}")
+        });
+        painter.text(
+            point(90.0, 174.0),
+            Align2::CENTER_CENTER,
+            status,
+            FontId::monospace(9.0 * zoom),
+            MUTED,
+        );
+        let many_x = if node.kind == "switch_1to4" {
+            130.0
+        } else {
+            50.0
+        };
+        let main_x = 180.0 - many_x;
+        for step in 1..=4 {
+            let y = 262.0 + (step - 1) as f32 * 36.0;
+            let active = selected == Some(step);
+            let disabled = step > length;
+            let color = if disabled {
+                Color32::from_rgb(175, 75, 68)
+            } else if active {
+                Color32::from_rgb(202, 158, 55)
+            } else {
+                Color32::from_gray(158)
+            };
+            painter.line_segment(
+                [point(main_x, 316.0), point(many_x, y)],
+                Stroke::new(
+                    if active { 1.8 * zoom } else { 0.7 * zoom },
+                    color.gamma_multiply(if active { 0.9 } else { 0.35 }),
+                ),
+            );
+            paint_jack_light(&painter, point(many_x - 22.0, y), zoom * 0.65, color);
+        }
+        action
+    }
+
     fn sequence_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -1712,6 +1812,21 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    if is_sequential_switch(kind) {
+        return if input && index < 2 {
+            pos2(50.0 + index as f32 * 80.0, 213.0)
+        } else if kind == "switch_1to4" {
+            if input {
+                pos2(50.0, 316.0)
+            } else {
+                pos2(130.0, 262.0 + index as f32 * 36.0)
+            }
+        } else if input {
+            pos2(50.0, 262.0 + (index - 2) as f32 * 36.0)
+        } else {
+            pos2(130.0, 316.0)
+        };
+    }
     if kind == "seq3" {
         return if input {
             pos2(35.0 + index as f32 * 37.0, 374.0)
@@ -2141,6 +2256,10 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
     ))
 }
 
+fn is_sequential_switch(kind: &str) -> bool {
+    matches!(kind, "switch_1to4" | "switch_4to1")
+}
+
 fn sequence_cell(name: &str) -> Option<(usize, usize)> {
     let (row, column) = name.strip_prefix("row")?.split_once('_')?;
     let row = row.parse::<usize>().ok()?;
@@ -2194,6 +2313,7 @@ fn panel_button(
 fn panel_width(kind: &str) -> f32 {
     match kind {
         "seq3" => HP * 52.0,
+        "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
         "audio_stereo" | "octave" => HP * 12.0,
@@ -2217,6 +2337,8 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "switch_1to4" => "SWITCH 1 → 4",
+        "switch_4to1" => "SWITCH 4 → 1",
         "poly_constant" => "POLY VOLTAGE",
         "midi_cv" => "MIDI TO CV",
         "audio_stereo" => "STEREO AUDIO",
@@ -2904,6 +3026,66 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn sequential_switch_controls_and_all_routing_jacks_are_independent() {
+        for kind in ["switch_1to4", "switch_4to1"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[{"id":"source","kind":"constant"},{"id":"switch","kind":kind},{"id":"out","kind":"output"}]})).unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let origin = pos2(144.0, 12.0);
+            let length = origin + vec2(43.0, 106.0);
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(length), button(length, true)],
+            );
+            let action = frame(&ctx, &mut rack, &patch, 1.1, vec![button(length, false)]);
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", ref args)) if args["parameter"] == "steps" && args["value"] == 2),
+                "{kind}: step button did not emit a parameter edit"
+            );
+            let declick = origin + vec2(90.0, 140.0);
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                2.0,
+                vec![egui::Event::PointerMoved(declick), button(declick, true)],
+            );
+            let action = frame(&ctx, &mut rack, &patch, 2.1, vec![button(declick, false)]);
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", ref args)) if args["parameter"] == "declick" && args["value"] == 1.0)
+            );
+            let inputs = if kind == "switch_1to4" { 3 } else { 6 };
+            let outputs = if kind == "switch_1to4" { 4 } else { 1 };
+            let source = pos2(24.0, 12.0) + port_position("constant", false, 0, 1, 120.0).to_vec2();
+            let input = origin + port_position(kind, true, inputs - 1, inputs, 180.0).to_vec2();
+            let action = drag(&ctx, &mut rack, &patch, 3.0, source, input);
+            assert!(
+                matches!(action, Some(RackAction::Command("connect", ref args)) if args["input"] == if kind == "switch_1to4" {"signal"} else {"in4"})
+            );
+            let output = origin + port_position(kind, false, outputs - 1, outputs, 180.0).to_vec2();
+            let destination =
+                pos2(324.0, 12.0) + port_position("output", true, 0, 1, 120.0).to_vec2();
+            let action = drag(&ctx, &mut rack, &patch, 4.0, output, destination);
+            assert!(
+                matches!(action, Some(RackAction::Command("connect", ref args)) if args["output"] == if kind == "switch_1to4" {"out4"} else {"out"})
+            );
+            let ports: Vec<_> = (0..inputs)
+                .map(|i| port_position(kind, true, i, inputs, 180.0))
+                .chain((0..outputs).map(|i| port_position(kind, false, i, outputs, 180.0)))
+                .collect();
+            for (i, a) in ports.iter().enumerate() {
+                for b in &ports[i + 1..] {
+                    assert!(a.distance(*b) >= 36.0);
+                }
+            }
+        }
     }
 
     #[test]

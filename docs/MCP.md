@@ -145,7 +145,7 @@ automatically normalized, calibrated hardware measurements, or a live probe.
 CV controls, voltage units, and timing in `catalog`. `tempo` is BPM (15–960,
 default 120); `steps` selects 1–8 columns. `running` sets the initial run state
 for a fresh engine. Live run toggles belong to performance state and do not
-rewrite that parameter. Loading or fully replacing a patch starts sequencers
+rewrite that parameter. Loading or fully replacing a patch starts sequencers and sequential switches
 from fresh runtime state and invalidates their old queued actions, even when
 module IDs match. Ordinary parameter/routing edits preserve compatible state.
 
@@ -207,6 +207,13 @@ performance state or graph history. `analyze_signal` and `capture_signal` accept
 optional `expected_revision` to guard their coherent snapshot. Analysis and
 capture retain raw signal units; WAV export applies the usual selected-output
 channel and clipping policy.
+
+The `switch_1to4` and `switch_4to1` modules route clocked signals with 2–4
+positions and a saved `declick` parameter. They are controlled through their
+clock/reset inputs; they do not accept sequencer `module_events` or
+`trigger_module` actions. Their native route indicators use read-only engine
+telemetry. See [clocked routing](SWITCHING.md) for mode-specific polyphony,
+timing and the stereo example.
 
 ## Offline waveform capture
 

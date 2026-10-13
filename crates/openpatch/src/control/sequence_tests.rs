@@ -430,3 +430,62 @@ fn document_replacements_retire_sequences_but_rejected_loads_do_not() {
     assert_eq!(*backend.synced.lock().unwrap(), vec![1, 2, 3, 4, 5]);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn switch_actions_remain_seq3_only_and_replacements_retire_all_telemetry_modules() {
+    let root = std::env::temp_dir().join(format!(
+        "openpatch-switch-load-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let mut s = Session::new(&root).unwrap();
+    for (id, kind) in [
+        ("seq", "seq3"),
+        ("split", "switch_1to4"),
+        ("join", "switch_4to1"),
+    ] {
+        s.execute("add_module", json!({"id":id,"kind":kind}))
+            .unwrap();
+    }
+    let backend = Arc::new(MockLive::default());
+    s.set_live_module_events(Some(backend.clone()));
+    let patch = s.patch.clone();
+    let before = s.snapshot();
+    for id in ["split", "join"] {
+        for action in ["clock", "reset", "run"] {
+            assert!(s
+                .execute("trigger_module", json!({"id":id,"action":action}))
+                .unwrap_err()
+                .contains("requires a seq3"));
+        }
+    }
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 0);
+    assert_eq!(s.snapshot(), before);
+    s.execute(
+        "set_parameter",
+        json!({"id":"split","parameter":"steps","value":3}),
+    )
+    .unwrap();
+    assert!(backend.retired.lock().unwrap().is_empty());
+    let mut invalid = patch.clone();
+    invalid.nodes[1].params.insert("steps".into(), 5.0);
+    assert!(s.replace_patch(invalid, None).is_err());
+    assert!(backend.retired.lock().unwrap().is_empty());
+    s.replace_patch(patch.clone(), None).unwrap();
+    s.execute("replace_patch", json!({"patch":patch})).unwrap();
+    fs::write(
+        root.join("switches.json"),
+        serde_json::to_vec(&patch).unwrap(),
+    )
+    .unwrap();
+    s.execute("load_patch", json!({"filename":"switches.json"}))
+        .unwrap();
+    assert_eq!(
+        *backend.retired.lock().unwrap(),
+        vec!["seq", "split", "join", "seq", "split", "join", "seq", "split", "join"]
+    );
+    fs::remove_dir_all(root).unwrap();
+}
