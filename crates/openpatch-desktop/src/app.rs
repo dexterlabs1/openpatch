@@ -5,6 +5,7 @@ use crate::{
     midi::{MidiInputManager, MidiPortInfo},
     project::{Document, FileToken, Store},
     rack::{Rack, RackAction},
+    scope::Scope,
     visuals::{Visualizer, DEFAULT_SHADER},
 };
 use eframe::{
@@ -66,6 +67,7 @@ pub struct OpenPatch {
     shader_status: String,
     visuals_open: bool,
     visual_mode: i32,
+    scope: Scope,
     volume: f32,
     status: String,
     filename: String,
@@ -189,6 +191,7 @@ impl OpenPatch {
             shader_status,
             visuals_open: false,
             visual_mode: 0,
+            scope: Scope::default(),
             volume,
             status: "Ready — press Play to hear the patch".into(),
             filename: "my-patch.openpatch".into(),
@@ -304,6 +307,7 @@ impl OpenPatch {
         }
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
+        self.scope.reset_connection();
         let (audio, label) = Self::open_audio(&self.patch, selected.as_deref());
         if let Some(mut audio) = audio {
             self.midi = None;
@@ -1035,6 +1039,7 @@ impl OpenPatch {
                     });
                     ui.menu_button("View", |ui| {
                         ui.checkbox(&mut self.visuals_open, "Visualizers");
+                        ui.checkbox(&mut self.scope.open, "Signal scope");
                         ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
                         if ui.button("Reset rack view").clicked() {
                             self.rack.reset_view();
@@ -1050,6 +1055,7 @@ impl OpenPatch {
                         self.browse();
                     }
                     ui.toggle_value(&mut self.visuals_open, "Visuals");
+                    ui.toggle_value(&mut self.scope.open, "Scope");
                     if ui.button("Audio / MIDI").clicked() {
                         self.settings_open = !self.settings_open;
                         if self.settings_open {
@@ -1697,9 +1703,18 @@ impl OpenPatch {
             self.file_mode = None;
             self.confirm_discard = Some(PendingAction::Close);
         }
+        if *frame == 148 {
+            self.confirm_discard = None;
+            let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[{"id":"calibration","kind":"multi_lfo","params":{"frequency":100.0}}],"output":"calibration","output_port":"sine"})).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("scope calibration compiles");
+            self.rack = Rack::default();
+            self.title = "Signal inspection".into();
+            self.scope.smoke_fixture();
+        }
         if matches!(
             *frame,
-            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144
+            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1729,7 +1744,8 @@ impl OpenPatch {
                 8 => path.with_file_name("rack-routing-modules.png"),
                 9 => path.with_file_name("rack-modulation.png"),
                 10 => path.with_file_name("project-save.png"),
-                _ => path.with_file_name("project-unsaved.png"),
+                11 => path.with_file_name("project-unsaved.png"),
+                _ => path.with_file_name("signal-scope.png"),
             };
             image::save_buffer(
                 target,
@@ -1740,7 +1756,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 12 {
+            if *captures == 13 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1796,6 +1812,8 @@ impl eframe::App for OpenPatch {
         self.footer(ctx);
         self.performance_keyboard(ctx);
         self.visual_dock(ctx);
+        self.scope
+            .show(ctx, &self.patch, &self.catalog, self.audio.as_mut());
         let mut action = None;
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
@@ -1818,6 +1836,7 @@ impl eframe::App for OpenPatch {
                 self.command(name, args);
             }
             Some(RackAction::OpenBrowser) => self.browse(),
+            Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
             Some(RackAction::LayoutChanged) => {
                 self.status = "Module moved".into();
             }
@@ -1917,6 +1936,7 @@ mod project_workflow_tests {
             shader_status: String::new(),
             visuals_open: false,
             visual_mode: 0,
+            scope: Scope::default(),
             volume: 0.65,
             status: String::new(),
             filename: "test.openpatch".into(),

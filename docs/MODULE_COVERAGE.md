@@ -12,7 +12,7 @@ There are **29 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
 utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, and a four-output clocked LFO. This count is not a count of completed VCV equivalents.
 
-The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback and a master-signal visualizer exist; neither supplies the complete Audio or Scope feature set.
+The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
 The selected first target is a **generic VCO → VCF → VCA voice with ADSR**, using explicitly specified reference circuits and voltage interfaces. The ramp VCO, OTA VCA, RC ADSR, gate/audio interfaces, and nonlinear four-pole ladder are implemented with numerical and integration tests. The ladder has bounded numerical solving, oversampling, and independent ODE-reference comparisons. These remain reference models rather than complete VCV equivalents or calibrated hardware clones; see [model validation](ANALOG_MODELS.md).
 
@@ -109,7 +109,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | 8vert | Voltage utility | Partial: single `attenuverter` with 10 V normalization and offset | Eight channels and downward input propagation |
 | Mutes | Routing | Planned | Independent mute states, normaling and persistence |
 | Pulses | Gate utility | Clock-gate interface implemented; not equivalent | Pulse duration and held-gate behavior across sample rates |
-| Scope | Measurement | Master visualizer only | Arbitrary-node probing, voltage calibration, triggering and timing |
+| Scope | Measurement | Partial: native dock with two arbitrary named-output/voice taps, calibrated time/voltage scales, auto/normal/free trigger, freeze, X/Y and raw statistics; MCP offline trace bins | Rack-mounted instances, external trigger, all-voice overlays, persistence, direct VCV comparison; [contract](SCOPE.md) |
 | SEQ 3 | Sequencing | Planned | Step/reset ordering, clock boundaries and saved sequence |
 | Sequential Switch 1 to 4 | Routing | Planned | Selected-path routing and clock/reset transitions |
 | Sequential Switch 4 to 1 | Routing | Planned | Input selection and clock/reset transitions |

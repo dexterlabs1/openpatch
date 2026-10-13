@@ -26,6 +26,11 @@ pub enum RackAction {
     Command(&'static str, Value),
     OpenBrowser,
     LayoutChanged,
+    Inspect {
+        lane: usize,
+        id: String,
+        port: String,
+    },
 }
 
 struct ParameterEdit {
@@ -980,6 +985,20 @@ impl Rack {
                 let units = metadata
                     .and_then(|metadata| metadata["units"].as_str())
                     .unwrap_or("signal");
+                jack.context_menu(|ui| {
+                    for (lane, label) in [(0, "Inspect in scope X"), (1, "Inspect in scope Y")] {
+                        if ui.button(label).clicked() {
+                            self.pending = None;
+                            self.dragging_cable = false;
+                            action = Some(RackAction::Inspect {
+                                lane,
+                                id: node.id.clone(),
+                                port: port.to_string(),
+                            });
+                            ui.close();
+                        }
+                    }
+                });
                 jack.on_hover_text(format!("{}.{}\nCapacity: up to {capacity} channels; {units}.\nThis is the port specification, not a live channel meter.", node.id, port));
             }
         }

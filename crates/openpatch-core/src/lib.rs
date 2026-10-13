@@ -15,6 +15,7 @@ use std::f64::consts::TAU;
 use std::fs::OpenOptions;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 mod analog;
 pub mod ladder;
@@ -472,7 +473,10 @@ impl Patch {
                 ))
             }
         };
-        Ok(Engine { inner })
+        Ok(Engine {
+            inner,
+            identity: NEXT_ENGINE_ID.fetch_add(1, Ordering::Relaxed),
+        })
     }
 
     fn compile_legacy(&self) -> Result<LegacyEngine, String> {
@@ -775,7 +779,25 @@ impl LegacyEngine {
 #[derive(Debug)]
 pub struct Engine {
     inner: EngineKind,
+    identity: u64,
 }
+static NEXT_ENGINE_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Opaque, allocation-free direct-lane tap bound to one compiled engine.
+/// Re-resolve after compiling a replacement; a stale handle reads inactive.
+#[derive(Clone, Copy, Debug)]
+pub struct ResolvedTap {
+    owner: u64,
+    index: usize,
+    channel: u8,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TapSample {
+    pub value: f32,
+    pub active: bool,
+}
+
 #[derive(Debug)]
 enum EngineKind {
     Legacy(LegacyEngine),
@@ -816,6 +838,82 @@ impl Engine {
                     engine.process_block(&mut mono[..chunk.len()]);
                     for (frame, sample) in chunk.iter_mut().zip(&mono) {
                         *frame = [*sample; 2];
+                    }
+                }
+            }
+        }
+    }
+    /// Resolve on the control thread. Channels are zero-based direct reads,
+    /// never mono broadcasts; a valid but absent lane reports inactive.
+    pub fn resolve_tap(&self, id: &str, port: &str, channel: usize) -> Result<ResolvedTap, String> {
+        if channel >= MAX_CHANNELS {
+            return Err("tap channel must be 0..15".into());
+        }
+        let index = match &self.inner {
+            EngineKind::Legacy(engine) => {
+                if port != "out" {
+                    return Err("version 1 taps support only out".into());
+                }
+                *engine
+                    .state_lookup
+                    .get(id)
+                    .ok_or_else(|| format!("tap node '{id}' does not exist"))?
+            }
+            EngineKind::Poly(engine) => engine.resolve_tap(id, port)?,
+        };
+        Ok(ResolvedTap {
+            owner: self.identity,
+            index,
+            channel: channel as u8,
+        })
+    }
+
+    /// Render unchanged device audio while sampling two module outputs before
+    /// host gain/crossfade. Storage is supplied by the caller; no allocation.
+    /// Tap and audio slices must have equal length. Handles from another engine
+    /// (including a recompiled graph) produce inactive samples.
+    pub fn process_audio_block_with_taps(
+        &mut self,
+        output: &mut [[f32; 2]],
+        taps: &[Option<ResolvedTap>; 2],
+        samples: &mut [[TapSample; 2]],
+    ) {
+        assert_eq!(output.len(), samples.len());
+        let identity = self.identity;
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                for (audio, sample) in output.iter_mut().zip(samples) {
+                    let frame = engine.process_sample();
+                    let left = frame.channel(0);
+                    *audio = [left, if stereo { frame.channel(1) } else { left }];
+                    for (sample, tap) in sample.iter_mut().zip(taps) {
+                        *sample = tap
+                            .filter(|tap| tap.owner == identity)
+                            .map_or(TapSample::default(), |tap| {
+                                engine.tap_sample(tap.index, tap.channel)
+                            });
+                    }
+                }
+            }
+            EngineKind::Legacy(engine) => {
+                let mut mono = [0.0; BLOCK_SIZE];
+                for (audio, samples) in output
+                    .chunks_mut(BLOCK_SIZE)
+                    .zip(samples.chunks_mut(BLOCK_SIZE))
+                {
+                    engine.process_block(&mut mono[..audio.len()]);
+                    for (index, (audio, samples)) in audio.iter_mut().zip(samples).enumerate() {
+                        *audio = [mono[index]; 2];
+                        for (sample, tap) in samples.iter_mut().zip(taps) {
+                            *sample = tap
+                                .filter(|tap| tap.owner == identity && tap.channel == 0)
+                                .and_then(|tap| engine.buffers.get(tap.index))
+                                .map_or(TapSample::default(), |buffer| TapSample {
+                                    value: buffer[index],
+                                    active: true,
+                                });
+                        }
                     }
                 }
             }
@@ -1117,4 +1215,78 @@ pub fn write_wav_interleaved(
         writer.write_all(&pcm.to_le_bytes())?;
     }
     writer.flush()
+}
+
+#[cfg(test)]
+mod scope_tap_tests {
+    use super::*;
+    #[test]
+    fn named_raw_taps_leave_audible_output_unchanged_and_absent_lanes_inactive() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"audio","kind":"constant","params":{"value":0.25}},
+                {"id":"poly","kind":"poly_constant","params":{"channels":2,"v1":3,"v2":-4}},
+                {"id":"split","kind":"poly_split","params":{}}],
+            "cables":[{"from":"poly","to":"split","input":"signal"}],"output":"audio"
+        }))
+        .unwrap();
+        let mut engine = patch.compile().unwrap();
+        let taps = [
+            Some(engine.resolve_tap("split", "out2", 0).unwrap()),
+            Some(engine.resolve_tap("poly", "out", 2).unwrap()),
+        ];
+        let mut audio = [[0.0; 2]; 259];
+        let mut samples = [[TapSample::default(); 2]; 259];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+        let mut reference = [[0.0; 2]; 259];
+        patch.compile().unwrap().process_audio_block(&mut reference);
+        assert_eq!(audio, reference);
+        assert_eq!(audio, [[0.25; 2]; 259]);
+        assert_eq!(
+            samples[0][0],
+            TapSample {
+                value: 0.0,
+                active: true
+            }
+        );
+        assert!(samples[1..].iter().all(|s| s[0]
+            == TapSample {
+                value: -4.0,
+                active: true
+            }));
+        assert!(samples.iter().all(|s| s[1] == TapSample::default()));
+        assert!(engine.resolve_tap("missing", "out", 0).is_err());
+        assert!(engine.resolve_tap("split", "out17", 0).is_err());
+        assert!(engine.resolve_tap("poly", "out", 16).is_err());
+        let mut replacement = patch.compile().unwrap();
+        replacement.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+        assert!(
+            samples.iter().flatten().all(|s| *s == TapSample::default()),
+            "old engine handles must never alias a replacement graph"
+        );
+    }
+    #[test]
+    fn legacy_taps_sample_each_node_before_output_selection_and_support_arbitrary_lengths() {
+        let patch: Patch = serde_json::from_value(json!({
+            "nodes":[{"id":"dc","kind":"constant","params":{"value":2}},
+                {"id":"gain","kind":"gain","params":{"gain":0.5}}],
+            "cables":[{"from":"dc","to":"gain","input":"signal"}],"output":"gain"
+        }))
+        .unwrap();
+        let mut engine = patch.compile().unwrap();
+        let taps = [
+            Some(engine.resolve_tap("dc", "out", 0).unwrap()),
+            Some(engine.resolve_tap("gain", "out", 1).unwrap()),
+        ];
+        let mut output = [[0.0; 2]; 259];
+        let mut samples = [[TapSample::default(); 2]; 259];
+        engine.process_audio_block_with_taps(&mut output, &taps, &mut samples);
+        assert_eq!(output, [[1.0; 2]; 259]);
+        assert!(samples.iter().all(|s| s[0]
+            == TapSample {
+                value: 2.0,
+                active: true
+            }
+            && s[1] == TapSample::default()));
+        assert!(engine.resolve_tap("dc", "out2", 0).is_err());
+    }
 }

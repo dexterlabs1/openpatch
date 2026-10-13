@@ -26,8 +26,9 @@
 
 - **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
+- **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
-- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, tune, save, and render through a local MCP server using the same validated controls as the UI.
+- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
 
 ## Get started on macOS
 
@@ -54,12 +55,13 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value | Double-click the displayed value |
+| Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
 | Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
-Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click an output jack to select that specific output for monitoring. Polyphonic playback uses the first channel unless you route through SUM.
+Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 

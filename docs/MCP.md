@@ -117,7 +117,7 @@ follows Left. All other selected outputs retain channel-0 mono monitoring.
 `poly_sum` explicitly mixes voices to mono, and `poly_split` / `poly_merge`
 provide individual channel routing. See [MIDI and audio](MIDI_AUDIO.md).
 
-Both `render_audio` and `analyze_signal` accept optional sample-timed
+`render_audio`, `analyze_signal`, and `capture_signal` accept optional sample-timed
 `midi_events`, allowing reproducible MIDI performances from reset without
 changing live notes or patch history. The trace contract and CLI example are
 in the [performance guide](MIDI_AUDIO.md#reproducible-agent-performances).
@@ -136,6 +136,55 @@ With the bundled polyphonic voice this reports three constant pitch channels.
 Analyze `vco` or `vca` to measure the three processed voices; analyze `sum` to
 inspect their mono sum. Values retain each output's catalog units; they are not
 automatically normalized, calibrated hardware measurements, or a live probe.
+
+## Offline waveform capture
+
+`capture_signal` returns a bounded waveform trace for one named output and one
+**1-based channel**, from 1 through 16. For example, with the bundled polyphonic
+voice, capture the second VCO voice (replace revision `7` with the value from
+`inspect_patch`, or omit the optional revision guard):
+
+```json
+{"id":"vco","port":"out","channel":2,"seconds":0.25,"points":512,"expected_revision":7}
+```
+
+`port` defaults to `out`, and `channel` defaults to 1. `seconds` must be
+0.001–2; `points` must be an integer from 64 through 2048, default 512. The result
+includes the captured `revision`, `id`, `port`, `channel`, exact `sample_rate` and
+rounded sample `frames`, `requested_points`, and actual `points`. If the render
+has fewer frames than requested points, each frame gets one bin.
+
+Each entry in `bins` contains `start_frame`, exclusive `end_frame`,
+`active_frames`, `min`, `max`, and `mean`. Nonempty bins cover every rendered frame
+without gaps or overlap. Every active sample contributes, so a one-sample pulse
+survives in the extrema even when it falls between display points. `active_frames`
+counts frames in which the selected channel exists, including zero-valued gates
+or audio. When a channel is absent, its samples are excluded; a bin with no active
+samples has null `min`, `max`, and `mean` rather than fabricated zeros.
+
+`summary` reports active-sample `min`, `max`, `dc` (mean), `rms` (including DC),
+and `peak` (maximum absolute amplitude), plus total `active_frames`. All five
+amplitude statistics are null when the selected channel never exists.
+`units` comes directly from the selected port's catalog `output_metadata`:
+
+| `units` | `amplitude_domain` | `digital_full_scale` |
+| --- | --- | --- |
+| `V` | `voltage` | null |
+| `normalized digital amplitude` | `normalized_audio` | 1.0 |
+| `legacy normalized` | `legacy_normalized` | null |
+
+Capture returns raw values without clipping, channel summing, or automatic
+normalization. For example, a voltage peak of 5 remains 5 V; a normalized digital
+audio peak above 1 remains above 1. These are software signal units, not calibrated
+measurements of external hardware.
+
+This tool always starts a separate engine **offline from reset**. Optional
+`midi_events` reproduce a performance using the same sample-frame rules as
+`render_audio`; the response includes `midi_event_count`. It never selects a new
+live output, changes history, or changes running notes. The native Scope's live
+tap observes the running engine instead; `capture_signal` does not fetch that
+live tap. A concurrent edit may advance the session while capture runs, but the
+returned revision identifies the coherent snapshot that produced the trace.
 
 ## Atomic edits and shared history
 

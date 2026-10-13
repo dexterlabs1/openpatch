@@ -401,6 +401,56 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
         self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
 
+    def test_capture_signal_calibration_bins_activity_and_snapshot_safety(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "bus", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": -4}},
+                      {"id": "copy", "kind": "mult"}],
+            "cables": [{"from": "bus", "to": "copy", "input": "signal"}],
+        }})
+        before = self.patch_snapshot()
+        result = self.payload(self.require_tool_success("capture_signal", {
+            "id": "copy", "port": "out8", "channel": 2, "seconds": 0.001,
+            "points": 2048, "expected_revision": before["revision"],
+        }))
+        self.assertEqual(result["revision"], before["revision"])
+        self.assertEqual((result["frames"], result["sample_rate"], result["points"]), (48, 48000, 48))
+        self.assertEqual(result["units"], "V")
+        self.assertEqual(result["amplitude_domain"], "voltage")
+        self.assertIsNone(result["digital_full_scale"])
+        self.assertEqual(result["summary"], {"active_frames": 47, "min": -4, "max": -4, "dc": -4, "rms": 4, "peak": 4})
+        self.assertEqual(result["bins"][0], {"start_frame": 0, "end_frame": 1, "active_frames": 0, "min": None, "max": None, "mean": None})
+        self.assertEqual(result["bins"][-1]["end_frame"], 48)
+        missing = self.payload(self.require_tool_success("capture_signal", {"id": "bus", "channel": 16, "seconds": 0.001}))
+        self.assertEqual(missing["summary"], {"active_frames": 0, "min": None, "max": None, "dc": None, "rms": None, "peak": None})
+        for key, value in [("points", 63), ("points", 2049), ("points", 64.0),
+                           ("channel", 0), ("channel", 17), ("channel", 1.5),
+                           ("seconds", 0), ("seconds", 2.001), ("port", "missing"),
+                           ("expected_revision", before["revision"] - 1), ("unknown", True)]:
+            arguments = {"id": "bus", "seconds": 0.001}
+            arguments[key] = value
+            self.require_tool_error("capture_signal", arguments)
+        self.assertEqual(self.patch_snapshot(), before)
+
+    def test_capture_signal_preserves_one_sample_midi_peak_and_same_frame_order(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [{"id": "m", "kind": "midi_cv", "params": {"channels": 1}}],
+        }})
+        before = self.patch_snapshot()
+        on = {"frame": 97, "event": {"type": "note_on", "channel": 0, "note": 60, "velocity": 127}}
+        off = {"frame": 97, "event": {"type": "note_off", "channel": 0, "note": 60, "velocity": 0}}
+        arguments = {"id": "m", "port": "gate", "seconds": 0.01, "points": 64,
+                     "midi_events": [off, on, {"frame": 98, "event": off["event"]}]}
+        captured = self.payload(self.require_tool_success("capture_signal", arguments))
+        self.assertEqual(captured["summary"]["peak"], 10)
+        self.assertEqual(captured["summary"]["dc"], 10 / 480)
+        pulse = next(item for item in captured["bins"] if item["start_frame"] == 97)
+        self.assertEqual((pulse["min"], pulse["max"]), (0, 10))
+        arguments["midi_events"] = [on, off]
+        released = self.payload(self.require_tool_success("capture_signal", arguments))
+        self.assertEqual(released["summary"]["peak"], 0)
+        self.assertEqual(self.patch_snapshot(), before)
+
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")
         self.assertIn("result", listed, f"tools/list failed: {listed}")
@@ -411,7 +461,7 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
              "connect", "disconnect", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
-             "inspect_history", "undo", "redo", "analyze_signal"}.issubset(names),
+             "inspect_history", "undo", "redo", "analyze_signal", "capture_signal"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         catalog = self.require_tool_success("catalog")

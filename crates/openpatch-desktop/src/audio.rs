@@ -2,8 +2,15 @@
 //! The running callback never allocates, locks, formats errors, or drops engines.
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use openpatch_core::{Engine, MidiEvent, Patch, BLOCK_SIZE};
+use openpatch_core::{Engine, MidiEvent, Patch, ResolvedTap, TapSample, BLOCK_SIZE};
+#[path = "scope_stream.rs"]
+mod scope_stream;
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
+#[cfg(test)]
+use scope_stream::SCOPE_PACKET_SIZE;
+use scope_stream::{ScopeCapture, SCOPE_QUEUE_SIZE};
+pub use scope_stream::{ScopeEndpoint, ScopePacket, ScopeSelection};
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -283,21 +290,131 @@ impl MidiQueues {
     }
 }
 
+struct ScopeBinding {
+    selection: ScopeSelection,
+    kinds: [Option<String>; 2],
+}
+impl ScopeBinding {
+    fn new(patch: &Patch, selection: ScopeSelection) -> Result<Self, String> {
+        let mut kinds = [None, None];
+        for (index, endpoint) in [&selection.x, &selection.y].into_iter().enumerate() {
+            if let Some(endpoint) = endpoint {
+                kinds[index] = Some(
+                    patch
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == endpoint.id)
+                        .ok_or_else(|| format!("Scope source '{}' does not exist", endpoint.id))?
+                        .kind
+                        .clone(),
+                );
+            }
+        }
+        Ok(Self { selection, kinds })
+    }
+    fn resolve(
+        &self,
+        patch: &Patch,
+        engine: &Engine,
+        strict: bool,
+    ) -> Result<[Option<ResolvedTap>; 2], String> {
+        let mut taps = [None; 2];
+        for (index, endpoint) in [&self.selection.x, &self.selection.y]
+            .into_iter()
+            .enumerate()
+        {
+            let Some(endpoint) = endpoint else { continue };
+            let same_kind = patch.nodes.iter().any(|node| {
+                node.id == endpoint.id && Some(&node.kind) == self.kinds[index].as_ref()
+            });
+            let tap = if same_kind {
+                engine.resolve_tap(&endpoint.id, &endpoint.port, endpoint.channel)
+            } else {
+                Err(format!(
+                    "Scope source '{}' was removed or replaced",
+                    endpoint.id
+                ))
+            };
+            match tap {
+                Ok(tap) => taps[index] = Some(tap),
+                Err(error) if strict => return Err(error),
+                Err(_) => {}
+            }
+        }
+        Ok(taps)
+    }
+}
+#[derive(Clone, Copy, Default)]
+struct ScopeSetup {
+    generation: u64,
+    enabled: bool,
+    taps: [Option<ResolvedTap>; 2],
+}
+struct PreparedGraph {
+    engine: Engine,
+    scope: ScopeSetup,
+}
+impl From<Engine> for PreparedGraph {
+    fn from(engine: Engine) -> Self {
+        Self {
+            engine,
+            scope: ScopeSetup::default(),
+        }
+    }
+}
+impl Deref for PreparedGraph {
+    type Target = Engine;
+    fn deref(&self) -> &Engine {
+        &self.engine
+    }
+}
+impl DerefMut for PreparedGraph {
+    fn deref_mut(&mut self) -> &mut Engine {
+        &mut self.engine
+    }
+}
+fn prepare_graph(
+    patch: &Patch,
+    rate: u32,
+    binding: Option<&ScopeBinding>,
+    generation: u64,
+    strict: bool,
+) -> Result<PreparedGraph, String> {
+    let mut device_patch = patch.clone();
+    device_patch.sample_rate = rate;
+    let engine = device_patch.compile()?;
+    let taps = binding
+        .map(|binding| binding.resolve(&device_patch, &engine, strict))
+        .transpose()?
+        .unwrap_or([None; 2]);
+    Ok(PreparedGraph {
+        engine,
+        scope: ScopeSetup {
+            generation,
+            enabled: binding.is_some(),
+            taps,
+        },
+    })
+}
+
 /// The stream keeps running during transport pause so gain can fade to silence.
 /// Call `service` on each UI update to dispose of retired graphs and publish edits.
 pub struct Audio {
     // Drop the stream before its control-side queue endpoints. CPAL shuts down the
     // callback before returning from Stream::drop; graph teardown is not rendering.
     _stream: cpal::Stream,
-    incoming: Producer<Engine>,
-    retired: Consumer<Engine>,
-    pending: Option<Engine>,
+    incoming: Producer<PreparedGraph>,
+    retired: Consumer<PreparedGraph>,
+    pending: Option<PreparedGraph>,
     shared: Arc<Shared>,
     pub sample_rate: u32,
     pub device_name: String,
     pub device_channels: u16,
     midi_ui: MidiSender,
     midi_hardware: Option<HardwareMidiSender>,
+    scope_binding: Option<ScopeBinding>,
+    scope_generation: u64,
+    scope_packets: Consumer<ScopePacket>,
 }
 
 impl Audio {
@@ -342,6 +459,7 @@ impl Audio {
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
         let mut callback = Callback::new(engine, updates, recycle, shared.clone(), sample_rate);
+        let scope_packets = callback.scope_packets.take().unwrap();
         let midi_ui = callback.midi.take_ui().unwrap();
         let midi_hardware = Some(HardwareMidiSender {
             sender: callback.midi.take_hardware().unwrap(),
@@ -369,18 +487,61 @@ impl Audio {
             device_channels: config.channels,
             midi_ui,
             midi_hardware,
+            scope_binding: None,
+            scope_generation: 0,
+            scope_packets,
         })
     }
 
     /// Compilation and superseded-edit disposal happen here, on the UI thread.
     /// If the callback is busy, the latest successfully compiled edit is retained.
     pub fn submit_patch(&mut self, patch: &Patch) -> Result<(), String> {
-        let mut device_patch = patch.clone();
-        device_patch.sample_rate = self.sample_rate;
-        let engine = device_patch.compile()?;
-        self.pending = Some(engine);
+        let generation = self
+            .scope_generation
+            .checked_add(1)
+            .ok_or("Scope generation exhausted")?;
+        let graph = prepare_graph(
+            patch,
+            self.sample_rate,
+            self.scope_binding.as_ref(),
+            generation,
+            false,
+        )?;
+        self.pending = Some(graph);
+        self.scope_generation = generation;
         self.service();
         Ok(())
+    }
+
+    /// Resolve two raw module taps on the UI thread. A failed selection leaves
+    /// playback and requested generation unchanged. Closing disables capture.
+    pub fn set_scope(
+        &mut self,
+        patch: &Patch,
+        selection: Option<ScopeSelection>,
+    ) -> Result<u64, String> {
+        let binding = selection
+            .map(|selection| ScopeBinding::new(patch, selection))
+            .transpose()?;
+        let generation = self
+            .scope_generation
+            .checked_add(1)
+            .ok_or("Scope generation exhausted")?;
+        let graph = prepare_graph(patch, self.sample_rate, binding.as_ref(), generation, true)?;
+        self.pending = Some(graph);
+        self.scope_binding = binding;
+        self.scope_generation = generation;
+        self.service();
+        Ok(generation)
+    }
+    /// Requested graph/tap generation. Queued packets can still belong to an
+    /// older graph; the UI must reject them and reset capture on frame gaps.
+    pub fn scope_generation(&self) -> u64 {
+        self.scope_generation
+    }
+    /// Bounded even if the audio producer continues while the UI drains.
+    pub fn scope_packets(&mut self) -> impl Iterator<Item = ScopePacket> + '_ {
+        (0..SCOPE_QUEUE_SIZE).map_while(|_| self.scope_packets.pop().ok())
     }
 
     pub fn service(&mut self) {
@@ -573,7 +734,7 @@ impl Gain {
 }
 
 struct Callback {
-    graphs: Exchange<Engine>,
+    graphs: Exchange<PreparedGraph>,
     shared: Arc<Shared>,
     gain: Gain,
     fade_length: usize,
@@ -582,22 +743,27 @@ struct Callback {
     scope_decimation: usize,
     midi: MidiQueues,
     frame_clock: u64,
+    scope: ScopeCapture,
+    scope_packets: Option<Consumer<ScopePacket>>,
 }
 
 impl Callback {
     fn new(
         engine: Engine,
-        incoming: Consumer<Engine>,
-        retired: Producer<Engine>,
+        incoming: Consumer<PreparedGraph>,
+        retired: Producer<PreparedGraph>,
         shared: Arc<Shared>,
         rate: u32,
     ) -> Self {
         let midi = MidiQueues::new(shared.clone());
+        let (scope, scope_packets) = ScopeCapture::new(rate);
         Self {
+            scope,
+            scope_packets: Some(scope_packets),
             midi,
             frame_clock: 0,
             graphs: Exchange {
-                active: engine,
+                active: engine.into(),
                 previous: None,
                 waiting_retirement: None,
                 incoming,
@@ -618,6 +784,7 @@ impl Callback {
                 self.graphs.active.adopt_state_from(previous);
             }
             self.fade_position = 0;
+            self.scope.reset(self.graphs.active.scope.generation);
         }
         let target = if self.shared.playing.load(Ordering::Relaxed) {
             f32::from_bits(self.shared.volume.load(Ordering::Relaxed))
@@ -631,6 +798,7 @@ impl Callback {
         // Fixed stack buffers handle any device callback length and channel count.
         let mut current = [[0.0_f32; 2]; BLOCK_SIZE];
         let mut previous = [[0.0_f32; 2]; BLOCK_SIZE];
+        let mut taps = [[TapSample::default(); 2]; BLOCK_SIZE];
         if channels == 0 {
             return;
         }
@@ -672,9 +840,16 @@ impl Callback {
                 let count = next_frame.map_or(remaining, |at| {
                     (at.saturating_sub(self.frame_clock) as usize).clamp(1, remaining)
                 });
-                self.graphs
-                    .active
-                    .process_audio_block(&mut current[..count]);
+                let active = &mut self.graphs.active;
+                if active.scope.enabled {
+                    active.engine.process_audio_block_with_taps(
+                        &mut current[..count],
+                        &active.scope.taps,
+                        &mut taps[..count],
+                    );
+                } else {
+                    active.engine.process_audio_block(&mut current[..count]);
+                }
                 let active_stereo = self.graphs.active.output_channels() == 2;
                 let previous_stereo = self
                     .graphs
@@ -685,6 +860,10 @@ impl Callback {
                     engine.process_audio_block(&mut previous[..count]);
                 }
                 for index in 0..count {
+                    if self.graphs.active.scope.enabled {
+                        self.scope
+                            .sample(self.frame_clock + index as u64, taps[index]);
+                    }
                     let old = self.graphs.previous.as_ref().map(|_| previous[index]);
                     let mix = if old.is_some() {
                         let mix = (self.fade_position as f32 / self.fade_length as f32).min(1.0);
@@ -962,7 +1141,7 @@ mod tests {
         }
         callback.gain.value = 1.0;
         patch.nodes[0].params.insert("value".into(), -1.0);
-        assert!(updates.push(patch.compile().unwrap()).is_ok());
+        assert!(updates.push(patch.compile().unwrap().into()).is_ok());
         without_heap_activity(|| callback.render(&mut stereo, 2));
         assert_eq!(stereo[0], 1.0);
         assert_eq!(*stereo.last().unwrap(), -1.0);
@@ -1013,7 +1192,7 @@ mod tests {
             let mut previous = [0.0_f32; 1025];
             new_reference.process_block(&mut current);
             old_reference.process_block(&mut previous);
-            assert!(updates.push(edited.compile().unwrap()).is_ok());
+            assert!(updates.push(edited.compile().unwrap().into()).is_ok());
             let mut actual = [0.0_f32; 1025];
             without_heap_activity(|| callback.render(&mut actual, 1));
             for (index, sample) in actual.iter().enumerate() {
@@ -1032,7 +1211,7 @@ mod tests {
             "cables":[],"output":"midi","output_port":"gate"
         })).unwrap()
     }
-    fn callback_for(patch: &Patch) -> (Callback, Producer<Engine>, Consumer<Engine>) {
+    fn callback_for(patch: &Patch) -> (Callback, Producer<PreparedGraph>, Consumer<PreparedGraph>) {
         let (updates, incoming) = RingBuffer::new(2);
         let (retired, disposal) = RingBuffer::new(2);
         let shared = Arc::new(Shared::new());
@@ -1165,7 +1344,7 @@ mod tests {
         let mut ui = callback.midi.take_ui().unwrap();
         assert!(ui.send(0, note_on(60)));
         callback.render(&mut [0.0_f32; 4], 1);
-        assert!(updates.push(patch.compile().unwrap()).is_ok());
+        assert!(updates.push(patch.compile().unwrap().into()).is_ok());
         assert!(ui.send(8, note_off(60)));
         let mut output = [0.0_f32; 16];
         without_heap_activity(|| callback.render(&mut output, 1));
@@ -1269,7 +1448,7 @@ mod tests {
         })).unwrap();
         let (mut callback, mut updates, _disposal) = callback_for(&mono);
         callback.render(&mut [0.0_f32; 6], 6);
-        assert!(updates.push(stereo.compile().unwrap()).is_ok());
+        assert!(updates.push(stereo.compile().unwrap().into()).is_ok());
         let mut output = [0.0_f32; 6 * 513];
         without_heap_activity(|| callback.render(&mut output, 6));
         assert_eq!(output[..6], [0.5; 6]);
@@ -1309,5 +1488,178 @@ mod tests {
         assert!(ui.send_observed(8, note_on(60), refreshed_epoch));
         without_heap_activity(|| callback.render(&mut output, 1));
         assert_eq!(output, [1.0; 8]);
+    }
+    fn scope_binding(patch: &Patch, channel: usize) -> ScopeBinding {
+        ScopeBinding::new(
+            patch,
+            ScopeSelection {
+                x: Some(ScopeEndpoint {
+                    id: "dc".into(),
+                    port: "out".into(),
+                    channel,
+                }),
+                y: None,
+            },
+        )
+        .unwrap()
+    }
+    fn scope_patch(value: f32) -> Patch {
+        serde_json::from_value(serde_json::json!({"version":2,"nodes":[{"id":"dc","kind":"constant","params":{"value":value}}],"cables":[],"output":"dc"})).unwrap()
+    }
+
+    #[test]
+    fn scope_packets_are_raw_timestamped_and_partition_independent_without_callback_heap() {
+        fn capture(partitions: &[usize], version: u32) -> Vec<ScopePacket> {
+            let mut patch = scope_patch(3.0);
+            patch.version = version;
+            let (mut callback, mut updates, _disposal) = callback_for(&patch);
+            let mut packets = callback.scope_packets.take().unwrap();
+            callback
+                .shared
+                .volume
+                .store(0.0_f32.to_bits(), Ordering::Relaxed);
+            callback.gain.value = 0.0;
+            let binding = scope_binding(&patch, 0);
+            assert!(updates
+                .push(prepare_graph(&patch, 48000, Some(&binding), 7, true).unwrap())
+                .is_ok());
+            let mut output = [9.0_f32; 257];
+            let mut offset = 0;
+            without_heap_activity(|| {
+                for count in partitions {
+                    callback.render(&mut output[offset..offset + count], 1);
+                    offset += count;
+                }
+            });
+            assert_eq!(output, [0.0; 257]); // Master volume does not scale taps.
+            let mut result = Vec::new();
+            while let Ok(packet) = packets.pop() {
+                result.push(packet);
+            }
+            assert_eq!(result.len(), 4);
+            for (index, packet) in result.iter().enumerate() {
+                assert_eq!(packet.start_frame, index as u64 * SCOPE_PACKET_SIZE as u64);
+                assert_eq!(packet.generation, 7);
+                assert_eq!(packet.sample_rate, 48000);
+                assert_eq!(packet.x, [3.0; SCOPE_PACKET_SIZE]);
+                assert_eq!(packet.x_active, [true; SCOPE_PACKET_SIZE]);
+                assert_eq!(packet.y, [0.0; SCOPE_PACKET_SIZE]);
+                assert_eq!(packet.y_active, [false; SCOPE_PACKET_SIZE]);
+            }
+            result
+        }
+        let whole = capture(&[257], 2);
+        let partitioned = capture(&[1, 2, 64, 127, 63], 2);
+        let legacy = capture(&[1, 2, 64, 127, 63], 1);
+        assert_eq!(legacy[0].x, whole[0].x);
+        for (a, b) in whole.iter().zip(partitioned) {
+            assert_eq!(a.start_frame, b.start_frame);
+            assert_eq!(a.x, b.x);
+            assert_eq!(a.x_active, b.x_active);
+        }
+    }
+
+    #[test]
+    fn scope_generation_swap_discards_partial_packet_and_deletion_or_kind_reuse_stays_inactive() {
+        let patch = scope_patch(1.0);
+        let binding = scope_binding(&patch, 0);
+        let (mut callback, mut updates, _disposal) = callback_for(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        assert!(updates
+            .push(prepare_graph(&patch, 48000, Some(&binding), 1, true).unwrap())
+            .is_ok());
+        callback.render(&mut [0.0_f32; 321], 1); // 5 packets + 1 partial, transition finished.
+        let edited = scope_patch(2.0);
+        assert!(updates
+            .push(prepare_graph(&edited, 48000, Some(&binding), 2, true).unwrap())
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 320], 1));
+        let old: Vec<_> = (0..5).map(|_| packets.pop().unwrap()).collect();
+        assert!(old
+            .iter()
+            .all(|p| p.generation == 1 && p.x == [1.0; SCOPE_PACKET_SIZE]));
+        let first_new = packets.pop().unwrap();
+        assert_eq!(first_new.generation, 2);
+        assert_eq!(first_new.start_frame, 321);
+        assert_eq!(first_new.x, [2.0; SCOPE_PACKET_SIZE]); // No old/new crossfade enters taps.
+        let removed = Patch::new_v2();
+        let graph = prepare_graph(&removed, 48000, Some(&binding), 3, false).unwrap();
+        assert!(graph.scope.enabled && graph.scope.taps.iter().all(Option::is_none));
+        assert!(prepare_graph(&removed, 48000, Some(&binding), 3, true).is_err());
+        let mut replaced = patch.clone();
+        replaced.nodes[0].kind = "output".into();
+        replaced.nodes[0].params.clear();
+        let graph = prepare_graph(&replaced, 48000, Some(&binding), 4, false).unwrap();
+        assert!(
+            graph.scope.taps.iter().all(Option::is_none),
+            "same ID/out must not silently bind a different model"
+        );
+        let absent_voice = scope_binding(&patch, 1);
+        let graph = prepare_graph(&patch, 48000, Some(&absent_voice), 5, true).unwrap();
+        assert!(updates.push(graph).is_ok());
+        // Drain old queued packets then verify a valid but absent mono lane.
+        while packets.pop().is_ok() {}
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+        let packet = packets.pop().unwrap();
+        assert_eq!(packet.generation, 5);
+        assert_eq!(packet.x_active, [false; SCOPE_PACKET_SIZE]);
+    }
+
+    #[test]
+    fn scope_queue_overflow_keeps_real_frame_gaps_and_disabled_capture_publishes_nothing() {
+        let patch = scope_patch(1.0);
+        let binding = scope_binding(&patch, 0);
+        let (mut callback, mut updates, _disposal) = callback_for(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        assert!(updates
+            .push(prepare_graph(&patch, 48000, Some(&binding), 1, true).unwrap())
+            .is_ok());
+        let mut output = [0.0_f32; SCOPE_PACKET_SIZE * (SCOPE_QUEUE_SIZE + 2)];
+        without_heap_activity(|| callback.render(&mut output, 1));
+        let mut last = 0;
+        for _ in 0..SCOPE_QUEUE_SIZE {
+            last = packets.pop().unwrap().start_frame;
+        }
+        assert!(packets.pop().is_err());
+        without_heap_activity(|| callback.render(&mut output[..SCOPE_PACKET_SIZE], 1));
+        let next = packets.pop().unwrap();
+        assert_eq!(next.start_frame - last, 3 * SCOPE_PACKET_SIZE as u64);
+        assert!(updates
+            .push(prepare_graph(&patch, 48000, None, 2, true).unwrap())
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut output[..SCOPE_PACKET_SIZE * 2], 1));
+        assert!(packets.pop().is_err());
+    }
+    #[test]
+    fn scope_packet_offsets_follow_midi_subspans_without_decimation_or_heap() {
+        let patch = midi_patch();
+        let binding = ScopeBinding::new(
+            &patch,
+            ScopeSelection {
+                x: Some(ScopeEndpoint {
+                    id: "midi".into(),
+                    port: "gate".into(),
+                    channel: 0,
+                }),
+                y: None,
+            },
+        )
+        .unwrap();
+        let (mut callback, mut updates, _disposal) = callback_for(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        let mut ui = callback.midi.take_ui().unwrap();
+        assert!(ui.send(3, note_on(60)));
+        assert!(ui.send(7, note_off(60)));
+        assert!(updates
+            .push(prepare_graph(&patch, 48000, Some(&binding), 11, true).unwrap())
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+        let packet = packets.pop().unwrap();
+        assert_eq!(packet.start_frame, 0);
+        assert_eq!(packet.generation, 11);
+        assert_eq!(packet.x_active, [true; SCOPE_PACKET_SIZE]);
+        for (frame, value) in packet.x.iter().enumerate() {
+            assert_eq!(*value, if (3..7).contains(&frame) { 10.0 } else { 0.0 });
+        }
     }
 }

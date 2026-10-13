@@ -344,6 +344,25 @@ pub(crate) struct PolyEngine {
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_tap(&self, id: &str, port: &str) -> Result<usize, String> {
+        let index = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("tap node '{id}' does not exist"))?;
+        let node = &self.nodes[index];
+        let port = output_port(&node.kind, port)
+            .ok_or_else(|| format!("tap node '{id}': unknown output '{port}'"))?;
+        Ok(node.output_start + port)
+    }
+    pub(crate) fn tap_sample(&self, index: usize, channel: u8) -> crate::TapSample {
+        self.outputs
+            .get(index)
+            .filter(|frame| channel < frame.channels)
+            .map_or(crate::TapSample::default(), |frame| crate::TapSample {
+                value: frame.values[usize::from(channel)],
+                active: true,
+            })
+    }
     pub(crate) fn compile(patch: &Patch) -> Result<Self, String> {
         if !(8000..=192000).contains(&patch.sample_rate) {
             return Err("sample_rate must be in 8000..=192000 Hz".into());

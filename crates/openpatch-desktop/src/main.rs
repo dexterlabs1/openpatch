@@ -8,6 +8,7 @@ mod project;
 #[cfg(test)]
 mod project_acceptance_tests;
 mod rack;
+mod scope;
 mod visuals;
 
 use openpatch::control::{Session, SharedSession};

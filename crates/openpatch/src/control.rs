@@ -1,4 +1,5 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
+mod capture;
 use openpatch_core::{
     catalog, render_audio_with_events, validate_midi_events, write_wav_interleaved, Cable, Node,
     Patch, PortFrame, TimedMidiEvent, BLOCK_SIZE, MAX_CHANNELS,
@@ -54,7 +55,8 @@ pub type Application = Session;
 pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     match name {
-        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" | "analyze_signal" => {
+        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" | "analyze_signal"
+        | "capture_signal" => {
             let mut snapshot = Session {
                 patch: live.patch.clone(),
                 revision: live.revision,
@@ -348,6 +350,7 @@ impl Session {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
             }
             "analyze_signal" => return self.analyze_signal(&args),
+            "capture_signal" => return self.capture_signal(&args),
             "export_visualizer" => {
                 let path = self.file(string(&args, "filename")?, ".html")?;
                 crate::visualizer::export(&path).map_err(|e| e.to_string())?;
@@ -746,6 +749,7 @@ pub fn tools() -> Value {
         tool("load_patch","Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
         tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI events drive midi_cv modules. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events}),&["filename","seconds"],false),
         tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events}),&["id","seconds"],true),
+        tool("capture_signal","Capture a calibrated waveform from any named output/channel offline from reset. Returns bounded nonempty min/max/mean bins preserving every active-sample peak, plus active-sample DC/RMS/peak. Raw output units come from catalog; no live audio, summing, clipping, or history changes. Optional sample-frame MIDI events reproduce performances; expected_revision guards the captured snapshot.",json!({"id":s,"port":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"seconds":{"type":"number","minimum":0.001,"maximum":2},"points":{"type":"integer","minimum":64,"maximum":2048,"default":512},"midi_events":midi_events,"expected_revision":rev}),&["id","seconds"],true),
         tool("benchmark","Measure this patch's offline DSP throughput, excluding compilation. Release builds recommended. No VCV Rack comparison.",json!({"seconds":{"type":"number","minimum":0.01,"maximum":5}}),&[],true)
     ])
 }
