@@ -5,6 +5,11 @@ Rust alone is not evidence of a speedup. No VCV Rack comparison is available yet
 
 ## Live callback diagnostics
 
+![Native Audio performance window with buffer timing and overrun counters](images/openpatch-audio-performance.png)
+
+*Native Linux / Mesa CI render using clearly labeled simulated data for layout
+validation. These displayed numbers are not a live device measurement.*
+
 Open **View → Audio performance**, or click **DSP** in the footer. The native
 app shows current, peak and frame-weighted mean processing budget use, actual
 buffer size/rate, interval callback counts and processing-budget overruns.
