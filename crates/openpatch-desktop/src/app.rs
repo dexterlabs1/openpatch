@@ -2889,6 +2889,23 @@ impl OpenPatch {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(940.0, 680.0)));
         }
         if frame == 470 {
+            let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+                "nodes":[{"id":"calibration","kind":"multi_lfo","params":{"frequency":100.0}},
+                    {"id":"tone","kind":"analog_vco"},{"id":"out","kind":"audio_out"}],
+                "cables":[{"from":"tone","to":"out","input":"signal"}],"output":"out"}))
+            .unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("compact analysis fixture compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(0.75);
+            ctx.data_mut(|data| {
+                data.insert_persisted(
+                    egui::Id::new("analysis-dock"),
+                    egui::containers::panel::PanelState {
+                        rect: egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1000.0, 500.0)),
+                    },
+                )
+            });
             self.scope.smoke_fixture();
             self.select_analysis(Some(AnalysisTab::Scope));
             self.keyboard_open = true;

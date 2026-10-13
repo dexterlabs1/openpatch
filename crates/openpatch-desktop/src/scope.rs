@@ -382,6 +382,14 @@ impl Scope {
                             );
                         }
                     });
+                if let Some(endpoint) = endpoint {
+                    ui.label(
+                        RichText::new(format!("Voice {}", endpoint.channel + 1))
+                            .size(11.0)
+                            .color(MUTED),
+                    )
+                    .on_hover_text("Change the monitored voice in Advanced");
+                }
             });
         });
     }
@@ -697,7 +705,7 @@ impl Scope {
             FontId::monospace(10.0),
             MUTED,
         );
-        response.on_hover_text("Time view preserves each pixel column’s minimum and maximum. Statistics use every active captured sample. Missing voices leave gaps. X/Y is a decimated phase portrait. FS means normalized digital amplitude, not volts. Scope controls are session-only.");
+        response.on_hover_text("Raw module outputs before master volume and graph crossfade. Time view preserves each pixel column’s minimum and maximum. Statistics use every active captured sample. Missing voices leave gaps. X/Y is a decimated phase portrait. FS means normalized digital amplitude, not volts. Scope controls are session-only.");
     }
     pub fn smoke_xy(&mut self) {
         self.xy = true;
@@ -859,6 +867,7 @@ mod tests {
             "calibration · sine",
             "calibration · triangle",
             "2 units/div",
+            "Voice 1",
         ] {
             assert!(text_center(&output, label).x <= 630.0);
         }

@@ -9,7 +9,7 @@ acquisition running and preserves a frozen capture. Closing the dock disarms the
 probes; opening it again starts fresh. The library stays beside the rack, and the
 dock height is bounded to retain rack space at the minimum window size.
 
-Time/X/Y, timebase, Freeze, source selectors and scales stay visible. Open
+Time/X/Y, timebase, Freeze, source selectors, monitored voice numbers and scales stay visible. Open
 **Advanced…** for trigger settings, each lane's voice and center offset, statistics,
 Reconnect, and capture diagnostics. Advanced controls scroll within their popup.
 
