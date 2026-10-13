@@ -1,6 +1,7 @@
 //! Version-2 reference scheduler: all modules read last sample's cable frames,
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
+use crate::gates::{self, Gates};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::mixing::{self, Mixing};
 use crate::multi_lfo::{self, MultiLfo};
@@ -74,6 +75,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "seq3"
                 | "pulses"
                 | "push"
+                | "gates"
         )
 }
 fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
@@ -105,6 +107,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
+        "gates" => gates::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "pulses" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
@@ -136,6 +139,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         pulses::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
         push::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "gates" {
+        gates::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -217,6 +222,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "push" {
         push::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "gates" {
+        gates::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -314,6 +324,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "gates" {
+        gates::annotate(module);
+    }
 }
 
 #[derive(Debug)]
@@ -336,6 +349,7 @@ enum Model {
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
+    Gates(Box<Gates>),
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
     Signal(Box<Signal>),
@@ -354,6 +368,9 @@ impl Model {
         }
         if switch::input_names(&node.kind).is_some() {
             return Ok(Self::Switch(SequentialSwitch::build(node, rate)?));
+        }
+        if node.kind == "gates" {
+            return Ok(Self::Gates(Box::new(Gates::build(node, rate)?)));
         }
         if node.kind == "push" {
             return Ok(Self::Push(Box::new(Push::build(node, rate)?)));
@@ -529,6 +546,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.controls(),
             Some(Model::Pulses(p)) => Some(p.controls()),
             Some(Model::Push(p)) => Some(p.controls()),
+            Some(Model::Gates(g)) => Some(g.controls()),
             _ => None,
         }
     }
@@ -537,6 +555,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
+            Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             _ => None,
         }
@@ -552,6 +571,10 @@ impl PolyEngine {
                 p.release();
                 true
             }
+            Some(Model::Gates(g)) => {
+                g.release();
+                true
+            }
             _ => false,
         }
     }
@@ -564,6 +587,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.supports(action),
             Some(Model::Pulses(_)) => action.pulse_button().is_some(),
             Some(Model::Push(_)) => Push::supports(action),
+            Some(Model::Gates(_)) => Gates::supports(action),
             _ => false,
         }
     }
@@ -582,6 +606,7 @@ impl PolyEngine {
                 | ModuleAction::GateRelease
                 | ModuleAction::PushRelease
                 | ModuleAction::HoldRelease
+                | ModuleAction::ResetRelease
         ) || action.pulse_button().is_some_and(|(_, press)| !press);
         if !self.supports_module_action(index, action) || (self.nodes[index].bypassed && !release) {
             return Err(format!(
@@ -615,6 +640,12 @@ impl PolyEngine {
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if action == ModuleAction::ResetRelease {
+                if let Model::Gates(g) = &mut self.nodes[node].model {
+                    g.release();
+                    return true;
+                }
+            }
             if matches!(
                 action,
                 ModuleAction::PushRelease | ModuleAction::HoldRelease
@@ -644,6 +675,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
             Some(Model::Push(p)) => p.enqueue(action),
+            Some(Model::Gates(g)) => g.enqueue(action),
             _ => false,
         }
     }
@@ -659,6 +691,10 @@ impl PolyEngine {
             return false;
         };
         let count = match &mut node.model {
+            Model::Gates(g) => {
+                g.reset_state();
+                gates::OUTPUTS.len()
+            }
             Model::Push(p) => {
                 p.reset_state();
                 push::OUTPUTS.len()
@@ -817,6 +853,7 @@ impl PolyEngine {
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
+                    "gates" => gates::OUTPUTS.len(),
                     _ => 1,
                 }
             };
@@ -1026,6 +1063,18 @@ impl PolyEngine {
                         }
                     }
                     mixing.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
+                Model::Gates(g) => {
+                    let mut inputs = [PortFrame::default(); 3];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    g.process(
                         &inputs,
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     );
@@ -1343,6 +1392,12 @@ impl PolyEngine {
                 p.adopt(previous);
                 if bypass_changed {
                     p.release();
+                }
+            }
+            if let (Model::Gates(g), Model::Gates(previous)) = (&mut node.model, &previous.model) {
+                g.adopt(previous);
+                if bypass_changed {
+                    g.release();
                 }
             }
             if let (Model::Switch(switch), Model::Switch(previous)) =

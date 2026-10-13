@@ -37,6 +37,7 @@ enum ModuleKind {
     VcaMix,
     Pulses,
     Push,
+    Gates,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -51,6 +52,7 @@ impl ModuleKind {
             "vca_mix" => Some(Self::VcaMix),
             "pulses" => Some(Self::Pulses),
             "push" => Some(Self::Push),
+            "gates" => Some(Self::Gates),
             _ => None,
         }
     }
@@ -66,12 +68,13 @@ impl ModuleKind {
             Self::VcaMix => "vca_mix",
             Self::Pulses => "pulses",
             Self::Push => "push",
+            Self::Gates => "gates",
         }
     }
     fn manual(self) -> bool {
         matches!(
             self,
-            Self::Logic | Self::Process | Self::Pulses | Self::Push
+            Self::Logic | Self::Process | Self::Pulses | Self::Push | Self::Gates
         )
     }
     fn sequential(self) -> bool {
@@ -86,6 +89,10 @@ impl ModuleKind {
             Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
             Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
             Self::Pulses => action.pulse_button().is_some(),
+            Self::Gates => matches!(
+                action,
+                ModuleAction::ResetPress | ModuleAction::ResetRelease
+            ),
             Self::Push => matches!(
                 action,
                 ModuleAction::PushPress
@@ -104,6 +111,7 @@ fn is_release(action: ModuleAction) -> bool {
             | ModuleAction::GateRelease
             | ModuleAction::PushRelease
             | ModuleAction::HoldRelease
+            | ModuleAction::ResetRelease
     ) || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]

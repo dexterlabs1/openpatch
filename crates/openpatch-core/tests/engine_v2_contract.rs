@@ -1098,3 +1098,68 @@ fn push_saved_latch_controls_cv_and_state_adoption_use_no_callback_heap() {
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
 }
+
+#[test]
+fn gates_all_voice_history_eviction_render_adoption_and_bypass_use_no_heap() {
+    use openpatch_core::ModuleAction;
+    let mut p = patch(
+        vec![
+            node("osc", "oscillator", &[("frequency", 20_000.0)]),
+            node("in", "gain", &[("gain", 10.0)]),
+            node("poly", "poly_merge", &[("channels", 16.0)]),
+            node("g", "gates", &[("length", 0.001)]),
+        ],
+        vec![
+            cable("in", "out", "poly", "in1"),
+            cable("poly", "out", "g", "in"),
+        ],
+        "g",
+    );
+    p.output_port = "delay".into();
+    // Broadcast one mono changing source to every merged lane, exercising all16 rings.
+    p.cables = (1..=16)
+        .map(|i| cable("in", "out", "poly", &format!("in{i}")))
+        .chain([
+            cable("poly", "out", "g", "in"),
+            cable("osc", "out", "in", "signal"),
+        ])
+        .collect();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let h = old.resolve_module_control("g").unwrap();
+    let hr = replacement.resolve_module_control("g").unwrap();
+    p.nodes.iter_mut().find(|n| n.id == "g").unwrap().bypassed = true;
+    let mut bypassed = p.compile().unwrap();
+    let hb = bypassed.resolve_module_control("g").unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    // >1023 transitions per lane before adoption, then wrap/evict afterward.
+    for _ in 0..20 {
+        old.process_poly_block(&mut frames);
+    }
+    replacement.adopt_state_from(&old);
+    for count in [0, 1, 3, 64, 128, 129] {
+        old.process_poly_block(&mut frames[..count]);
+        replacement.process_poly_block(&mut frames[..count]);
+        for _ in 0..32 {
+            assert!(old.handle_module_event(h, ModuleAction::ResetPress));
+            assert!(old.handle_module_event(h, ModuleAction::ResetRelease));
+        }
+        assert!(!old.handle_module_event(h, ModuleAction::ResetPress));
+        old.process_poly_block(&mut frames[..count]);
+        replacement.adopt_state_from(&old);
+        assert!(replacement.module_lights(hr).is_some());
+        assert!(replacement.module_control_state(hr).is_some());
+        assert!(replacement.release_module_controls(hr));
+        assert!(replacement.initialize_module_state(hr));
+        bypassed.adopt_state_from(&replacement);
+        assert!(bypassed.handle_module_event(hb, ModuleAction::ResetRelease));
+        bypassed.process_poly_block(&mut frames[..count]);
+        assert!(old.release_module_controls(h));
+        assert!(replacement.reset_module_state(hr));
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
+}

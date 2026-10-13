@@ -89,7 +89,7 @@ impl Category {
             "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "poly_sum"
             | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" => Self::InputOutput,
-            "pulses" | "push" => Self::Utilities,
+            "pulses" | "push" | "gates" => Self::Utilities,
             _ => Self::Utilities,
         }
     }
@@ -737,6 +737,25 @@ fn paint_tile(
                 },
             );
             painter.circle_filled(pos2(x, area.center().y + 17.0), 3.5, AMBER);
+        }
+    } else if kind == "gates" {
+        mini_knob(
+            painter,
+            pos2(area.left() + 27.0, area.center().y - 8.0),
+            13.0,
+        );
+        painter.rect_filled(
+            Rect::from_center_size(
+                pos2(area.right() - 27.0, area.center().y - 8.0),
+                vec2(32.0, 20.0),
+            ),
+            3.0,
+            Color32::from_rgb(163, 158, 143),
+        );
+        for index in 0..6 {
+            let x = area.left() + 24.0 + (index % 3) as f32 * (area.width() - 48.0) / 2.0;
+            let y = area.bottom() - 22.0 + (index / 3) as f32 * 14.0;
+            mini_jack(painter, pos2(x, y));
         }
     } else if kind == "pulses" {
         for row in 0..4 {

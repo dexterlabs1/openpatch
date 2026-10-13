@@ -976,6 +976,10 @@ impl OpenPatch {
         self.rack = Rack::default();
         if title == "Sequenced analog voice" {
             self.sequence_layout();
+        } else if title == "Delayed gate voice" {
+            self.rack
+                .restore_layout(&Self::gates_layout())
+                .expect("bundled Gates layout");
         } else if title == "Manual push voice" {
             self.rack
                 .restore_layout(&Self::push_layout())
@@ -1010,6 +1014,12 @@ impl OpenPatch {
                 "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
             }}),
         );
+    }
+    fn gates_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "clock":[0,0],"gates":[150,0],"vco":[390,0],"out":[600,0],
+            "dry_envelope":[0,420],"dry_vca":[240,420],"echo_envelope":[390,420],"echo_vca":[630,420]
+        }})
     }
     fn push_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -1739,6 +1749,14 @@ impl OpenPatch {
                                 .expect("valid bundled layered stereo morph");
                                 self.replace_from_menu(patch, "Layered stereo morph");
                                 ui.close();
+                            }
+                            if ui.button("Delayed gate voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/delayed-gate-voice.json"
+                                ))
+                                .unwrap();
+                                ui.close();
+                                self.replace_from_menu(patch, "Delayed gate voice");
                             }
                             if ui.button("Manual push voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
@@ -3285,6 +3303,25 @@ impl OpenPatch {
                 "PUSH plays a gate · HOLD latches it · While latched, PUSH interrupts the gate"
                     .into();
         }
+        if frame == 566 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/delayed-gate-voice.json"))
+                    .unwrap();
+            let mut engine = patch.compile().unwrap();
+            let handle = engine.resolve_module_control("gates").unwrap();
+            engine.process_block(&mut [0.0; 64]);
+            let lights = engine.module_lights(handle).unwrap();
+            let controls = engine.module_control_state(handle).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack.restore_layout(&Self::gates_layout()).unwrap();
+            self.rack.set_module_states(
+                BTreeMap::from([("gates".into(), lights)]),
+                BTreeMap::from([("gates".into(), controls)]),
+            );
+            self.title = "Delayed gate voice · offline preview".into();
+            self.status = "Left: timed gate · Right: delayed gate · LENGTH changes both · RESET clears timing".into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -3322,6 +3359,7 @@ impl OpenPatch {
                 | 506
                 | 530
                 | 554
+                | 578
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3372,7 +3410,8 @@ impl OpenPatch {
                 29 => path.with_file_name("analysis-dock-compact.png"),
                 30 => path.with_file_name("analysis-visuals-compact.png"),
                 31 => path.with_file_name("rack-pulses.png"),
-                _ => path.with_file_name("rack-push.png"),
+                32 => path.with_file_name("rack-push.png"),
+                _ => path.with_file_name("rack-gates.png"),
             };
             image::save_buffer(
                 target,
@@ -3384,12 +3423,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 33 {
+            if captures == 34 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 584, "Native screenshot timeout");
+        assert!(frame < 608, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {

@@ -469,3 +469,13 @@ not an OS sandbox or a hardened multi-user file service.
 [Ten-row Pulses timing and state contract →](PULSES.md)
 
 [Push HOLD persistence, timing and runtime controls →](PUSH.md)
+
+## Gates timing controls
+
+The `gates` module exposes `length`, `in`, and `reset` inputs with `rise`, `fall`,
+`flip`, `flop`, `gate`, and `delay` outputs. Saved `length` is in seconds. Use
+`reset_press` / `reset_release` for its physical RESET button; SEQ-3's `reset`
+action is a different module action. Live queue receipts and offline event
+validation follow the existing manual-control rules. Six light pairs report
+mono/poly output activity; `controls.pressed_mask` bit 0 reports the button.
+See [Gates timing, history, and numerical policies](GATES.md).

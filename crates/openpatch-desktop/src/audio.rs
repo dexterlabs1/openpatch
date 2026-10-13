@@ -2649,7 +2649,7 @@ mod tests {
 
     #[test]
     fn initialization_releases_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);
@@ -2695,7 +2695,7 @@ mod tests {
 
     #[test]
     fn preset_load_and_history_release_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3240,6 +3240,83 @@ mod tests {
     }
 
     #[test]
+    fn gates_layout_history_preserves_delay_and_live_reset_clears_both_crossfade_engines() {
+        let mut patch = manual_patch("gates");
+        patch.nodes[1].params.insert("length".into(), 1.0 / 512.0);
+        patch.assign_missing_cable_ids().unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        let mut reference = patch.compile().unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 32], 1));
+        reference.process_block(&mut [0.0; 32]);
+        session
+            .record_layout_checkpoint(session.revision())
+            .unwrap();
+        let graph = sequence_graph(&callback, session.patch(), session.revision());
+        assert!(updates.push(graph).is_ok());
+        // Traverse both sides of the delayed rising edge after graph adoption.
+        for _ in 0..80 {
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            reference.process_block(&mut [0.0; 1]);
+            assert_eq!(
+                read_raw_pair(
+                    &mut callback.graphs.active.engine,
+                    ("manual", "gate"),
+                    ("manual", "delay")
+                ),
+                read_raw_pair(&mut reference, ("manual", "gate"), ("manual", "delay"))
+            );
+        }
+        for action in [ModuleAction::ResetPress, ModuleAction::ResetRelease] {
+            session
+                .execute(
+                    "trigger_module",
+                    serde_json::json!({"id":"manual","action":action}),
+                )
+                .unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let lights = callback.performance.module_lights("manual").unwrap();
+        assert_eq!(lights.count, 6);
+        assert!(!lights.manual);
+        // Lights decay on a divided clock; signal outputs change immediately.
+        assert!(lights.brightness[..6]
+            .iter()
+            .flatten()
+            .all(|v| (0.0..=1.0).contains(v)));
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "flip"),
+                ("manual", "flop")
+            ),
+            [10.0, 0.0]
+        );
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "gate"),
+                ("manual", "delay")
+            ),
+            [0.0, 0.0]
+        );
+        let old = callback.graphs.previous.as_mut().unwrap();
+        assert_eq!(
+            read_raw_pair(&mut old.engine, ("manual", "gate"), ("manual", "delay")),
+            [0.0, 0.0]
+        );
+        let snapshot = callback.performance.snapshot();
+        assert_eq!(snapshot["applied"], 2);
+        assert_eq!(
+            snapshot["modules"]["manual"]["state"],
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
     fn pulses_publish_ten_independent_rows_and_validate_rust_action_indices() {
         let patch = manual_patch("pulses");
         let (mut callback, _, _) = sequence_callback(&patch);
@@ -3387,6 +3464,14 @@ mod tests {
     }
 
     fn manual_patch(kind: &str) -> Patch {
+        if kind == "gates" {
+            return serde_json::from_value(serde_json::json!({"version":2,
+                "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
+                    {"id":"manual","kind":"gates"}],
+                "cables":[{"from":"signal","to":"manual","input":"in"}],
+                "output":"manual","output_port":"gate"}))
+            .unwrap();
+        }
         if kind == "push" {
             return serde_json::from_value(serde_json::json!({"version":2,
                 "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
@@ -3408,7 +3493,9 @@ mod tests {
             "output":"manual","output_port":if kind=="logic" {"or"} else {"track_hold"}})).unwrap()
     }
     fn manual_actions(kind: &str) -> (ModuleAction, ModuleAction) {
-        if kind == "pulses" {
+        if kind == "gates" {
+            (ModuleAction::ResetPress, ModuleAction::ResetRelease)
+        } else if kind == "pulses" {
             (ModuleAction::PulsePress(10), ModuleAction::PulseRelease(10))
         } else if kind == "push" {
             (ModuleAction::PushPress, ModuleAction::PushRelease)
@@ -3421,7 +3508,7 @@ mod tests {
 
     #[test]
     fn manual_controls_publish_coherent_actual_lights_and_preserve_ordered_releases() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let patch = manual_patch(kind);
             let (mut callback, _, _) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3454,6 +3541,7 @@ mod tests {
                     "logic" => 8,
                     "pulses" => 10,
                     "push" => 2,
+                    "gates" => 6,
                     _ => 0,
                 }
             );
@@ -3487,7 +3575,7 @@ mod tests {
 
     #[test]
     fn full_manual_queue_uses_emergency_release_and_cancels_old_presses() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let mut patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3569,7 +3657,7 @@ mod tests {
 
     #[test]
     fn coalesced_manual_bypass_releases_held_controls_and_allows_bypassed_release() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3634,7 +3722,7 @@ mod tests {
 
     #[test]
     fn removed_manual_module_reappears_with_fresh_controls_and_lights() {
-        for kind in ["logic", "process", "pulses", "push"] {
+        for kind in ["logic", "process", "pulses", "push", "gates"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);

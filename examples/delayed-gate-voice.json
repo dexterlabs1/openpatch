@@ -1,0 +1,117 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 1.5,
+        "duty": 0.15
+      }
+    },
+    {
+      "id": "gates",
+      "kind": "gates",
+      "params": {
+        "length": 0.18
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 164.8138
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo"
+    },
+    {
+      "id": "dry_envelope",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.004,
+        "decay": 0.12,
+        "sustain": 0.35,
+        "release": 0.12
+      }
+    },
+    {
+      "id": "dry_vca",
+      "kind": "analog_vca"
+    },
+    {
+      "id": "echo_envelope",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.004,
+        "decay": 0.12,
+        "sustain": 0.35,
+        "release": 0.12
+      }
+    },
+    {
+      "id": "echo_vca",
+      "kind": "analog_vca"
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "gates",
+      "input": "in"
+    },
+    {
+      "from": "gates",
+      "output": "gate",
+      "to": "dry_envelope",
+      "input": "gate"
+    },
+    {
+      "from": "gates",
+      "output": "delay",
+      "to": "echo_envelope",
+      "input": "gate"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "dry_vca",
+      "input": "signal"
+    },
+    {
+      "from": "dry_envelope",
+      "output": "out",
+      "to": "dry_vca",
+      "input": "cv"
+    },
+    {
+      "from": "dry_vca",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "echo_vca",
+      "input": "signal"
+    },
+    {
+      "from": "echo_envelope",
+      "output": "out",
+      "to": "echo_vca",
+      "input": "cv"
+    },
+    {
+      "from": "echo_vca",
+      "output": "out",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

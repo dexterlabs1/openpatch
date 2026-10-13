@@ -569,7 +569,7 @@ impl Rack {
                 i.focused
                     && i.pointer.primary_down()
                     && !i.pointer.button_released(PointerButton::Primary)
-                    && (!matches!(held.kind.as_str(), "pulses" | "push")
+                    && (!matches!(held.kind.as_str(), "pulses" | "push" | "gates")
                         || i.pointer
                             .latest_pos()
                             .is_some_and(|position| held.button_rect.contains(position)))
@@ -1215,6 +1215,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "gates" {
+                if let Some(edit) = self.gates_panel(ui, node, rect, released_manual.is_none()) {
+                    action = Some(edit);
+                }
+            }
             if is_voltage_utility(&node.kind) {
                 if let Some(edit) = self.utility_panel(ui, node, module, patch, rect) {
                     action = Some(edit);
@@ -1593,6 +1598,8 @@ impl Rack {
                     (pos2(width * 0.5, 125.0), 27.0)
                 } else if node.kind == "process" {
                     (pos2(width * 0.5, 118.0), 25.0)
+                } else if node.kind == "gates" {
+                    (pos2(78.0, 182.0), 29.0)
                 } else if node.kind == "rescale" {
                     let column = usize::from(matches!(*name, "offset" | "max"));
                     let row = usize::from(matches!(*name, "min" | "max"));
@@ -1621,10 +1628,7 @@ impl Rack {
                     parameter_position(count, index, width)
                 };
                 let center = point(knob_position.x, knob_position.y);
-                let logarithmic = matches!(
-                    *name,
-                    "frequency" | "cutoff" | "attack" | "decay" | "release"
-                );
+                let logarithmic = logarithmic_parameter(&node.kind, name);
                 let step = if *name == "waveform" {
                     Some(1.0)
                 } else {
@@ -1818,6 +1822,8 @@ impl Rack {
                                 70.0
                             } else if node.kind == "seq3" {
                                 54.0
+                            } else if node.kind == "gates" {
+                                110.0
                             } else if count >= 4 || node.kind == "mid_side" {
                                 width * 0.5 - 12.0
                             } else {
@@ -1982,6 +1988,7 @@ impl Rack {
                 let light_index = match node.kind.as_str() {
                     "logic" => Some(port_index),
                     "compare" if port_index >= 4 => Some(port_index - 4),
+                    "gates" => Some(port_index),
                     _ => None,
                 };
                 if let Some(index) = light_index {
@@ -2836,6 +2843,138 @@ impl Rack {
             FontId::proportional(8.0 * zoom),
             MUTED,
         );
+        action
+    }
+
+    fn gates_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        rect: Rect,
+        allow_press: bool,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let enabled = ui.is_enabled()
+            && self.shortcuts_enabled
+            && self.performance_available
+            && !node.bypassed
+            && ui.input(|i| i.focused);
+        painter.text(
+            point(120.0, 68.0),
+            Align2::CENTER_CENTER,
+            "TIMED LOGIC",
+            FontId::proportional(9.0 * zoom),
+            MUTED,
+        );
+        painter.line_segment(
+            [point(24.0, 247.0), point(216.0, 247.0)],
+            Stroke::new(0.8 * zoom, Color32::from_rgb(146, 140, 126)),
+        );
+        let button_rect = Rect::from_center_size(point(184.0, 182.0), vec2(72.0, 43.0) * zoom);
+        let response = ui.interact(
+            button_rect,
+            ui.id().with((&node.id, "gates-reset")),
+            Sense::click_and_drag(),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                enabled,
+                format!("GATES {} momentary Reset button", node.id),
+            )
+        });
+        let active = self
+            .module_controls
+            .get(&node.id)
+            .is_some_and(|controls| controls.pressed_mask & 1 != 0);
+        painter.text(
+            point(184.0, 146.0),
+            Align2::CENTER_CENTER,
+            "MANUAL",
+            FontId::proportional(10.0 * zoom),
+            INK,
+        );
+        painter.rect_filled(
+            button_rect.translate(vec2(1.2, 2.4) * zoom),
+            4.0 * zoom,
+            Color32::from_black_alpha(95),
+        );
+        painter.rect_filled(
+            button_rect,
+            4.0 * zoom,
+            if active {
+                Color32::from_rgb(212, 166, 86)
+            } else if enabled && response.hovered() {
+                Color32::from_rgb(246, 237, 210)
+            } else {
+                Color32::from_rgb(190, 186, 175)
+            },
+        );
+        painter.rect_stroke(
+            button_rect,
+            4.0 * zoom,
+            Stroke::new(1.2 * zoom, Color32::from_rgb(89, 85, 76)),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            button_rect.center(),
+            Align2::CENTER_CENTER,
+            "RESET",
+            FontId::proportional(11.0 * zoom),
+            if enabled { INK } else { MUTED },
+        );
+        painter.text(
+            point(184.0, 229.0),
+            Align2::CENTER_CENTER,
+            if node.bypassed {
+                "BYPASSED"
+            } else if !self.performance_available {
+                "AUDIO OFFLINE"
+            } else if !self.module_controls.contains_key(&node.id) {
+                "WAITING"
+            } else {
+                "MOMENTARY"
+            },
+            FontId::proportional(8.0 * zoom),
+            MUTED,
+        );
+        let action = if enabled
+            && allow_press
+            && self.held_manual.is_none()
+            && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+        {
+            if response.clicked_by(PointerButton::Primary) {
+                self.select_primary(node.id.clone());
+                Some(RackAction::ManualClick {
+                    id: node.id.clone(),
+                    press: "reset_press",
+                    release: "reset_release",
+                })
+            } else if response.is_pointer_button_down_on() {
+                self.held_manual = Some(HeldManual {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                    release: "reset_release",
+                    button_rect,
+                });
+                self.select_primary(node.id.clone());
+                Some(RackAction::Command(
+                    "trigger_module",
+                    json!({"id":node.id,"action":"reset_press"}),
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        response.on_hover_text(if enabled {
+            "Momentary reset. Press to reset the timed gate state; moving outside or releasing ends the manual reset. The RESET input accepts a remote pulse."
+        } else {
+            "Momentary reset requires a live audio engine and an active module."
+        });
         action
     }
 
@@ -4127,6 +4266,13 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "gates" if input => return pos2(45.0 + index as f32 * 75.0, 105.0),
+        "gates" => {
+            return pos2(
+                45.0 + (index % 3) as f32 * 75.0,
+                if index < 3 { 282.0 } else { 350.0 },
+            )
+        }
         "push" => {
             return pos2(
                 if index == 0 { 49.0 } else { 131.0 },
@@ -4762,7 +4908,7 @@ fn panel_width(kind: &str) -> f32 {
         "vca_mix" => HP * 26.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
-        "attenuverter8" | "mutes10" | "cv_mix" | "pulses" => HP * 16.0,
+        "attenuverter8" | "mutes10" | "cv_mix" | "pulses" | "gates" => HP * 16.0,
         "seq3" => HP * 52.0,
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
@@ -4814,6 +4960,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "cv_mix" => "CV MIX",
         "pulses" => "PULSES",
         "push" => "PUSH",
+        "gates" => "GATES",
         "attenuverter" => "ATTENUVERTER",
         "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
@@ -5034,6 +5181,14 @@ fn normalize_geometric(value: f32, min: f32, max: f32) -> f32 {
 fn denormalize_geometric(value: f32, min: f32, max: f32) -> f32 {
     (min * (value.clamp(0.0, 1.0) * (max / min).log2()).exp2()).clamp(min, max)
 }
+fn logarithmic_parameter(kind: &str, name: &str) -> bool {
+    (kind == "gates" && name == "length")
+        || matches!(
+            name,
+            "frequency" | "cutoff" | "attack" | "decay" | "release"
+        )
+}
+
 fn normalize(value: f32, min: f32, max: f32, logarithmic: bool) -> f32 {
     if max <= min {
         return 0.0;
@@ -8127,6 +8282,240 @@ mod tests {
             Color32::from_rgb(238, 177, 65).gamma_multiply(0.12)
         ));
         assert!(lamp_fill(131.0, Color32::from_rgb(75, 165, 178)));
+    }
+
+    #[test]
+    fn gates_reset_and_each_named_jack_have_independent_pointer_targets() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[
+                {"id":"source","kind":"constant"},
+                {"id":"gates","kind":"gates","params":{"length":0.1}},
+                {"id":"sink","kind":"gain"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(panel_width("gates"), 240.0);
+        assert!(logarithmic_parameter("gates", "length"));
+        assert_eq!(title("gates"), "GATES");
+        for (input, ports) in [
+            (true, &["length", "in", "reset"][..]),
+            (
+                false,
+                &["rise", "fall", "flip", "flop", "gate", "delay"][..],
+            ),
+        ] {
+            let centers = ports
+                .iter()
+                .enumerate()
+                .map(|(index, _)| port_position("gates", input, index, ports.len(), 240.0))
+                .collect::<Vec<_>>();
+            for (index, center) in centers.iter().enumerate() {
+                assert!(centers[..index]
+                    .iter()
+                    .all(|other| center.distance(*other) > 29.0));
+            }
+        }
+        for input_name in ["length", "in", "reset"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let source = fixture_jack(&rack, &patch, "source", "out", false);
+            let target = fixture_jack(&rack, &patch, "gates", input_name, true);
+            let action = drag(&ctx, &mut rack, &patch, 1.0, source, target);
+            assert!(matches!(action,
+                Some(RackAction::Command("connect", ref args))
+                    if args["from"] == "source" && args["to"] == "gates"
+                    && args["input"] == input_name
+            ));
+        }
+        for output_name in ["rise", "fall", "flip", "flop", "gate", "delay"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let source = fixture_jack(&rack, &patch, "gates", output_name, false);
+            let target = fixture_jack(&rack, &patch, "sink", "signal", true);
+            let action = drag(&ctx, &mut rack, &patch, 1.0, source, target);
+            assert!(matches!(action,
+                Some(RackAction::Command("connect", ref args))
+                    if args["from"] == "gates" && args["output"] == output_name
+                    && args["to"] == "sink"
+            ));
+        }
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.set_sequence_states(BTreeMap::new(), true);
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        // The reset button is at panel-local (184, 182), separate from the IN jack.
+        let target = fixture_jack(&rack, &patch, "gates", "in", true) + vec2(64.0, 77.0);
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(target), button(target, true)],
+        );
+        assert!(matches!(action,
+            Some(RackAction::Command("trigger_module", ref args))
+                if args["id"] == "gates" && args["action"] == "reset_press"
+        ));
+        assert_eq!(rack.held_manual.as_ref().unwrap().release, "reset_release");
+        assert_eq!(patch.nodes[1].params["length"], 0.1);
+        let action = frame(&ctx, &mut rack, &patch, 1.1, vec![button(target, false)]);
+        assert!(matches!(action,
+            Some(RackAction::Command("trigger_module", ref args))
+                if args["action"] == "reset_release"
+        ));
+    }
+
+    #[test]
+    fn gates_fast_reset_click_pairs_actions_without_held_state() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"gates"}]
+        }))
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.set_sequence_states(BTreeMap::new(), true);
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let target = pos2(24.0 + 184.0, 12.0 + 182.0);
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![
+                egui::Event::PointerMoved(target),
+                button(target, true),
+                button(target, false),
+            ],
+        );
+        assert!(matches!(action,
+            Some(RackAction::ManualClick { id, press, release })
+                if id == "manual" && press == "reset_press" && release == "reset_release"
+        ));
+        assert!(rack.held_manual.is_none());
+        assert!(frame(&ctx, &mut rack, &patch, 1.1, vec![]).is_none());
+    }
+
+    #[test]
+    fn gates_reset_releases_on_exit_focus_modal_bypass_removal_and_engine_loss() {
+        for cause in [
+            "exit",
+            "focus",
+            "modal",
+            "shortcut-modal",
+            "bypass",
+            "removal",
+            "engine",
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            let mut patch: Patch = serde_json::from_value(json!({
+                "version":2,"nodes":[{"id":"manual","kind":"gates"}]
+            }))
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(24.0 + 184.0, 12.0 + 182.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["action"] == "reset_press"
+            ));
+            let mut events = vec![];
+            let (focused, enabled) = match cause {
+                "exit" => {
+                    events.push(egui::Event::PointerMoved(target + vec2(90.0, 0.0)));
+                    (true, true)
+                }
+                "focus" => {
+                    events.push(egui::Event::WindowFocused(false));
+                    (false, true)
+                }
+                "modal" => (true, false),
+                "shortcut-modal" => {
+                    rack.set_shortcuts_enabled(false);
+                    (true, true)
+                }
+                "bypass" => {
+                    patch.nodes[0].bypassed = true;
+                    (true, true)
+                }
+                "removal" => {
+                    patch.nodes.clear();
+                    (true, true)
+                }
+                _ => {
+                    rack.set_sequence_states(BTreeMap::new(), false);
+                    (true, true)
+                }
+            };
+            let action = frame_state(&ctx, &mut rack, &patch, 1.1, events, focused, enabled).0;
+            assert!(
+                matches!(action,
+                    Some(RackAction::Command("trigger_module", ref args))
+                        if args["id"] == "manual" && args["action"] == "reset_release"
+                ),
+                "{cause}"
+            );
+            assert!(rack.held_manual.is_none());
+        }
+    }
+
+    #[test]
+    fn gates_telemetry_uses_reset_mask_and_each_output_light_pair() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.module_controls.insert(
+            "manual".into(),
+            ModuleControlState {
+                pressed: true,
+                pressed_mask: 0,
+            },
+        );
+        let mut lights = ModuleLightState {
+            count: 6,
+            ..ModuleLightState::default()
+        };
+        lights.brightness[1][1] = 0.7;
+        lights.brightness[5][0] = 1.0;
+        rack.module_lights.insert("manual".into(), lights);
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"gates"}]
+        }))
+        .unwrap();
+        let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
+        assert!(!output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::epaint::Shape::Rect(rect)
+                if rect.rect.center() == pos2(208.0, 194.0)
+                && rect.fill == Color32::from_rgb(212, 166, 86))
+        }));
+        for (index, channel, strength) in [(1, 1, 0.7), (5, 0, 1.0)] {
+            let jack = port_position("gates", false, index, 6, 240.0);
+            let point = pos2(
+                24.0 + jack.x + if channel == 0 { -3.5 } else { 3.5 },
+                12.0 + jack.y + 17.0,
+            );
+            let base = if channel == 0 {
+                Color32::from_rgb(242, 199, 59)
+            } else {
+                Color32::from_rgb(62, 155, 238)
+            };
+            assert!(
+                output.shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::epaint::Shape::Circle(circle)
+                    if circle.center == point
+                    && circle.fill == base.gamma_multiply(0.12 + strength * 0.88))
+                }),
+                "output light {index}, channel {channel}"
+            );
+        }
     }
 
     #[test]

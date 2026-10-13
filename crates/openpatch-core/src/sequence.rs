@@ -40,6 +40,8 @@ pub const MODULE_ACTION_NAMES: &[&str] = &[
     "push_release",
     "hold_press",
     "hold_release",
+    "reset_press",
+    "reset_release",
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleAction {
@@ -58,6 +60,8 @@ pub enum ModuleAction {
     PushRelease,
     HoldPress,
     HoldRelease,
+    ResetPress,
+    ResetRelease,
 }
 impl ModuleAction {
     /// Validated zero-based PULSES button and whether this is a press.
@@ -81,6 +85,8 @@ impl ModuleAction {
             Self::PushRelease => 28,
             Self::HoldPress => 29,
             Self::HoldRelease => 30,
+            Self::ResetPress => 31,
+            Self::ResetRelease => 32,
             action => {
                 let (button, press) = action.pulse_button()?;
                 7 + 2 * button + usize::from(!press)
@@ -117,6 +123,8 @@ impl<'de> Deserialize<'de> for ModuleAction {
             28 => Self::PushRelease,
             29 => Self::HoldPress,
             30 => Self::HoldRelease,
+            31 => Self::ResetPress,
+            32 => Self::ResetRelease,
             _ => {
                 let button = ((index - 7) / 2 + 1) as u8;
                 if (index - 7) % 2 == 0 {

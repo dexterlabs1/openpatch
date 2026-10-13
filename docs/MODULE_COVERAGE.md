@@ -8,7 +8,7 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **44 built-in kinds**: seven legacy utilities, six reference-voice
+There are **45 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
 utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, a ten-row manual trigger/gate source, and a manual/CV gate source with a persistent HOLD latch. This count is not a count of completed VCV equivalents.
 
@@ -155,7 +155,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Fade | Mixing | Implemented signal role: `fade`, bipolar CV depth, complementary outputs, linear/square-root laws and independent bypass routes; legacy `crossfade` remains unchanged | Direct reference traces, Rack state mapping and native qualification; [contract](VOLTAGE_MIXING.md) |
 | Logic | Gate processing | Implemented signal role: `logic`, eight Boolean outputs, 1 V threshold, manual B and mono/poly indicators | Direct reference traces, native qualification; no hysteresis in this reference role; [contract](SIGNAL_PROCESSING.md) |
 | Compare | Voltage processing | Implemented signal role: `compare`, eight outputs, B offset, raw mono zero-padding and strict comparisons | Direct reference traces and native qualification; [contract](SIGNAL_PROCESSING.md) |
-| Gates | Gate processing | Planned | Timing, retrigger and overlapping-event cases |
+| Gates | Gate processing | Implemented signal role: `gates`, six polyphonic edge/flip-flop/timed/delayed outputs, bounded transition history, native RESET and MCP events | Direct reference traces, native qualification, explicit numerical/connection policies; [contract](GATES.md) |
 | Process | Voltage processing | Implemented signal role: `process`, two held samples, track/hold pairs, slew, glide and manual gate | Reference exponential/timing differences, direct traces, runtime state import and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
 | Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |

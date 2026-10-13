@@ -1424,6 +1424,43 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "pulses.json"})
         self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
 
+    def test_gates_edges_delay_reset_and_protocol(self) -> None:
+        modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}
+        self.assertEqual(modules["gates"]["inputs"], ["length", "in", "reset"])
+        self.assertEqual(modules["gates"]["outputs"], ["rise", "fall", "flip", "flop", "gate", "delay"])
+        self.assertEqual(modules["gates"]["runtime_actions"], ["reset_press", "reset_release"])
+        self.require_tool_success("add_module", {"id": "source", "kind": "pulses"})
+        self.require_tool_success("add_module", {"id": "timing", "kind": "gates", "params": {"length": 1 / 512}})
+        self.require_tool_success("connect", {"from": "source", "output": "gate1", "to": "timing", "input": "in"})
+        before = self.patch_snapshot()
+        edges = [{"frame": 0, "id": "source", "action": "pulse1_press"},
+                 {"frame": 1, "id": "source", "action": "pulse1_release"}]
+        expected = {"rise": lambda n: 1 <= n < 49, "fall": lambda n: 2 <= n < 50,
+                    "flip": lambda n: n == 0, "flop": lambda n: n >= 1,
+                    "gate": lambda n: 1 <= n < 94, "delay": lambda n: n == 95}
+        for port, high in expected.items():
+            result = self.payload(self.require_tool_success("capture_signal", {
+                "id": "timing", "port": port, "seconds": .004, "module_events": edges}))
+            self.assertEqual([point["mean"] for point in result["bins"]],
+                             [10 if high(n) else 0 for n in range(192)], port)
+        resets = edges + [{"frame": 10, "id": "timing", "action": "reset_press"},
+                          {"frame": 10, "id": "timing", "action": "reset_release"}]
+        for port, high in {"rise": lambda n: 1 <= n < 49, "gate": lambda n: 1 <= n < 10,
+                           "flop": lambda n: 1 <= n < 10, "delay": lambda n: False}.items():
+            result = self.payload(self.require_tool_success("capture_signal", {
+                "id": "timing", "port": port, "seconds": .004, "module_events": resets}))
+            self.assertEqual([point["mean"] for point in result["bins"]],
+                             [10 if high(n) else 0 for n in range(192)], port)
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_error("capture_signal", {"id": "timing", "port": "gate", "seconds": .004,
+            "module_events": [{"frame": 0, "id": "timing", "action": "reset"}]})
+        self.require_tool_error("set_parameter", {"id": "timing", "parameter": "length", "value": 0})
+        self.require_tool_success("set_bypass", {"id": "timing", "bypassed": True})
+        self.require_tool_error("capture_signal", {"id": "timing", "port": "gate", "seconds": .004,
+            "module_events": [{"frame": 0, "id": "timing", "action": "reset_press"}]})
+        self.require_tool_success("capture_signal", {"id": "timing", "port": "gate", "seconds": .004,
+            "module_events": [{"frame": 0, "id": "timing", "action": "reset_release"}]})
+
     def test_push_xor_edges_persisted_hold_and_protocol_validation(self) -> None:
         modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}
         self.assertEqual(modules["push"]["inputs"], ["push", "hold"])

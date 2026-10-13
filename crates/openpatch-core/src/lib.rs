@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod analog;
 mod bypass;
+mod gates;
 pub mod ladder;
 pub mod midi;
 mod mixing;
@@ -235,6 +236,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(push::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(gates::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

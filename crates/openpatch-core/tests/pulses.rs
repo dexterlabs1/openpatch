@@ -92,6 +92,8 @@ fn all_action_names_round_trip_only_as_strings_and_reject_invalid_channels() {
                 ModuleAction::PushRelease,
                 ModuleAction::HoldPress,
                 ModuleAction::HoldRelease,
+                ModuleAction::ResetPress,
+                ModuleAction::ResetRelease,
             ]),
     ) {
         assert_eq!(serde_json::to_value(action).unwrap(), json!(name));

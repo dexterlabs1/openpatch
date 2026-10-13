@@ -47,7 +47,7 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("seq3", name) if seq_row(name) => Linear,
         ("seq3", name) if numbered(name, "gate", 8) => Enum,
         ("seq3", _) => Disabled,
-        ("multi_vco" | "multi_lfo", "frequency") => Log2,
+        ("multi_vco" | "multi_lfo", "frequency") | ("gates", "length") => Log2,
         ("multi_vco" | "multi_lfo", "pulse_width") => Linear,
         ("multi_vco" | "multi_lfo", "fm_amount" | "pwm_amount") => Disabled,
         ("multi_vco", "linear_fm" | "soft_sync") | ("multi_lfo", "unipolar" | "invert") => Enum,
