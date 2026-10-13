@@ -1,0 +1,14 @@
+[package]
+name = "openpatch-desktop"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Native OpenPatch modular synthesizer and GLSL visualizers"
+
+[dependencies]
+openpatch-core = { path = "../openpatch-core" }
+openpatch = { path = "../openpatch" }
+eframe = { version = "0.33.3", default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "accesskit"] }
+cpal = "0.16.0"
+rtrb = "0.3"
+serde_json = "1"

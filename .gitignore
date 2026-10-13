@@ -6,3 +6,5 @@ __pycache__/
 
 /visualizer-test-output/
 /node_modules/
+
+/dist/

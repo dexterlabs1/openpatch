@@ -6,13 +6,36 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
-pub struct Application {
+#[derive(Clone)]
+pub struct Session {
     patch: Patch,
     revision: u64,
     workspace: PathBuf,
+}
+
+/// Shared only by control threads; never acquire this mutex in an audio callback.
+pub type SharedSession = Arc<Mutex<Session>>;
+
+/// Compatibility name for the original offline command-line application.
+pub type Application = Session;
+
+/// Execute a control request while allowing the UI to remain responsive during
+/// offline rendering, benchmarks, or file I/O. Those operations use a coherent
+/// snapshot; graph edits remain serialized by the live session mutex.
+pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
+    let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+    match name {
+        "export_visualizer" | "save_patch" | "render_audio" | "benchmark" => {
+            let mut snapshot = live.clone();
+            drop(live);
+            snapshot.execute(name, args)
+        }
+        _ => live.execute(name, args),
+    }
 }
 
 fn string<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
@@ -21,7 +44,7 @@ fn string<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("{name} must be a string"))
 }
 
-impl Application {
+impl Session {
     pub fn new(workspace: &Path) -> Result<Self, String> {
         fs::create_dir_all(workspace).map_err(|e| e.to_string())?;
         Ok(Self {
@@ -31,8 +54,51 @@ impl Application {
         })
     }
 
-    fn snapshot(&self) -> Value {
+    pub fn patch(&self) -> &Patch {
+        &self.patch
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+
+    pub fn into_shared(self) -> SharedSession {
+        Arc::new(Mutex::new(self))
+    }
+
+    pub fn snapshot(&self) -> Value {
         json!({"revision":self.revision,"patch":self.patch})
+    }
+
+    /// Commit a GUI or agent edit through the same validation and revision boundary.
+    /// Failed validation or a stale revision leaves the live patch unchanged.
+    pub fn replace_patch(
+        &mut self,
+        candidate: Patch,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        self.check_revision(expected_revision)?;
+        candidate.compile()?;
+        let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        self.patch = candidate;
+        self.revision = revision;
+        Ok(revision)
+    }
+
+    fn check_revision(&self, expected: Option<u64>) -> Result<(), String> {
+        if let Some(expected) = expected {
+            if expected != self.revision {
+                return Err(format!(
+                    "revision conflict: expected {expected}, current {}",
+                    self.revision
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn file(&self, filename: &str, extension: &str) -> Result<PathBuf, String> {
@@ -151,17 +217,15 @@ impl Application {
             }
             _ => {}
         }
-        if let Some(expected) = args.get("expected_revision") {
-            let expected = expected
-                .as_u64()
-                .ok_or("expected_revision must be a nonnegative integer")?;
-            if expected != self.revision {
-                return Err(format!(
-                    "revision conflict: expected {expected}, current {}",
-                    self.revision
-                ));
-            }
-        }
+        let expected_revision = args
+            .get("expected_revision")
+            .map(|value| {
+                value
+                    .as_u64()
+                    .ok_or("expected_revision must be a nonnegative integer")
+            })
+            .transpose()?;
+        self.check_revision(expected_revision)?;
         let mut candidate = self.patch.clone();
         match name {
             "replace_patch" => {
@@ -240,10 +304,7 @@ impl Application {
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
-        candidate.compile()?;
-        let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
-        self.patch = candidate;
-        self.revision = revision;
+        self.replace_patch(candidate, expected_revision)?;
         Ok(self.snapshot())
     }
 }
@@ -263,7 +324,7 @@ pub fn tools() -> Value {
     let rev = json!({"type":"integer","minimum":0});
     json!([
         tool("catalog","List built-in modules, input ports, parameter defaults and ranges.",json!({}),&[],true),
-        tool("inspect_patch","Read the session's patch and revision. Each MCP process owns its own session.",json!({}),&[],true),
+        tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),

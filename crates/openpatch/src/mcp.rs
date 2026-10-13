@@ -1,5 +1,5 @@
 //! Bounded newline-delimited JSON-RPC over stdio. No network listener or model API.
-use crate::control::{tools, Application};
+use crate::control::{execute_shared, tools, Application, SharedSession};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -44,12 +44,13 @@ fn read_message<R: BufRead>(reader: &mut R) -> io::Result<Option<Result<Vec<u8>,
     }
 }
 
-struct Session {
-    app: Application,
+struct Connection {
+    session: SharedSession,
+    live_desktop: bool,
     initialized: bool,
     ready: bool,
 }
-impl Session {
+impl Connection {
     fn handle(&mut self, msg: Value) -> Option<Value> {
         let id = msg.get("id").cloned().unwrap_or(Value::Null);
         let valid_id = msg
@@ -84,7 +85,12 @@ impl Session {
                 } else {
                     VERSIONS[0]
                 };
-                json!({"protocolVersion":version,"capabilities":{"tools":{}},"serverInfo":{"name":"openpatch","version":env!("CARGO_PKG_VERSION")},"instructions":"OpenPatch is an offline modular synthesizer. Start with catalog and inspect_patch. Build a patch, select its output, then render_audio. Filenames are confined to the configured workspace; existing files are never overwritten. Each connection has an independent patch. No speaker playback or VCV plugin compatibility yet."})
+                let instructions = if self.live_desktop {
+                    "OpenPatch is a native modular synthesizer. This connection controls the same live patch shown in the desktop window. Start with catalog and inspect_patch. Edits update the window and its audio engine; speaker playback is controlled in the desktop window. Use expected_revision to avoid overwriting concurrent GUI edits. render_audio exports an offline snapshot from reset. Filenames are confined to the configured workspace; existing files are never overwritten. No VCV plugin compatibility."
+                } else {
+                    "OpenPatch is an offline modular synthesizer. Start with catalog and inspect_patch. Build a patch, select its output, then render_audio. Filenames are confined to the configured workspace; existing files are never overwritten. This headless process owns an independent patch. No speaker playback or VCV plugin compatibility."
+                };
+                json!({"protocolVersion":version,"capabilities":{"tools":{}},"serverInfo":{"name":"openpatch","version":env!("CARGO_PKG_VERSION")},"instructions":instructions})
             }
             "ping" => json!({}),
             _ if !self.ready => {
@@ -109,7 +115,7 @@ impl Session {
                     return Some(error(id, -32602, "unknown tool"));
                 }
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                match self.app.execute(name, args) {
+                match execute_shared(&self.session, name, args) {
                     Ok(data) => {
                         json!({"content":[{"type":"text","text":data.to_string()}],"structuredContent":if data.is_object(){data}else{json!({"data":data})},"isError":false})
                     }
@@ -125,10 +131,37 @@ impl Session {
 pub fn serve(app: Application) -> Result<(), String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    let mut input = stdin.lock();
-    let mut output = stdout.lock();
-    let mut session = Session {
-        app,
+    run(stdin.lock(), stdout.lock(), app.into_shared(), false)
+}
+
+/// Serve stdio on a desktop control thread. The GUI retains ownership of its
+/// event loop; EOF simply ends this transport and does not close the window.
+/// Write diagnostics to stderr so stdout remains exclusively JSON-RPC.
+pub fn serve_shared(session: SharedSession) -> Result<(), String> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    run_shared(stdin.lock(), stdout.lock(), session)
+}
+
+/// Reader/writer variant of the native desktop bridge, useful for embedding and
+/// transport tests. No network listener or external process is required.
+pub fn run_shared<R: BufRead, W: Write>(
+    input: R,
+    output: W,
+    session: SharedSession,
+) -> Result<(), String> {
+    run(input, output, session, true)
+}
+
+fn run<R: BufRead, W: Write>(
+    mut input: R,
+    mut output: W,
+    session: SharedSession,
+    live_desktop: bool,
+) -> Result<(), String> {
+    let mut connection = Connection {
+        session,
+        live_desktop,
         initialized: false,
         ready: false,
     };
@@ -136,7 +169,7 @@ pub fn serve(app: Application) -> Result<(), String> {
         let response = match line {
             Err(()) => Some(error(Value::Null, -32600, "message exceeds 1 MiB")),
             Ok(bytes) => match serde_json::from_slice(&bytes) {
-                Ok(msg) => session.handle(msg),
+                Ok(msg) => connection.handle(msg),
                 Err(_) => Some(error(Value::Null, -32700, "parse error")),
             },
         };
@@ -151,6 +184,18 @@ pub fn serve(app: Application) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn workspace() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "openpatch-mcp-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
     #[test]
     fn oversized_lines_recover_at_next_message() {
         let mut data = vec![b'x'; MAX_LINE + 2];
@@ -158,5 +203,86 @@ mod tests {
         let mut r = io::Cursor::new(data);
         assert!(read_message(&mut r).unwrap().unwrap().is_err());
         assert_eq!(read_message(&mut r).unwrap().unwrap().unwrap(), b"{}\n");
+    }
+
+    #[test]
+    fn desktop_transport_edits_the_gui_session_and_rejects_stale_revisions() {
+        let workspace = workspace();
+        let session = Application::new(&workspace).unwrap().into_shared();
+        // A GUI edit is visible to the MCP client using this same session.
+        session
+            .lock()
+            .unwrap()
+            .replace_patch(openpatch_core::demo_patch(), Some(0))
+            .unwrap();
+        let requests = [
+            json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":VERSIONS[0]}}),
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"inspect_patch"}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_module","arguments":{"id":"desktop-test","kind":"constant","params":{"value":0.5},"expected_revision":1}}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"remove_module","arguments":{"id":"desktop-test","expected_revision":1}}}),
+        ];
+        let input = requests
+            .iter()
+            .map(|v| format!("{v}\n"))
+            .collect::<String>();
+        let mut output = Vec::new();
+        run_shared(io::Cursor::new(input), &mut output, session.clone()).unwrap();
+        let responses: Vec<Value> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(responses.len(), 4);
+        assert!(responses[0]["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("same live patch"));
+        assert_eq!(responses[1]["result"]["structuredContent"]["revision"], 1);
+        assert_eq!(responses[2]["result"]["structuredContent"]["revision"], 2);
+        assert_eq!(responses[3]["result"]["isError"], true);
+        let mut live = session.lock().unwrap();
+        assert_eq!(live.revision(), 2);
+        assert!(live.patch().nodes.iter().any(|n| n.id == "desktop-test"));
+        // A GUI candidate based on its earlier view cannot silently lose MCP edits.
+        assert!(live
+            .replace_patch(openpatch_core::Patch::default(), Some(1))
+            .unwrap_err()
+            .contains("revision conflict"));
+        let mut invalid = live.patch().clone();
+        invalid.nodes.push(invalid.nodes[0].clone());
+        assert!(live.replace_patch(invalid, Some(2)).is_err());
+        assert_eq!(live.revision(), 2);
+        drop(live);
+        std::fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn shared_offline_render_uses_the_live_patch_without_changing_it() {
+        let workspace = workspace();
+        let session = Application::new(&workspace).unwrap().into_shared();
+        let before = {
+            let mut live = session.lock().unwrap();
+            live.replace_patch(openpatch_core::demo_patch(), Some(0))
+                .unwrap();
+            live.snapshot()
+        };
+        let rendered = execute_shared(
+            &session,
+            "render_audio",
+            json!({"filename":"snapshot.wav","seconds":0.01}),
+        )
+        .unwrap();
+        assert_eq!(rendered["revision"], before["revision"]);
+        assert_eq!(rendered["frames"], 480);
+        assert!(rendered["peak"].as_f64().unwrap() > 0.0);
+        assert_eq!(session.lock().unwrap().snapshot(), before);
+        assert!(
+            std::fs::metadata(workspace.join("snapshot.wav"))
+                .unwrap()
+                .len()
+                > 44
+        );
+        std::fs::remove_dir_all(workspace).unwrap();
     }
 }

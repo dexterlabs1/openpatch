@@ -1,94 +1,122 @@
 # OpenPatch
 
-An open-source modular synthesizer in Rust, with MCP control designed into its core.
+An open-source **native desktop modular synthesizer in Rust**, with live audio,
+GPU visualizers, and MCP control for Claude and Codex.
 
-**Early developer prototype.** You can build patches through Claude or Codex,
-render WAV audio, and measure DSP throughput. A visual rack and live audio are
-the next milestones. OpenPatch aims to improve performance on large modular
-patches; it has **not yet been benchmarked against VCV Rack**.
+**Early prototype, v0.2.** OpenPatch now has a native rack window: add modules,
+adjust parameters, connect cables, and hear the patch through your audio device.
+Aurora, Spectrum, and Scope visuals run inside the app with an editable GLSL shader.
+It aims to handle large modular patches efficiently; it has **not yet been
+benchmarked against VCV Rack**.
 
-## Platforms
+## Launch the desktop app
 
-| Platform | Initial target | Validation |
-| --- | --- | --- |
-| Linux | x86-64 | Native CI build, Rust tests, MCP integration tests |
-| Windows | x86-64 (MSVC) | Native CI build, Rust tests, MCP integration tests |
-| macOS | Apple Silicon / ARM64 | Native CI build, Rust tests, MCP integration tests |
+Install stable Rust from [rustup.rs](https://rustup.rs). On macOS, install Xcode
+Command Line Tools; on Windows, install the MSVC C++ build tools. Linux needs
+ALSA, udev, XKB, Wayland, and OpenGL development packages:
 
-The CI workflow builds downloadable binaries for all three targets. These are
-unsigned development builds. Audio devices and desktop UI are not implemented
-yet, so platform support currently covers the engine, CLI, and MCP server.
-
-## Try it
-
-Install stable Rust from [rustup.rs](https://rustup.rs). On Windows, install the
-MSVC C++ build tools; on macOS, install Xcode Command Line Tools. Then:
+```sh
+# Debian / Ubuntu only
+sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+```
 
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
-cargo build --release
-cargo run --release -- demo demo.wav
-cargo run --release -- render examples/tremolo.json tremolo.wav 5
-cargo run --release -- visualizer visualizer.html
+cargo run --release -p openpatch-desktop
 ```
 
-Open the resulting WAV in your audio player. Existing files are never overwritten.
-The executable is `target/release/openpatch` (`openpatch.exe` on Windows).
+The app opens a tremolo patch with playback paused. Press **Play** (or Space).
+Click **OUT**, then an input jack to connect a cable. Right-click an input to
+unplug it. Select a module header to remove it or choose it as the audio output.
+Use the library to add modules; change sliders to hear the result live.
 
-Open `visualizer.html` in a browser and select your rendered WAV for the bundled
-Aurora, Spectrum, and Oscilloscope visuals. You can edit and compile GLSL live.
-This is a standalone visual preview; native visuals will be integrated with the
-live instrument. See [visualizer architecture](docs/VISUALIZERS.md).
+Patch files live in `~/OpenPatch` by default. **Save new** writes a new JSON file;
+existing files are never overwritten. Select a saved filename and press **Load**.
+**Undo last edit / load** recovers the previous displayed patch. Closing with
+unsaved edits prompts you to keep working or discard. There is no autosave yet.
+
+On macOS, create a double-clickable application bundle:
+
+```sh
+cargo build --release -p openpatch-desktop
+python3 scripts/package_macos.py
+# The native application is now dist/OpenPatch.app
+```
+
+The bundle is locally ad-hoc signed, not notarized. CI builds both desktop and
+CLI binaries for **Linux x86-64, Windows x86-64, and macOS ARM64**, plus a zipped
+Mac app. Hardware audio and GPU verification currently covers an Apple Silicon
+Mac; other platforms are compile/test targets pending device testing.
+
+## Visualizers
+
+The native **Visual Field** has Aurora, Spectrum, and Scope modes driven by the
+live audio output. **Edit GLSL** opens the shader editor. Compile errors leave the
+last working shader running. The visualizer uses desktop OpenGL / GLSL 330 core,
+not a browser or webview. It requires a compatible GPU/driver.
+
+The older standalone HTML visualizer is still available as an optional export.
+See [visualizer details](docs/VISUALIZERS.md).
 
 ## Agent control
 
-The Rust binary is also a local stdio MCP server. It requires no API key or model
-SDK: your MCP client provides the model. Start it with an explicit file workspace:
+Launch the desktop executable as an MCP server to give Claude or Codex control
+of **the patch in that same window**:
 
 ```sh
-openpatch mcp --workspace /absolute/path/to/patches
+/path/to/openpatch-desktop --mcp --workspace /absolute/path/to/patches
 ```
 
+Use this command in your MCP client configuration; stdout is JSON-RPC only.
+Each launch creates its own window and session. It does not attach to an
+already-running app. Press Play locally to hear agent changes. The UI and MCP
+share validation and revision checks; the audio callback never takes their lock.
 Read [the Claude and Codex setup guide](docs/MCP.md) for configuration examples.
-Try asking: “Use OpenPatch to create a 440 Hz sine oscillator, modulate its volume
-with a 3 Hz LFO, render five seconds, and report the peak and RMS.”
 
-Tools: `catalog`, `inspect_patch`, `replace_patch`, `add_module`, `remove_module`,
-`connect`, `disconnect`, `set_parameter`, `set_output`, `save_patch`, `load_patch`,
-`render_audio`, `export_visualizer`, and `benchmark`.
+The separate CLI continues to support offline/headless MCP and WAV rendering:
 
-Each MCP process owns one independent patch. Edits validate before committing,
-with optional revision checks. Files are confined to the configured workspace
-and never overwritten. Rendering starts from reset and does not play speakers.
+```sh
+cargo run --release -p openpatch -- mcp --workspace /absolute/path/to/patches
+cargo run --release -p openpatch -- demo demo.wav
+cargo run --release -p openpatch -- render examples/tremolo.json tremolo.wav 5
+cargo run --release -p openpatch -- visualizer visualizer.html
+```
 
-## Current engine
+## Engine and current limits
 
-- Sine oscillator, LFO, constant, gain/VCA, two-input mixer, one-pole low-pass, output.
-- Sample-accurate modulation within a compiled, deterministic graph.
-- Preallocated 128-frame buffers; DSP processing does not allocate, lock, or do I/O.
-- JSON patches with stable module IDs, strict validation, mono PCM16 WAV export.
-- Mono acyclic graphs for now. Feedback, polyphony, MIDI, and VCV plugins are future work.
+- Seven built-in modules: sine oscillator, LFO, constant, VCA, two-input mixer,
+  one-pole low-pass, and output.
+- Deterministic acyclic mono graph, preallocated 128-frame DSP buffers.
+- Native audio at the device's sample rate; mono is duplicated across its channels.
+- Bounded graph exchange and reclamation outside the callback, a 5 ms graph
+  crossfade, and smoothed transport/master gain. Graph edits currently reset DSP
+  state; this is not yet a phase-preserving automation system.
+- Callback tests check zero allocations and deallocations during processing and
+  graph swaps. Spectrum analysis and GPU work happen on the UI thread.
+- Default audio device only; device selection, MIDI, polyphony, feedback/delays,
+  plugin loading, and VCV patch compatibility are future work.
+- Native MCP controls patches; transport, shaders, and master volume are local
+  controls for now. GPU driver behavior and audio latency need wider testing.
 
 ## Development
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo build --release
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
+cargo build --locked --release --workspace
 python3 -m unittest discover -s scripts -v
 cargo bench -p openpatch-core
 ```
 
-On Windows use `python` instead of `python3`. The Python integration tests use
-only the standard library. [Architecture and roadmap](docs/ARCHITECTURE.md)
-explain the control/DSP boundary and next milestones.
-[Benchmark methodology](docs/PERFORMANCE.md) defines how performance will be measured.
+On Windows use `python` instead of `python3`.
+[Architecture](docs/ARCHITECTURE.md) describes thread boundaries and the roadmap.
+[Performance methodology](docs/PERFORMANCE.md) explains the benchmark limits.
 
 ## License and independence
 
 MIT. This is original code, not a translated or copied VCV Rack codebase.
 OpenPatch is independent and is not affiliated with or endorsed by VCV.
-It does not currently load VCV Rack plugins or patches, and uses no VCV branding
-or panel graphics. Third-party code contributions must preserve their licenses.
+It does not load VCV Rack plugins or patches, and uses no VCV branding or panel
+artwork. Third-party dependencies retain their respective licenses.

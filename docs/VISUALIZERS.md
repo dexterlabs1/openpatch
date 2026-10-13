@@ -3,14 +3,51 @@
 Visuals are a core OpenPatch product feature, alongside audio synthesis and MCP
 control. They must never stall the audio callback.
 
-## First visual prototype
+## Native live visualizer
+
+`openpatch-desktop` includes an OpenGL visual field in the native window. Aurora,
+Spectrum, and Scope modes react to the same audio output as the rack. Playback
+starts paused; press Play in the window to hear the patch and drive its visuals.
+The animated background continues while paused, with audio input fading to zero.
+No browser or local audio-file selection is needed for this native view.
+
+The **Edit GLSL** window edits a GLSL 330 core fragment shader against a fixed
+fullscreen vertex shader. The built-in source in
+[`visuals.rs`](../crates/openpatch-desktop/src/visuals.rs) defines the interface:
+
+| Input | Meaning |
+| --- | --- |
+| `in vec2 v_uv` | Normalized coordinates across the visual field |
+| `out vec4 frag_color` | Fragment color written by `main()` |
+| `uniform vec2 u_resolution` | Visual field width and height in UI points |
+| `uniform float u_time` | Seconds since the window opened |
+| `uniform float u_level` | Recent decaying peak after transport and volume gain |
+| `uniform float u_wave[256]` | Best-effort waveform, oldest sample first |
+| `uniform float u_spectrum[64]` | Hann-windowed DFT magnitudes from the waveform |
+| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Scope |
+
+Compile/link errors keep the previous working shader active and show driver
+diagnostics. Sources are limited to 64 KiB. Restore source restores the editor
+text; compile it to replace the running shader. Visual modes and custom shader
+source are local UI state and are not currently saved in patch JSON or exposed
+through MCP tools.
+
+The callback publishes every fourth output sample into 256 atomic slots and
+updates a cursor, plus a decaying peak value. This is an approximate scope window
+of 1,024 device frames (about 21 ms at 48 kHz), rather than an atomic capture of
+one audio block. The UI reads the latest values and computes a small 64-bin DFT.
+It is a linear display spectrum of decimated samples, not a calibrated full-band
+FFT, log spectrum, RMS meter, or beat/tempo detector. GPU rendering and analysis
+never run inside the audio callback.
+
+## Standalone browser preview
 
 `openpatch visualizer visualizer.html` exports the bundled standalone preview.
 Open it in a modern browser, select a local audio file, and press Play. It uses
 Web Audio analysis and WebGL2, with built-in Aurora, Spectrum and Oscilloscope
 modes plus an editable GLSL fragment shader. All files stay local. The preview
-has its own audio playback; it is not yet attached to a native OpenPatch audio
-device or live graph.
+has its own audio playback and is separate from the native OpenPatch device and
+live graph. The `export_visualizer` MCP tool exports this browser preview too.
 
 The preview shader profile is **webgl2-glsl-es-300-v1**: a fixed fullscreen vertex
 shader, GLSL ES 3.00 fragment shader, `main()` entry point, and explicit time,
@@ -19,22 +56,19 @@ reference for the exact texture layout and uniforms. Shader compilation errors
 leave the previous working shader active. Custom shaders execute on the GPU and
 can still stall rendering; this prototype is not a sandbox for untrusted shaders.
 
-## Native design
+## Rendering boundaries and future work
 
-The planned desktop compositor uses wgpu with Metal on macOS (including Apple
-Silicon), Direct3D 12 on Windows, and Vulkan on Linux. Native built-in shaders
-will use WGSL; a GLSL importer needs a separately versioned, validated subset.
-WebGL2 GLSL ES shaders are not promised to translate unchanged through Naga.
+The native renderer currently uses eframe's Glow/OpenGL backend, not wgpu or
+WGSL. Native GLSL 330 and browser GLSL ES 3.00 are separate interfaces; shaders
+are not promised to work unchanged between them. Shader compilation and GPU
+draws stay on the native UI/render thread. A costly custom shader can stall the
+window or GPU; it does not acquire the audio session lock and is not a sandbox
+for untrusted shaders.
 
-Audio-to-visual transfer will use a preallocated bounded ring or snapshot buffer.
-The audio callback only copies bounded sample data. A worker calculates FFT,
-RMS, peak, envelope and onset estimates. The renderer consumes the latest
-complete analysis frame at the display rate. Slow visual consumers drop frames;
-the audio thread never waits for the GPU or an analysis worker.
-
-The analysis contract will include audio sample timestamp, sample rate, waveform,
-log spectrum, RMS, peak, band energy, and onset confidence. Beat/tempo estimates
-must be identified as estimates rather than sample-clock truth.
+A future analysis pipeline can add coherent timestamped frames, full-band FFT,
+RMS, band energies, and onset estimates on a dedicated worker. It must keep the
+audio producer bounded and avoid waiting for visual consumers. Beat/tempo
+estimates must be identified as estimates rather than sample-clock truth.
 
 Future MCP commands should enumerate visual modes, select presets, adjust
 parameters, compile supported shaders, inspect compile diagnostics, and capture

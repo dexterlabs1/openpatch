@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/openpatch-core", "crates/openpatch"]
+members = ["crates/openpatch-core", "crates/openpatch", "crates/openpatch-desktop"]
 resolver = "2"
 
 [profile.release]

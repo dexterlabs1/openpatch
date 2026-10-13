@@ -1,8 +1,4 @@
-mod control;
-mod mcp;
-mod visualizer;
-
-use control::Application;
+use openpatch::{control::Application, mcp, visualizer};
 use openpatch_core::{demo_patch, render, write_wav, Patch};
 use std::{fs, path::Path};
 
