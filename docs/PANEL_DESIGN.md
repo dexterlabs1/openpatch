@@ -8,6 +8,10 @@ their real proportions rather than being rearranged into a generic miniature.
 The card's title, favorite star, category, and availability overlay belong to
 the browser and sit outside the module artwork.
 
+![The module library uses actual default module panels](images/openpatch-library.png)
+
+*Native Linux CI capture; macOS is the primary design target.*
+
 The Studio Rack skin uses brushed ivory metal, compact printed headings,
 recessed value plaques, shaded dark knobs, and machined jack collars. Control
 centers, parameter ranges, cable endpoints, and hit areas retain their existing
