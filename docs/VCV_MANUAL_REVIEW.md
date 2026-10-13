@@ -81,6 +81,16 @@ Test pressure routing, wheel channel counts, initialization with held notes,
 and saved controller settings as a dedicated MIDI-CV parity batch.
 [Pinned MIDI-CV module](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/core/MIDI_CV.cpp).
 
+Parameter expressions also need a precise compatibility contract. We compiled
+Rack's pinned tinyexpr dependency with its recorded flags and checked operator
+precedence. It evaluates `-2^2` as `-4`, `2^3^2` as `512`, and `2^-2` as `0.25`.
+The same evaluator incorrectly produces `-4` for `(-2)^2`; its upstream tests
+explicitly omit known problematic parentheses cases. These are isolated
+dependency results, not a test of the complete Rack application. OpenPatch's
+future parser should document deliberate corrections alongside supported syntax.
+[Reproducible reference results](benchmarks/parameter-expression-reference.json),
+[pinned dependency tests](https://github.com/codeplea/tinyexpr/blob/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/smoke.c#L575-L594).
+
 Prioritize the first two interaction rows after the current performance batch,
 then navigation/templates and bounded hardware-input work. Each delivered row
 needs source changes, focused behavioral tests, shared undo/MCP checks where

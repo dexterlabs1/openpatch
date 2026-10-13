@@ -1,0 +1,130 @@
+{
+  "tinyexpr_commit": "4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2",
+  "rack_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+  "files": {
+    "tinyexpr.c": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/tinyexpr.c",
+      "sha256": "b5b8f549f50fe68c19890ce31562543d9ee0dc6566eb3e6b72426e1e71e6d8c9"
+    },
+    "tinyexpr.h": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/tinyexpr.h",
+      "sha256": "4d7a0c30f5ec653b3b962d9eee24484d3a5f85a27393754feee6e47014b651c0"
+    },
+    "smoke.c": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/smoke.c",
+      "sha256": "5c9515bfc01a6c8c22e4d6581e7f317ec0fb311ba84e853107b0dba62d265bc9"
+    },
+    "minctest.h": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/minctest.h",
+      "sha256": "1d7611d31c0b1ed1318ea5ff53d5b59950f0cae405e7fac5b92770956f8d7e1f"
+    },
+    "repl.c": {
+      "url": "https://raw.githubusercontent.com/codeplea/tinyexpr/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/repl.c",
+      "sha256": "ee19d2b1daecc27cec86a9ae7e155ffcd56a748dcecef75616578650a82bd7a3"
+    }
+  },
+  "flags": [
+    "-O2",
+    "-DTE_POW_FROM_RIGHT",
+    "-DTE_NAT_LOG"
+  ],
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "cases": [
+    {
+      "expression": "-2^2",
+      "exit_code": 0,
+      "stdout": "-4",
+      "stderr": ""
+    },
+    {
+      "expression": "2^3^2",
+      "exit_code": 0,
+      "stdout": "512",
+      "stderr": ""
+    },
+    {
+      "expression": "2^-2",
+      "exit_code": 0,
+      "stdout": "0.25",
+      "stderr": ""
+    },
+    {
+      "expression": "(-2)^2",
+      "exit_code": 0,
+      "stdout": "-4",
+      "stderr": ""
+    },
+    {
+      "expression": "(-1)^0",
+      "exit_code": 0,
+      "stdout": "-1",
+      "stderr": ""
+    },
+    {
+      "expression": "(-5)^0",
+      "exit_code": 0,
+      "stdout": "-1",
+      "stderr": ""
+    },
+    {
+      "expression": "-(2)^2",
+      "exit_code": 0,
+      "stdout": "-4",
+      "stderr": ""
+    },
+    {
+      "expression": "(-2)^3",
+      "exit_code": 0,
+      "stdout": "-8",
+      "stderr": ""
+    },
+    {
+      "expression": "-2^-3^-4",
+      "exit_code": 0,
+      "stdout": "-1.00859",
+      "stderr": ""
+    },
+    {
+      "expression": "2^(-2)",
+      "exit_code": 0,
+      "stdout": "0.25",
+      "stderr": ""
+    },
+    {
+      "expression": "pow(-2,2)",
+      "exit_code": 0,
+      "stdout": "4",
+      "stderr": ""
+    },
+    {
+      "expression": "log(exp(1))",
+      "exit_code": 0,
+      "stdout": "1",
+      "stderr": ""
+    },
+    {
+      "expression": "1/0",
+      "exit_code": 0,
+      "stdout": "inf",
+      "stderr": ""
+    },
+    {
+      "expression": "0/0",
+      "exit_code": 0,
+      "stdout": "nan",
+      "stderr": ""
+    }
+  ],
+  "scope": "Pinned standalone tinyexpr evaluator and its upstream test suite, with Rack compile flags. This does not execute the complete Rack application or its custom note/function registration.",
+  "date": "2026-10-13",
+  "upstream_tests": {
+    "returncode": 0,
+    "stdout": "\tResults       pass:162   fail: 0      0ms\n\tSyntax        pass:70   fail: 0      0ms\n\tNaNs          pass:55   fail: 0      0ms\n\tINFs          pass:50   fail: 0      0ms\n\tVariables     pass:36   fail: 0      0ms\n\tFunctions     pass:4406   fail: 0      0ms\n\tDynamic       pass:44   fail: 0      0ms\n\tClosure       pass:17   fail: 0      0ms\n\tOptimize      pass:12   fail: 0      0ms\n\tPow           pass:36   fail: 0      0ms\n\tCombinatorics pass:40   fail: 0      0ms\nALL TESTS PASSED (4928/4928)\n",
+    "stderr": ""
+  },
+  "reproduce": [
+    "Fetch files at their pinned URLs and verify SHA-256 hashes.",
+    "Build repl.c and tinyexpr.c with the recorded flags and libm, then invoke the executable with -e followed by each expression.",
+    "Build smoke.c and tinyexpr.c with the same flags and libm and run the resulting test executable."
+  ]
+}

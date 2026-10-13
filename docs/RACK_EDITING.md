@@ -66,6 +66,10 @@ applying a value. The command also checks that original revision when committing
 so a concurrent change cannot be overwritten between drawing and applying the
 editor. Rejected drafts add no undo entry.
 
+![Direct frequency entry in a knob context menu](images/openpatch-parameter-entry.png)
+
+*Native Linux CI capture with a focused-editor fixture; playback is paused.*
+
 ## Shared MCP operation
 
 `duplicate_modules` uses an explicit, nonempty source-to-destination mapping.
