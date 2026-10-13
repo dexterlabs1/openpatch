@@ -1,6 +1,7 @@
 //! Original MIDI decoding and fixed-storage MIDI-to-voltage conversion.
 //! Wire channels are zero based. Poly pressure is accepted but intentionally
-//! ignored: the aftertouch output follows channel pressure, as Rack Core does.
+//! ignored: this subset's aftertouch output follows channel pressure only.
+//! Rack's pinned implementation also handles key pressure; see the manual review.
 use crate::{parameter, Node, PortFrame, MAX_CHANNELS};
 use serde::{Deserialize, Serialize};
 
