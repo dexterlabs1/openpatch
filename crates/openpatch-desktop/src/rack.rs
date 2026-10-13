@@ -463,6 +463,47 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
+                if node.kind == "midi_cv" {
+                    let x = 20.0 + (index % 2) as f32 * width * 0.5;
+                    let y = 90.0 + (index / 2) as f32 * 52.0;
+                    painter.text(
+                        point(x, y),
+                        Align2::LEFT_CENTER,
+                        parameter_label(name),
+                        FontId::proportional(10.0 * self.zoom),
+                        INK,
+                    );
+                    let control_rect = Rect::from_min_size(
+                        point(x, y + 10.0),
+                        vec2(width * 0.5 - 40.0, 25.0) * self.zoom,
+                    );
+                    let edit = match *name {
+                        "allocation" => self.choice_parameter(
+                            ui,
+                            node,
+                            name,
+                            spec,
+                            control_rect,
+                            &["Rotate", "Reuse", "Reset"],
+                        ),
+                        "channel" => self.choice_parameter(
+                            ui,
+                            node,
+                            name,
+                            spec,
+                            control_rect,
+                            &[
+                                "All", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
+                                "12", "13", "14", "15", "16",
+                            ],
+                        ),
+                        _ => self.compact_parameter(ui, node, name, spec, control_rect, ""),
+                    };
+                    if edit.is_some() {
+                        action = edit;
+                    }
+                    continue;
+                }
                 if node.kind == "poly_constant" {
                     continue;
                 }
@@ -953,6 +994,46 @@ impl Rack {
         action
     }
 
+    fn choice_parameter(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        parameter: &str,
+        spec: &Value,
+        rect: Rect,
+        choices: &[&str],
+    ) -> Option<RackAction> {
+        let old = node
+            .params
+            .get(parameter)
+            .copied()
+            .unwrap_or(spec["default"].as_f64().unwrap_or(0.0) as f32) as usize;
+        let mut value = old.min(choices.len() - 1);
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(rect)
+                .id_salt((&node.id, parameter)),
+            |ui| {
+                *ui.visuals_mut() = egui::Visuals::light();
+                ui.style_mut().override_font_id = Some(FontId::proportional(12.0 * self.zoom));
+                egui::ComboBox::from_id_salt("choice")
+                    .width(rect.width())
+                    .selected_text(choices[value])
+                    .show_ui(ui, |ui| {
+                        for (index, label) in choices.iter().enumerate() {
+                            ui.selectable_value(&mut value, index, *label);
+                        }
+                    });
+            },
+        );
+        (value != old).then(|| {
+            RackAction::Command(
+                "set_parameter",
+                json!({"id":node.id,"parameter":parameter,"value":value}),
+            )
+        })
+    }
+
     fn compact_parameter(
         &mut self,
         ui: &mut egui::Ui,
@@ -1212,7 +1293,13 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     if count > 4 {
         let rows = count.div_ceil(4);
-        let first_y = if input { 112.0 } else { 187.0 };
+        let first_y = if input {
+            112.0
+        } else if kind == "midi_cv" {
+            220.0
+        } else {
+            187.0
+        };
         let last_y = if input { 286.0 } else { 361.0 };
         return pos2(
             width * ((index % 4) + 1) as f32 / 5.0,
@@ -1602,6 +1689,8 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
 fn panel_width(kind: &str) -> f32 {
     match kind {
         "poly_constant" => HP * 24.0,
+        "midi_cv" => HP * 24.0,
+        "audio_stereo" => HP * 12.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
         "quantizer" => HP * 16.0,
@@ -1621,6 +1710,8 @@ fn panel_width(kind: &str) -> f32 {
 fn title(kind: &str) -> &str {
     match kind {
         "poly_constant" => "POLY VOLTAGE",
+        "midi_cv" => "MIDI → CV",
+        "audio_stereo" => "STEREO AUDIO",
         "poly_split" => "SPLIT",
         "poly_merge" => "MERGE",
         "poly_sum" => "SUM",
@@ -1667,6 +1758,10 @@ fn parameter_label(name: &str) -> &str {
         "level" => "LEVEL",
         "mix" => "MIX",
         "law" => "CURVE",
+        "channels" => "VOICES",
+        "channel" => "MIDI CHANNEL",
+        "allocation" => "ALLOCATION",
+        "clock_div" => "CLOCK DIVIDE",
         name => name,
     }
 }
@@ -1677,6 +1772,13 @@ fn port_label(name: &str) -> &str {
         "offset_cv" => "OFFSET",
         "trigger" => "TRIG",
         "signal" => "IN",
+        "velocity" => "VEL",
+        "aftertouch" => "AFT",
+        "pitchwheel" => "PITCH WHEEL",
+        "modwheel" => "MOD WHEEL",
+        "clock_div" => "CLK / N",
+        "clock" => "CLK",
+        "continue" => "CONT",
         other => other,
     }
 }
@@ -1686,6 +1788,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     };
     let order: &[&str] = match node.kind.as_str() {
         "quantizer" => &["scale_mask", "offset"],
+        "midi_cv" => &["channels", "channel", "allocation", "clock_div"],
         "white_noise" => &["level", "seed"],
         "attenuverter" => &["gain", "offset"],
         "crossfade" => &["mix", "law"],
@@ -2531,6 +2634,45 @@ mod tests {
         let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
         assert_eq!(candidate.cables[0].output, "out1");
         assert_eq!(candidate.cables[0].to, "a");
+    }
+
+    #[test]
+    fn midi_last_output_drags_to_stereo_right_without_parameter_hit_conflicts() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = Patch {
+            version: 2,
+            nodes: [("midi", "midi_cv"), ("audio", "audio_stereo")]
+                .into_iter()
+                .map(|(id, kind)| Node {
+                    id: id.into(),
+                    kind: kind.into(),
+                    params: Default::default(),
+                })
+                .collect(),
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            pos2(312.0, 373.0),
+            pos2(504.0, 344.0),
+        );
+        assert!(matches!(action, Some(RackAction::Command("connect", args))
+            if args["from"] == "midi" && args["output"] == "continue"
+                && args["to"] == "audio" && args["input"] == "right"));
+        let points: Vec<_> = (0..12)
+            .map(|index| port_position("midi_cv", false, index, 12, panel_width("midi_cv")))
+            .collect();
+        for (index, point) in points.iter().enumerate() {
+            assert!(point.y >= 220.0);
+            for other in &points[index + 1..] {
+                assert!(point.distance(*other) >= 65.0);
+            }
+        }
     }
 
     #[test]

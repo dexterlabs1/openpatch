@@ -30,9 +30,10 @@ advance the live patch revision.
 ## Native audio and rendering
 
 The UI polls the session revision and compiles changed patches for the device's
-sample rate, without rewriting the stored patch rate. CPAL uses the default
-output device with a supported f32, i16, or u16 format. Mono output is duplicated
-to the device's channels and bounded to [-1,1]. Device failures are surfaced in
+sample rate, without rewriting the stored patch rate. CPAL uses the selected or default
+output device with a supported f32, i16, or u16 format. Explicit stereo sinks
+map L/R to the first two channels (averaged on mono devices); other patches
+duplicate mono across device channels. Samples are bounded to [-1,1]. Device failures are surfaced in
 the window with a retry control; editing remains available without an audio device.
 
 Two bounded single-producer/single-consumer queues transfer compiled engine
@@ -45,7 +46,11 @@ approximately 5 ms. The precompiled ID lookup avoids allocation during adoption.
 Oscillator phases, capacitor states, and resampler histories survive edits.
 Transport and volume use
 an approximately 10 ms gain smoother. Pause fades the output to silence while
-the engine continues advancing; it is not a rewind.
+the engine continues advancing; it is not a rewind. Pause and resume reset MIDI
+performance state. Separate bounded hardware and UI MIDI queues deliver events
+at sample boundaries to both crossfade branches. Timestamp mapping, reset
+generations, keyboard behavior, and offline traces are documented in
+[MIDI and audio](MIDI_AUDIO.md).
 
 The audio callback publishes a decimated waveform and peak through atomics.
 Native visual analysis and OpenGL work run on the UI/render thread. The display

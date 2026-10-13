@@ -106,11 +106,16 @@ action explicitly converts a legacy patch and can be undone. An MCP client can
 make the same explicit conversion by replacing a patch with `version: 2`.
 Conversion changes timing. See [engine contracts](ENGINE_V2.md).
 
-**Playback and WAV export currently take the first channel of the selected
-output.** Use `poly_sum` to hear all voices as a mono mix, then `audio_out` for
-voltage-to-digital conversion. This is polyphonic internal routing, not
-multichannel hardware I/O. `poly_split` provides `out1` through `out16`, and
-`poly_merge` combines `in1` through `in16` without collapsing gaps.
+Select `audio_stereo.out` for explicit L/R playback and stereo WAV export. Each
+input sums its voices and converts 10 V to digital full scale; unpatched Right
+follows Left. All other selected outputs retain channel-0 mono monitoring.
+`poly_sum` explicitly mixes voices to mono, and `poly_split` / `poly_merge`
+provide individual channel routing. See [MIDI and audio](MIDI_AUDIO.md).
+
+Both `render_audio` and `analyze_signal` accept optional sample-timed
+`midi_events`, allowing reproducible MIDI performances from reset without
+changing live notes or patch history. The trace contract and CLI example are
+in the [performance guide](MIDI_AUDIO.md#reproducible-agent-performances).
 
 `analyze_signal` measures any named output offline from reset. It returns the
 snapshot revision, channel-count range, and per-channel active-frame count,

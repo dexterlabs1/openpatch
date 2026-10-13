@@ -1,6 +1,7 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 use openpatch_core::{
-    catalog, render, write_wav, Cable, Node, Patch, PortFrame, BLOCK_SIZE, MAX_CHANNELS,
+    catalog, render_audio_with_events, validate_midi_events, write_wav_interleaved, Cable, Node,
+    Patch, PortFrame, TimedMidiEvent, BLOCK_SIZE, MAX_CHANNELS,
 };
 use serde_json::{json, Value};
 use std::{
@@ -245,6 +246,8 @@ impl Session {
         patch.output_port = optional_string(args, "port", "out")?.into();
         let mut engine = patch.compile()?;
         let frames = (seconds * patch.sample_rate as f64).round() as usize;
+        let events = midi_events(args, frames)?;
+        let mut event_index = 0;
         let mut block = [PortFrame::default(); BLOCK_SIZE];
         let mut counts = [0_usize; MAX_CHANNELS];
         let mut sums = [0.0_f64; MAX_CHANNELS];
@@ -256,7 +259,15 @@ impl Session {
         let mut max_channels = 0;
         let mut min_channels = MAX_CHANNELS;
         while remaining > 0 {
-            let count = remaining.min(BLOCK_SIZE);
+            let cursor = frames - remaining;
+            while event_index < events.len() && events[event_index].frame == cursor as u64 {
+                engine.handle_midi(events[event_index].event);
+                event_index += 1;
+            }
+            let until_event = events
+                .get(event_index)
+                .map_or(remaining, |event| event.frame as usize - cursor);
+            let count = remaining.min(BLOCK_SIZE).min(until_event);
             engine.process_poly_block(&mut block[..count]);
             for frame in &block[..count] {
                 let channels = frame.channels as usize;
@@ -290,6 +301,7 @@ impl Session {
             json!({"revision":self.revision,"id":patch.output,"port":patch.output_port,
             "sample_rate":patch.sample_rate,"frames":frames,"min_channels":min_channels,
             "max_channels":max_channels,"channels":channels,"solver_failures":engine.solver_failures(),
+            "midi_event_count":events.len(),
             "state":"analyzed offline from reset","statistics":"active frames only; inactive channels excluded",
             "units":"raw module output units; consult catalog"}),
         )
@@ -335,14 +347,21 @@ impl Session {
                 if path.exists() {
                     return Err("destination already exists".into());
                 }
-                let samples = render(&self.patch, seconds)?;
+                let frames = (seconds * self.patch.sample_rate as f64).round() as usize;
+                let events = midi_events(&args, frames)?;
+                let rendered = render_audio_with_events(&self.patch, seconds, &events)?;
+                let samples = &rendered.samples;
                 let peak = samples.iter().fold(0.0_f32, |p, s| p.max(s.abs()));
                 let rms = (samples.iter().map(|s| (*s as f64).powi(2)).sum::<f64>()
                     / samples.len().max(1) as f64)
                     .sqrt();
-                write_wav(&path, &samples, self.patch.sample_rate).map_err(|e| e.to_string())?;
+                write_wav_interleaved(&path, samples, rendered.sample_rate, rendered.channels)
+                    .map_err(|e| e.to_string())?;
                 return Ok(
-                    json!({"filename":args["filename"],"frames":samples.len(),"sample_rate":self.patch.sample_rate,"peak":peak,"rms":rms,"revision":self.revision,"state":"rendered from reset","channel_policy":"first channel only; use poly_sum to mix all voices"}),
+                    json!({"filename":args["filename"],"frames":frames,"channels":rendered.channels,
+                    "sample_rate":rendered.sample_rate,"peak":peak,"rms":rms,"revision":self.revision,
+                    "state":"rendered from reset","midi_event_count":events.len(),
+                    "channel_policy":if rendered.channels == 2 { "explicit stereo L/R from audio_stereo" } else { "first channel only; use poly_sum to mix all voices" }}),
                 );
             }
             "benchmark" => {
@@ -466,6 +485,60 @@ impl Session {
         self.commit(candidate, expected_revision, group)?;
         Ok(self.snapshot())
     }
+}
+
+fn midi_events(args: &Value, frames: usize) -> Result<Vec<TimedMidiEvent>, String> {
+    let events = match args.get("midi_events") {
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|error| format!("invalid midi_events: {error}"))?,
+        None => Vec::new(),
+    };
+    validate_midi_events(&events, frames)?;
+    Ok(events)
+}
+
+fn midi_events_schema() -> Value {
+    let mut variants = Vec::new();
+    for (name, fields) in [
+        (
+            "note_on",
+            vec![("channel", 15), ("note", 127), ("velocity", 127)],
+        ),
+        (
+            "note_off",
+            vec![("channel", 15), ("note", 127), ("velocity", 127)],
+        ),
+        (
+            "control_change",
+            vec![("channel", 15), ("controller", 127), ("value", 127)],
+        ),
+        ("pitch_bend", vec![("channel", 15), ("value", 16383)]),
+        ("channel_pressure", vec![("channel", 15), ("pressure", 127)]),
+        (
+            "poly_pressure",
+            vec![("channel", 15), ("note", 127), ("pressure", 127)],
+        ),
+        ("clock", vec![]),
+        ("start", vec![]),
+        ("continue", vec![]),
+        ("stop", vec![]),
+        ("panic", vec![]),
+    ] {
+        let mut properties = serde_json::Map::new();
+        properties.insert("type".into(), json!({"const":name}));
+        let mut required = vec!["type"];
+        for (field, maximum) in fields {
+            properties.insert(
+                field.into(),
+                json!({"type":"integer","minimum":0,"maximum":maximum}),
+            );
+            required.push(field);
+        }
+        variants.push(json!({"type":"object","properties":properties,"required":required,"additionalProperties":false}));
+    }
+    json!({"type":"array","maxItems":65536,
+        "description":"Sample-frame MIDI trace, sorted by frame; equal-frame events preserve array order. Channels are zero-based. Offline only; no live playback or history edits.",
+        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"event":{"oneOf":variants}},"required":["frame","event"],"additionalProperties":false}})
 }
 
 fn patch_changes(before: &Patch, after: &Patch) -> Value {
@@ -617,6 +690,7 @@ fn tool(
 pub fn tools() -> Value {
     let s = json!({"type":"string"});
     let rev = json!({"type":"integer","minimum":0});
+    let midi_events = midi_events_schema();
     let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
         "type":"object","properties":{"tool":{"type":"string","enum":EDIT_TOOLS},"arguments":{"type":"object"}},
         "required":["tool","arguments"],"additionalProperties":false
@@ -636,11 +710,11 @@ pub fn tools() -> Value {
         tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
         tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
-        tool("set_output","Select a module output port (default out). Native playback and render_audio use channel 1; add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
+        tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
-        tool("render_audio","Render offline from reset to mono 16-bit WAV in workspace. Does not play speakers. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30}}),&["filename","seconds"],false),
-        tool("analyze_signal","Measure a named output offline from reset, reporting per-channel active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; explicit audio_out converts volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2}}),&["id","seconds"],true),
+        tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI events drive midi_cv modules. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events}),&["filename","seconds"],false),
+        tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events}),&["id","seconds"],true),
         tool("benchmark","Measure this patch's offline DSP throughput, excluding compilation. Release builds recommended. No VCV Rack comparison.",json!({"seconds":{"type":"number","minimum":0.01,"maximum":5}}),&[],true)
     ])
 }
@@ -648,6 +722,7 @@ pub fn tools() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openpatch_core::render;
 
     fn session() -> Session {
         Session::new(&std::env::temp_dir()).unwrap()

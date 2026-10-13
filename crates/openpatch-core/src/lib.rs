@@ -18,7 +18,9 @@ use std::path::Path;
 
 mod analog;
 pub mod ladder;
+pub mod midi;
 mod poly;
+pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
 mod utilities;
 pub use poly::{PortFrame, MAX_CHANNELS};
 
@@ -770,6 +772,45 @@ enum EngineKind {
     Poly(poly::PolyEngine),
 }
 impl Engine {
+    /// Invalid direct events are ignored without allocating on the audio thread.
+    /// Legacy graphs have no MIDI modules and ignore all events.
+    pub fn handle_midi(&mut self, event: MidiEvent) {
+        if event.is_valid() {
+            if let EngineKind::Poly(engine) = &mut self.inner {
+                engine.handle_midi(event);
+            }
+        }
+    }
+    /// Only an explicitly selected audio_stereo.out is a stereo audio sink.
+    pub fn output_channels(&self) -> u16 {
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.output_channels(),
+            _ => 1,
+        }
+    }
+    /// Render device frames. Mono outputs are duplicated to left and right;
+    /// arbitrary two-voice CV ports retain the ordinary channel-zero adapter.
+    pub fn process_audio_block(&mut self, output: &mut [[f32; 2]]) {
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                for sample in output {
+                    let frame = engine.process_sample();
+                    let left = frame.channel(0);
+                    *sample = [left, if stereo { frame.channel(1) } else { left }];
+                }
+            }
+            EngineKind::Legacy(engine) => {
+                let mut mono = [0.0; BLOCK_SIZE];
+                for chunk in output.chunks_mut(BLOCK_SIZE) {
+                    engine.process_block(&mut mono[..chunk.len()]);
+                    for (frame, sample) in chunk.iter_mut().zip(&mono) {
+                        *frame = [*sample; 2];
+                    }
+                }
+            }
+        }
+    }
     pub fn solver_failures(&self) -> u64 {
         match &self.inner {
             EngineKind::Legacy(engine) => engine.solver_failures(),
@@ -931,12 +972,105 @@ pub fn render(patch: &Patch, seconds: f64) -> Result<Vec<f32>, String> {
     Ok(samples)
 }
 
-/// Write a new mono PCM16 WAV. Existing files are never overwritten. NaN maps
-/// to silence; infinities and samples outside ±1 are clipped during export.
+/// Interleaved audio from an explicitly selected mono or stereo output.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderedAudio {
+    pub samples: Vec<f32>,
+    pub channels: u16,
+    pub sample_rate: u32,
+}
+/// Maximum number of scheduled events in one offline request.
+pub const MAX_MIDI_EVENTS: usize = 65_536;
+/// Shared trace validation: nondecreasing absolute frames strictly inside the
+/// render. Equal-frame events preserve their supplied order. No events are
+/// valid in a zero-frame render.
+pub fn validate_midi_events(events: &[TimedMidiEvent], total_frames: usize) -> Result<(), String> {
+    if events.len() > MAX_MIDI_EVENTS {
+        return Err(format!("MIDI trace exceeds {MAX_MIDI_EVENTS} events"));
+    }
+    let mut previous = 0;
+    for (index, timed) in events.iter().enumerate() {
+        timed
+            .event
+            .validate()
+            .map_err(|e| format!("MIDI event {index}: {e}"))?;
+        if timed.frame >= total_frames as u64 {
+            return Err(format!("MIDI event {index}: frame is outside render"));
+        }
+        if index > 0 && timed.frame < previous {
+            return Err(format!("MIDI event {index}: frames must be sorted"));
+        }
+        previous = timed.frame;
+    }
+    Ok(())
+}
+pub fn render_audio(patch: &Patch, seconds: f64) -> Result<RenderedAudio, String> {
+    render_audio_with_events(patch, seconds, &[])
+}
+/// Apply events before their indicated sample, independent of block partitions.
+pub fn render_audio_with_events(
+    patch: &Patch,
+    seconds: f64,
+    events: &[TimedMidiEvent],
+) -> Result<RenderedAudio, String> {
+    if !seconds.is_finite() || !(0.0..=30.0).contains(&seconds) {
+        return Err("seconds must be finite and in 0..=30".into());
+    }
+    let mut engine = patch.compile()?;
+    let count = (seconds * patch.sample_rate as f64).round() as usize;
+    validate_midi_events(events, count)?;
+    let channels = engine.output_channels();
+    let mut samples = Vec::new();
+    samples
+        .try_reserve_exact(count * channels as usize)
+        .map_err(|e| format!("cannot allocate render buffer: {e}"))?;
+    let mut buffer = [[0.0; 2]; BLOCK_SIZE];
+    let mut frame = 0;
+    let mut next = 0;
+    while frame < count {
+        while next < events.len() && events[next].frame == frame as u64 {
+            engine.handle_midi(events[next].event);
+            next += 1;
+        }
+        let end = if next < events.len() {
+            count.min(events[next].frame as usize)
+        } else {
+            count
+        };
+        let length = (end - frame).min(BLOCK_SIZE);
+        engine.process_audio_block(&mut buffer[..length]);
+        for pair in &buffer[..length] {
+            samples.extend_from_slice(&pair[..channels as usize]);
+        }
+        frame += length;
+    }
+    Ok(RenderedAudio {
+        samples,
+        channels,
+        sample_rate: patch.sample_rate,
+    })
+}
+
+/// Write a new mono PCM16 WAV. Existing files are never overwritten.
 pub fn write_wav(path: &Path, samples: &[f32], rate: u32) -> io::Result<()> {
+    write_wav_interleaved(path, samples, rate, 1)
+}
+/// Write interleaved mono/stereo PCM16. NaN maps to silence; other values clip
+/// to ±1. Header arithmetic and complete frame alignment are checked before
+/// creating the file. Existing files are never overwritten.
+pub fn write_wav_interleaved(
+    path: &Path,
+    samples: &[f32],
+    rate: u32,
+    channels: u16,
+) -> io::Result<()> {
     let invalid = |message| io::Error::new(io::ErrorKind::InvalidInput, message);
+    if !(1..=2).contains(&channels) || !samples.len().is_multiple_of(channels as usize) {
+        return Err(invalid("WAV requires complete mono or stereo frames"));
+    }
+    let block_align = channels * 2;
     let byte_rate = rate
-        .checked_mul(2)
+        .checked_mul(u32::from(block_align))
         .filter(|_| rate > 0)
         .ok_or_else(|| invalid("invalid WAV sample rate"))?;
     let data_size = samples
@@ -951,11 +1085,11 @@ pub fn write_wav(path: &Path, samples: &[f32], rate: u32) -> io::Result<()> {
     writer.write_all(&(data_size + 36).to_le_bytes())?;
     writer.write_all(b"WAVEfmt ")?;
     writer.write_all(&16u32.to_le_bytes())?;
-    writer.write_all(&1u16.to_le_bytes())?; // PCM
-    writer.write_all(&1u16.to_le_bytes())?; // mono
+    writer.write_all(&1u16.to_le_bytes())?;
+    writer.write_all(&channels.to_le_bytes())?;
     writer.write_all(&rate.to_le_bytes())?;
     writer.write_all(&byte_rate.to_le_bytes())?;
-    writer.write_all(&2u16.to_le_bytes())?;
+    writer.write_all(&block_align.to_le_bytes())?;
     writer.write_all(&16u16.to_le_bytes())?;
     writer.write_all(b"data")?;
     writer.write_all(&data_size.to_le_bytes())?;

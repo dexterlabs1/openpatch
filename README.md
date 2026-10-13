@@ -117,11 +117,11 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**Twenty-two built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, and seven legacy modules. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**Twenty-four built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
-New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. Hardware output and WAV export currently use the first channel; **SUM** mixes polyphonic voices to mono. MIDI, device selection, multichannel hardware audio, VCV patch/plugin compatibility, and broader module coverage remain ahead.
+New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. The explicit **STEREO AUDIO** sink sums polyphonic voices into left/right output and stereo WAV files; other selected outputs retain channel-0 mono behavior. Hardware audio input, expanded multichannel I/O, MIDI output/mapping, VCV patch/plugin compatibility, and broader module coverage remain ahead. See [MIDI and audio](docs/MIDI_AUDIO.md) for performance controls and sample-timed MCP traces.
 
 **Performance goal:** low CPU use and predictable audio deadlines on large patches. The latest paired M1 Max reference-voice benchmark takes about **33% less processing time** than the previous OpenPatch build, with matching checked signals. Sixteen full circuit voices still exceed realtime capacity. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [results and methodology](docs/PERFORMANCE.md).
 
@@ -129,6 +129,7 @@ New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 
 
 | Guide | What it covers |
 |---|---|
+| [MIDI and audio](docs/MIDI_AUDIO.md) | Keyboard performance, input devices, stereo routing, and reproducible agent performances |
 | [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
 | [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |

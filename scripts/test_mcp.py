@@ -10,6 +10,7 @@ import json
 import os
 import queue
 import subprocess
+import struct
 import tempfile
 import threading
 import unittest
@@ -296,6 +297,63 @@ class OpenPatchMCPTests(unittest.TestCase):
         restored = self.patch_snapshot()
         self.assertEqual(restored["patch"]["version"], 1)
         self.assertEqual(len(restored["patch"]["nodes"]), 1)
+
+    def test_stereo_render_preserves_channels_and_normalization(self) -> None:
+        patch = {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "left", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": 3}},
+            {"id": "right", "kind": "constant", "params": {"value": -2.5}},
+            {"id": "out", "kind": "audio_stereo"}], "cables": [
+            {"from": "left", "to": "out", "input": "left"},
+            {"from": "right", "to": "out", "input": "right"}], "output": "out"}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        before = self.patch_snapshot()
+        rendered = self.payload(self.require_tool_success("render_audio", {"filename": "stereo.wav", "seconds": 0.001}))
+        self.assertEqual(rendered["channels"], 2)
+        self.assertEqual(rendered["frames"], 48)
+        with wave.open(str(self.workspace / "stereo.wav")) as wav:
+            self.assertEqual(wav.getnchannels(), 2)
+            self.assertEqual(wav.getnframes(), 48)
+            samples = struct.unpack("<96h", wav.readframes(48))
+        self.assertEqual(samples[:2], (0, 0))
+        self.assertAlmostEqual(samples[-2], 16384, delta=1)
+        self.assertAlmostEqual(samples[-1], -8192, delta=1)
+        self.assertEqual(self.patch_snapshot(), before)
+        patch["cables"].pop()
+        self.require_tool_success("replace_patch", {"patch": patch})
+        self.require_tool_success("render_audio", {"filename": "normal.wav", "seconds": 0.001})
+        with wave.open(str(self.workspace / "normal.wav")) as wav:
+            samples = struct.unpack("<96h", wav.readframes(48))
+        self.assertEqual(samples[::2], samples[1::2])
+
+    def test_midi_trace_is_sample_timed_repeatable_and_read_only(self) -> None:
+        patch = {"version": 2, "sample_rate": 48000,
+                 "nodes": [{"id": "midi", "kind": "midi_cv", "params": {"channels": 1}}],
+                 "output": "midi", "output_port": "gate"}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        before = self.patch_snapshot()
+        events = [
+            {"frame": 12, "event": {"type": "note_on", "channel": 0, "note": 60, "velocity": 100}},
+            {"frame": 36, "event": {"type": "note_off", "channel": 0, "note": 60, "velocity": 0}}]
+        analyzed = self.payload(self.require_tool_success("analyze_signal", {
+            "id": "midi", "port": "gate", "seconds": 0.001, "midi_events": events}))
+        self.assertEqual(analyzed["midi_event_count"], 2)
+        self.assertEqual(analyzed["channels"][0]["mean"], 5.0)
+        for filename in ["first.wav", "second.wav"]:
+            self.require_tool_success("render_audio", {"filename": filename, "seconds": 0.001, "midi_events": events})
+        self.assertEqual((self.workspace / "first.wav").read_bytes(), (self.workspace / "second.wav").read_bytes())
+        with wave.open(str(self.workspace / "first.wav")) as wav:
+            samples = struct.unpack("<48h", wav.readframes(48))
+        self.assertTrue(all(value == 0 for value in samples[:12] + samples[36:]))
+        self.assertTrue(all(value == 32767 for value in samples[12:36]))
+        bad_traces = [list(reversed(events)),
+                      [{"frame": 48, "event": {"type": "panic"}}],
+                      [{"frame": 0, "event": {"type": "panic", "extra": 1}}],
+                      [{"frame": 0, "event": {"type": "note_on", "channel": 16, "note": 60, "velocity": 100}}]]
+        for trace in bad_traces:
+            self.require_tool_error("render_audio", {"filename": "invalid.wav", "seconds": 0.001, "midi_events": trace})
+            self.require_tool_error("analyze_signal", {"id": "midi", "port": "gate", "seconds": 0.001, "midi_events": trace})
+            self.assertFalse((self.workspace / "invalid.wav").exists())
+        self.assertEqual(self.patch_snapshot(), before)
 
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")

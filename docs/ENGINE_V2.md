@@ -37,6 +37,12 @@ mono adapter: channel 0, or zero when there are no channels. It does not sum
 voices. Use `poly_sum` for a deliberate mono mix. Selecting a source output
 reads its current frame without adding an extra imaginary cable.
 
+`process_audio_block(&mut [[f32; 2]])` exposes explicit L/R only when the selected
+sink is `audio_stereo.out`; other selections duplicate mono. `output_channels()`
+reports this layout. `handle_midi(MidiEvent)` delivers validated events to all
+MIDI → CV modules without allocation. Interleaved offline rendering and timed
+traces are described in [MIDI and audio](MIDI_AUDIO.md).
+
 ## Sample timing and feedback
 
 In version 2, a cable delivers the source's completed previous-sample frame,

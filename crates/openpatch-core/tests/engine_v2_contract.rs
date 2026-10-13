@@ -406,3 +406,71 @@ fn invalid_channels_ports_and_duplicate_destinations_reject_before_rendering() {
     bad.cables.push(bad.cables[0].clone());
     assert!(bad.compile().is_err());
 }
+
+#[test]
+fn midi_events_stereo_first_callback_and_adoption_neither_allocate_nor_free() {
+    use openpatch_core::MidiEvent;
+    let p = patch(
+        vec![
+            node("m", "midi_cv", &[("channels", 16.0)]),
+            node("a", "audio_stereo", &[]),
+        ],
+        vec![cable("m", "gate", "a", "left")],
+        "a",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let mut poly = [PortFrame::default(); 129];
+    let mut audio = [[0.0; 2]; 129];
+    let mut mono = [0.0; 129];
+    let events = [
+        MidiEvent::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        },
+        MidiEvent::ControlChange {
+            channel: 0,
+            controller: 64,
+            value: 127,
+        },
+        MidiEvent::NoteOff {
+            channel: 0,
+            note: 60,
+            velocity: 0,
+        },
+        MidiEvent::Clock,
+        MidiEvent::Start,
+        MidiEvent::Stop,
+        MidiEvent::Continue,
+        MidiEvent::PitchBend {
+            channel: 0,
+            value: 16383,
+        },
+        MidiEvent::ChannelPressure {
+            channel: 0,
+            pressure: 127,
+        },
+        MidiEvent::Panic,
+        MidiEvent::NoteOn {
+            channel: 255,
+            note: 255,
+            velocity: 255,
+        },
+    ];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for _ in 0..30 {
+        for event in events {
+            old.handle_midi(event);
+            old.process_audio_block(&mut audio);
+            new.adopt_state_from(&old);
+            new.handle_midi(event);
+            new.process_poly_block(&mut poly);
+            new.process_block(&mut mono);
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(audio.iter().flatten().all(|v| v.is_finite()));
+}

@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "midi",
+      "kind": "midi_cv",
+      "params": {
+        "channels": 4
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 261.6256
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 1800,
+        "resonance": 0.45
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.015,
+        "decay": 0.18,
+        "sustain": 0.4,
+        "release": 0.25
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca"
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.6
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "vco",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "to": "vca",
+      "input": "signal"
+    },
+    {
+      "from": "envelope",
+      "to": "vca",
+      "input": "cv"
+    },
+    {
+      "from": "midi",
+      "output": "pitch",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "midi",
+      "output": "gate",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "midi",
+      "output": "retrigger",
+      "to": "envelope",
+      "input": "retrigger"
+    },
+    {
+      "from": "vca",
+      "to": "out",
+      "input": "left"
+    }
+  ],
+  "output": "out"
+}

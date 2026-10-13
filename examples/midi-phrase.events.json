@@ -1,0 +1,110 @@
+[
+  {
+    "frame": 0,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 60,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 0,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 0,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 67,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 24000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 60,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 24000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 24000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 67,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 36000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 62,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 36000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 65,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 36000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 69,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 60000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 62,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 60000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 65,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 60000,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 69,
+      "velocity": 0
+    }
+  }
+]

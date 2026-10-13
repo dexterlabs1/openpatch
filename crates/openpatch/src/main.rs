@@ -1,5 +1,8 @@
 use openpatch::{control::Application, mcp, visualizer};
-use openpatch_core::{demo_patch, render, write_wav, Patch};
+use openpatch_core::{
+    demo_patch, render, render_audio_with_events, write_wav, write_wav_interleaved, Patch,
+    TimedMidiEvent,
+};
 use std::{fs, path::Path};
 
 fn run() -> Result<(), String> {
@@ -28,14 +31,25 @@ fn run() -> Result<(), String> {
             );
             Ok(())
         }
-        Some("render") if args.len() == 4 => {
+        Some("render") if args.len() == 4 || (args.len() == 6 && args[4] == "--midi") => {
             let patch: Patch =
                 serde_json::from_slice(&fs::read(&args[1]).map_err(|e| e.to_string())?)
                     .map_err(|e| e.to_string())?;
             let seconds = args[3].parse().map_err(|_| "invalid seconds")?;
-            let samples = render(&patch, seconds)?;
-            write_wav(Path::new(&args[2]), &samples, patch.sample_rate)
-                .map_err(|e| e.to_string())?;
+            let events: Vec<TimedMidiEvent> = if args.len() == 6 {
+                serde_json::from_slice(&fs::read(&args[5]).map_err(|e| e.to_string())?)
+                    .map_err(|e| format!("invalid MIDI trace: {e}"))?
+            } else {
+                Vec::new()
+            };
+            let rendered = render_audio_with_events(&patch, seconds, &events)?;
+            write_wav_interleaved(
+                Path::new(&args[2]),
+                &rendered.samples,
+                rendered.sample_rate,
+                rendered.channels,
+            )
+            .map_err(|e| e.to_string())?;
             Ok(())
         }
         Some("catalog") if args.len() == 1 => {
@@ -50,7 +64,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS\n  visualizer OUTPUT.html\n  catalog\n  --version\n\nMCP uses stdio. Files are never overwritten. This prototype renders offline.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n\nMCP uses stdio. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),

@@ -1,5 +1,7 @@
 use crate::{
     audio::Audio,
+    keyboard::Keyboard,
+    midi::{MidiInputManager, MidiPortInfo},
     rack::{Rack, RackAction},
     visuals::{Visualizer, DEFAULT_SHADER},
 };
@@ -8,7 +10,7 @@ use eframe::{
     glow,
 };
 use openpatch::control::{execute_shared, SharedSession};
-use openpatch_core::{catalog, Patch};
+use openpatch_core::{catalog, MidiEvent, Patch};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -42,6 +44,16 @@ pub struct OpenPatch {
     audio_revision: Option<u64>,
     audio: Option<Audio>,
     device: String,
+    output_device: Option<String>,
+    output_devices: Vec<String>,
+    midi: Option<MidiInputManager>,
+    midi_ports: Vec<MidiPortInfo>,
+    midi_device: Option<String>,
+    midi_epoch: u64,
+    settings_open: bool,
+    settings_status: String,
+    keyboard: Keyboard,
+    keyboard_open: bool,
     rack: Rack,
     visualizer: Option<Visualizer>,
     gl: Option<std::sync::Arc<glow::Context>>,
@@ -102,7 +114,19 @@ impl OpenPatch {
                 s.workspace().display().to_string(),
             )
         };
-        let (audio, device) = Self::open_audio(&patch);
+        let preferences = std::fs::read(PathBuf::from(&workspace).join(".host-settings.json"))
+            .ok()
+            .filter(|bytes| bytes.len() <= 16_384)
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .unwrap_or(Value::Null);
+        let output_device = preferences["output_device"].as_str().map(str::to_owned);
+        let midi_device = preferences["midi_device"].as_str().map(str::to_owned);
+        let (mut audio, device) = Self::open_audio(&patch, output_device.as_deref());
+        let midi_epoch = audio.as_ref().map_or(0, Audio::midi_epoch);
+        let midi = audio
+            .as_mut()
+            .and_then(Audio::take_midi_sender)
+            .map(MidiInputManager::new);
         let (visualizer, shader_status) = match cc.gl.as_ref().map(|gl| Visualizer::new(gl)) {
             Some(Ok(v)) => (Some(v), "GLSL 330 ready".into()),
             Some(Err(e)) => (None, e),
@@ -119,6 +143,16 @@ impl OpenPatch {
             audio_revision,
             audio,
             device,
+            output_device,
+            output_devices: Vec::new(),
+            midi,
+            midi_ports: Vec::new(),
+            midi_device,
+            midi_epoch,
+            settings_open: false,
+            settings_status: String::new(),
+            keyboard: Keyboard::default(),
+            keyboard_open: false,
             rack: Rack::default(),
             visualizer,
             gl: cc.gl.clone(),
@@ -151,16 +185,233 @@ impl OpenPatch {
             smoke_test: smoke_test.map(|path| (path, 0, 0)),
         };
         app.refresh_files();
+        app.refresh_devices();
+        app.connect_selected_midi();
         app
     }
-    fn open_audio(patch: &Patch) -> (Option<Audio>, String) {
-        match Audio::new(patch) {
+    fn open_audio(patch: &Patch, device: Option<&str>) -> (Option<Audio>, String) {
+        let opened = match device {
+            Some(device) => Audio::new_with_device(patch, Some(device)),
+            None => Audio::new(patch),
+        };
+        match opened {
             Ok(audio) => {
-                let label = format!("{} · {} Hz", audio.device_name, audio.sample_rate);
+                let label = format!(
+                    "{} · {} Hz · {} output channels",
+                    audio.device_name, audio.sample_rate, audio.device_channels
+                );
                 (Some(audio), label)
             }
             Err(e) => (None, e),
         }
+    }
+    fn save_host_settings(&mut self) {
+        let path = PathBuf::from(&self.workspace).join(".host-settings.json");
+        let temporary = path.with_extension(format!(
+            "{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let result = (|| -> Result<(), String> {
+            let data = serde_json::to_vec_pretty(&json!({
+                "output_device": self.output_device, "midi_device": self.midi_device
+            }))
+            .map_err(|e| e.to_string())?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)
+                .map_err(|e| e.to_string())?;
+            file.write_all(&data).map_err(|e| e.to_string())?;
+            drop(file);
+            std::fs::rename(&temporary, &path).map_err(|e| e.to_string())
+        })();
+        if let Err(error) = result {
+            self.settings_status =
+                format!("Device selected; preferences could not be saved: {error}");
+        }
+    }
+    fn refresh_devices(&mut self) {
+        match Audio::output_devices() {
+            Ok(devices) => self.output_devices = devices,
+            Err(error) => self.settings_status = error,
+        }
+        if let Some(midi) = &mut self.midi {
+            match midi.refresh() {
+                Ok(ports) => self.midi_ports = ports,
+                Err(error) => self.settings_status = error,
+            }
+        }
+    }
+    fn connect_selected_midi(&mut self) {
+        if let Some(midi) = &mut self.midi {
+            midi.disconnect();
+            if let Some(id) = &self.midi_device {
+                match midi.connect(id) {
+                    Ok(()) => {
+                        self.settings_status = "MIDI connected — press Play to perform".into()
+                    }
+                    Err(error) => self.settings_status = error,
+                }
+            }
+        }
+    }
+    fn reopen_audio(&mut self, selected: Option<String>) {
+        let (audio, label) = Self::open_audio(&self.patch, selected.as_deref());
+        if let Some(mut audio) = audio {
+            self.midi = None;
+            self.keyboard.release();
+            audio.set_volume(self.volume);
+            self.midi_epoch = audio.midi_epoch();
+            self.midi = audio.take_midi_sender().map(MidiInputManager::new);
+            self.audio = Some(audio);
+            self.device = label;
+            self.output_device = selected;
+            self.audio_revision = Some(self.revision);
+            self.status = "Audio ready — press Play".into();
+            self.refresh_devices();
+            self.connect_selected_midi();
+            self.save_host_settings();
+        } else {
+            self.settings_status = label;
+        }
+    }
+    fn send_notes(&mut self, events: Vec<MidiEvent>) {
+        if let Some(audio) = &mut self.audio {
+            if !audio.is_playing() {
+                return;
+            }
+            for event in events {
+                if !audio.send_midi_in_epoch(event, self.midi_epoch) {
+                    self.keyboard.release();
+                    self.status = "MIDI queue reset — play the notes again".into();
+                    break;
+                }
+            }
+        }
+    }
+    fn panic_notes(&mut self) {
+        self.keyboard.release();
+        if let Some(audio) = &self.audio {
+            audio.panic_midi();
+        }
+    }
+    fn performance_keyboard(&mut self, ctx: &egui::Context) {
+        let enabled = self.keyboard_open
+            && self.audio.as_ref().is_some_and(Audio::is_playing)
+            && !ctx.wants_keyboard_input()
+            && ctx.input(|i| i.focused)
+            && !self.browser_open
+            && self.file_mode.is_none()
+            && !self.shader_open
+            && !self.settings_open
+            && !self.confirm_close
+            && !self.confirm_engine_upgrade
+            && self.confirm_discard.is_none();
+        let events = self.keyboard.update(ctx, enabled);
+        self.send_notes(events);
+        if self.keyboard_open {
+            let mut events = Vec::new();
+            egui::TopBottomPanel::bottom("performance-keyboard").show(ctx, |ui| {
+                events = self.keyboard.show(ui, enabled);
+            });
+            self.send_notes(events);
+        }
+    }
+    fn audio_settings(&mut self, ctx: &egui::Context) {
+        if !self.settings_open {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Audio & MIDI")
+            .open(&mut open)
+            .resizable(false)
+            .default_width(430.0)
+            .show(ctx, |ui| {
+                ui.heading("Audio output");
+                let mut selected = self.output_device.clone();
+                egui::ComboBox::from_id_salt("audio-device")
+                    .width(390.0)
+                    .selected_text(selected.as_deref().unwrap_or("System default"))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut selected, None, "System default");
+                        for device in &self.output_devices {
+                            ui.selectable_value(&mut selected, Some(device.clone()), device);
+                        }
+                    });
+                if selected != self.output_device {
+                    self.reopen_audio(selected);
+                }
+                ui.label(&self.device);
+                if self
+                    .audio
+                    .as_ref()
+                    .is_some_and(|audio| audio.device_channels == 1)
+                {
+                    ui.label("Mono device: stereo patches are mixed to (L + R) / 2.");
+                }
+                ui.label("Changing the output pauses playback. Sample rate follows the device.");
+                ui.separator();
+                ui.heading("MIDI input");
+                let mut midi = self.midi_device.clone();
+                let midi_label = midi
+                    .as_ref()
+                    .map(|id| {
+                        self.midi_ports
+                            .iter()
+                            .find(|port| &port.id == id)
+                            .map_or("Unavailable device", |port| port.name.as_str())
+                    })
+                    .unwrap_or("None — use the on-screen keyboard");
+                egui::ComboBox::from_id_salt("midi-device")
+                    .width(390.0)
+                    .selected_text(midi_label)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut midi, None, "None — use the on-screen keyboard");
+                        for port in &self.midi_ports {
+                            ui.selectable_value(&mut midi, Some(port.id.clone()), &port.name);
+                        }
+                    });
+                if midi != self.midi_device {
+                    self.midi_device = midi;
+                    self.connect_selected_midi();
+                    self.save_host_settings();
+                }
+                let connected = self
+                    .midi
+                    .as_ref()
+                    .and_then(MidiInputManager::connected_id)
+                    .is_some();
+                ui.label(if connected {
+                    "MIDI connected"
+                } else {
+                    "No hardware MIDI input connected"
+                });
+                ui.label("Add MIDI → CV and connect pitch, gate and retrigger to a voice.");
+                ui.label("Pause, reconnect, and voice allocation changes release held notes.");
+                ui.horizontal(|ui| {
+                    if ui.button("Refresh devices").clicked() {
+                        self.refresh_devices();
+                    }
+                    if ui.button("Reconnect MIDI").clicked() {
+                        self.connect_selected_midi();
+                    }
+                    if ui.button("All notes off").clicked() {
+                        self.panic_notes();
+                    }
+                });
+                ui.checkbox(&mut self.keyboard_open, "Show performance keyboard");
+                if let Some(audio) = &self.audio {
+                    if audio.midi_overflows() > 0 {
+                        ui.label(format!("MIDI queue resets: {}", audio.midi_overflows()));
+                    }
+                }
+                ui.label(&self.settings_status);
+            });
+        self.settings_open = open;
     }
     fn refresh_files(&mut self) {
         self.files = std::fs::read_dir(&self.workspace)
@@ -223,9 +474,18 @@ impl OpenPatch {
                 self.revision = s.revision();
             }
         }
+        if let Some(midi) = &mut self.midi {
+            if let Some(error) = midi.poll() {
+                self.settings_status = error;
+            }
+        }
         let mut failure = None;
         if let Some(audio) = &mut self.audio {
             audio.service();
+            if self.midi_epoch != audio.midi_epoch() {
+                self.midi_epoch = audio.midi_epoch();
+                self.keyboard.release();
+            }
             if self.audio_revision != Some(self.revision) {
                 match audio.submit_patch(&self.patch) {
                     Ok(()) => self.audio_revision = Some(self.revision),
@@ -243,6 +503,8 @@ impl OpenPatch {
             }
         }
         if let Some(error) = failure {
+            self.midi = None;
+            self.keyboard.release();
             self.audio = None;
             self.audio_revision = None;
             self.device = error;
@@ -290,6 +552,7 @@ impl OpenPatch {
         self.replace_now(patch, title);
     }
     fn replace_now(&mut self, patch: Patch, title: &str) {
+        self.panic_notes();
         if self.command("replace_patch", json!({"patch":patch})) {
             self.title = title.into();
             self.rack = Rack::default();
@@ -307,7 +570,7 @@ impl OpenPatch {
             kind: kind.into(),
             params: Default::default(),
         });
-        if matches!(kind, "output" | "audio_out") && patch.output.is_none() {
+        if matches!(kind, "output" | "audio_out" | "audio_stereo") && patch.output.is_none() {
             patch.output = Some(id.clone());
         }
         if self.command("replace_patch", json!({"patch":patch})) {
@@ -326,6 +589,9 @@ impl OpenPatch {
         } else {
             "load_patch"
         };
+        if mode == FileMode::Open {
+            self.panic_notes();
+        }
         if !self.command(op, json!({"filename":self.filename})) {
             return;
         }
@@ -408,6 +674,15 @@ impl OpenPatch {
                             self.replace_from_menu(patch, "Clocked random voice");
                             ui.close();
                         }
+                        if ui.button("MIDI keyboard voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/midi-keyboard-voice.json"
+                            ))
+                            .expect("valid bundled MIDI voice");
+                            self.replace_from_menu(patch, "MIDI keyboard voice");
+                            self.keyboard_open = true;
+                            ui.close();
+                        }
                         if ui.button("Polyphonic voice").clicked() {
                             let patch = serde_json::from_str(include_str!(
                                 "../../../examples/polyphonic-voice.json"
@@ -450,6 +725,7 @@ impl OpenPatch {
                     });
                     ui.menu_button("View", |ui| {
                         ui.checkbox(&mut self.visuals_open, "Visualizers");
+                        ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
                         if ui.button("Reset rack view").clicked() {
                             self.rack.reset_view();
                             ui.close();
@@ -464,6 +740,12 @@ impl OpenPatch {
                         self.browse();
                     }
                     ui.toggle_value(&mut self.visuals_open, "Visuals");
+                    if ui.button("Audio / MIDI").clicked() {
+                        self.settings_open = !self.settings_open;
+                        if self.settings_open {
+                            self.refresh_devices();
+                        }
+                    }
                     ui.add_space(10.0);
                     let mut zoom = self.rack.zoom() * 100.0;
                     ui.label(RichText::new("Zoom").color(MUTED));
@@ -545,14 +827,7 @@ impl OpenPatch {
                                 .on_hover_text(&self.device)
                                 .clicked()
                             {
-                                let (a, d) = Self::open_audio(&self.patch);
-                                self.audio = a;
-                                self.device = d;
-                                if let Some(a) = &self.audio {
-                                    a.set_volume(self.volume);
-                                    self.audio_revision = Some(self.revision);
-                                    self.status = "Audio ready".into();
-                                }
+                                self.reopen_audio(self.output_device.clone());
                             }
                         } else if let Some(audio) = &self.audio {
                             if audio.solver_failures() != 0 {
@@ -987,7 +1262,21 @@ impl OpenPatch {
             self.rack.set_zoom(zoom);
             self.title = title.into();
         }
-        if matches!(*frame, 12 | 24 | 36 | 48 | 60) {
+        if *frame == 64 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/midi-keyboard-voice.json"))
+                    .expect("valid bundled MIDI voice");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("MIDI voice compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(0.75);
+            self.title = "MIDI keyboard voice".into();
+            self.keyboard_open = true;
+        }
+        if *frame == 76 {
+            self.settings_open = true;
+        }
+        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -1009,7 +1298,9 @@ impl OpenPatch {
                 1 => path.with_file_name("rack-visuals.png"),
                 2 => path.with_file_name("rack-utilities.png"),
                 3 => path.with_file_name("rack-polyphonic.png"),
-                _ => path.with_file_name("rack-routing.png"),
+                4 => path.with_file_name("rack-routing.png"),
+                5 => path.with_file_name("rack-midi.png"),
+                _ => path.with_file_name("audio-midi-settings.png"),
             };
             image::save_buffer(
                 target,
@@ -1020,7 +1311,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 5 {
+            if *captures == 7 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1064,6 +1355,7 @@ impl eframe::App for OpenPatch {
         }
         self.toolbar(ctx);
         self.footer(ctx);
+        self.performance_keyboard(ctx);
         self.visual_dock(ctx);
         let mut action = None;
         egui::CentralPanel::default()
@@ -1089,6 +1381,7 @@ impl eframe::App for OpenPatch {
         self.browser(ctx);
         self.files_window(ctx);
         self.shader_window(ctx);
+        self.audio_settings(ctx);
         if self.confirm_close {
             egui::Window::new("Unsaved patch")
                 .collapsible(false)
