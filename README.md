@@ -75,6 +75,21 @@ Patches live in `~/OpenPatch` by default. **Save as** creates a new JSON file an
 
 </details>
 
+<details>
+<summary><strong>Try a clocked random voice</strong></summary>
+
+![Clocked random voice with seeded noise, sample-and-hold, and a piano-key quantizer](docs/images/openpatch-utilities.png)
+
+Choose **File → Clocked random voice**. Noise supplies candidate pitches; a clock
+samples them, and the quantizer selects notes from a C-major pentatonic scale.
+Click its piano keys to change the scale, or edit the seed for another repeatable
+sequence. This is an original OpenPatch patch using the documented utility
+contracts, not an imported VCV project.
+
+<sub>Native Linux / Mesa CI render.</sub>
+
+</details>
+
 ## Claude & Codex
 
 Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. The client launches OpenPatch with `--mcp` and controls the live patch in that window. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
