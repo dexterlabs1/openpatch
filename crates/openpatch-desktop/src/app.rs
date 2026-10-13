@@ -123,7 +123,7 @@ impl OpenPatch {
             volume,
             status: "Ready — press Play to hear the patch".into(),
             filename: "my-patch.json".into(),
-            title: "Tremolo study".into(),
+            title: "Reference analog voice".into(),
             files: vec![],
             workspace,
             file_mode: None,
@@ -289,7 +289,7 @@ impl OpenPatch {
             kind: kind.into(),
             params: Default::default(),
         });
-        if kind == "output" && patch.output.is_none() {
+        if matches!(kind, "output" | "audio_out") && patch.output.is_none() {
             patch.output = Some(id.clone());
         }
         if self.command("replace_patch", json!({"patch":patch})) {
@@ -376,6 +376,13 @@ impl OpenPatch {
                             ui.close();
                         }
                         ui.separator();
+                        if ui.button("Reference analog voice").clicked() {
+                            self.replace_from_menu(
+                                openpatch_core::analog_demo_patch(),
+                                "Reference analog voice",
+                            );
+                            ui.close();
+                        }
                         if ui.button("Tremolo study").clicked() {
                             self.replace_from_menu(openpatch_core::demo_patch(), "Tremolo study");
                             ui.close();
@@ -503,6 +510,10 @@ impl OpenPatch {
                                 }
                             }
                         } else if let Some(audio) = &self.audio {
+                            if audio.solver_failures() != 0 {
+                                ui.colored_label(Color32::from_rgb(235, 167, 85), format!("Solver holds: {}", audio.solver_failures()))
+                                    .on_hover_text("A circuit solve did not converge within its bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.");
+                            }
                             ui.label(
                                 RichText::new(format!("{} Hz", audio.sample_rate))
                                     .size(10.0)
@@ -573,16 +584,20 @@ impl OpenPatch {
             return;
         }
         let mut open = true;
-        let mut chosen = None;
+        let mut chosen: Option<String> = None;
+        let modules = self.catalog["modules"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         egui::Window::new("Add a module")
             .open(&mut open)
-            .default_size([770.0, 500.0])
+            .default_size([800.0, 560.0])
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .collapsible(false)
             .show(ctx, |ui| {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.search)
-                        .hint_text("Search modules…")
+                        .hint_text("Search names, models, controls, or inputs")
                         .desired_width(f32::INFINITY),
                 );
                 if self.browser_focus {
@@ -594,95 +609,167 @@ impl OpenPatch {
                         .color(MUTED)
                         .size(11.0),
                 );
-                let query = self.search.to_lowercase();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        for (kind, title, desc) in [
-                            (
-                                "oscillator",
-                                "SINE VCO",
-                                "Audio oscillator\nFrequency modulation",
-                            ),
-                            ("lfo", "LFO", "Slow oscillator\nModulation + offset"),
-                            ("gain", "VCA", "Voltage controlled\namplifier"),
-                            ("lowpass", "LOW-PASS", "One-pole filter\nTone shaping"),
-                            ("mixer", "MIXER", "Two-input sum\nAudio or control"),
-                            ("constant", "DC", "Constant voltage\nControl source"),
-                            ("output", "AUDIO", "Mono output\nAudio device"),
-                        ] {
-                            if !format!("{title} {desc} {kind}")
-                                .to_lowercase()
-                                .contains(&query)
-                            {
+                let query = self.search.trim().to_lowercase();
+                let visible: Vec<_> = modules
+                    .iter()
+                    .filter(|module| {
+                        let kind = module["kind"].as_str().unwrap_or("");
+                        let title = module["title"].as_str().unwrap_or(kind);
+                        let description = module["description"].as_str().unwrap_or("");
+                        let model = module["model"].as_str().unwrap_or("legacy");
+                        let inputs = module["inputs"].to_string();
+                        let params = module["params"]
+                            .as_object()
+                            .map(|params| params.keys().cloned().collect::<Vec<_>>().join(" "))
+                            .unwrap_or_default();
+                        format!("{kind} {title} {description} {model} {inputs} {params}")
+                            .to_lowercase()
+                            .contains(&query)
+                    })
+                    .collect();
+                let mut categories: Vec<String> = ["circuit-derived", "idealized", "legacy"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                for module in &visible {
+                    let category = module["model"].as_str().unwrap_or("legacy");
+                    if !categories.iter().any(|item| item == category) {
+                        categories.push(category.into());
+                    }
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(440.0)
+                    .show(ui, |ui| {
+                        if visible.is_empty() {
+                            ui.add_space(20.0);
+                            ui.label("No modules match this search.");
+                        }
+                        for category in &categories {
+                            let members: Vec<_> = visible
+                                .iter()
+                                .filter(|module| {
+                                    module["model"].as_str().unwrap_or("legacy") == category
+                                })
+                                .collect();
+                            if members.is_empty() {
                                 continue;
                             }
-                            let (rect, response) = ui
-                                .allocate_exact_size(Vec2::new(168.0, 184.0), egui::Sense::click());
-                            let p = ui.painter();
-                            p.rect_filled(
-                                rect,
-                                3.0,
-                                if response.hovered() {
-                                    Color32::from_rgb(220, 223, 223)
-                                } else {
-                                    Color32::from_rgb(191, 197, 199)
-                                },
+                            ui.add_space(10.0);
+                            ui.label(
+                                RichText::new(match category.as_str() {
+                                    "circuit-derived" => "Circuit-derived models",
+                                    "idealized" => "Idealized utilities",
+                                    "legacy" => "Legacy modules",
+                                    other => other,
+                                })
+                                .strong()
+                                .size(12.0),
                             );
-                            p.rect_stroke(
-                                rect,
-                                3.0,
-                                egui::Stroke::new(1.0_f32, Color32::from_gray(90)),
-                                egui::StrokeKind::Inside,
-                            );
-                            p.text(
-                                rect.center_top() + Vec2::new(0.0, 18.0),
-                                egui::Align2::CENTER_TOP,
-                                title,
-                                egui::FontId::proportional(15.0),
-                                Color32::from_gray(31),
-                            );
-                            let knob = rect.center_top() + Vec2::new(0.0, 76.0);
-                            p.circle_filled(knob, 24.0, Color32::from_gray(47));
-                            p.circle_stroke(
-                                knob,
-                                22.0,
-                                egui::Stroke::new(2.0_f32, Color32::from_gray(80)),
-                            );
-                            p.line_segment(
-                                [knob - Vec2::new(0.0, 8.0), knob - Vec2::new(0.0, 19.0)],
-                                egui::Stroke::new(2.0_f32, Color32::from_gray(220)),
-                            );
-                            p.text(
-                                rect.center_top() + Vec2::new(0.0, 120.0),
-                                egui::Align2::CENTER_TOP,
-                                desc,
-                                egui::FontId::proportional(11.0),
-                                Color32::from_gray(53),
-                            );
-                            for x in [-20.0, 20.0] {
-                                p.circle_filled(
-                                    rect.center_bottom() + Vec2::new(x, -16.0),
-                                    5.0,
-                                    Color32::from_gray(42),
-                                );
-                            }
-                            response.widget_info(|| {
-                                egui::WidgetInfo::labeled(
-                                    egui::WidgetType::Button,
-                                    true,
-                                    format!("Add {title}"),
-                                )
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                for module in members {
+                                    let Some(kind) = module["kind"].as_str() else {
+                                        continue;
+                                    };
+                                    let title = module["title"].as_str().unwrap_or(kind);
+                                    let desc = module["description"]
+                                        .as_str()
+                                        .unwrap_or("Built-in OpenPatch module");
+                                    let (rect, response) = ui.allocate_exact_size(
+                                        Vec2::new(178.0, 212.0),
+                                        egui::Sense::click(),
+                                    );
+                                    let p = ui.painter();
+                                    p.rect_filled(
+                                        rect,
+                                        2.0,
+                                        if response.hovered() {
+                                            Color32::from_rgb(229, 231, 224)
+                                        } else {
+                                            Color32::from_rgb(204, 207, 200)
+                                        },
+                                    );
+                                    p.rect_stroke(
+                                        rect,
+                                        2.0,
+                                        egui::Stroke::new(1.0_f32, Color32::from_gray(90)),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    let mut title_job = egui::text::LayoutJob::simple(
+                                        title.into(),
+                                        egui::FontId::proportional(15.0),
+                                        Color32::from_gray(31),
+                                        rect.width() - 18.0,
+                                    );
+                                    title_job.wrap.max_rows = 1;
+                                    let title_galley = p.layout_job(title_job);
+                                    p.galley(
+                                        rect.center_top()
+                                            + Vec2::new(-title_galley.size().x * 0.5, 14.0),
+                                        title_galley,
+                                        Color32::from_gray(31),
+                                    );
+                                    p.text(
+                                        rect.center_top() + Vec2::new(0.0, 41.0),
+                                        egui::Align2::CENTER_CENTER,
+                                        category,
+                                        egui::FontId::monospace(9.0),
+                                        Color32::from_rgb(63, 89, 83),
+                                    );
+                                    let knob = rect.center_top() + Vec2::new(0.0, 82.0);
+                                    p.circle_filled(
+                                        knob + Vec2::new(1.0, 2.0),
+                                        23.0,
+                                        Color32::from_black_alpha(50),
+                                    );
+                                    p.circle_filled(knob, 22.0, Color32::from_gray(41));
+                                    p.circle_stroke(
+                                        knob,
+                                        20.0,
+                                        egui::Stroke::new(1.5_f32, Color32::from_gray(74)),
+                                    );
+                                    p.line_segment(
+                                        [knob - Vec2::new(0.0, 7.0), knob - Vec2::new(0.0, 17.0)],
+                                        egui::Stroke::new(2.0_f32, Color32::from_gray(230)),
+                                    );
+                                    let mut description_job = egui::text::LayoutJob::simple(
+                                        desc.into(),
+                                        egui::FontId::proportional(11.0),
+                                        Color32::from_gray(53),
+                                        rect.width() - 22.0,
+                                    );
+                                    description_job.wrap.max_rows = 4;
+                                    p.galley(
+                                        rect.left_top() + Vec2::new(11.0, 117.0),
+                                        p.layout_job(description_job),
+                                        Color32::from_gray(53),
+                                    );
+                                    p.text(
+                                        rect.center_bottom() - Vec2::new(0.0, 16.0),
+                                        egui::Align2::CENTER_CENTER,
+                                        kind,
+                                        egui::FontId::monospace(9.0),
+                                        Color32::from_gray(86),
+                                    );
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::WidgetType::Button,
+                                            true,
+                                            format!("Add {title}, {category}. {desc}"),
+                                        )
+                                    });
+                                    if response.clicked() {
+                                        chosen = Some(kind.into());
+                                    }
+                                    response.on_hover_text(format!("{title}\n{category}\n{desc}"));
+                                }
                             });
-                            if response.clicked() {
-                                chosen = Some(kind);
-                            }
                         }
                     });
-                });
             });
         self.browser_open = open;
         if let Some(kind) = chosen {
-            self.add_module(kind);
+            self.add_module(&kind);
         }
     }
     fn files_window(&mut self, ctx: &egui::Context) {

@@ -304,6 +304,22 @@ class OpenPatchMCPTests(unittest.TestCase):
         restored = self.patch_snapshot()
         self.assertEqual(restored["patch"], snapshot["patch"])
 
+    def test_reference_voice_catalog_edit_and_render(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        self.assertIsNotNone(catalog)
+        modules = {module["kind"]: module for module in catalog["modules"]}
+        self.assertEqual(modules["ladder_vcf"]["model"], "circuit-derived")
+        self.assertEqual(modules["analog_vco"]["model"], "idealized")
+        patch = json.loads((Path(__file__).resolve().parents[1] / "examples" / "reference-voice.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch, "expected_revision": self.patch_snapshot()["revision"]})
+        self.require_tool_success("set_parameter", {"id": "filter", "parameter": "resonance", "value": 0.7, "expected_revision": self.patch_snapshot()["revision"]})
+        self.require_tool_error("set_parameter", {"id": "vco", "parameter": "waveform", "value": 0.4})
+        self.require_tool_success("render_audio", {"filename": "reference.wav", "seconds": 0.1})
+        with wave.open(str(self.workspace / "reference.wav"), "rb") as rendered:
+            self.assertEqual(rendered.getnframes(), 4800)
+            samples = self._first_channel_samples(rendered.readframes(4800), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(sample) > 100 for sample in samples))
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

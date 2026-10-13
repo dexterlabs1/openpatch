@@ -16,6 +16,7 @@ struct Shared {
     volume: AtomicU32,
     peak: AtomicU32,
     stream_error: AtomicBool,
+    solver_failures: AtomicUsize,
     waveform: [AtomicU32; WAVEFORM_SIZE],
     waveform_cursor: AtomicUsize,
 }
@@ -27,6 +28,7 @@ impl Shared {
             volume: AtomicU32::new(DEFAULT_VOLUME.to_bits()),
             peak: AtomicU32::new(0),
             stream_error: AtomicBool::new(false),
+            solver_failures: AtomicUsize::new(0),
             waveform: std::array::from_fn(|_| AtomicU32::new(0)),
             waveform_cursor: AtomicUsize::new(0),
         }
@@ -148,6 +150,10 @@ impl Audio {
 
     pub fn take_stream_error(&self) -> bool {
         self.shared.stream_error.swap(false, Ordering::Relaxed)
+    }
+
+    pub fn solver_failures(&self) -> usize {
+        self.shared.solver_failures.load(Ordering::Relaxed)
     }
 }
 
@@ -291,6 +297,9 @@ impl Callback {
 
     fn render<T: OutputSample>(&mut self, output: &mut [T], channels: usize) {
         if self.graphs.poll() {
+            if let Some(previous) = self.graphs.previous.as_ref() {
+                self.graphs.active.adopt_state_from(previous);
+            }
             self.fade_position = 0;
         }
         let target = if self.shared.playing.load(Ordering::Relaxed) {
@@ -339,6 +348,10 @@ impl Callback {
             .waveform_cursor
             .store(self.scope_cursor, Ordering::Release);
         let previous_peak = f32::from_bits(self.shared.peak.load(Ordering::Relaxed));
+        self.shared.solver_failures.store(
+            self.graphs.active.solver_failures().min(usize::MAX as u64) as usize,
+            Ordering::Relaxed,
+        );
         self.shared
             .peak
             .store(peak.max(previous_peak * 0.92).to_bits(), Ordering::Relaxed);
@@ -546,5 +559,57 @@ mod tests {
             assert!((frames[0][0] - frames[1][0]).abs() < 0.01);
         }
         assert!(disposal.pop().is_ok());
+    }
+
+    #[test]
+    fn live_stateful_edit_adopts_phase_and_filter_memory_without_heap_activity() {
+        for original in [
+            openpatch_core::demo_patch(),
+            openpatch_core::analog_demo_patch(),
+        ] {
+            let (mut updates, incoming) = RingBuffer::new(2);
+            let (retired, _disposal) = RingBuffer::new(2);
+            let shared = Arc::new(Shared::new());
+            shared.playing.store(true, Ordering::Relaxed);
+            shared.volume.store(1.0_f32.to_bits(), Ordering::Relaxed);
+            let mut callback = Callback::new(
+                original.compile().unwrap(),
+                incoming,
+                retired,
+                shared,
+                48000,
+            );
+            callback.gain.value = 1.0;
+            let mut warmup = [0.0_f32; 129];
+            callback.render(&mut warmup, 1);
+
+            let mut edited = original.clone();
+            edited
+                .nodes
+                .iter_mut()
+                .find(|node| matches!(node.kind.as_str(), "oscillator" | "analog_vco"))
+                .unwrap()
+                .params
+                .insert("frequency".into(), 440.0);
+            let mut new_reference = edited.compile().unwrap();
+            new_reference.adopt_state_from(&callback.graphs.active);
+            let mut old_reference = original.compile().unwrap();
+            old_reference.process_block(&mut warmup);
+            let mut current = [0.0_f32; 1025];
+            let mut previous = [0.0_f32; 1025];
+            new_reference.process_block(&mut current);
+            old_reference.process_block(&mut previous);
+            assert!(updates.push(edited.compile().unwrap()).is_ok());
+            let mut actual = [0.0_f32; 1025];
+            without_heap_activity(|| callback.render(&mut actual, 1));
+            for (index, sample) in actual.iter().enumerate() {
+                let mix = (index as f32 / callback.fade_length as f32).min(1.0);
+                let expected = previous[index] * (1.0 - mix) + current[index] * mix;
+                assert!(
+                    (sample - expected).abs() < 0.000_001,
+                    "sample {index}: {sample} vs {expected}"
+                );
+            }
+        }
     }
 }

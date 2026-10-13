@@ -12,7 +12,7 @@ The CLI shares the core rendering API; it does not expose every MCP edit as a
 shell command.
 
 `openpatch-desktop` owns the native eframe/egui window, OpenGL visualizer, and CPAL
-audio output. The rack includes a module browser, parameter sliders, cable
+audio output. The rack includes a module browser, rotary controls, cable
 editing, output selection, and workspace JSON save/load. The desktop starts with
 the demo patch and muted transport. Play/pause and master volume are local UI
 controls. The `--mcp` option serves stdio on a background control thread, sharing
@@ -40,7 +40,10 @@ ownership into the callback and retired engines back to the UI for destruction.
 Updates are checked at callback boundaries. A full queue retains ownership and
 defers the update or retirement. The callback does not allocate, free engines,
 lock a mutex, log, or perform file/GPU work during rendering. Replacement engines
-start from reset and crossfade for approximately 5 ms. Transport and volume use
+adopt matching module state by stable ID and exact kind, then crossfade for
+approximately 5 ms. The precompiled ID lookup avoids allocation during adoption.
+Oscillator phases, capacitor states, and resampler histories survive edits.
+Transport and volume use
 an approximately 10 ms gain smoother. Pause fades the output to silence while
 the engine continues advancing; it is not a rewind.
 
@@ -58,9 +61,11 @@ mutex, or trait-object plugin dispatch in the sample loop.
 
 ## Signal contract
 
-This initial engine uses normalized mono signals rather than Eurorack voltages.
-Oscillator FM is additive Hz. Gain has signal and optional multiplicative CV;
-an unconnected CV has unity gain. Other unconnected inputs are zero. WAV export
+The reference voice uses volts, 1 V/oct pitch, 0–10 V envelope/gates, and explicit
+voltage/audio conversion. The seven legacy utilities preserve their original
+normalized signal semantics. Legacy oscillator FM is additive Hz. Legacy gain
+has direct multiplicative CV, normalled to 1; the OTA VCA's CV is normalled to
+10 V. Other unconnected inputs are zero. WAV export
 clips to [-1,1]; the graph can carry signals outside that range within its numeric
 safety limits. Consult `catalog` for exact limits. These conventions are versioned
 and intentionally do not promise VCV patch or plugin compatibility.
@@ -71,13 +76,13 @@ the current block graph would change feedback timing and pitch.
 
 ## Next milestones
 
-1. **Live instrument refinement:** state-preserving parameter/graph edits,
-   device selection, latency controls, xrun and callback percentile measurements
-   on Linux, Windows, and macOS ARM. Current crossfades do not preserve DSP state.
-2. **Rack workflow:** undo/redo, freely positioned modules, keyboard navigation,
-   and richer project persistence. Current rack positions are automatic.
-3. **Musical breadth:** envelopes, bandlimited oscillators, filters, sequencers,
-   MIDI, polyphony, explicit feedback, project persistence and migration.
+1. **Model validation:** expand the documented reference circuits, spectral and
+   numerical error measurements, hardware comparisons, and latency alignment.
+   See [analog models](ANALOG_MODELS.md) and [module coverage](MODULE_COVERAGE.md).
+2. **Live instrument refinement:** device selection, latency controls, xrun and
+   callback percentile measurements, with macOS ARM as the first interactive target.
+3. **Rack workflow and breadth:** multi-step undo/redo, named outputs, sequencing,
+   MIDI, polyphony, explicit feedback, and richer project persistence.
 4. **Additional control transports:** multiple agents attached to one existing
    application session, subscriptions, and cancellable background rendering.
    Current native stdio already shares one agent connection with its own GUI.

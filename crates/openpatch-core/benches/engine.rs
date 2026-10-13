@@ -133,4 +133,20 @@ fn main() {
             elapsed * 1e9 / samples as f64
         );
     }
+    let patch = openpatch_core::analog_demo_patch();
+    let mut engine = patch.compile().unwrap();
+    let mut output = [0.0; BLOCK_SIZE];
+    for _ in 0..64 {
+        engine.process_block(black_box(&mut output));
+    }
+    let start = Instant::now();
+    let mut blocks = 0_u64;
+    while start.elapsed() < Duration::from_secs(2) {
+        engine.process_block(black_box(&mut output));
+        black_box(&output);
+        blocks += 1;
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    let audio_seconds = blocks as f64 * BLOCK_SIZE as f64 / patch.sample_rate as f64;
+    println!("reference_analog_voice,nodes={},audio_seconds={audio_seconds:.6},wall_seconds={elapsed:.6},realtime_factor={:.2}", patch.nodes.len(), audio_seconds / elapsed);
 }

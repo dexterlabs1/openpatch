@@ -34,6 +34,7 @@ struct ParameterEdit {
     text: String,
     min: f32,
     max: f32,
+    step: Option<f32>,
     focus: bool,
 }
 
@@ -304,7 +305,13 @@ impl Rack {
                     ui.close();
                 }
             });
-            header_response.on_hover_text("Drag to move. Panels snap to rack rows and free space.");
+            let description = module
+                .and_then(|module| module["description"].as_str())
+                .unwrap_or("Built-in OpenPatch module");
+            let model = module
+                .and_then(|module| module["model"].as_str())
+                .unwrap_or("legacy");
+            header_response.on_hover_text(format!("{description}\nModel: {model}\nDrag to move. Panels snap to rack rows and free space."));
 
             let parameters = ordered_parameters(node, module);
             let count = parameters.len();
@@ -321,13 +328,20 @@ impl Rack {
                     .copied()
                     .unwrap_or(default)
                     .clamp(min, max);
-                let (y, radius) = match count {
-                    1 => (183.0, 42.0),
-                    2 => (135.0 + index as f32 * 110.0, 32.0),
-                    _ => (114.0 + index as f32 * 78.0, 18.0),
+                let (knob_position, radius) = parameter_position(count, index, width);
+                let center = point(knob_position.x, knob_position.y);
+                let logarithmic = matches!(
+                    *name,
+                    "frequency" | "cutoff" | "attack" | "decay" | "release"
+                );
+                let step = if *name == "waveform" {
+                    Some(1.0)
+                } else {
+                    spec["step"]
+                        .as_f64()
+                        .filter(|step| *step > 0.0)
+                        .map(|step| step as f32)
                 };
-                let center = point(width * 0.5, y);
-                let logarithmic = *name == "frequency" || *name == "cutoff";
                 let normalized = normalize(value, min, max, logarithmic);
                 let knob_rect =
                     Rect::from_center_size(center, Vec2::splat((radius + 10.0) * 2.0 * self.zoom));
@@ -341,6 +355,9 @@ impl Rack {
                 });
                 if knob.drag_started() {
                     self.selected = Some(node.id.clone());
+                    if step.is_some() {
+                        ui.data_mut(|data| data.insert_temp(knob.id, normalized));
+                    }
                 }
                 let modifiers = ui.input(|i| i.modifiers);
                 let speed = if modifiers.command || modifiers.ctrl {
@@ -355,19 +372,32 @@ impl Rack {
                     0.003
                 };
                 let change = -knob.drag_motion().y * speed;
+                let drag_normalized = if step.is_some() && knob.dragged() {
+                    let prior = ui
+                        .data(|data| data.get_temp::<f32>(knob.id))
+                        .unwrap_or(normalized);
+                    let next = (prior + change).clamp(0.0, 1.0);
+                    ui.data_mut(|data| data.insert_temp(knob.id, next));
+                    next
+                } else {
+                    (normalized + change).clamp(0.0, 1.0)
+                };
                 let new_value = if knob.double_clicked() {
                     Some(default)
                 } else if change != 0.0 {
-                    Some(denormalize(
-                        (normalized + change).clamp(0.0, 1.0),
+                    Some(quantize(
+                        denormalize(drag_normalized, min, max, logarithmic),
                         min,
                         max,
-                        logarithmic,
+                        step,
                     ))
                 } else {
                     None
                 };
-                if let Some(new_value) = new_value {
+                if knob.drag_stopped() {
+                    ui.data_mut(|data| data.remove::<f32>(knob.id));
+                }
+                if let Some(new_value) = new_value.filter(|new_value| *new_value != value) {
                     action = Some(RackAction::Command(
                         "set_parameter",
                         json!({"id":node.id,"parameter":name,"value":new_value}),
@@ -396,12 +426,22 @@ impl Rack {
                 painter.text(
                     value_center,
                     Align2::CENTER_CENTER,
-                    format_value(value, spec["unit"].as_str().unwrap_or("")),
+                    parameter_value(name, value, spec),
                     FontId::monospace(11.0 * self.zoom),
                     INK,
                 );
                 let value_response = ui.interact(
-                    Rect::from_center_size(value_center, vec2(width - 20.0, 19.0) * self.zoom),
+                    Rect::from_center_size(
+                        value_center,
+                        vec2(
+                            if count >= 4 {
+                                width * 0.5 - 12.0
+                            } else {
+                                width - 20.0
+                            },
+                            19.0,
+                        ) * self.zoom,
+                    ),
                     ui.id().with(("value", &node.id, name)),
                     Sense::click(),
                 );
@@ -419,13 +459,15 @@ impl Rack {
                         text: value.to_string(),
                         min,
                         max,
+                        step,
                         focus: true,
                     });
                 }
                 knob.on_hover_text(format!(
-                    "{}: {}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset.",
+                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset.",
                     name,
-                    format_value(value, spec["unit"].as_str().unwrap_or(""))
+                    parameter_value(name, value, spec),
+                    description
                 ));
                 value_response.on_hover_text("Double-click to type a value");
             }
@@ -643,7 +685,10 @@ impl Rack {
             ui.label(format!("Range: {} to {}", edit.min, edit.max));
             let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
             if edit.focus { input.request_focus(); edit.focus = false; }
-            let parsed = edit.text.parse::<f32>().ok().filter(|value| value.is_finite() && *value >= edit.min && *value <= edit.max);
+            let parsed = edit.text.parse::<f32>().ok().filter(|value| value.is_finite() && *value >= edit.min && *value <= edit.max && edit.step.is_none_or(|step| ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01));
+            if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
+            if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
+            if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") { ui.label("Enter time in seconds."); }
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
                 if ui.add_enabled(parsed.is_some(), egui::Button::new("Apply")).clicked() || (enter && parsed.is_some()) {
@@ -680,6 +725,10 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
 }
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "adsr" => HP * 16.0,
+        "analog_vco" | "ladder_vcf" => HP * 14.0,
+        "analog_vca" | "gate" => HP * 10.0,
+        "audio_out" => HP * 8.0,
         "oscillator" => HP * 14.0,
         "lfo" | "lowpass" => HP * 12.0,
         "gain" | "mixer" => HP * 10.0,
@@ -689,6 +738,12 @@ fn panel_width(kind: &str) -> f32 {
 }
 fn title(kind: &str) -> &str {
     match kind {
+        "analog_vco" => "VCO",
+        "ladder_vcf" => "LADDER",
+        "analog_vca" => "OTA VCA",
+        "adsr" => "ADSR",
+        "gate" => "GATE",
+        "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
         "lfo" => "LFO",
         "gain" => "VCA",
@@ -707,26 +762,87 @@ fn parameter_label(name: &str) -> &str {
         "gain" => "GAIN",
         "cutoff" => "CUTOFF",
         "value" => "VOLTAGE",
+        "waveform" => "WAVEFORM",
+        "pulse_width" => "PULSE WIDTH",
+        "resonance" => "RESONANCE",
+        "drive" => "DRIVE",
+        "attack" => "ATTACK",
+        "decay" => "DECAY",
+        "sustain" => "SUSTAIN",
+        "release" => "RELEASE",
+        "duty" => "DUTY",
         name => name,
+    }
+}
+fn port_label(name: &str) -> &str {
+    match name {
+        "pitch" | "cutoff_cv" => "V/OCT",
+        "retrigger" => "RETRIG",
+        "signal" => "IN",
+        other => other,
     }
 }
 fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a str, &'a Value)> {
     let Some(params) = module.and_then(|module| module["params"].as_object()) else {
         return Vec::new();
     };
-    let order: &[&str] = if node.kind == "lfo" {
-        &["frequency", "amplitude", "offset"]
-    } else {
-        &["frequency", "amplitude", "gain", "cutoff", "value"]
+    let order: &[&str] = match node.kind.as_str() {
+        "analog_vco" => &["frequency", "waveform", "pulse_width"],
+        "ladder_vcf" => &["cutoff", "resonance", "drive"],
+        "adsr" => &["attack", "decay", "sustain", "release"],
+        "gate" => &["frequency", "duty"],
+        "lfo" => &["frequency", "amplitude", "offset"],
+        _ => &["frequency", "amplitude", "gain", "cutoff", "value"],
     };
-    order
+    let mut ordered: Vec<_> = order
         .iter()
         .filter_map(|name| {
             params
                 .get_key_value(*name)
                 .map(|(name, spec)| (name.as_str(), spec))
         })
-        .collect()
+        .collect();
+    // Newly introduced catalog controls remain accessible without a custom order.
+    ordered.extend(
+        params
+            .iter()
+            .filter(|(name, _)| !order.contains(&name.as_str()))
+            .map(|(name, spec)| (name.as_str(), spec)),
+    );
+    ordered
+}
+fn parameter_position(count: usize, index: usize, width: f32) -> (Pos2, f32) {
+    match count {
+        1 => (pos2(width * 0.5, 183.0), 42.0),
+        2 => (pos2(width * 0.5, 135.0 + index as f32 * 110.0), 32.0),
+        3 => (pos2(width * 0.5, 114.0 + index as f32 * 78.0), 18.0),
+        _ => (
+            pos2(
+                width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
+                139.0 + (index / 2) as f32 * (113.0 / (count.div_ceil(2) - 1).max(1) as f32),
+            ),
+            if count > 4 { 16.0 } else { 24.0 },
+        ),
+    }
+}
+fn quantize(value: f32, min: f32, max: f32, step: Option<f32>) -> f32 {
+    step.map_or(value, |step| {
+        (min + ((value - min) / step).round() * step).clamp(min, max)
+    })
+}
+fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
+    match name {
+        "waveform" => {
+            if value.round() == 0.0 {
+                "Saw".into()
+            } else {
+                "Pulse".into()
+            }
+        }
+        "pulse_width" | "duty" | "sustain" => format!("{:.1}%", value * 100.0),
+        "gain" => format!("{value:.2}x"),
+        _ => format_value(value, spec["unit"].as_str().unwrap_or("")),
+    }
 }
 fn normalize(value: f32, min: f32, max: f32, logarithmic: bool) -> f32 {
     if max <= min {
@@ -755,6 +871,14 @@ fn format_value(value: f32, unit: &str) -> String {
         } else {
             format!("{value:.2} Hz")
         }
+    } else if unit == "s" {
+        if value < 1.0 {
+            format!("{:.1} ms", value * 1000.0)
+        } else {
+            format!("{value:.2} s")
+        }
+    } else if unit == "x" {
+        format!("{value:.2}x")
     } else {
         format!("{value:.3}")
     }
@@ -1059,7 +1183,7 @@ fn jack(
     painter.text(
         label_rect.center(),
         Align2::CENTER_CENTER,
-        label.to_uppercase(),
+        port_label(label).to_uppercase(),
         FontId::proportional(9.0 * zoom),
         if output { PAPER } else { INK },
     );
@@ -1279,6 +1403,112 @@ mod tests {
                 assert!(value >= min && value <= max);
             }
         }
+    }
+    #[test]
+    fn catalog_controls_include_all_models_and_adsr_controls_do_not_overlap() {
+        let catalog = openpatch_core::catalog();
+        for module in catalog["modules"].as_array().unwrap() {
+            let node = Node {
+                id: "test".into(),
+                kind: module["kind"].as_str().unwrap().into(),
+                params: Default::default(),
+            };
+            assert_eq!(
+                ordered_parameters(&node, Some(module)).len(),
+                module["params"].as_object().unwrap().len(),
+                "{} controls were hidden",
+                node.kind
+            );
+        }
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "adsr")
+            .unwrap();
+        let node = Node {
+            id: "env".into(),
+            kind: "adsr".into(),
+            params: Default::default(),
+        };
+        let names: Vec<_> = ordered_parameters(&node, Some(module))
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(names, ["attack", "decay", "sustain", "release"]);
+        let width = panel_width("adsr");
+        let controls: Vec<_> = (0..4)
+            .map(|index| {
+                let (center, radius) = parameter_position(4, index, width);
+                let bounds = Rect::from_min_max(
+                    center - vec2(width * 0.25 - 6.0, radius + 23.0),
+                    center + vec2(width * 0.25 - 6.0, radius + 15.0),
+                );
+                assert!(bounds.top() > 70.0 && bounds.bottom() < 307.0);
+                bounds
+            })
+            .collect();
+        for (index, control) in controls.iter().enumerate() {
+            for other in &controls[index + 1..] {
+                assert!(!control.intersects(*other));
+            }
+        }
+        assert_eq!(parameter_value("waveform", 0.0, &Value::Null), "Saw");
+        assert_eq!(parameter_value("waveform", 1.0, &Value::Null), "Pulse");
+        assert_eq!(parameter_value("pulse_width", 0.5, &Value::Null), "50.0%");
+        assert_eq!(parameter_value("gain", 1.0, &Value::Null), "1.00x");
+        assert_eq!(format_value(0.01, "s"), "10.0 ms");
+        assert_eq!(format_value(2.0, "s"), "2.00 s");
+    }
+
+    #[test]
+    fn waveform_drag_accumulates_small_movements_and_emits_only_valid_steps() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let mut patch = Patch {
+            nodes: vec![Node {
+                id: "vco".into(),
+                kind: "analog_vco".into(),
+                params: Default::default(),
+            }],
+            ..Patch::default()
+        };
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let knob = pos2(129.0, 204.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(knob), button(knob, true)],
+        );
+        let mut changed = false;
+        for step in 1..=10 {
+            let pointer = knob - vec2(0.0, step as f32 * 20.0);
+            if let Some(RackAction::Command("set_parameter", args)) = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0 + step as f64 * 0.1,
+                vec![egui::Event::PointerMoved(pointer)],
+            ) {
+                assert_eq!(args["parameter"], "waveform");
+                assert_eq!(args["value"], 1.0);
+                patch.nodes[0].params.insert("waveform".into(), 1.0);
+                changed = true;
+            }
+        }
+        assert!(
+            changed,
+            "rounding each frame would prevent a stepped control from moving"
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.1,
+            vec![button(knob - vec2(0.0, 200.0), false)],
+        );
     }
     #[test]
     fn newly_added_selection_is_revealed_once_without_overriding_restored_views() {

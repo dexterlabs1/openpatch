@@ -10,6 +10,13 @@ Compilation is excluded. Output is consumed to prevent the compiler discarding
 the workload. A realtime factor of 20 means the offline run produced 20 seconds
 of audio per wall-clock second; it does not guarantee live glitch-free playback.
 
+The benchmark also measures the six-module reference voice, including the 8×
+oversampled ladder and VCA. On an Apple M1 Max, Rust 1.99.0 release build at
+48 kHz/128-frame blocks, a local 2026-10-12 run rendered 12.619 seconds in
+2.000 seconds: **6.31× realtime**. This is one offline throughput observation,
+not a live deadline test or VCV comparison. The simple legacy oscillator results
+are not representative of the cost of these circuit models.
+
 ## Fair comparison protocol
 
 - Same machine, audio rate, channel/voice count, oscillator/filter algorithms,

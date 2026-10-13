@@ -3,7 +3,7 @@
 //!
 //! Compile on a control thread, then move the engine to the audio thread.
 //! `process_block` performs no allocation, locking, or I/O. Unpatched inputs
-//! are zero, except gain.cv defaults to 1. Signals are unclipped in normal use, with a ±1,000,000
+//! are zero, except gain.cv defaults to 1 and analog_vca.cv to 10 V. Signals are unclipped in normal use, with a ±1,000,000
 //! safety bound on arithmetic modules; WAV export clips to ±1.
 
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,9 @@ use std::f64::consts::TAU;
 use std::fs::OpenOptions;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
+
+mod analog;
+pub mod ladder;
 
 pub const BLOCK_SIZE: usize = 128;
 pub const MAX_NODES: usize = 256;
@@ -74,11 +77,11 @@ pub struct Cable {
 /// Machine-readable module descriptions. Bounds depending on the sample rate
 /// are checked by `validate`; input port names are also the cable `input` names.
 pub fn catalog() -> Value {
-    json!({
+    let mut result = json!({
         "version": 1,
         "sample_rate": {"min": 8000, "max": 192000, "default": 48000},
         "limits": {"nodes": MAX_NODES, "cables": MAX_CABLES, "block_size": BLOCK_SIZE},
-        "unpatched_inputs": "zero except gain.cv defaults to 1", "cycles": "rejected", "channels": 1,
+        "unpatched_inputs": "zero except gain.cv defaults to 1 and analog_vca.cv defaults to 10 V", "cycles": "rejected", "channels": 1,
         "modules": [
             {"kind":"oscillator", "description":"Sine oscillator; FM is additive Hz, instantaneous frequency clamped to 0..0.45 × sample rate", "inputs":["fm"], "params":{
                 "frequency":{"default":220.0,"min":0.0,"max":20000.0,"unit":"Hz","sample_rate_max_ratio":0.45},
@@ -91,13 +94,45 @@ pub fn catalog() -> Value {
             {"kind":"gain", "description":"signal × gain; optional cv multiplies gain when connected", "inputs":["signal","cv"], "params":{"gain":{"default":1.0,"min":-16.0,"max":16.0}}},
             {"kind":"mixer", "description":"a + b", "inputs":["a","b"], "params":{}},
             {"kind":"lowpass", "description":"One-pole low-pass; coefficient computed at compile time", "inputs":["signal"], "params":{"cutoff":{"default":1000.0,"min":1.0,"max":20000.0,"unit":"Hz","sample_rate_max_ratio":0.45}}},
-            {"kind":"output", "inputs":["signal"], "params":{}}
+            {"kind":"output", "inputs":["signal"], "params":{}},
+            {"kind":"analog_vco", "title":"VCO", "model":"idealized", "description":"Ideal capacitor-ramp VCO; ±5 V saw/pulse, polynomial BLEP. Pitch 1 V/oct; FM 1 Hz/V. Not a transistor-level oscillator.", "inputs":["pitch","fm"], "params":{
+                "frequency":{"default":261.6256,"min":0.1,"max":18000.0,"unit":"Hz","sample_rate_max_ratio":0.4},
+                "waveform":{"default":0.0,"min":0.0,"max":1.0,"step":1.0},
+                "pulse_width":{"default":0.5,"min":0.05,"max":0.95,"unit":"ratio"}}},
+            {"kind":"ladder_vcf", "title":"LADDER", "model":"circuit-derived", "description":"Matched-transistor ladder, four 10 nF stages at 25°C; nonlinear coupled feedback. Pole frequency is -12 dB at zero resonance. CV 1 V/oct.", "inputs":["signal","cutoff_cv"], "params":{
+                "cutoff":{"default":1200.0,"min":20.0,"max":18000.0,"unit":"Hz","sample_rate_max_ratio":0.4},
+                "resonance":{"default":0.3,"min":0.0,"max":1.1},
+                "drive":{"default":1.0,"min":0.0,"max":4.0,"unit":"x"}}},
+            {"kind":"analog_vca", "title":"OTA VCA", "model":"circuit-derived", "description":"Ideal matched differential-pair OTA, 25°C, 1:100 input divider. Linear current control: CV 0–10 V; unpatched CV 10 V.", "inputs":["signal","cv"], "params":{
+                "gain":{"default":1.0,"min":0.0,"max":2.0,"unit":"x"}}},
+            {"kind":"adsr", "title":"ADSR", "model":"circuit-derived", "description":"1 µF switched RC envelope, 0–10 V; 12 V attack target. A: time to 10 V; D/R: 99% settling times. Gate Schmitt thresholds 0.1/1 V.", "inputs":["gate","retrigger"], "params":{
+                "attack":{"default":0.01,"min":0.001,"max":10.0,"unit":"s"},
+                "decay":{"default":0.2,"min":0.001,"max":10.0,"unit":"s"},
+                "sustain":{"default":0.5,"min":0.0,"max":1.0,"unit":"ratio"},
+                "release":{"default":0.3,"min":0.001,"max":10.0,"unit":"s"}}},
+            {"kind":"gate", "title":"GATE", "model":"idealized", "description":"Ideal 0/10 V clock gate; starts high. Sharp comparator edges for envelope testing.", "inputs":[], "params":{
+                "frequency":{"default":2.0,"min":0.05,"max":100.0,"unit":"Hz"},
+                "duty":{"default":0.5,"min":0.01,"max":0.99,"unit":"ratio"}}},
+            {"kind":"audio_out", "title":"AUDIO", "model":"idealized", "description":"Voltage-to-audio interface: 10 V = digital full scale (1.0). Select this module as rack output for voltage patches.", "inputs":["signal"], "params":{}}
         ]
-    })
+    });
+    for module in result["modules"].as_array_mut().unwrap() {
+        if module.get("model").is_none() {
+            module["model"] = json!("legacy");
+        }
+    }
+    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
+    result
 }
 
 #[derive(Debug)]
 enum Dsp {
+    Vco(analog::Vco),
+    Ladder(Box<ladder::Ladder>),
+    Vca(Box<analog::Vca>),
+    Adsr(analog::Adsr),
+    Gate(analog::Gate),
+    AudioOut,
     Oscillator {
         phase: f64,
         frequency: f32,
@@ -117,6 +152,12 @@ enum Dsp {
 impl Dsp {
     fn port(&self, name: &str) -> Option<usize> {
         match (self, name) {
+            (Self::Vco(_), "pitch") | (Self::Adsr(_), "gate") => Some(0),
+            (Self::Vco(_), "fm") | (Self::Adsr(_), "retrigger") => Some(1),
+            (Self::Ladder(_), "signal") | (Self::Vca(_), "signal") | (Self::AudioOut, "signal") => {
+                Some(0)
+            }
+            (Self::Ladder(_), "cutoff_cv") | (Self::Vca(_), "cv") => Some(1),
             (Self::Oscillator { .. }, "fm") => Some(0),
             (Self::Gain(_), "signal")
             | (Self::Lowpass { .. }, "signal")
@@ -131,6 +172,9 @@ impl Dsp {
 
 #[derive(Debug)]
 struct CompiledNode {
+    // Exact model identity distinguishes oscillator and LFO even though they
+    // share an implementation. Built on the control thread with the graph.
+    kind: String,
     dsp: Dsp,
     inputs: [Option<usize>; 2],
 }
@@ -141,6 +185,7 @@ struct CompiledNode {
 pub struct Engine {
     sample_rate: f64,
     nodes: Vec<CompiledNode>,
+    state_lookup: BTreeMap<String, usize>,
     buffers: Vec<[f32; BLOCK_SIZE]>,
     output: Option<usize>,
 }
@@ -158,6 +203,12 @@ fn parameter(node: &Node, name: &str, default: f32, min: f32, max: f32) -> Resul
 
 fn build_dsp(node: &Node, rate: u32) -> Result<Dsp, String> {
     let allowed: &[&str] = match node.kind.as_str() {
+        "analog_vco" => &["frequency", "waveform", "pulse_width"],
+        "ladder_vcf" => &["cutoff", "resonance", "drive"],
+        "analog_vca" => &["gain"],
+        "adsr" => &["attack", "decay", "sustain", "release"],
+        "gate" => &["frequency", "duty"],
+        "audio_out" => &[],
         "oscillator" => &["frequency", "amplitude"],
         "lfo" => &["frequency", "amplitude", "offset"],
         "constant" => &["value"],
@@ -177,6 +228,52 @@ fn build_dsp(node: &Node, rate: u32) -> Result<Dsp, String> {
         }
     }
     Ok(match node.kind.as_str() {
+        "analog_vco" => {
+            let waveform = parameter(node, "waveform", 0.0, 0.0, 1.0)?;
+            if waveform.fract() != 0.0 {
+                return Err("waveform must be 0 (saw) or 1 (pulse)".into());
+            }
+            Dsp::Vco(analog::Vco::new(
+                rate as f64,
+                parameter(
+                    node,
+                    "frequency",
+                    261.6256,
+                    0.1,
+                    (rate as f32 * 0.4).min(18000.0),
+                )? as f64,
+                waveform,
+                parameter(node, "pulse_width", 0.5, 0.05, 0.95)? as f64,
+            ))
+        }
+        "ladder_vcf" => Dsp::Ladder(Box::new(ladder::Ladder::new(
+            rate as f64,
+            parameter(
+                node,
+                "cutoff",
+                1200.0,
+                20.0,
+                (rate as f32 * 0.4).min(18000.0),
+            )? as f64,
+            parameter(node, "resonance", 0.3, 0.0, 1.1)? as f64,
+            parameter(node, "drive", 1.0, 0.0, 4.0)? as f64,
+        ))),
+        "analog_vca" => Dsp::Vca(Box::new(analog::Vca::new(
+            parameter(node, "gain", 1.0, 0.0, 2.0)? as f64,
+        ))),
+        "adsr" => Dsp::Adsr(analog::Adsr::new(
+            rate as f64,
+            parameter(node, "attack", 0.01, 0.001, 10.0)? as f64,
+            parameter(node, "decay", 0.2, 0.001, 10.0)? as f64,
+            parameter(node, "sustain", 0.5, 0.0, 1.0)? as f64,
+            parameter(node, "release", 0.3, 0.001, 10.0)? as f64,
+        )),
+        "gate" => Dsp::Gate(analog::Gate::new(
+            rate as f64,
+            parameter(node, "frequency", 2.0, 0.05, 100.0)? as f64,
+            parameter(node, "duty", 0.5, 0.01, 0.99)? as f64,
+        )),
+        "audio_out" => Dsp::AudioOut,
         "oscillator" | "lfo" => {
             let lfo = node.kind == "lfo";
             Dsp::Oscillator {
@@ -326,6 +423,7 @@ impl Patch {
         let nodes = order
             .iter()
             .map(|&old| CompiledNode {
+                kind: self.nodes[old].kind.clone(),
                 dsp: modules[old].take().unwrap(),
                 inputs: inputs[old].map(|source| source.map(|old_source| remap[old_source])),
             })
@@ -333,6 +431,10 @@ impl Patch {
         Ok(Engine {
             sample_rate: self.sample_rate as f64,
             nodes,
+            state_lookup: ids
+                .into_iter()
+                .map(|(id, old)| (id.to_owned(), remap[old]))
+                .collect(),
             buffers: vec![[0.0; BLOCK_SIZE]; count],
             output: output.map(|i| remap[i]),
         })
@@ -344,6 +446,57 @@ fn bounded(value: f32) -> f32 {
 }
 
 impl Engine {
+    /// Aggregate bounded-solver failures without allocating or resetting state.
+    pub fn solver_failures(&self) -> u64 {
+        self.nodes.iter().fold(0_u64, |sum, node| {
+            sum.saturating_add(match &node.dsp {
+                Dsp::Ladder(filter) => filter.diagnostics().solver_failures,
+                _ => 0,
+            })
+        })
+    }
+    /// Continue matching physical modules when replacing a compiled graph.
+    /// IDs and exact model kinds must match; new parameters and wiring remain
+    /// those of `self`. The previous engine is unchanged for crossfade rendering.
+    /// Lookup tables are compiled beforehand: this does not allocate, deallocate,
+    /// lock, or perform I/O, and is safe to call at an audio callback boundary.
+    pub fn adopt_state_from(&mut self, previous: &Self) {
+        for (id, &index) in &self.state_lookup {
+            let Some(&previous_index) = previous.state_lookup.get(id) else {
+                continue;
+            };
+            let node = &mut self.nodes[index];
+            let old_node = &previous.nodes[previous_index];
+            if node.kind != old_node.kind {
+                continue;
+            }
+            match (&mut node.dsp, &old_node.dsp) {
+                (Dsp::Vco(current), Dsp::Vco(old)) => current.phase = old.phase,
+                (Dsp::Gate(current), Dsp::Gate(old)) => current.phase = old.phase,
+                (Dsp::Ladder(current), Dsp::Ladder(old)) => current.copy_state_from(old),
+                (Dsp::Vca(current), Dsp::Vca(old)) => current.copy_state_from(old),
+                (Dsp::Adsr(current), Dsp::Adsr(old)) => current.copy_state_from(old),
+                (
+                    Dsp::Oscillator { phase, .. },
+                    Dsp::Oscillator {
+                        phase: old_phase, ..
+                    },
+                ) => {
+                    *phase = *old_phase;
+                }
+                (
+                    Dsp::Lowpass { state, .. },
+                    Dsp::Lowpass {
+                        state: old_state, ..
+                    },
+                ) => {
+                    *state = *old_state;
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Render the next samples. This method does not allocate, lock, or do I/O.
     /// Chunk boundaries do not change DSP state or sample-accurate modulation.
     pub fn process_block(&mut self, output: &mut [f32]) {
@@ -360,6 +513,43 @@ impl Engine {
                     .unwrap_or(&zero);
                 let buffer = &mut current[0];
                 match &mut node.dsp {
+                    Dsp::Vco(vco) => {
+                        for sample in 0..length {
+                            buffer[sample] = vco.process(a[sample], b[sample]);
+                        }
+                    }
+                    Dsp::Ladder(filter) => {
+                        for sample in 0..length {
+                            buffer[sample] = filter.process(a[sample], b[sample]);
+                        }
+                    }
+                    Dsp::Vca(vca) => {
+                        for sample in 0..length {
+                            buffer[sample] = vca.process(
+                                a[sample],
+                                if node.inputs[1].is_some() {
+                                    b[sample]
+                                } else {
+                                    10.0
+                                },
+                            );
+                        }
+                    }
+                    Dsp::Adsr(envelope) => {
+                        for sample in 0..length {
+                            buffer[sample] = envelope.process(a[sample], b[sample]);
+                        }
+                    }
+                    Dsp::Gate(gate) => {
+                        for sample in &mut buffer[..length] {
+                            *sample = gate.process();
+                        }
+                    }
+                    Dsp::AudioOut => {
+                        for sample in 0..length {
+                            buffer[sample] = a[sample] * 0.1;
+                        }
+                    }
                     Dsp::Oscillator {
                         phase,
                         frequency,
@@ -450,6 +640,55 @@ pub fn demo_patch() -> Patch {
             cable("tremolo", "vca", "cv"),
             cable("vca", "filter", "signal"),
             cable("filter", "out", "signal"),
+        ],
+        output: Some("out".into()),
+        ..Patch::default()
+    }
+}
+
+/// A reference voice in volts, with a clock-gated RC envelope and OTA VCA.
+pub fn analog_demo_patch() -> Patch {
+    let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        id: id.into(),
+        kind: kind.into(),
+        params: params
+            .iter()
+            .map(|(key, value)| (key.to_string(), *value))
+            .collect(),
+    };
+    let cable = |from: &str, to: &str, input: &str| Cable {
+        from: from.into(),
+        to: to.into(),
+        input: input.into(),
+    };
+    Patch {
+        nodes: vec![
+            node("vco", "analog_vco", &[("frequency", 130.8128)]),
+            node(
+                "filter",
+                "ladder_vcf",
+                &[("cutoff", 1800.0), ("resonance", 0.45)],
+            ),
+            node("clock", "gate", &[("frequency", 1.5), ("duty", 0.45)]),
+            node(
+                "envelope",
+                "adsr",
+                &[
+                    ("attack", 0.015),
+                    ("decay", 0.18),
+                    ("sustain", 0.4),
+                    ("release", 0.25),
+                ],
+            ),
+            node("vca", "analog_vca", &[]),
+            node("out", "audio_out", &[]),
+        ],
+        cables: vec![
+            cable("vco", "filter", "signal"),
+            cable("filter", "vca", "signal"),
+            cable("clock", "envelope", "gate"),
+            cable("envelope", "vca", "cv"),
+            cable("vca", "out", "signal"),
         ],
         output: Some("out".into()),
         ..Patch::default()
