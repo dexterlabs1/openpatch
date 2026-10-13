@@ -22,6 +22,7 @@ pub struct Session {
     undo: VecDeque<HistoryEntry>,
     redo: Vec<HistoryEntry>,
     history_group: Option<(String, String, String)>,
+    closing: bool,
 }
 
 #[derive(Clone)]
@@ -62,6 +63,7 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
                 undo: VecDeque::new(),
                 redo: Vec::new(),
                 history_group: None,
+                closing: live.closing,
             };
             drop(live);
             snapshot.execute(name, args)
@@ -93,6 +95,7 @@ impl Session {
             undo: VecDeque::new(),
             redo: Vec::new(),
             history_group: None,
+            closing: false,
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -103,6 +106,24 @@ impl Session {
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// Atomically seal an observed revision against subsequent graph edits.
+    /// Call only after the final close decision while holding the shared-session
+    /// mutex. A stale decision leaves the session open; repeated sealing of the
+    /// same revision is harmless. Read-only work and exports remain available.
+    pub fn seal_for_close(&mut self, expected_revision: u64) -> Result<(), String> {
+        self.check_revision(Some(expected_revision))?;
+        self.closing = true;
+        Ok(())
+    }
+
+    fn check_open(&self) -> Result<(), String> {
+        if self.closing {
+            Err("session is closing".into())
+        } else {
+            Ok(())
+        }
     }
 
     /// Stable identity of a retained graph state; undo restores this identity
@@ -145,6 +166,7 @@ impl Session {
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
     ) -> Result<u64, String> {
+        self.check_open()?;
         self.check_revision(expected_revision)?;
         candidate.compile()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
@@ -179,6 +201,7 @@ impl Session {
     }
 
     fn restore_history(&mut self, redo: bool) -> Result<Value, String> {
+        self.check_open()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
         if redo {
             let entry = self.redo.pop().ok_or("nothing to redo")?;
@@ -308,6 +331,14 @@ impl Session {
     }
 
     pub fn execute(&mut self, name: &str, args: Value) -> Result<Value, String> {
+        if EDIT_TOOLS.contains(&name)
+            || matches!(
+                name,
+                "replace_patch" | "load_patch" | "apply_edits" | "undo" | "redo"
+            )
+        {
+            self.check_open()?;
+        }
         let schemas = tools();
         validate_arguments(&schemas, name, &args)?;
         match name {
@@ -950,5 +981,122 @@ mod tests {
         assert_eq!(empty["min_channels"], 0);
         assert_eq!(empty["max_channels"], 0);
         assert_eq!(empty["channels"], json!([]));
+    }
+    #[test]
+    fn stale_close_decision_does_not_seal_or_prevent_a_new_edit() {
+        let mut s = session();
+        s.execute("apply_edits", edits()).unwrap();
+        let before = s.snapshot();
+        assert!(s
+            .seal_for_close(0)
+            .unwrap_err()
+            .contains("revision conflict"));
+        assert!(!s.closing);
+        assert_eq!(s.snapshot(), before);
+        s.execute(
+            "set_parameter",
+            json!({"id":"source","parameter":"value","value":0.5,"expected_revision":1}),
+        )
+        .unwrap();
+        assert_eq!(s.revision(), 2);
+    }
+
+    #[test]
+    fn successful_close_seal_rejects_every_mutation_and_preserves_history() {
+        let mut s = session();
+        s.execute("apply_edits", edits()).unwrap();
+        s.execute(
+            "set_parameter",
+            json!({"id":"source","parameter":"value","value":0.5}),
+        )
+        .unwrap();
+        s.execute("undo", json!({})).unwrap();
+        assert!(s.can_undo());
+        assert!(s.can_redo());
+        let before = s.snapshot();
+        let revision = s.revision();
+        s.seal_for_close(revision).unwrap();
+        s.seal_for_close(revision).unwrap();
+        let requests = [
+            ("replace_patch", json!({"patch":Patch::new_v2()})),
+            ("load_patch", json!({"filename":"missing.json"})),
+            ("add_module", json!({"id":"new","kind":"constant"})),
+            ("remove_module", json!({"id":"source"})),
+            (
+                "connect",
+                json!({"from":"source","to":"out","input":"signal"}),
+            ),
+            ("disconnect", json!({"to":"out","input":"signal"})),
+            (
+                "set_parameter",
+                json!({"id":"source","parameter":"value","value":1.0}),
+            ),
+            ("set_output", json!({"id":"source"})),
+            (
+                "apply_edits",
+                json!({"edits":[{"tool":"remove_module","arguments":{"id":"source"}}]}),
+            ),
+            ("undo", json!({})),
+            ("redo", json!({})),
+        ];
+        for (tool, args) in requests {
+            assert_eq!(
+                s.execute(tool, args).unwrap_err(),
+                "session is closing",
+                "{tool}"
+            );
+            assert_eq!(s.snapshot(), before);
+        }
+        assert_eq!(
+            s.replace_patch(Patch::new_v2(), Some(revision))
+                .unwrap_err(),
+            "session is closing"
+        );
+        assert_eq!(s.snapshot(), before);
+        assert_eq!(s.execute("inspect_patch", json!({})).unwrap(), before);
+        assert_eq!(
+            s.execute("inspect_history", json!({})).unwrap()["history"],
+            before["history"]
+        );
+        s.execute("catalog", json!({})).unwrap();
+        s.execute("preview_edits",json!({"expected_revision":revision,"edits":[{"tool":"set_parameter","arguments":{"id":"source","parameter":"value","value":1.0}}]})).unwrap();
+        assert_eq!(s.snapshot(), before);
+    }
+
+    #[test]
+    fn sealed_shared_session_still_supports_snapshot_exports_render_and_analysis() {
+        let workspace = std::env::temp_dir().join(format!(
+            "openpatch-sealed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut s = Session::new(&workspace).unwrap();
+        s.execute("apply_edits", edits()).unwrap();
+        s.seal_for_close(s.revision()).unwrap();
+        let before = s.snapshot();
+        let shared = s.into_shared();
+        for (tool, args) in [
+            ("save_patch", json!({"filename":"sealed.json"})),
+            ("export_visualizer", json!({"filename":"sealed.html"})),
+            (
+                "render_audio",
+                json!({"filename":"sealed.wav","seconds":0.001}),
+            ),
+            ("analyze_signal", json!({"id":"source","seconds":0.001})),
+            ("benchmark", json!({"seconds":0.01})),
+        ] {
+            execute_shared(&shared, tool, args).unwrap();
+        }
+        assert_eq!(shared.lock().unwrap().snapshot(), before);
+        assert!(shared.lock().unwrap().closing);
+        assert_eq!(
+            execute_shared(&shared, "remove_module", json!({"id":"source"})).unwrap_err(),
+            "session is closing"
+        );
+        drop(shared);
+        fs::remove_dir_all(workspace).unwrap();
     }
 }

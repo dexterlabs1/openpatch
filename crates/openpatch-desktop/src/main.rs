@@ -1,8 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app;
 mod audio;
+mod document_state;
 mod keyboard;
 mod midi;
+mod project;
+#[cfg(test)]
+mod project_acceptance_tests;
 mod rack;
 mod visuals;
 

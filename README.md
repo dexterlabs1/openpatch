@@ -56,13 +56,14 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Type a value | Double-click the displayed value |
 | Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
-| Save / open / undo / redo | **Cmd-S** / **Cmd-O** / **Cmd-Z** / **Shift-Cmd-Z** |
+| Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
+| Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
 Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click an output jack to select that specific output for monitoring. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
-Patches live in `~/OpenPatch` by default. **Save as** creates a new JSON file and an adjacent layout sidecar for module positions and the view. Existing patch files are kept; choose a new name to save another version.
+Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, and view; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
 
 <details>
 <summary><strong>See the visualizer dock</strong></summary>
@@ -181,6 +182,7 @@ New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 
 
 | Guide | What it covers |
 |---|---|
+| [Projects and recovery](docs/PROJECTS.md) | Save, Save As, legacy imports, concurrent edits, and recovery copies |
 | [Stereo and routing](docs/ROUTING_MODULES.md) | Mid/Side width, six-input mixing, octave shifts, and signal distribution |
 | [MIDI and audio](docs/MIDI_AUDIO.md) | Keyboard performance, input devices, stereo routing, and reproducible agent performances |
 | [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |

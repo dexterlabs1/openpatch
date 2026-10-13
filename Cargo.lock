@@ -2262,6 +2262,7 @@ dependencies = [
  "openpatch-core",
  "rtrb",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -90,7 +90,12 @@ Tool failures return `isError: true`; malformed protocol calls use JSON-RPC erro
 
 The desktop starts with the demo patch. Call `inspect_patch` before editing;
 include `expected_revision` to detect edits made in the window since your read.
-Exchange saved JSON patches to move between separate client processes.
+Exchange saved JSON patches to move between separate client processes. These
+graph-only MCP commands retain their existing new-name-only behavior. Native
+File → Save uses `.openpatch` projects containing graph and layout; MCP does not
+yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
+A window that has committed its final close decision rejects subsequent graph
+mutations with `session is closing`; inspection and exports remain available.
 
 ## Named outputs, polyphony, and feedback
 

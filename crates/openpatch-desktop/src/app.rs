@@ -1,7 +1,9 @@
 use crate::{
     audio::Audio,
+    document_state::{apply_document, DocumentState},
     keyboard::Keyboard,
     midi::{MidiInputManager, MidiPortInfo},
+    project::{Document, FileToken, Store},
     rack::{Rack, RackAction},
     visuals::{Visualizer, DEFAULT_SHADER},
 };
@@ -33,6 +35,8 @@ enum FileMode {
 enum PendingAction {
     Replace(Patch, String),
     Load(String),
+    Recover(String),
+    Close,
 }
 
 pub struct OpenPatch {
@@ -69,19 +73,31 @@ pub struct OpenPatch {
     files: Vec<String>,
     workspace: String,
     file_mode: Option<FileMode>,
+    file_focus: bool,
     browser_open: bool,
     browser_focus: bool,
     search: String,
     catalog: Value,
     start: Instant,
     mcp: bool,
-    saved_revision: u64,
+    documents: DocumentState,
+    projects: Option<Store>,
+    active_file: Option<String>,
+    active_token: Option<FileToken>,
+    after_save: Option<PendingAction>,
+    deferred_action: Option<PendingAction>,
+    autosave_needed: bool,
+    recovery_names: Vec<String>,
+    recovery_details: BTreeMap<String, String>,
+    recovery_open: bool,
+    restored_recovery: Option<String>,
+    autosaved_document: Option<Document>,
+    last_document_change: Instant,
+    last_autosave_attempt: Instant,
     can_undo: bool,
     can_redo: bool,
-    confirm_close: bool,
     confirm_engine_upgrade: bool,
     confirm_discard: Option<PendingAction>,
-    layout_dirty: bool,
     allow_close: bool,
     smoke_test: Option<(PathBuf, u32, usize)>,
 }
@@ -134,6 +150,18 @@ impl OpenPatch {
         };
         let audio_revision = audio.as_ref().map(|_| revision);
         let volume = audio.as_ref().map_or(0.65, Audio::volume);
+        let mut rack = Rack::default();
+        rack.reconcile(&patch, &catalog());
+        let documents = DocumentState::new(&patch, revision, &rack);
+        let (projects, recovery_names, storage_error) =
+            match Store::new(std::path::Path::new(&workspace)) {
+                Ok(store) => {
+                    let recoveries = store.recoveries();
+                    (Some(store), recoveries, None)
+                }
+                Err(error) => (None, Vec::new(), Some(error)),
+            };
+        let recovery_open = !recovery_names.is_empty() && smoke_test.is_none();
         let mut app = Self {
             shared,
             patch,
@@ -153,7 +181,7 @@ impl OpenPatch {
             settings_status: String::new(),
             keyboard: Keyboard::default(),
             keyboard_open: false,
-            rack: Rack::default(),
+            rack,
             visualizer,
             gl: cc.gl.clone(),
             shader: DEFAULT_SHADER.into(),
@@ -163,27 +191,43 @@ impl OpenPatch {
             visual_mode: 0,
             volume,
             status: "Ready — press Play to hear the patch".into(),
-            filename: "my-patch.json".into(),
+            filename: "my-patch.openpatch".into(),
             title: "Reference analog voice".into(),
             files: vec![],
             workspace,
             file_mode: None,
+            file_focus: false,
             browser_open: false,
             browser_focus: false,
             search: String::new(),
             catalog: catalog(),
             start: Instant::now(),
             mcp,
-            saved_revision: revision,
+            documents,
+            projects,
+            active_file: None,
+            active_token: None,
+            after_save: None,
+            deferred_action: None,
+            autosave_needed: false,
+            recovery_names,
+            recovery_details: BTreeMap::new(),
+            recovery_open,
+            restored_recovery: None,
+            autosaved_document: None,
+            last_document_change: Instant::now(),
+            last_autosave_attempt: Instant::now(),
             can_undo: false,
             can_redo: false,
-            confirm_close: false,
             confirm_engine_upgrade: false,
             confirm_discard: None,
-            layout_dirty: false,
             allow_close: false,
             smoke_test: smoke_test.map(|path| (path, 0, 0)),
         };
+        if let Some(error) = storage_error {
+            app.status = format!("Project storage unavailable: {error}");
+        }
+        app.refresh_recovery_list();
         app.refresh_files();
         app.refresh_devices();
         app.connect_selected_midi();
@@ -313,7 +357,7 @@ impl OpenPatch {
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.settings_open
-            && !self.confirm_close
+            && !self.recovery_open
             && !self.confirm_engine_upgrade
             && self.confirm_discard.is_none();
         let events = self.keyboard.update(ctx, enabled);
@@ -426,7 +470,9 @@ impl OpenPatch {
             .filter_map(Result::ok)
             .filter_map(|entry| entry.file_name().into_string().ok())
             .filter(|name| {
-                name.ends_with(".json") && !name.starts_with('.') && !name.ends_with(".layout.json")
+                (name.ends_with(".openpatch") || name.ends_with(".json"))
+                    && !name.starts_with('.')
+                    && !name.ends_with(".layout.json")
             })
             .collect();
         self.files.sort();
@@ -436,21 +482,8 @@ impl OpenPatch {
             args["expected_revision"] = json!(self.revision);
         }
         match execute_shared(&self.shared, name, args) {
-            Ok(result) => {
-                self.status = match name {
-                    "save_patch" => {
-                        self.saved_revision = result["revision"].as_u64().unwrap_or(self.revision);
-                        self.title = self.filename.trim_end_matches(".json").into();
-                        self.refresh_files();
-                        format!("Saved {}", self.filename)
-                    }
-                    "load_patch" => {
-                        self.saved_revision = result["revision"].as_u64().unwrap_or(self.revision);
-                        self.title = self.filename.trim_end_matches(".json").into();
-                        format!("Loaded {}", self.filename)
-                    }
-                    _ => "Patch updated".into(),
-                };
+            Ok(_) => {
+                self.status = "Patch updated".into();
                 self.sync();
                 true
             }
@@ -545,24 +578,299 @@ impl OpenPatch {
     }
     fn file_dialog(&mut self, mode: FileMode) {
         self.refresh_files();
+        if mode == FileMode::Save {
+            self.filename = self.active_file.as_ref().map_or_else(
+                || "my-patch.openpatch".into(),
+                |name| format!("{}-copy.openpatch", name.trim_end_matches(".openpatch")),
+            );
+        }
         self.file_mode = Some(mode);
+        self.file_focus = true;
+    }
+    fn observe_document(&mut self) {
+        if self
+            .documents
+            .observe(&self.patch, self.revision, &self.rack)
+        {
+            self.last_document_change = Instant::now();
+            self.autosave_needed = true;
+        }
     }
     fn dirty(&self) -> bool {
-        self.revision != self.saved_revision || self.layout_dirty
+        self.documents.dirty()
     }
-    fn replace_from_menu(&mut self, patch: Patch, title: &str) {
-        if self.dirty() {
-            self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+    fn capture_document(&mut self) -> Document {
+        self.rack.reconcile(&self.patch, &self.catalog);
+        self.observe_document();
+        Document {
+            patch: self.patch.clone(),
+            layout: self.rack.layout(),
+        }
+    }
+    fn request_action(&mut self, action: PendingAction) {
+        self.sync();
+        let current = self
+            .shared
+            .try_lock()
+            .is_ok_and(|live| live.revision() == self.revision);
+        if !current {
+            self.deferred_action = Some(action);
             return;
         }
-        self.replace_now(patch, title);
+        self.capture_document();
+        self.file_mode = None;
+        self.recovery_open = false;
+        if self.dirty() {
+            self.confirm_discard = Some(action);
+        } else {
+            self.perform_action(action);
+        }
+    }
+    fn replace_from_menu(&mut self, patch: Patch, title: &str) {
+        self.request_action(PendingAction::Replace(patch, title.into()));
     }
     fn replace_now(&mut self, patch: Patch, title: &str) {
-        self.panic_notes();
         if self.command("replace_patch", json!({"patch":patch})) {
+            self.panic_notes();
+            self.clear_recovery();
             self.title = title.into();
+            self.active_file = None;
+            self.active_token = None;
             self.rack = Rack::default();
-            self.layout_dirty = false;
+            self.documents.mark_unsaved();
+            self.autosave_needed = true;
+            self.capture_document();
+        }
+    }
+    fn perform_action(&mut self, action: PendingAction) {
+        match action {
+            PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
+            PendingAction::Load(name) => self.load_document(&name, false),
+            PendingAction::Recover(name) => self.load_document(&name, true),
+            PendingAction::Close => {
+                let sealed = self
+                    .shared
+                    .try_lock()
+                    .ok()
+                    .map(|mut live| live.seal_for_close(self.revision));
+                if matches!(sealed, Some(Ok(()))) {
+                    self.clear_recovery();
+                    self.allow_close = true;
+                } else {
+                    self.deferred_action = Some(PendingAction::Close);
+                }
+            }
+        }
+    }
+    fn refresh_recovery_list(&mut self) {
+        if let Some(store) = &self.projects {
+            self.recovery_names = store.recoveries();
+            self.recovery_details = self
+                .recovery_names
+                .iter()
+                .map(|name| {
+                    let detail = match store.load_recovery(name) {
+                        Ok(loaded) => format!(
+                            "{} modules · {} cables\n{}",
+                            loaded.document.patch.nodes.len(),
+                            loaded.document.patch.cables.len(),
+                            loaded
+                                .document
+                                .patch
+                                .nodes
+                                .iter()
+                                .take(6)
+                                .map(|node| node.id.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        Err(error) => format!("This copy could not be read: {error}"),
+                    };
+                    (name.clone(), detail)
+                })
+                .collect();
+        }
+    }
+    fn clear_recovery(&mut self) {
+        if let Some(store) = &self.projects {
+            if let Err(error) = store.clear_recovery() {
+                self.status = format!("Could not clear recovery: {error}");
+            }
+            if let Some(name) = &self.restored_recovery {
+                if let Err(error) = store.discard_recovery(name) {
+                    self.status = format!("Could not clear recovered copy: {error}");
+                }
+            }
+        }
+        self.restored_recovery = None;
+        self.autosaved_document = None;
+        self.refresh_recovery_list();
+    }
+    fn save_current(&mut self) {
+        if let Some(name) = self.active_file.clone() {
+            self.save_document(&name, false);
+        } else {
+            self.file_dialog(FileMode::Save);
+        }
+    }
+    fn save_document(&mut self, name: &str, new_file: bool) {
+        // This pair belongs to one observed UI revision. Never re-sync between
+        // capturing its graph and layout, or while doing disk I/O.
+        self.sync();
+        let document = self.capture_document();
+        let result = self
+            .projects
+            .as_ref()
+            .ok_or_else(|| "Project storage is unavailable".to_string())
+            .and_then(|store| {
+                if new_file {
+                    store.save_new(name, &document)
+                } else {
+                    store.save_existing(
+                        name,
+                        &document,
+                        self.active_token
+                            .as_ref()
+                            .ok_or("No saved project selected")?,
+                    )
+                }
+            });
+        match result {
+            Ok(token) => {
+                let warning = token.durability_warning.clone();
+                self.active_file = Some(name.into());
+                self.active_token = Some(token);
+                self.documents.mark_saved(&document);
+                self.title = name.trim_end_matches(".openpatch").into();
+                self.filename = name.into();
+                self.file_mode = None;
+                self.refresh_files();
+                self.status = warning.unwrap_or_else(|| format!("Saved {name}"));
+                self.clear_recovery();
+                self.sync();
+                self.capture_document();
+                if let Some(action) = self.after_save.take() {
+                    // A concurrent MCP edit after the snapshot must remain
+                    // dirty and get another Save/Discard/Cancel decision.
+                    self.request_action(action);
+                }
+            }
+            Err(error) => {
+                self.status = format!("Save failed: {error}. Use Save As to keep a separate copy.")
+            }
+        }
+    }
+    fn load_document(&mut self, name: &str, recovery: bool) {
+        let expected_revision = self.revision;
+        let result = self
+            .projects
+            .as_ref()
+            .ok_or_else(|| "Project storage is unavailable".to_string())
+            .and_then(|store| {
+                if recovery {
+                    store.load_recovery(name)
+                } else {
+                    store.load(name)
+                }
+            })
+            .and_then(|loaded| {
+                let applied = apply_document(&self.shared, expected_revision, &loaded.document)?;
+                Ok((loaded, applied))
+            });
+        match result {
+            Ok((loaded, applied)) => {
+                self.history_layouts
+                    .insert(self.state_id, self.rack.layout());
+                self.patch = applied.patch;
+                self.rack = applied.rack;
+                self.revision = applied.revision;
+                self.state_id = applied.state_id;
+                self.history_layouts
+                    .insert(self.state_id, self.rack.layout());
+                self.panic_notes();
+                if let Some(audio) = &self.audio {
+                    audio.set_playing(false);
+                }
+                self.clear_recovery();
+                self.documents.invalidate();
+                let document = self.capture_document();
+                self.documents.mark_saved(&document);
+                self.active_file = if loaded.imported || recovery {
+                    None
+                } else {
+                    Some(name.into())
+                };
+                self.active_token = loaded.token;
+                if recovery {
+                    self.documents.mark_unsaved();
+                    self.autosave_needed = true;
+                    self.restored_recovery = Some(name.into());
+                    self.title = "Recovered project".into();
+                    self.status =
+                        "Recovered unsaved work — Save As to keep it. Playback is paused.".into();
+                } else {
+                    self.title = name
+                        .trim_end_matches(".openpatch")
+                        .trim_end_matches(".json")
+                        .into();
+                    self.status = if loaded.imported {
+                        format!("Imported {name} — Save As creates a native project; original JSON is preserved.")
+                    } else {
+                        format!("Opened {name}")
+                    };
+                }
+                self.filename = name.into();
+                self.file_mode = None;
+                self.recovery_open = false;
+                self.sync();
+                self.capture_document();
+            }
+            Err(error) => {
+                self.status = format!("Open failed: {error}");
+                self.sync();
+                self.capture_document();
+            }
+        }
+    }
+    fn autosave(&mut self) {
+        if self.smoke_test.is_some() || self.allow_close {
+            return;
+        }
+        if !self.dirty() {
+            self.autosave_needed = false;
+            if self.autosaved_document.is_some() {
+                self.clear_recovery();
+            }
+            return;
+        }
+        if !self.autosave_needed {
+            return;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_autosave_attempt) < Duration::from_secs(2)
+            || (now.duration_since(self.last_document_change) < Duration::from_secs(2)
+                && now.duration_since(self.last_autosave_attempt) < Duration::from_secs(15))
+        {
+            return;
+        }
+        let document = self.capture_document();
+        if self
+            .autosaved_document
+            .as_ref()
+            .is_some_and(|old| old.equivalent(&document))
+        {
+            self.autosave_needed = false;
+            return;
+        }
+        self.last_autosave_attempt = now;
+        if let Some(store) = &self.projects {
+            match store.save_recovery(&document) {
+                Ok(()) => {
+                    self.autosaved_document = Some(document);
+                    self.autosave_needed = false;
+                }
+                Err(error) => self.status = format!("Recovery copy could not be saved: {error}"),
+            }
         }
     }
     fn add_module(&mut self, kind: &str) {
@@ -584,62 +892,14 @@ impl OpenPatch {
             self.browser_open = false;
         }
     }
-    fn save_or_load(&mut self, mode: FileMode, discard: bool) {
-        if mode == FileMode::Open && self.dirty() && !discard {
-            self.confirm_discard = Some(PendingAction::Load(self.filename.clone()));
-            self.file_mode = None;
-            return;
-        }
-        let op = if mode == FileMode::Save {
-            "save_patch"
-        } else {
-            "load_patch"
-        };
-        if mode == FileMode::Open {
-            self.panic_notes();
-        }
-        if !self.command(op, json!({"filename":self.filename})) {
-            return;
-        }
-        let layout_path =
-            PathBuf::from(&self.workspace).join(format!("{}.layout.json", self.filename));
+    fn save_or_load(&mut self, mode: FileMode) {
+        let name = self.filename.clone();
         if mode == FileMode::Save {
-            // Patch save already validated this basename. Layout writes never follow symlinks or overwrite files.
-            let result = (|| -> Result<(), String> {
-                let data =
-                    serde_json::to_vec_pretty(&self.rack.layout()).map_err(|e| e.to_string())?;
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(layout_path)
-                    .map_err(|e| e.to_string())?;
-                file.write_all(&data).map_err(|e| e.to_string())
-            })();
-            if let Err(e) = result {
-                self.status = format!("Patch saved; layout could not be saved: {e}");
-                self.layout_dirty = true;
-            } else {
-                self.layout_dirty = false;
-            }
+            self.save_document(&name, true);
         } else {
-            self.layout_dirty = false;
-            self.rack = Rack::default();
-            if let Ok(metadata) = std::fs::symlink_metadata(&layout_path) {
-                if metadata.is_file()
-                    && !metadata.file_type().is_symlink()
-                    && metadata.len() <= 1_048_576
-                {
-                    if let Ok(bytes) = std::fs::read(layout_path) {
-                        if let Ok(layout) = serde_json::from_slice(&bytes) {
-                            if let Err(e) = self.rack.restore_layout(&layout) {
-                                self.status = format!("Patch loaded; layout ignored: {e}");
-                            }
-                        }
-                    }
-                }
-            }
+            self.file_mode = None;
+            self.request_action(PendingAction::Load(name));
         }
-        self.file_mode = None;
     }
     fn toolbar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("menu")
@@ -661,8 +921,35 @@ impl OpenPatch {
                             self.file_dialog(FileMode::Open);
                             ui.close();
                         }
-                        if ui.button("Save as…  ⌘S").clicked() {
+                        if ui.button("Save     ⌘S").clicked() {
+                            self.save_current();
+                            ui.close();
+                        }
+                        if ui.button("Save as…     ⇧⌘S").clicked() {
+                            self.after_save = None;
                             self.file_dialog(FileMode::Save);
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.active_file.is_some(),
+                                egui::Button::new("Revert to saved"),
+                            )
+                            .clicked()
+                        {
+                            if let Some(name) = self.active_file.clone() {
+                                self.request_action(PendingAction::Load(name));
+                            }
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(
+                                !self.recovery_names.is_empty(),
+                                egui::Button::new("Recover unsaved work…"),
+                            )
+                            .clicked()
+                        {
+                            self.recovery_open = true;
                             ui.close();
                         }
                         ui.separator();
@@ -1133,66 +1420,136 @@ impl OpenPatch {
         let Some(mode) = self.file_mode else {
             return;
         };
-        let mut open = true;
         let mut run = false;
-        egui::Window::new(if mode == FileMode::Save {
-            "Save patch as"
-        } else {
-            "Open patch"
-        })
-        .open(&mut open)
-        .default_width(460.0)
-        .collapsible(false)
-        .show(ctx, |ui| {
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("project-file-dialog")).show(ctx, |ui| {
+            ui.set_width(460.0);
+            ui.heading(if mode == FileMode::Save { "Save project as" } else { "Open project" });
             ui.label(RichText::new(&self.workspace).color(MUTED).size(11.0));
             ui.horizontal(|ui| {
                 ui.label("Filename");
-                ui.add(egui::TextEdit::singleline(&mut self.filename).desired_width(330.0));
+                let mut output = egui::TextEdit::singleline(&mut self.filename).desired_width(330.0).show(ui);
+                if self.file_focus {
+                    self.file_focus = false;
+                    output.response.request_focus();
+                    output.state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),egui::text::CCursor::new(self.filename.chars().count())
+                    )));
+                    output.state.store(ui.ctx(),output.response.id);
+                }
+                run |= output.response.lost_focus() && ui.input(|i|i.key_pressed(egui::Key::Enter));
             });
             if mode == FileMode::Open {
-                egui::ScrollArea::vertical()
-                    .max_height(250.0)
-                    .show(ui, |ui| {
-                        for file in &self.files {
-                            let r = ui.selectable_label(self.filename == *file, file);
-                            if r.clicked() {
-                                self.filename = file.clone();
-                            }
-                            if r.double_clicked() {
-                                self.filename = file.clone();
-                                run = true;
-                            }
-                        }
-                        if self.files.is_empty() {
-                            ui.label("No saved patches yet.");
-                        }
-                    });
+                egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
+                    for file in &self.files {
+                        let response = ui.selectable_label(self.filename == *file,file);
+                        if response.clicked() { self.filename = file.clone(); }
+                        if response.double_clicked() { self.filename = file.clone(); run = true; }
+                    }
+                    if self.files.is_empty() { ui.label("No saved projects yet."); }
+                });
+                ui.label("Open a native .openpatch project or import an older .json patch.");
             } else {
-                ui.label(
-                    RichText::new(
-                        "Choose a new filename ending in .json. Existing patches are kept.",
-                    )
-                    .size(11.0)
-                    .color(MUTED),
-                );
+                ui.label("Use a new .openpatch filename. Modules, cables and rack layout are saved together.");
             }
             ui.separator();
             ui.label(&self.status);
-            if ui
-                .button(if mode == FileMode::Save {
-                    "Save patch"
-                } else {
-                    "Open patch"
-                })
-                .clicked()
-            {
-                run = true;
-            }
+            ui.horizontal(|ui| {
+                run |= ui.button(if mode == FileMode::Save { "Save project" } else { "Open" }).clicked();
+                cancel = ui.button("Cancel").clicked();
+            });
         });
-        if !open {
+        if cancel || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.file_mode = None;
+            self.after_save = None;
         } else if run {
-            self.save_or_load(mode, false);
+            self.save_or_load(mode);
+        }
+    }
+    fn recovery_window(&mut self, ctx: &egui::Context) {
+        if !self.recovery_open {
+            return;
+        }
+        let mut restore = None;
+        let mut discard = None;
+        let mut dismiss = false;
+        egui::Modal::new(egui::Id::new("project-recovery")).show(ctx, |ui| {
+            ui.set_width(520.0);
+            ui.heading("Recover unsaved work");
+            ui.label("These copies were left by a previous OpenPatch session. Recovery opens a separate unsaved project with playback paused.");
+            egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                for (index,name) in self.recovery_names.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.strong(format!("Recovery {}",index+1)).on_hover_text(name);
+                        if let Some(detail) = self.recovery_details.get(name) { ui.label(detail); }
+                        ui.horizontal(|ui| {
+                            if ui.button("Recover").clicked() { restore = Some(name.clone()); }
+                            if ui.button("Discard copy").clicked() { discard = Some(name.clone()); }
+                        });
+                    });
+                }
+            });
+            ui.label(&self.status);
+            dismiss = ui.button("Not now").clicked();
+        });
+        if let Some(name) = discard {
+            if let Some(store) = &self.projects {
+                match store.discard_recovery(&name) {
+                    Ok(()) => self.recovery_names.retain(|item| *item != name),
+                    Err(error) => self.status = format!("Could not discard recovery: {error}"),
+                }
+            }
+        }
+        if let Some(name) = restore {
+            self.recovery_open = false;
+            self.request_action(PendingAction::Recover(name));
+        }
+        if dismiss
+            || self.recovery_names.is_empty()
+            || ctx.input(|i| i.key_pressed(egui::Key::Escape))
+        {
+            self.recovery_open = false;
+        }
+    }
+    fn unsaved_window(&mut self, ctx: &egui::Context) {
+        if self.confirm_discard.is_none() {
+            return;
+        }
+        let mut decision = 0;
+        egui::Modal::new(egui::Id::new("unsaved-project")).show(ctx, |ui| {
+            ui.set_width(430.0);
+            ui.heading("Save your changes?");
+            ui.label("Your current project has unsaved changes to its modules or rack layout.");
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    decision = 1;
+                }
+                if ui.button("Discard changes").clicked() {
+                    decision = 2;
+                }
+                if ui.button("Cancel").clicked() {
+                    decision = 3;
+                }
+            });
+        });
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            decision = 3;
+        }
+        match decision {
+            1 => {
+                self.after_save = self.confirm_discard.take();
+                self.save_current();
+            }
+            2 => {
+                if let Some(action) = self.confirm_discard.take() {
+                    self.perform_action(action);
+                }
+            }
+            3 => {
+                self.confirm_discard = None;
+                self.after_save = None;
+            }
+            _ => {}
         }
     }
     fn shader_window(&mut self, ctx: &egui::Context) {
@@ -1331,7 +1688,19 @@ impl OpenPatch {
             self.rack.set_zoom(0.75);
             self.title = "Clocked modulation".into();
         }
-        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120) {
+        if *frame == 124 {
+            self.file_mode = Some(FileMode::Save);
+            self.file_focus = true;
+            self.filename = "clocked-modulation.openpatch".into();
+        }
+        if *frame == 136 {
+            self.file_mode = None;
+            self.confirm_discard = Some(PendingAction::Close);
+        }
+        if matches!(
+            *frame,
+            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144
+        ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -1358,7 +1727,9 @@ impl OpenPatch {
                 6 => path.with_file_name("audio-midi-settings.png"),
                 7 => path.with_file_name("rack-stereo-width.png"),
                 8 => path.with_file_name("rack-routing-modules.png"),
-                _ => path.with_file_name("rack-modulation.png"),
+                9 => path.with_file_name("rack-modulation.png"),
+                10 => path.with_file_name("project-save.png"),
+                _ => path.with_file_name("project-unsaved.png"),
             };
             image::save_buffer(
                 target,
@@ -1369,7 +1740,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 10 {
+            if *captures == 12 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1380,9 +1751,11 @@ impl OpenPatch {
 impl eframe::App for OpenPatch {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sync();
+        self.observe_document();
         if !ctx.wants_keyboard_input()
             && !self.confirm_engine_upgrade
-            && !self.confirm_close
+            && !self.recovery_open
+            && self.file_mode.is_none()
             && self.confirm_discard.is_none()
         {
             if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
@@ -1392,7 +1765,12 @@ impl eframe::App for OpenPatch {
                 self.browse();
             }
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
-                self.file_dialog(FileMode::Save);
+                self.after_save = None;
+                if ctx.input(|i| i.modifiers.shift) {
+                    self.file_dialog(FileMode::Save);
+                } else {
+                    self.save_current();
+                }
             }
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::O)) {
                 self.file_dialog(FileMode::Open);
@@ -1407,9 +1785,12 @@ impl eframe::App for OpenPatch {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.browser_open = false;
         }
-        if ctx.input(|i| i.viewport().close_requested()) && self.dirty() && !self.allow_close {
+        if let Some(action) = self.deferred_action.take() {
+            self.request_action(action);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm_close = true;
+            self.request_action(PendingAction::Close);
         }
         self.toolbar(ctx);
         self.footer(ctx);
@@ -1423,7 +1804,14 @@ impl eframe::App for OpenPatch {
                     .audio
                     .as_ref()
                     .map_or(self.patch.sample_rate, |a| a.sample_rate);
-                action = self.rack.show(ui, &self.patch, &self.catalog, rate);
+                let interactive = self.file_mode.is_none()
+                    && self.confirm_discard.is_none()
+                    && !self.recovery_open
+                    && !self.confirm_engine_upgrade
+                    && !self.allow_close;
+                ui.add_enabled_ui(interactive, |ui| {
+                    action = self.rack.show(ui, &self.patch, &self.catalog, rate);
+                });
             });
         match action {
             Some(RackAction::Command(name, args)) => {
@@ -1431,66 +1819,21 @@ impl eframe::App for OpenPatch {
             }
             Some(RackAction::OpenBrowser) => self.browse(),
             Some(RackAction::LayoutChanged) => {
-                self.layout_dirty = true;
                 self.status = "Module moved".into();
             }
             None => {}
         }
+        self.observe_document();
         self.browser(ctx);
         self.files_window(ctx);
         self.shader_window(ctx);
         self.audio_settings(ctx);
-        if self.confirm_close {
-            egui::Window::new("Unsaved patch")
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.label("Save your patch before closing, or discard this session's edits.");
-                    ui.horizontal(|ui| {
-                        if ui.button("Keep working").clicked() {
-                            self.confirm_close = false;
-                        }
-                        if ui.button("Save as…").clicked() {
-                            self.confirm_close = false;
-                            self.file_dialog(FileMode::Save);
-                        }
-                        if ui.button("Discard and close").clicked() {
-                            self.allow_close = true;
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                });
-        }
-        if self.confirm_discard.is_some() {
-            let mut decision = None;
-            egui::Window::new("Replace unsaved patch?")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    ui.label("Your current patch has unsaved edits. Save a copy first if you want to keep them.");
-                    ui.horizontal(|ui| {
-                        if ui.button("Keep editing").clicked() {
-                            decision = Some(false);
-                        }
-                        if ui.button("Discard edits and continue").clicked() {
-                            decision = Some(true);
-                        }
-                    });
-                });
-            if let Some(proceed) = decision {
-                if let Some(action) = self.confirm_discard.take() {
-                    if proceed {
-                        match action {
-                            PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
-                            PendingAction::Load(filename) => {
-                                self.filename = filename;
-                                self.save_or_load(FileMode::Open, true);
-                            }
-                        }
-                    }
-                }
-            }
+        self.recovery_window(ctx);
+        self.unsaved_window(ctx);
+        self.observe_document();
+        self.autosave();
+        if self.allow_close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if self.confirm_engine_upgrade {
             let mut convert = false;
@@ -1499,7 +1842,7 @@ impl eframe::App for OpenPatch {
                 ui.set_max_width(420.0);
                 ui.heading("Enable polyphony and feedback?");
                 ui.label("Engine v2 adds one sample of delay to every cable. Your modules and connections stay in place, but timing and sound can change.");
-                ui.label("You can undo this change. The saved file stays unchanged until you save a new copy.");
+                ui.label("You can undo this change. The saved file stays unchanged until you save.");
                 ui.horizontal(|ui| {
                     cancel = ui.button("Keep legacy timing").clicked();
                     convert = ui.button("Enable engine v2").clicked();
@@ -1523,5 +1866,336 @@ impl eframe::App for OpenPatch {
         if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
             v.destroy(gl);
         }
+    }
+}
+
+#[cfg(test)]
+mod project_workflow_tests {
+    use super::*;
+    use openpatch::control::Session;
+    use std::path::Path;
+
+    // Headless host state: no window, graphics context, device, or MIDI access.
+    fn host(path: &Path) -> OpenPatch {
+        let mut session = Session::new(path).unwrap();
+        session
+            .replace_patch(openpatch_core::demo_patch(), None)
+            .unwrap();
+        let patch = session.patch().clone();
+        let revision = session.revision();
+        let state_id = session.state_id();
+        let workspace = session.workspace().display().to_string();
+        let mut rack = Rack::default();
+        rack.reconcile(&patch, &catalog());
+        let documents = DocumentState::new(&patch, revision, &rack);
+        let store = Store::new(path).unwrap();
+        let recovery_names = store.recoveries();
+        OpenPatch {
+            shared: session.into_shared(),
+            patch,
+            revision,
+            state_id,
+            history_layouts: BTreeMap::new(),
+            audio_revision: None,
+            audio: None,
+            device: String::new(),
+            output_device: None,
+            output_devices: Vec::new(),
+            midi: None,
+            midi_ports: Vec::new(),
+            midi_device: None,
+            midi_epoch: 0,
+            settings_open: false,
+            settings_status: String::new(),
+            keyboard: Keyboard::default(),
+            keyboard_open: false,
+            rack,
+            visualizer: None,
+            gl: None,
+            shader: DEFAULT_SHADER.into(),
+            shader_open: false,
+            shader_status: String::new(),
+            visuals_open: false,
+            visual_mode: 0,
+            volume: 0.65,
+            status: String::new(),
+            filename: "test.openpatch".into(),
+            title: "Test".into(),
+            files: Vec::new(),
+            workspace,
+            file_mode: None,
+            file_focus: false,
+            browser_open: false,
+            browser_focus: false,
+            search: String::new(),
+            catalog: catalog(),
+            start: Instant::now(),
+            mcp: true,
+            documents,
+            projects: Some(store),
+            active_file: None,
+            active_token: None,
+            after_save: None,
+            deferred_action: None,
+            autosave_needed: false,
+            recovery_open: !recovery_names.is_empty(),
+            recovery_names,
+            recovery_details: BTreeMap::new(),
+            restored_recovery: None,
+            autosaved_document: None,
+            last_document_change: Instant::now(),
+            last_autosave_attempt: Instant::now(),
+            can_undo: false,
+            can_redo: false,
+            confirm_engine_upgrade: false,
+            confirm_discard: None,
+            allow_close: false,
+            smoke_test: None,
+        }
+    }
+    fn edit(app: &mut OpenPatch, value: f32) {
+        assert!(app.command(
+            "set_parameter",
+            json!({"id":"tone","parameter":"frequency","value":value})
+        ));
+        app.capture_document();
+    }
+    fn make_autosave_due(app: &mut OpenPatch) {
+        app.last_document_change = Instant::now() - Duration::from_secs(20);
+        app.last_autosave_attempt = Instant::now() - Duration::from_secs(20);
+        app.autosave_needed = true;
+    }
+    fn recovery_files(path: &Path) -> Vec<PathBuf> {
+        std::fs::read_dir(path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(".openpatch-recovery-")
+                    && p.extension().is_some_and(|ext| ext == "openpatch")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn save_dialog_focus_enter_and_cancel_preserve_the_close_continuation() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        edit(&mut app, 330.0);
+        app.after_save = Some(PendingAction::Close);
+        app.file_dialog(FileMode::Save);
+        let ctx = egui::Context::default();
+        let draw = |app: &mut OpenPatch, time: f64, events: Vec<egui::Event>| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(1100.0, 700.0),
+                    )),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| app.files_window(ctx),
+            );
+        };
+        draw(&mut app, 0.0, vec![]);
+        draw(
+            &mut app,
+            0.1,
+            vec![egui::Event::Text("keyboard.openpatch".into())],
+        );
+        assert_eq!(app.filename, "keyboard.openpatch");
+        draw(
+            &mut app,
+            0.2,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(dir.path().join("keyboard.openpatch").exists());
+        assert!(app.allow_close);
+        let mut app = host(dir.path());
+        edit(&mut app, 440.0);
+        app.after_save = Some(PendingAction::Close);
+        app.file_dialog(FileMode::Save);
+        draw(&mut app, 1.0, vec![]);
+        draw(
+            &mut app,
+            1.1,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(app.file_mode.is_none());
+        assert!(app.after_save.is_none());
+        assert!(!app.allow_close);
+        assert!(app.dirty());
+    }
+
+    #[test]
+    fn save_current_roundtrip_revert_and_conflicts_preserve_the_working_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.save_document("voice.openpatch", true);
+        assert!(!app.dirty());
+        let original = std::fs::read(dir.path().join("voice.openpatch")).unwrap();
+        edit(&mut app, 330.0);
+        app.rack.set_zoom(0.75);
+        app.save_current();
+        assert!(!app.dirty());
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("voice.openpatch")
+            .unwrap();
+        assert_eq!(saved.document.patch.nodes[0].params["frequency"], 330.0);
+        assert_eq!(saved.document.layout["zoom"], 0.75);
+        edit(&mut app, 440.0);
+        app.load_document("voice.openpatch", false);
+        assert!(!app.dirty());
+        assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
+        edit(&mut app, 550.0);
+        std::fs::write(dir.path().join("voice.openpatch"), &original).unwrap();
+        app.save_current();
+        assert!(app.dirty());
+        assert!(app.status.contains("changed on disk"));
+        assert_eq!(
+            std::fs::read(dir.path().join("voice.openpatch")).unwrap(),
+            original
+        );
+        assert_eq!(app.patch.nodes[0].params["frequency"], 550.0);
+        assert_eq!(app.active_file.as_deref(), Some("voice.openpatch"));
+        let before = app.capture_document();
+        std::fs::write(dir.path().join("bad.openpatch"), b"{}").unwrap();
+        app.load_document("bad.openpatch", false);
+        assert!(app.capture_document().equivalent(&before));
+        assert_eq!(app.active_file.as_deref(), Some("voice.openpatch"));
+    }
+
+    #[test]
+    fn mcp_edit_during_save_keeps_matching_disk_layout_and_newer_work_unsaved() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let captured = app.capture_document();
+        let shared = app.shared.clone();
+        crate::project::before_next_publish(move || {
+            execute_shared(
+                &shared,
+                "add_module",
+                json!({"id":"agent-added","kind":"constant"}),
+            )
+            .unwrap();
+        });
+        app.after_save = Some(PendingAction::Close);
+        app.save_document("snapshot.openpatch", true);
+        let on_disk = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("snapshot.openpatch")
+            .unwrap();
+        assert!(on_disk.document.equivalent(&captured));
+        assert!(app.patch.nodes.iter().any(|n| n.id == "agent-added"));
+        assert!(app.rack.layout()["positions"].get("agent-added").is_some());
+        assert!(app.dirty());
+        assert!(!app.allow_close);
+        assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+    }
+
+    #[test]
+    fn discard_close_does_not_recreate_recovery_and_rejects_late_mcp_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        edit(&mut app, 330.0);
+        make_autosave_due(&mut app);
+        app.autosave();
+        assert_eq!(recovery_files(dir.path()).len(), 1);
+        app.perform_action(PendingAction::Close);
+        make_autosave_due(&mut app);
+        app.autosave();
+        assert!(app.allow_close);
+        assert!(recovery_files(dir.path()).is_empty());
+        assert!(execute_shared(
+            &app.shared,
+            "add_module",
+            json!({"id":"late","kind":"constant"})
+        )
+        .unwrap_err()
+        .contains("closing"));
+    }
+
+    #[test]
+    fn stale_or_busy_clean_close_defers_until_newer_mcp_edits_are_observed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let shared = app.shared.clone();
+        let mut guard = shared.lock().unwrap();
+        app.request_action(PendingAction::Close);
+        assert!(!app.allow_close);
+        assert!(app.deferred_action.is_some());
+        guard
+            .execute("add_module", json!({"id":"latest","kind":"constant"}))
+            .unwrap();
+        drop(guard);
+        let action = app.deferred_action.take().unwrap();
+        app.request_action(action);
+        assert!(!app.allow_close);
+        assert!(app.dirty());
+        assert!(app.confirm_discard.is_some());
+        assert!(app.patch.nodes.iter().any(|n| n.id == "latest"));
+    }
+
+    #[test]
+    fn recovery_opens_unsaved_and_save_as_preserves_the_original_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut old = host(dir.path());
+        old.save_document("original.openpatch", true);
+        let original = std::fs::read(dir.path().join("original.openpatch")).unwrap();
+        edit(&mut old, 330.0);
+        make_autosave_due(&mut old);
+        old.autosave();
+        drop(old);
+        let mut app = host(dir.path());
+        assert_eq!(app.recovery_names.len(), 1);
+        let recovery = app.recovery_names[0].clone();
+        app.load_document(&recovery, true);
+        assert!(app.dirty());
+        assert!(app.active_file.is_none());
+        assert!(dir.path().join(&recovery).exists());
+        app.save_current();
+        assert!(matches!(app.file_mode, Some(FileMode::Save)));
+        app.save_document("recovered.openpatch", true);
+        assert!(!app.dirty());
+        assert_eq!(
+            std::fs::read(dir.path().join("original.openpatch")).unwrap(),
+            original
+        );
+        assert!(!dir.path().join(&recovery).exists());
+        assert_eq!(
+            app.projects
+                .as_ref()
+                .unwrap()
+                .load("recovered.openpatch")
+                .unwrap()
+                .document
+                .patch
+                .nodes[0]
+                .params["frequency"],
+            330.0
+        );
     }
 }

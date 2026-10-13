@@ -76,6 +76,7 @@ pub struct Rack {
     editing: Option<ParameterEdit>,
     suppress_reveal_once: bool,
     gesture: u64,
+    layout_revision: u64,
 }
 
 impl Default for Rack {
@@ -90,12 +91,20 @@ impl Default for Rack {
             editing: None,
             suppress_reveal_once: false,
             gesture: 0,
+            layout_revision: 0,
         }
     }
 }
 
 impl Rack {
+    pub fn layout_revision(&self) -> u64 {
+        self.layout_revision
+    }
+
     pub fn reset_view(&mut self) {
+        if self.pan != vec2(24.0, 12.0) || self.zoom != 1.0 {
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
         self.pan = vec2(24.0, 12.0);
         self.zoom = 1.0;
     }
@@ -104,7 +113,11 @@ impl Rack {
     }
     pub fn set_zoom(&mut self, zoom: f32) {
         if zoom.is_finite() {
-            self.zoom = zoom.clamp(0.4, 1.8);
+            let zoom = zoom.clamp(0.4, 1.8);
+            if zoom != self.zoom {
+                self.layout_revision = self.layout_revision.wrapping_add(1);
+            }
+            self.zoom = zoom;
         }
     }
 
@@ -137,6 +150,7 @@ impl Rack {
             }
             positions.insert(id.clone(), coordinate(point)?);
         }
+        self.layout_revision = self.layout_revision.wrapping_add(1);
         self.positions = positions;
         self.pan = pan.to_vec2();
         self.zoom = zoom;
@@ -153,6 +167,13 @@ impl Rack {
         catalog: &Value,
         device_rate: u32,
     ) -> Option<RackAction> {
+        let interactive = ui.is_enabled();
+        if !interactive {
+            self.pending = None;
+            self.dragging_cable = false;
+            self.editing = None;
+        }
+        let initial_pan = self.pan;
         // Capture this before reconcile assigns new panels their first position.
         // Restored sidecars own their viewport, including partial layouts.
         let suppress_reveal = std::mem::take(&mut self.suppress_reveal_once);
@@ -182,7 +203,8 @@ impl Rack {
             )
         });
         let painter = ui.painter().with_clip_rect(canvas);
-        if canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO))) {
+        if interactive && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
+        {
             let (scroll, zoom_delta, command) = ui.input(|i| {
                 (
                     i.smooth_scroll_delta,
@@ -202,7 +224,7 @@ impl Rack {
                 self.pan += scroll;
             }
         }
-        if response.dragged_by(PointerButton::Middle) {
+        if interactive && response.dragged_by(PointerButton::Middle) {
             self.pan += response.drag_delta();
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
@@ -211,7 +233,8 @@ impl Rack {
             self.dragging_cable = false;
             self.editing = None;
         }
-        if !ui.ctx().wants_keyboard_input()
+        if interactive
+            && !ui.ctx().wants_keyboard_input()
             && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
         {
             if let Some(id) = self.selected.take() {
@@ -329,12 +352,15 @@ impl Rack {
             if header_response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
             }
-            if header_response.dragged_by(PointerButton::Primary) {
+            if interactive && header_response.dragged_by(PointerButton::Primary) {
+                if header_response.drag_delta() != Vec2::ZERO {
+                    self.layout_revision = self.layout_revision.wrapping_add(1);
+                }
                 *self.positions.get_mut(&node.id).unwrap() +=
                     header_response.drag_delta() / self.zoom;
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
-            if header_response.drag_stopped_by(PointerButton::Primary) {
+            if interactive && header_response.drag_stopped_by(PointerButton::Primary) {
                 let other: Vec<_> = patch
                     .nodes
                     .iter()
@@ -343,6 +369,7 @@ impl Rack {
                     .collect();
                 let snapped = settle(self.positions[&node.id], width, &other);
                 self.positions.insert(node.id.clone(), snapped);
+                self.layout_revision = self.layout_revision.wrapping_add(1);
                 if action.is_none() {
                     action = Some(RackAction::LayoutChanged);
                 }
@@ -973,7 +1000,10 @@ impl Rack {
                     cable_plan(pending, target)
                         .is_some_and(|(cable, old)| connection_allowed(patch, &cable, old, catalog))
                 });
-        if self.dragging_cable && ui.input(|i| i.pointer.button_released(PointerButton::Primary)) {
+        if interactive
+            && self.dragging_cable
+            && ui.input(|i| i.pointer.button_released(PointerButton::Primary))
+        {
             if let Some(pending) = self.pending.take() {
                 if let Some((target, _)) = nearest {
                     action = cable_action(patch, &pending, target, catalog);
@@ -1128,8 +1158,15 @@ impl Rack {
                 Color32::from_gray(118),
             );
         }
+        if self.pan != initial_pan {
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
         self.parameter_editor(ui.ctx(), &mut action);
-        action
+        if interactive {
+            action
+        } else {
+            None
+        }
     }
 
     fn choice_parameter(
@@ -1282,9 +1319,13 @@ impl Rack {
         }
     }
 
-    fn reconcile(&mut self, patch: &Patch, catalog: &Value) {
+    pub(crate) fn reconcile(&mut self, patch: &Patch, catalog: &Value) {
+        let old_count = self.positions.len();
         self.positions
             .retain(|id, _| patch.nodes.iter().any(|node| &node.id == id));
+        if old_count != self.positions.len() {
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
         if self
             .selected
             .as_ref()
@@ -1319,6 +1360,7 @@ impl Rack {
                 }
             }
             self.positions.insert(node.id.clone(), pos2(x, 0.0));
+            self.layout_revision = self.layout_revision.wrapping_add(1);
         }
     }
 
@@ -2675,6 +2717,61 @@ mod tests {
         )
         .is_none());
         assert_eq!(serde_json::to_value(&patch).unwrap(), before);
+    }
+
+    #[test]
+    fn disabled_rack_ignores_delete_scroll_pinch_and_pending_cable_release() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch = openpatch_core::demo_patch();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        rack.selected = Some(patch.nodes[0].id.clone());
+        rack.pending = Some(PendingCable::new(
+            CableEnd::Output {
+                node: patch.nodes[0].id.clone(),
+                port: "out".into(),
+            },
+            &patch,
+        ));
+        rack.dragging_cable = true;
+        let before = rack.layout();
+        let mut action = None;
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                time: Some(1.0),
+                events: vec![
+                    egui::Event::PointerMoved(pos2(500.0, 300.0)),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: vec2(80.0, 50.0),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::Zoom(1.5),
+                    egui::Event::Key {
+                        key: egui::Key::Delete,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    button(pos2(500.0, 300.0), false),
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.add_enabled_ui(false, |ui| {
+                        action = rack.show(ui, &patch, &openpatch_core::catalog(), 48000);
+                    });
+                });
+            },
+        );
+        assert!(action.is_none());
+        assert_eq!(rack.layout(), before);
+        assert_eq!(rack.selected.as_deref(), Some(patch.nodes[0].id.as_str()));
+        assert!(rack.pending.is_none());
+        assert!(!rack.dragging_cable);
     }
 
     #[test]

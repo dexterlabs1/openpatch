@@ -13,7 +13,9 @@ shell command.
 
 `openpatch-desktop` owns the native eframe/egui window, OpenGL visualizer, and CPAL
 audio output. The rack includes a module browser, rotary controls, cable
-editing, output selection, and workspace JSON save/load. The desktop starts with
+editing, output selection, single-file native projects, legacy JSON import, and
+per-session recovery. See [PROJECTS.md](PROJECTS.md) for persistence and close
+concurrency contracts. The desktop starts with
 the demo patch and muted transport. Play/pause and master volume are local UI
 controls. The `--mcp` option serves stdio on a background control thread, sharing
 the window's `Arc<Mutex<Session>>`. Audio never acquires that mutex. Separate
