@@ -5,9 +5,11 @@ control. They must never stall the audio callback.
 
 ## Native live visualizer
 
-`openpatch-desktop` includes an optional OpenGL dock in the native window. Click
-**Visuals** to reveal it beneath the rack, then drag its divider to resize. Aurora,
-Spectrum, and Scope modes react to the same audio output as the rack. Playback
+`openpatch-desktop` includes an optional OpenGL view in the native analysis dock.
+Click the **Visuals** toolbar icon or choose **View → Visualizers**, then drag the
+dock's divider to resize. Scope and Visuals are tabs in the same dock, keeping
+space available for the rack and library. Aurora, Spectrum, and Waveform modes
+react to the same audio output as the rack. Playback
 starts paused; press Play in the window to hear the patch and drive its visuals.
 The animated background continues while paused, with audio input fading to zero.
 No browser or local audio-file selection is needed for this native view.
@@ -25,7 +27,7 @@ fullscreen vertex shader. The built-in source in
 | `uniform float u_level` | Recent decaying peak after transport and volume gain |
 | `uniform float u_wave[256]` | Best-effort waveform, oldest sample first |
 | `uniform float u_spectrum[64]` | Hann-windowed DFT magnitudes from the waveform |
-| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Scope |
+| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Waveform |
 
 Compile/link errors keep the previous working shader active and show driver
 diagnostics. Sources are limited to 64 KiB. Restore source restores the editor

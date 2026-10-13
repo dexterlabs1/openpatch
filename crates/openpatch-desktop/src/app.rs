@@ -1,5 +1,6 @@
 use crate::{
     audio::Audio,
+    chrome::{icon_button, Icon},
     document_state::{apply_document, DocumentState},
     keyboard::Keyboard,
     library::{LibraryAction, LibraryDrag, ModuleLibrary},
@@ -30,6 +31,12 @@ const CHROME: Color32 = Color32::from_rgb(32, 35, 35);
 const TEXT: Color32 = Color32::from_rgb(235, 233, 226);
 const MUTED: Color32 = Color32::from_rgb(164, 167, 162);
 const ACCENT: Color32 = Color32::from_rgb(229, 186, 106);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnalysisTab {
+    Scope,
+    Visuals,
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum FileMode {
@@ -212,7 +219,7 @@ pub struct OpenPatch {
     shader: String,
     shader_open: bool,
     shader_status: String,
-    visuals_open: bool,
+    analysis_tab: Option<AnalysisTab>,
     visual_mode: i32,
     scope: Scope,
     volume: f32,
@@ -346,7 +353,7 @@ impl OpenPatch {
             shader: DEFAULT_SHADER.into(),
             shader_open: false,
             shader_status,
-            visuals_open: false,
+            analysis_tab: None,
             visual_mode: 0,
             scope: Scope::default(),
             volume,
@@ -526,6 +533,7 @@ impl OpenPatch {
     }
     fn performance_keyboard(&mut self, ctx: &egui::Context) {
         let enabled = self.keyboard_open
+            && !egui::Popup::is_any_open(ctx)
             && self.audio.as_ref().is_some_and(Audio::is_playing)
             && !ctx.wants_keyboard_input()
             && ctx.input(|i| i.focused)
@@ -1303,6 +1311,40 @@ impl OpenPatch {
             self.request_action(PendingAction::Load(name));
         }
     }
+    fn global_shortcuts(&mut self, ctx: &egui::Context) {
+        if !self.library_enabled()
+            || !ctx.input(|i| i.focused)
+            || ctx.wants_keyboard_input()
+            || egui::Popup::is_any_open(ctx)
+            || egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
+        {
+            return;
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
+            self.toggle_play();
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+            self.browse();
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
+            self.after_save = None;
+            if ctx.input(|i| i.modifiers.shift) {
+                self.file_dialog(FileMode::Save);
+            } else {
+                self.save_current();
+            }
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::O)) {
+            self.file_dialog(FileMode::Open);
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
+            self.history(ctx.input(|i| i.modifiers.shift));
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Num0)) {
+            self.rack.reset_view();
+        }
+    }
+
     fn toolbar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("menu")
             .frame(
@@ -1311,373 +1353,486 @@ impl OpenPatch {
                     .inner_margin(egui::Margin::symmetric(12, 7)),
             )
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("OpenPatch").strong().size(14.0));
-                    ui.add_space(10.0);
-                    ui.menu_button("File", |ui| {
-                        if ui.button("New patch").clicked() {
-                            self.replace_from_menu(Patch::new_v2(), "Untitled");
-                            ui.close();
-                        }
-                        if ui.button("Open…     ⌘O").clicked() {
-                            self.file_dialog(FileMode::Open);
-                            ui.close();
-                        }
-                        if ui.button("Save     ⌘S").clicked() {
-                            self.save_current();
-                            ui.close();
-                        }
-                        if ui.button("Save as…     ⇧⌘S").clicked() {
-                            self.after_save = None;
-                            self.file_dialog(FileMode::Save);
-                            ui.close();
-                        }
-                        if ui
-                            .add_enabled(
-                                self.active_file.is_some(),
-                                egui::Button::new("Revert to saved"),
+                ui.add_enabled_ui(self.library_enabled(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.spacing_mut().button_padding = Vec2::new(7.0, 6.0);
+                        ui.set_min_height(30.0);
+                        ui.label(RichText::new("OpenPatch").strong().size(14.0));
+                        ui.add_space(6.0);
+                        ui.menu_button("File", |ui| {
+                            if ui.button("New patch").clicked() {
+                                self.replace_from_menu(Patch::new_v2(), "Untitled");
+                                ui.close();
+                            }
+                            if ui.button("Open…     ⌘O").clicked() {
+                                self.file_dialog(FileMode::Open);
+                                ui.close();
+                            }
+                            if ui.button("Save     ⌘S").clicked() {
+                                self.save_current();
+                                ui.close();
+                            }
+                            if ui.button("Save as…     ⇧⌘S").clicked() {
+                                self.after_save = None;
+                                self.file_dialog(FileMode::Save);
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.active_file.is_some(),
+                                    egui::Button::new("Revert to saved"),
+                                )
+                                .clicked()
+                            {
+                                if let Some(name) = self.active_file.clone() {
+                                    self.request_action(PendingAction::Load(name));
+                                }
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    !self.recovery_names.is_empty(),
+                                    egui::Button::new("Recover unsaved work…"),
+                                )
+                                .clicked()
+                            {
+                                self.recovery_open = true;
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button("Reference analog voice").clicked() {
+                                let mut patch = openpatch_core::analog_demo_patch();
+                                patch.version = 2;
+                                self.replace_from_menu(patch, "Reference analog voice");
+                                ui.close();
+                            }
+                            if ui.button("Clocked random voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/clocked-random-voice.json"
+                                ))
+                                .expect("valid bundled random voice");
+                                self.replace_from_menu(patch, "Clocked random voice");
+                                ui.close();
+                            }
+                            if ui.button("Synced waveform voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/synced-waveform-voice.json"
+                                ))
+                                .expect("valid bundled waveform voice");
+                                self.replace_from_menu(patch, "Synced waveform voice");
+                                ui.close();
+                            }
+                            if ui.button("Stacked pitch voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/stacked-pitch-voice.json"
+                                ))
+                                .expect("valid bundled stacked pitch voice");
+                                self.replace_from_menu(patch, "Stacked pitch voice");
+                                ui.close();
+                            }
+                            if ui.button("Layered stereo morph").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/layered-stereo-morph.json"
+                                ))
+                                .expect("valid bundled layered stereo morph");
+                                self.replace_from_menu(patch, "Layered stereo morph");
+                                ui.close();
+                            }
+                            if ui.button("Gate shaping voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/gate-shaping-voice.json"
+                                ))
+                                .expect("valid bundled gate shaping voice");
+                                self.replace_from_menu(patch, "Gate shaping voice");
+                                ui.close();
+                            }
+                            if ui.button("Voltage utilities").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/voltage-utilities.json"
+                                ))
+                                .expect("valid bundled voltage utilities");
+                                self.replace_from_menu(patch, "Voltage utilities");
+                                ui.close();
+                            }
+                            if ui.button("Switched stereo voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/switched-stereo-voice.json"
+                                ))
+                                .expect("valid bundled switching voice");
+                                self.replace_from_menu(patch, "Switched stereo voice");
+                                ui.close();
+                            }
+                            if ui.button("Sequenced analog voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/sequenced-analog-voice.json"
+                                ))
+                                .expect("valid bundled sequence");
+                                self.replace_from_menu(patch, "Sequenced analog voice");
+                                ui.close();
+                            }
+                            if ui.button("Clocked modulation").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/clocked-modulation.json"
+                                ))
+                                .expect("valid bundled modulation voice");
+                                self.replace_from_menu(patch, "Clocked modulation");
+                                self.rack.set_zoom(0.75);
+                                ui.close();
+                            }
+                            if ui.button("Stereo width study").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/stereo-width-study.json"
+                                ))
+                                .expect("valid bundled stereo study");
+                                self.replace_from_menu(patch, "Stereo width study");
+                                ui.close();
+                            }
+                            if ui.button("MIDI keyboard voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/midi-keyboard-voice.json"
+                                ))
+                                .expect("valid bundled MIDI voice");
+                                self.replace_from_menu(patch, "MIDI keyboard voice");
+                                self.keyboard_open = true;
+                                ui.close();
+                            }
+                            if ui.button("Polyphonic voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/polyphonic-voice.json"
+                                ))
+                                .expect("valid bundled polyphonic voice");
+                                self.replace_from_menu(patch, "Polyphonic voice");
+                                ui.close();
+                            }
+                            if self.patch.version == 1
+                                && ui.button("Enable polyphony and feedback…").clicked()
+                            {
+                                self.confirm_engine_upgrade = true;
+                                ui.close();
+                            }
+                            if ui.button("Tremolo study").clicked() {
+                                self.replace_from_menu(
+                                    openpatch_core::demo_patch(),
+                                    "Tremolo study",
+                                );
+                                ui.close();
+                            }
+                        });
+                        ui.menu_button("Edit", |ui| {
+                            if ui
+                                .add_enabled(
+                                    self.can_undo,
+                                    egui::Button::new("Undo patch edit   ⌘Z"),
+                                )
+                                .clicked()
+                            {
+                                self.history(false);
+                                ui.close();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.can_redo,
+                                    egui::Button::new("Redo patch edit   ⇧⌘Z"),
+                                )
+                                .clicked()
+                            {
+                                self.history(true);
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button("Add module…   Enter").clicked() {
+                                self.browse();
+                                ui.close();
+                            }
+                        });
+                        ui.menu_button("View", |ui| {
+                            for (tab, label) in [
+                                (AnalysisTab::Visuals, "Visualizers"),
+                                (AnalysisTab::Scope, "Signal scope"),
+                            ] {
+                                let mut selected = self.analysis_tab == Some(tab);
+                                if ui.checkbox(&mut selected, label).changed() {
+                                    self.select_analysis(selected.then_some(tab));
+                                }
+                            }
+                            ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
+                            if ui.button("Reset rack view").clicked() {
+                                self.rack.reset_view();
+                                ui.close();
+                            }
+                            if ui.button("Shader editor").clicked() {
+                                self.shader_open = true;
+                                ui.close();
+                            }
+                        });
+                        ui.separator();
+                        // Allocate fixed controls from the right, then give the title
+                        // the remaining width. Long project names cannot hide transport.
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icon_button(
+                                ui,
+                                Icon::Settings,
+                                "Audio / MIDI settings",
+                                self.settings_open,
+                                true,
                             )
                             .clicked()
-                        {
-                            if let Some(name) = self.active_file.clone() {
-                                self.request_action(PendingAction::Load(name));
+                            {
+                                self.settings_open = !self.settings_open;
+                                if self.settings_open {
+                                    self.refresh_devices();
+                                }
                             }
-                            ui.close();
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.recovery_names.is_empty(),
-                                egui::Button::new("Recover unsaved work…"),
+                            if icon_button(ui, Icon::Plus, "Zoom in", false, true).clicked() {
+                                self.rack.set_zoom((self.rack.zoom() + 0.1).min(1.8));
+                            }
+                            let mut zoom = self.rack.zoom() * 100.0;
+                            if ui
+                                .add_sized(
+                                    [48.0, 30.0],
+                                    egui::DragValue::new(&mut zoom)
+                                        .range(40.0..=180.0)
+                                        .suffix("%")
+                                        .speed(1.0),
+                                )
+                                .on_hover_text("Rack zoom · Cmd/Ctrl+0 resets the view")
+                                .changed()
+                            {
+                                self.rack.set_zoom(zoom / 100.0);
+                            }
+                            if icon_button(ui, Icon::Minus, "Zoom out", false, true).clicked() {
+                                self.rack.set_zoom((self.rack.zoom() - 0.1).max(0.4));
+                            }
+                            ui.separator();
+                            if icon_button(
+                                ui,
+                                Icon::Visuals,
+                                "Visuals",
+                                self.analysis_tab == Some(AnalysisTab::Visuals),
+                                true,
                             )
                             .clicked()
-                        {
-                            self.recovery_open = true;
-                            ui.close();
-                        }
-                        ui.separator();
-                        if ui.button("Reference analog voice").clicked() {
-                            let mut patch = openpatch_core::analog_demo_patch();
-                            patch.version = 2;
-                            self.replace_from_menu(patch, "Reference analog voice");
-                            ui.close();
-                        }
-                        if ui.button("Clocked random voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/clocked-random-voice.json"
-                            ))
-                            .expect("valid bundled random voice");
-                            self.replace_from_menu(patch, "Clocked random voice");
-                            ui.close();
-                        }
-                        if ui.button("Synced waveform voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/synced-waveform-voice.json"
-                            ))
-                            .expect("valid bundled waveform voice");
-                            self.replace_from_menu(patch, "Synced waveform voice");
-                            ui.close();
-                        }
-                        if ui.button("Stacked pitch voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/stacked-pitch-voice.json"
-                            ))
-                            .expect("valid bundled stacked pitch voice");
-                            self.replace_from_menu(patch, "Stacked pitch voice");
-                            ui.close();
-                        }
-                        if ui.button("Layered stereo morph").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/layered-stereo-morph.json"
-                            ))
-                            .expect("valid bundled layered stereo morph");
-                            self.replace_from_menu(patch, "Layered stereo morph");
-                            ui.close();
-                        }
-                        if ui.button("Gate shaping voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/gate-shaping-voice.json"
-                            ))
-                            .expect("valid bundled gate shaping voice");
-                            self.replace_from_menu(patch, "Gate shaping voice");
-                            ui.close();
-                        }
-                        if ui.button("Voltage utilities").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/voltage-utilities.json"
-                            ))
-                            .expect("valid bundled voltage utilities");
-                            self.replace_from_menu(patch, "Voltage utilities");
-                            ui.close();
-                        }
-                        if ui.button("Switched stereo voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/switched-stereo-voice.json"
-                            ))
-                            .expect("valid bundled switching voice");
-                            self.replace_from_menu(patch, "Switched stereo voice");
-                            ui.close();
-                        }
-                        if ui.button("Sequenced analog voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/sequenced-analog-voice.json"
-                            ))
-                            .expect("valid bundled sequence");
-                            self.replace_from_menu(patch, "Sequenced analog voice");
-                            ui.close();
-                        }
-                        if ui.button("Clocked modulation").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/clocked-modulation.json"
-                            ))
-                            .expect("valid bundled modulation voice");
-                            self.replace_from_menu(patch, "Clocked modulation");
-                            self.rack.set_zoom(0.75);
-                            ui.close();
-                        }
-                        if ui.button("Stereo width study").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/stereo-width-study.json"
-                            ))
-                            .expect("valid bundled stereo study");
-                            self.replace_from_menu(patch, "Stereo width study");
-                            ui.close();
-                        }
-                        if ui.button("MIDI keyboard voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/midi-keyboard-voice.json"
-                            ))
-                            .expect("valid bundled MIDI voice");
-                            self.replace_from_menu(patch, "MIDI keyboard voice");
-                            self.keyboard_open = true;
-                            ui.close();
-                        }
-                        if ui.button("Polyphonic voice").clicked() {
-                            let patch = serde_json::from_str(include_str!(
-                                "../../../examples/polyphonic-voice.json"
-                            ))
-                            .expect("valid bundled polyphonic voice");
-                            self.replace_from_menu(patch, "Polyphonic voice");
-                            ui.close();
-                        }
-                        if self.patch.version == 1
-                            && ui.button("Enable polyphony and feedback…").clicked()
-                        {
-                            self.confirm_engine_upgrade = true;
-                            ui.close();
-                        }
-                        if ui.button("Tremolo study").clicked() {
-                            self.replace_from_menu(openpatch_core::demo_patch(), "Tremolo study");
-                            ui.close();
-                        }
-                    });
-                    ui.menu_button("Edit", |ui| {
-                        if ui
-                            .add_enabled(self.can_undo, egui::Button::new("Undo patch edit   ⌘Z"))
-                            .clicked()
-                        {
-                            self.history(false);
-                            ui.close();
-                        }
-                        if ui
-                            .add_enabled(self.can_redo, egui::Button::new("Redo patch edit   ⇧⌘Z"))
-                            .clicked()
-                        {
-                            self.history(true);
-                            ui.close();
-                        }
-                        ui.separator();
-                        if ui.button("Add module…   Enter").clicked() {
-                            self.browse();
-                            ui.close();
-                        }
-                    });
-                    ui.menu_button("View", |ui| {
-                        ui.checkbox(&mut self.visuals_open, "Visualizers");
-                        ui.checkbox(&mut self.scope.open, "Signal scope");
-                        ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
-                        if ui.button("Reset rack view").clicked() {
-                            self.rack.reset_view();
-                            ui.close();
-                        }
-                        if ui.button("Shader editor").clicked() {
-                            self.shader_open = true;
-                            ui.close();
-                        }
-                    });
-                    ui.separator();
-                    if ui.button("+  Add module").clicked() {
-                        self.browse();
-                    }
-                    ui.toggle_value(&mut self.visuals_open, "Visuals");
-                    ui.toggle_value(&mut self.scope.open, "Scope");
-                    if ui.button("Audio / MIDI").clicked() {
-                        self.settings_open = !self.settings_open;
-                        if self.settings_open {
-                            self.refresh_devices();
-                        }
-                    }
-                    ui.add_space(10.0);
-                    let mut zoom = self.rack.zoom() * 100.0;
-                    ui.label(RichText::new("Zoom").color(MUTED));
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut zoom)
-                                .range(40.0..=180.0)
-                                .suffix("%")
-                                .speed(1.0),
-                        )
-                        .changed()
-                    {
-                        self.rack.set_zoom(zoom / 100.0);
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(2.0);
-                        if ui
-                            .add(egui::Slider::new(&mut self.volume, 0.0..=1.0).show_value(false))
-                            .on_hover_text("Master volume")
-                            .changed()
-                        {
-                            if let Some(audio) = &self.audio {
-                                audio.set_volume(self.volume);
+                            {
+                                self.toggle_analysis(AnalysisTab::Visuals);
                             }
-                        }
-                        ui.label(RichText::new("Level").size(11.0).color(MUTED));
-                        let playing = self.audio.as_ref().is_some_and(Audio::is_playing);
-                        if ui
-                            .add_enabled(
+                            if icon_button(
+                                ui,
+                                Icon::Scope,
+                                "Signal scope",
+                                self.analysis_tab == Some(AnalysisTab::Scope),
+                                true,
+                            )
+                            .clicked()
+                            {
+                                self.toggle_analysis(AnalysisTab::Scope);
+                            }
+                            if icon_button(
+                                ui,
+                                Icon::Library,
+                                "Module library · Enter",
+                                self.browser_open,
+                                true,
+                            )
+                            .clicked()
+                            {
+                                if self.browser_open {
+                                    self.browser_open = false;
+                                } else {
+                                    self.browse();
+                                }
+                            }
+                            ui.separator();
+                            ui.scope(|ui| {
+                                ui.spacing_mut().slider_width = 64.0;
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut self.volume, 0.0..=1.0)
+                                            .show_value(false),
+                                    )
+                                    .on_hover_text(format!(
+                                        "Master volume · {:.0}%",
+                                        self.volume * 100.0
+                                    ))
+                                    .changed()
+                                {
+                                    if let Some(audio) = &self.audio {
+                                        audio.set_volume(self.volume);
+                                    }
+                                }
+                            });
+                            let playing = self.audio.as_ref().is_some_and(Audio::is_playing);
+                            if icon_button(
+                                ui,
+                                if playing { Icon::Pause } else { Icon::Play },
+                                if playing {
+                                    "Pause audio · Space"
+                                } else {
+                                    "Play audio · Space"
+                                },
+                                playing,
                                 self.audio.is_some(),
-                                egui::Button::new(if playing { "Pause" } else { "Play" })
-                                    .fill(if playing {
-                                        Color32::from_rgb(55, 98, 75)
-                                    } else {
-                                        Color32::from_rgb(51, 57, 54)
-                                    })
-                                    .min_size(Vec2::new(65.0, 24.0)),
                             )
                             .clicked()
-                        {
-                            self.toggle_play();
-                        }
+                            {
+                                self.toggle_play();
+                            }
+                            ui.separator();
+                            if icon_button(ui, Icon::Save, "Save patch · Cmd/Ctrl+S", false, true)
+                                .clicked()
+                            {
+                                self.save_current();
+                            }
+                            if icon_button(
+                                ui,
+                                Icon::Redo,
+                                "Redo patch edit · Shift+Cmd/Ctrl+Z",
+                                false,
+                                self.can_redo,
+                            )
+                            .clicked()
+                            {
+                                self.history(true);
+                            }
+                            if icon_button(
+                                ui,
+                                Icon::Undo,
+                                "Undo patch edit · Cmd/Ctrl+Z",
+                                false,
+                                self.can_undo,
+                            )
+                            .clicked()
+                            {
+                                self.history(false);
+                            }
+                            let title =
+                                format!("{}{}", self.title, if self.dirty() { " *" } else { "" });
+                            ui.add(
+                                egui::Label::new(RichText::new(&title).size(13.0).color(TEXT))
+                                    .truncate(),
+                            )
+                            .on_hover_text(title);
+                        });
                     });
                 });
             });
     }
     fn footer(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("status")
-            .frame(
-                egui::Frame::new()
-                    .fill(CHROME)
-                    .inner_margin(egui::Margin::symmetric(12, 5)),
-            )
+            .frame(egui::Frame::new().fill(CHROME).inner_margin(egui::Margin::symmetric(12,5)))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let dirty = if self.dirty() { " *" } else { "" };
-                    ui.label(RichText::new(format!("{}{}", self.title, dirty)).size(11.0));
-                    ui.separator();
-                    ui.label(
-                        RichText::new(format!(
-                            "{} modules · {} cables · {}",
-                            self.patch.nodes.len(),
-                            self.patch.cables.len(),
-                            if self.patch.version == 2 { "Poly engine" } else { "Legacy engine" }
-                        ))
-                        .size(10.0)
-                        .color(MUTED),
-                    );
-                    if self.rack.selection_count() > 1 {
-                        ui.separator();
-                        ui.label(
-                            RichText::new(format!("{} selected", self.rack.selection_count()))
-                                .size(10.0)
-                                .color(ACCENT),
-                        )
-                        .on_hover_text("Shift-click headers to select modules. Cmd/Ctrl+D duplicates the selection; add Shift to include incoming cables.");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Audio health stays visible even when a status message is long.
+                    if self.audio.is_none() {
+                        if ui.button("Retry audio").on_hover_text(&self.device).clicked() {
+                            self.reopen_audio(self.output_device.clone());
+                        }
+                    } else if let Some(audio)=&self.audio {
+                        ui.label(RichText::new(format!("{} Hz",audio.sample_rate)).size(10.0).color(MUTED)).on_hover_text(&self.device);
+                        ui.add(egui::ProgressBar::new(audio.peak().min(1.0)).desired_width(48.0).desired_height(5.0).fill(ACCENT))
+                            .on_hover_text("Combined output peak · after master volume and graph crossfade");
+                        ui.label(RichText::new(if audio.is_playing(){"Playing"}else{"Paused"}).size(10.0).color(MUTED));
+                        if audio.solver_failures()!=0 {
+                            ui.colored_label(ACCENT,"Solver holds").on_hover_text(format!("{} circuit solves reached the bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.",audio.solver_failures()));
+                        }
+                    }
+                    if self.mcp {
+                        ui.label(RichText::new("MCP").color(ACCENT).size(10.0))
+                            .on_hover_text("This window exposes the local MCP server");
                     }
                     ui.separator();
-                    ui.add(
-                        egui::Label::new(RichText::new(&self.status).size(10.0).color(ACCENT))
-                            .truncate(),
-                    )
-                    .on_hover_text(&self.status);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if self.audio.is_none() {
-                            if ui
-                                .button("Retry audio")
-                                .on_hover_text(&self.device)
-                                .clicked()
-                            {
-                                self.reopen_audio(self.output_device.clone());
-                            }
-                        } else if let Some(audio) = &self.audio {
-                            if audio.solver_failures() != 0 {
-                                ui.colored_label(Color32::from_rgb(235, 167, 85), format!("Solver holds: {}", audio.solver_failures()))
-                                    .on_hover_text("A circuit solve did not converge within its bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.");
-                            }
-                            ui.label(
-                                RichText::new(format!("{} Hz", audio.sample_rate))
-                                    .size(10.0)
-                                    .color(MUTED),
-                            )
-                            .on_hover_text(&self.device);
-                            let peak = self.audio.as_ref().map_or(0.0, Audio::peak);
-                            ui.add(
-                                egui::ProgressBar::new(peak.min(1.0))
-                                    .desired_width(65.0)
-                                    .desired_height(5.0)
-                                    .fill(ACCENT),
-                            );
+                    ui.allocate_ui_with_layout(ui.available_size(),egui::Layout::left_to_right(egui::Align::Center),|ui| {
+                        ui.label(RichText::new(format!("{} modules · {} cables",self.patch.nodes.len(),self.patch.cables.len())).size(10.0).color(MUTED))
+                            .on_hover_text(if self.patch.version==2 {"Polyphonic engine v2"}else{"Legacy mono engine"});
+                        if self.rack.selection_count()>1 {
+                            ui.label(RichText::new(format!("{} selected",self.rack.selection_count())).size(10.0).color(ACCENT))
+                                .on_hover_text("Shift-click headers to select modules. Cmd/Ctrl+D duplicates the selection; add Shift to include incoming cables.");
                         }
-                        if self.mcp {
-                            ui.label(RichText::new("MCP").color(ACCENT).size(10.0));
-                        }
+                        ui.separator();
+                        ui.add(egui::Label::new(RichText::new(&self.status).size(10.0).color(ACCENT)).truncate()).on_hover_text(&self.status);
                     });
                 });
             });
     }
-    fn visual_dock(&mut self, ctx: &egui::Context) {
-        if !self.visuals_open {
-            return;
+    fn select_analysis(&mut self, tab: Option<AnalysisTab>) {
+        self.analysis_tab = tab;
+        if tab == Some(AnalysisTab::Scope) {
+            self.scope.open = true;
+        } else if tab.is_none() {
+            self.scope.open = false;
         }
-        egui::TopBottomPanel::bottom("visualizers")
-            .default_height(200.0)
-            .height_range(130.0..=500.0)
+        // Visuals keeps an already-active scope armed, including frozen captures.
+    }
+    fn toggle_analysis(&mut self, tab: AnalysisTab) {
+        self.select_analysis((self.analysis_tab != Some(tab)).then_some(tab));
+    }
+    fn analysis_dock(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.analysis_tab else {
+            return;
+        };
+        let available = ctx.available_rect().height();
+        let max_height = (available - 220.0).clamp(220.0, 500.0);
+        egui::TopBottomPanel::bottom("analysis-dock")
+            .default_height(260.0_f32.min(max_height))
+            .height_range(220.0..=max_height)
             .resizable(true)
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(20, 24, 24))
-                    .inner_margin(10),
+                    .fill(Color32::from_rgb(27, 31, 31))
+                    .inner_margin(8),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("VISUALIZERS").strong().size(11.0));
-                    for (mode, name) in [(0, "Aurora"), (1, "Spectrum"), (2, "Scope")] {
-                        ui.selectable_value(&mut self.visual_mode, mode, name);
+                    for (value, label) in [
+                        (AnalysisTab::Scope, "Scope"),
+                        (AnalysisTab::Visuals, "Visuals"),
+                    ] {
+                        if ui.selectable_label(tab == value, label).clicked() {
+                            self.select_analysis(Some(value));
+                        }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Hide").clicked() {
-                            self.visuals_open = false;
+                        if ui
+                            .button("×")
+                            .on_hover_text("Close analysis dock")
+                            .clicked()
+                        {
+                            self.select_analysis(None);
                         }
-                        if ui.button("Edit GLSL").clicked() {
+                        if tab == AnalysisTab::Visuals && ui.button("Edit GLSL").clicked() {
                             self.shader_open = true;
                         }
                     });
                 });
-                let wave = self.audio.as_ref().map_or([0.0; 256], Audio::waveform);
-                let peak = self.audio.as_ref().map_or(0.0, Audio::peak);
-                if let Some(v) = &self.visualizer {
-                    v.paint(
-                        ui,
-                        ui.available_size().max(Vec2::new(1.0, 1.0)),
-                        self.start.elapsed().as_secs_f32(),
-                        peak,
-                        wave,
-                        self.visual_mode,
-                    );
-                } else {
-                    ui.label(&self.shader_status);
+                ui.separator();
+                match self.analysis_tab {
+                    Some(AnalysisTab::Scope) => self.scope.contents(ui, &self.patch, &self.catalog),
+                    Some(AnalysisTab::Visuals) => {
+                        ui.horizontal(|ui| {
+                            for (mode, name) in [(0, "Aurora"), (1, "Spectrum"), (2, "Waveform")] {
+                                ui.selectable_value(&mut self.visual_mode, mode, name);
+                            }
+                        });
+                        let wave = self.audio.as_ref().map_or([0.0; 256], Audio::waveform);
+                        let peak = self.audio.as_ref().map_or(0.0, Audio::peak);
+                        if let Some(v) = &self.visualizer {
+                            v.paint(
+                                ui,
+                                ui.available_size().max(Vec2::new(1.0, 1.0)),
+                                self.start.elapsed().as_secs_f32(),
+                                peak,
+                                wave,
+                                self.visual_mode,
+                            );
+                        } else {
+                            ui.label(&self.shader_status);
+                        }
+                    }
+                    None => {}
                 }
             });
     }
+
     fn rack_workspace(&mut self, ctx: &egui::Context, library_action: Option<LibraryAction>) {
         let mut action = None;
         let mut pending_add = None;
@@ -1775,7 +1930,10 @@ impl OpenPatch {
             }) => {
                 self.preset_dialog = Some(PresetDialog::new(id, kind, revision, mode));
             }
-            Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
+            Some(RackAction::Inspect { lane, id, port }) => {
+                self.scope.inspect(lane, id, port);
+                self.select_analysis(Some(AnalysisTab::Scope));
+            }
             Some(RackAction::LayoutChanged) => {
                 self.status = "Module moved".into();
             }
@@ -2325,7 +2483,11 @@ impl OpenPatch {
             assert!(v.compile(gl, "this is not GLSL").is_err());
             v.compile(gl, DEFAULT_SHADER).expect("Shader recovery");
         }
-        self.visuals_open = (2..=8).contains(&frame) || captures == 1;
+        if frame <= 28 {
+            self.select_analysis(
+                ((2..=8).contains(&frame) || captures == 1).then_some(AnalysisTab::Visuals),
+            );
+        }
         self.visual_mode = match frame {
             2..=4 => 1,
             5..=7 => 2,
@@ -2426,9 +2588,10 @@ impl OpenPatch {
             self.rack = Rack::default();
             self.title = "Signal inspection".into();
             self.scope.smoke_fixture();
+            self.select_analysis(Some(AnalysisTab::Scope));
         }
         if frame == 172 {
-            self.scope.open = false;
+            self.select_analysis(None);
             let patch: Patch = serde_json::from_str(include_str!(
                 "../../../examples/sequenced-analog-voice.json"
             ))
@@ -2725,6 +2888,17 @@ impl OpenPatch {
         if frame == 454 {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(940.0, 680.0)));
         }
+        if frame == 470 {
+            self.scope.smoke_fixture();
+            self.select_analysis(Some(AnalysisTab::Scope));
+            self.keyboard_open = true;
+            self.title =
+                "Studio Rack · signal inspection with a deliberately long project title".into();
+            self.status = "Offline calibration fixture · use the Scope or Visuals tab while keeping the rack and library accessible".into();
+        }
+        if frame == 494 {
+            self.select_analysis(Some(AnalysisTab::Visuals));
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2758,6 +2932,8 @@ impl OpenPatch {
                 | 432
                 | 448
                 | 466
+                | 482
+                | 506
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2804,7 +2980,9 @@ impl OpenPatch {
                 25 => path.with_file_name("module-preset-browser.png"),
                 26 => path.with_file_name("rack-duplication-outgoing.png"),
                 27 => path.with_file_name("module-browser.png"),
-                _ => path.with_file_name("module-library-compact.png"),
+                28 => path.with_file_name("module-library-compact.png"),
+                29 => path.with_file_name("analysis-dock-compact.png"),
+                _ => path.with_file_name("analysis-visuals-compact.png"),
             };
             image::save_buffer(
                 target,
@@ -2816,12 +2994,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 29 {
+            if captures == 31 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 492, "Native screenshot timeout");
+        assert!(frame < 536, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2834,38 +3012,7 @@ impl eframe::App for OpenPatch {
         self.toolbar(ctx);
         self.footer(ctx);
         let library_action = self.browser(ctx);
-        if !ctx.wants_keyboard_input()
-            && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
-            && !self.confirm_engine_upgrade
-            && !self.recovery_open
-            && self.preset_dialog.is_none()
-            && self.file_mode.is_none()
-            && self.confirm_discard.is_none()
-        {
-            if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
-                self.toggle_play();
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                self.browse();
-            }
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
-                self.after_save = None;
-                if ctx.input(|i| i.modifiers.shift) {
-                    self.file_dialog(FileMode::Save);
-                } else {
-                    self.save_current();
-                }
-            }
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::O)) {
-                self.file_dialog(FileMode::Open);
-            }
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
-                self.history(ctx.input(|i| i.modifiers.shift));
-            }
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Num0)) {
-                self.rack.reset_view();
-            }
-        }
+        self.global_shortcuts(ctx);
         if let Some(action) = self.deferred_action.take() {
             self.request_action(action);
         }
@@ -2874,9 +3021,8 @@ impl eframe::App for OpenPatch {
             self.request_action(PendingAction::Close);
         }
         self.performance_keyboard(ctx);
-        self.visual_dock(ctx);
-        self.scope
-            .show(ctx, &self.patch, &self.catalog, self.audio.as_mut());
+        self.scope.service(&self.patch, self.audio.as_mut());
+        self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
             let states = self
                 .patch
@@ -2998,7 +3144,7 @@ mod project_workflow_tests {
             shader: DEFAULT_SHADER.into(),
             shader_open: false,
             shader_status: String::new(),
-            visuals_open: false,
+            analysis_tab: None,
             visual_mode: 0,
             scope: Scope::default(),
             volume: 0.65,
@@ -3639,6 +3785,160 @@ mod project_workflow_tests {
         assert!(app.capture_document().equivalent(&committed));
         app.history(false);
         assert!(app.capture_document().equivalent(&before));
+    }
+
+    #[test]
+    fn analysis_tabs_preserve_scope_capture_until_the_dock_is_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.toggle_analysis(AnalysisTab::Visuals);
+        assert_eq!(app.analysis_tab, Some(AnalysisTab::Visuals));
+        assert!(!app.scope.open, "visuals alone must not arm probes");
+        app.toggle_analysis(AnalysisTab::Scope);
+        assert!(app.scope.open);
+        app.toggle_analysis(AnalysisTab::Visuals);
+        assert!(app.scope.open, "tab switching must retain scope capture");
+        app.toggle_analysis(AnalysisTab::Visuals);
+        assert_eq!(app.analysis_tab, None);
+        assert!(!app.scope.open, "closing disarms capture");
+        app.scope.inspect(0, "vco".into(), "out".into());
+        app.select_analysis(Some(AnalysisTab::Scope));
+        assert!(app.scope.open);
+        assert_eq!(app.analysis_tab, Some(AnalysisTab::Scope));
+    }
+
+    #[test]
+    fn global_shortcuts_respect_windows_popups_focus_and_library_drag() {
+        for blocked in [
+            "settings", "shader", "popup", "blur", "text", "drag", "none",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            assert!(app.command(
+                "add_module",
+                json!({"id":"shortcut-target","kind":"constant"})
+            ));
+            let before = app.shared.lock().unwrap().snapshot();
+            app.settings_open = blocked == "settings";
+            app.shader_open = blocked == "shader";
+            let ctx = egui::Context::default();
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: blocked != "blur",
+                    modifiers: egui::Modifiers::COMMAND,
+                    events: vec![
+                        egui::Event::Key {
+                            key: egui::Key::Enter,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::COMMAND,
+                        },
+                        egui::Event::Key {
+                            key: egui::Key::Z,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::COMMAND,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ctx| {
+                    if blocked == "popup" {
+                        egui::Popup::open_id(ctx, egui::Id::new("shortcut-popup"));
+                    }
+                    if blocked == "text" {
+                        ctx.memory_mut(|m| m.request_focus(egui::Id::new("shortcut-text")));
+                    }
+                    if blocked == "drag" {
+                        egui::DragAndDrop::set_payload(
+                            ctx,
+                            LibraryDrag {
+                                kind: "constant".into(),
+                            },
+                        );
+                    }
+                    app.global_shortcuts(ctx);
+                },
+            );
+            if blocked == "none" {
+                assert!(app.browser_open);
+                assert_ne!(app.shared.lock().unwrap().snapshot(), before);
+            } else {
+                assert!(!app.browser_open, "{blocked} leaked Enter");
+                assert_eq!(
+                    app.shared.lock().unwrap().snapshot(),
+                    before,
+                    "{blocked} leaked Undo"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn minimum_window_preserves_rack_space_with_library_keyboard_and_either_dock_tab() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.title = "A very long user project name that must never hide transport or zoom controls"
+            .repeat(4);
+        app.status = "Long status information ".repeat(20);
+        app.browser_open = true;
+        app.keyboard_open = true;
+        let ctx = egui::Context::default();
+        ctx.data_mut(|data| {
+            data.insert_persisted(
+                egui::Id::new("analysis-dock"),
+                egui::containers::panel::PanelState {
+                    rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 500.0)),
+                },
+            );
+            data.insert_persisted(
+                egui::Id::new("module-library"),
+                egui::containers::panel::PanelState {
+                    rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(440.0, 1000.0)),
+                },
+            );
+        });
+        for (index, tab) in [AnalysisTab::Scope, AnalysisTab::Visuals]
+            .into_iter()
+            .enumerate()
+        {
+            app.select_analysis(Some(tab));
+            for frame in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(940.0, 680.0),
+                        )),
+                        time: Some((index * 2 + frame) as f64),
+                        focused: true,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        app.toolbar(ctx);
+                        app.footer(ctx);
+                        app.browser(ctx);
+                        app.performance_keyboard(ctx);
+                        app.scope.service(&app.patch, None);
+                        app.analysis_dock(ctx);
+                        let canvas = ctx.available_rect();
+                        assert!(
+                            canvas.height() >= 220.0,
+                            "{tab:?} leaves only {} rack pixels",
+                            canvas.height()
+                        );
+                        assert!(
+                            canvas.width() >= 480.0,
+                            "{tab:?} leaves only {} rack pixels",
+                            canvas.width()
+                        );
+                        egui::CentralPanel::default().show(ctx, |_ui| {});
+                    },
+                );
+            }
+        }
     }
 
     #[test]

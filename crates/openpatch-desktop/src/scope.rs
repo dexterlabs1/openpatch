@@ -7,10 +7,32 @@ use serde_json::Value;
 use std::collections::VecDeque;
 
 const COLORS: [Color32; 2] = [
-    Color32::from_rgb(109, 221, 183),
-    Color32::from_rgb(241, 189, 101),
+    Color32::from_rgb(241, 184, 87),
+    Color32::from_rgb(82, 205, 205),
 ];
-const MUTED: Color32 = Color32::from_rgb(149, 160, 175);
+const MUTED: Color32 = Color32::from_rgb(156, 160, 153);
+
+trait ScopeSource {
+    fn generation(&self) -> u64;
+    fn bind(&mut self, patch: &Patch, selection: Option<ScopeSelection>) -> Result<u64, String>;
+    fn drain(&mut self, receive: impl FnMut(ScopePacket));
+}
+
+impl ScopeSource for Audio {
+    fn generation(&self) -> u64 {
+        self.scope_generation()
+    }
+
+    fn bind(&mut self, patch: &Patch, selection: Option<ScopeSelection>) -> Result<u64, String> {
+        self.set_scope(patch, selection)
+    }
+
+    fn drain(&mut self, mut receive: impl FnMut(ScopePacket)) {
+        for packet in self.scope_packets() {
+            receive(packet);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Sample {
@@ -190,6 +212,7 @@ impl Scope {
         self.generation = None;
         self.acquisition.reset();
     }
+    #[cfg(test)]
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -197,232 +220,22 @@ impl Scope {
         catalog: &Value,
         audio: Option<&mut Audio>,
     ) {
-        if !self.fixture {
-            if let Some(audio) = audio.as_ref() {
-                if self
-                    .generation
-                    .is_some_and(|g| g != audio.scope_generation())
-                {
-                    self.generation = Some(audio.scope_generation());
-                    self.acquisition.reset();
-                }
-            }
-        }
-        let old_settings = self.settings;
-        let old_frozen = self.frozen;
+        self.service(patch, audio);
         if self.open {
-            egui::TopBottomPanel::bottom("signal-scope")
-                .default_height(350.0)
-                .height_range(290.0..=560.0)
-                .resizable(true)
-                .frame(
-                    egui::Frame::new()
-                        .fill(Color32::from_rgb(20, 25, 31))
-                        .inner_margin(10),
-                )
-                .show(ctx, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("SIGNAL SCOPE").strong().size(11.0));
-                        ui.selectable_value(&mut self.xy, false, "Time");
-                        ui.selectable_value(&mut self.xy, true, "X / Y");
-                        ui.separator();
-                        egui::ComboBox::from_id_salt("scope-time")
-                            .width(95.0)
-                            .selected_text(format!("{} ms/div", self.settings.seconds * 100.0))
-                            .show_ui(ui, |ui| {
-                                for seconds in
-                                    [0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
-                                {
-                                    ui.selectable_value(
-                                        &mut self.settings.seconds,
-                                        seconds,
-                                        format!("{} ms/div", seconds * 100.0),
-                                    );
-                                }
-                            });
-                        ui.toggle_value(&mut self.frozen, "Freeze");
-                        if ui
-                            .button("Reconnect")
-                            .on_hover_text(
-                                "Rebind the selected sources after a module was replaced",
-                            )
-                            .clicked()
-                        {
-                            self.reset_connection();
-                        }
-                        if ui.button("Hide").clicked() {
-                            self.open = false;
-                        }
-                    });
-                    for (lane, color) in COLORS.iter().enumerate() {
-                        ui.push_id(lane, |ui| {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(*color, if lane == 0 { "X" } else { "Y" });
-                                let endpoint = if lane == 0 {
-                                    &mut self.selection.x
-                                } else {
-                                    &mut self.selection.y
-                                };
-                                let label =
-                                    endpoint.as_ref().map_or("Choose an output…".into(), |e| {
-                                        format!("{} · {}", e.id, e.port)
-                                    });
-                                egui::ComboBox::from_id_salt("endpoint")
-                                    .width(200.0)
-                                    .selected_text(label)
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(endpoint, None, "Disconnected");
-                                        for node in &patch.nodes {
-                                            if let Some(module) =
-                                                catalog["modules"].as_array().and_then(|m| {
-                                                    m.iter().find(|m| m["kind"] == node.kind)
-                                                })
-                                            {
-                                                if let Some(ports) = module["outputs"].as_array() {
-                                                    for port in
-                                                        ports.iter().filter_map(Value::as_str)
-                                                    {
-                                                        let item = ScopeEndpoint {
-                                                            id: node.id.clone(),
-                                                            port: port.into(),
-                                                            channel: endpoint
-                                                                .as_ref()
-                                                                .map_or(0, |e| e.channel),
-                                                        };
-                                                        ui.selectable_value(
-                                                            endpoint,
-                                                            Some(item),
-                                                            format!("{} · {}", node.id, port),
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    });
-                                ui.label(RichText::new("Voice").color(MUTED));
-                                let mut voice = endpoint.as_ref().map_or(1, |e| e.channel + 1);
-                                if ui
-                                    .add_enabled(
-                                        endpoint.is_some(),
-                                        egui::DragValue::new(&mut voice).range(1..=16),
-                                    )
-                                    .changed()
-                                {
-                                    if let Some(e) = endpoint {
-                                        e.channel = voice - 1;
-                                    }
-                                }
-                                let units = units(endpoint.as_ref(), patch, catalog);
-                                egui::ComboBox::from_id_salt("scale")
-                                    .width(85.0)
-                                    .selected_text(format!("{} {units}/div", self.scales[lane]))
-                                    .show_ui(ui, |ui| {
-                                        for scale in
-                                            [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]
-                                        {
-                                            ui.selectable_value(
-                                                &mut self.scales[lane],
-                                                scale,
-                                                format!("{scale} {units}/div"),
-                                            );
-                                        }
-                                    });
-                                ui.label(RichText::new("Center").color(MUTED));
-                                ui.add(
-                                    egui::DragValue::new(&mut self.offsets[lane])
-                                        .range(-100.0..=100.0)
-                                        .speed(0.05)
-                                        .suffix(format!(" {units}")),
-                                );
-                                let selection_current = self.applied.as_ref()
-                                    == Some(&Some(self.selection.clone()))
-                                    || self.fixture;
-                                if let Some(stats) = selection_current
-                                    .then(|| statistics(&self.acquisition.display, lane))
-                                    .flatten()
-                                {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{:.2}…{:.2}  DC {:.2}  RMS {:.2} {units}",
-                                            stats.min, stats.max, stats.dc, stats.rms
-                                        ))
-                                        .size(11.0)
-                                        .color(COLORS[lane]),
-                                    );
-                                } else {
-                                    ui.label(
-                                        RichText::new("No active samples").size(11.0).color(MUTED),
-                                    );
-                                }
-                            });
-                        });
-                    }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Trigger").color(MUTED));
-                        for (mode, name) in [
-                            (Trigger::Auto, "Auto"),
-                            (Trigger::Normal, "Normal"),
-                            (Trigger::Free, "Free"),
-                        ] {
-                            ui.selectable_value(&mut self.settings.trigger, mode, name);
-                        }
-                        ui.selectable_value(&mut self.settings.source, 0, "X");
-                        ui.selectable_value(&mut self.settings.source, 1, "Y");
-                        ui.selectable_value(&mut self.settings.falling, false, "Rising");
-                        ui.selectable_value(&mut self.settings.falling, true, "Falling");
-                        ui.add(
-                            egui::DragValue::new(&mut self.settings.level)
-                                .range(-100.0..=100.0)
-                                .speed(0.05)
-                                .prefix("Level "),
-                        );
-                        ui.label(
-                            RichText::new("25% pre-trigger · ±0.01 hysteresis")
-                                .size(10.0)
-                                .color(MUTED),
-                        );
-                    });
-                    if old_settings != self.settings || (old_frozen && !self.frozen) {
-                        self.acquisition.reset();
-                    }
-                    // Never paint an old trace under newly selected endpoint labels.
-                    if self.applied.as_ref() != Some(&Some(self.selection.clone())) && !self.fixture
-                    {
-                        self.acquisition.reset();
-                    }
-                    self.paint(ui, patch, catalog);
-                });
+            egui::TopBottomPanel::bottom("signal-scope-test")
+                .default_height(255.0)
+                .height_range(220.0..=560.0)
+                .show(ctx, |ui| self.contents(ui, patch, catalog));
         }
+    }
+    /// Run once every UI frame, whether Scope or another dock tab is visible.
+    /// Closing the dock disarms capture and still drains queued packets.
+    pub fn service(&mut self, patch: &Patch, audio: Option<&mut Audio>) {
         if self.fixture {
             return;
         }
-        let requested = self.open.then(|| self.selection.clone());
         if let Some(audio) = audio {
-            if self.applied.as_ref() != Some(&requested) {
-                self.acquisition.reset();
-                match audio.set_scope(patch, requested.clone()) {
-                    Ok(generation) => {
-                        self.applied = Some(requested);
-                        self.generation = Some(generation);
-                        self.status.clear();
-                    }
-                    Err(error) => {
-                        self.status = error;
-                        self.applied = Some(requested);
-                        self.generation = None;
-                    }
-                }
-            }
-            let generation = audio.scope_generation();
-            if self.generation.is_some() && self.generation != Some(generation) {
-                self.generation = Some(generation);
-                self.acquisition.reset();
-            }
-            for packet in audio.scope_packets() {
-                if self.open && !self.frozen && self.generation.is_some() {
-                    self.acquisition.push(&packet, generation, self.settings);
-                }
-            }
+            self.service_source(patch, audio);
         } else {
             self.applied = None;
             self.generation = None;
@@ -431,27 +244,239 @@ impl Scope {
                 "Audio engine unavailable — use Retry audio to enable live inspection".into();
         }
     }
-    fn paint(&self, ui: &mut egui::Ui, patch: &Patch, catalog: &Value) {
-        let display = &self.acquisition.display;
-        let state = if self.fixture {
-            "Offline calibration fixture"
-        } else if self.frozen {
-            "Frozen"
-        } else if display.is_empty() {
-            "Waiting for signal / trigger"
-        } else if self.acquisition.triggered {
-            "Triggered capture · waiting for next trigger"
-        } else {
-            "Auto / free running"
-        };
+    fn service_source(&mut self, patch: &Patch, source: &mut impl ScopeSource) {
+        if self
+            .generation
+            .is_some_and(|generation| generation != source.generation())
+        {
+            self.generation = Some(source.generation());
+            self.acquisition.reset();
+        }
+        let requested = self.open.then(|| self.selection.clone());
+        if self.applied.as_ref() != Some(&requested) {
+            self.acquisition.reset();
+            match source.bind(patch, requested.clone()) {
+                Ok(generation) => {
+                    self.applied = Some(requested);
+                    self.generation = Some(generation);
+                    self.status.clear();
+                }
+                Err(error) => {
+                    self.status = error;
+                    self.applied = Some(requested);
+                    self.generation = None;
+                }
+            }
+        }
+        let generation = source.generation();
+        if self.generation.is_some() && self.generation != Some(generation) {
+            self.generation = Some(generation);
+            self.acquisition.reset();
+        }
+        source.drain(|packet| {
+            if self.open && !self.frozen && self.generation.is_some() {
+                self.acquisition.push(&packet, generation, self.settings);
+            }
+        });
+    }
+    /// Draw the selected Scope tab inside the application's shared analysis dock.
+    /// Call `service` before this method each frame.
+    pub fn contents(&mut self, ui: &mut egui::Ui, patch: &Patch, catalog: &Value) {
+        if !self.open {
+            return;
+        }
+        let old_settings = self.settings;
+        let old_frozen = self.frozen;
+        ui.spacing_mut().item_spacing = Vec2::new(6.0, 3.0);
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.xy, false, "Time");
+            ui.selectable_value(&mut self.xy, true, "X/Y");
+            egui::ComboBox::from_id_salt("scope-time")
+                .width(78.0)
+                .selected_text(format!("{} ms/div", self.settings.seconds * 100.0))
+                .show_ui(ui, |ui| {
+                    for seconds in [0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0] {
+                        ui.selectable_value(
+                            &mut self.settings.seconds,
+                            seconds,
+                            format!("{} ms/div", seconds * 100.0),
+                        );
+                    }
+                });
+            ui.toggle_value(&mut self.frozen, "Freeze");
+            ui.menu_button("Advanced…", |ui| {
+                ui.set_width(380.0);
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .show(ui, |ui| self.advanced_controls(ui, patch, catalog));
+            })
+            .response
+            .on_hover_text("Trigger, voice, center offsets, reconnection, and diagnostics");
+        });
+        self.source_row(ui, 0, patch, catalog);
+        self.source_row(ui, 1, patch, catalog);
+        if old_settings != self.settings || (old_frozen && !self.frozen) {
+            self.acquisition.reset();
+        }
+        // Never paint an old trace under newly selected endpoint labels.
+        if self.applied.as_ref() != Some(&Some(self.selection.clone())) && !self.fixture {
+            self.acquisition.reset();
+        }
+        self.paint(ui, patch, catalog);
+    }
+    fn source_row(&mut self, ui: &mut egui::Ui, lane: usize, patch: &Patch, catalog: &Value) {
+        ui.push_id(("source", lane), |ui| {
+            ui.horizontal(|ui| {
+                ui.colored_label(COLORS[lane], if lane == 0 { "X" } else { "Y" });
+                let endpoint = if lane == 0 {
+                    &mut self.selection.x
+                } else {
+                    &mut self.selection.y
+                };
+                let label = endpoint
+                    .as_ref()
+                    .map_or("Choose an output…".to_owned(), |e| {
+                        format!("{} · {}", e.id, e.port)
+                    });
+                let source_width = (ui.available_width() - 140.0).clamp(165.0, 260.0);
+                let compact_label = compact_label(&label, (source_width / 7.5) as usize);
+                egui::ComboBox::from_id_salt("endpoint")
+                    .width(source_width)
+                    .selected_text(compact_label)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(endpoint, None, "Disconnected");
+                        for node in &patch.nodes {
+                            if let Some(module) = catalog["modules"]
+                                .as_array()
+                                .and_then(|modules| modules.iter().find(|m| m["kind"] == node.kind))
+                            {
+                                if let Some(ports) = module["outputs"].as_array() {
+                                    for port in ports.iter().filter_map(Value::as_str) {
+                                        let item = ScopeEndpoint {
+                                            id: node.id.clone(),
+                                            port: port.into(),
+                                            channel: endpoint.as_ref().map_or(0, |e| e.channel),
+                                        };
+                                        ui.selectable_value(
+                                            endpoint,
+                                            Some(item),
+                                            format!("{} · {}", node.id, port),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(label);
+                let units = units(endpoint.as_ref(), patch, catalog);
+                egui::ComboBox::from_id_salt("scale")
+                    .width(88.0)
+                    .selected_text(format!("{} {units}/div", self.scales[lane]))
+                    .show_ui(ui, |ui| {
+                        for scale in [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0] {
+                            ui.selectable_value(
+                                &mut self.scales[lane],
+                                scale,
+                                format!("{scale} {units}/div"),
+                            );
+                        }
+                    });
+            });
+        });
+    }
+    fn advanced_controls(&mut self, ui: &mut egui::Ui, patch: &Patch, catalog: &Value) {
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(state).color(COLORS[0]).size(11.0));
+            ui.label(RichText::new("Trigger").color(MUTED));
+            for (mode, name) in [
+                (Trigger::Auto, "Auto"),
+                (Trigger::Normal, "Normal"),
+                (Trigger::Free, "Free"),
+            ] {
+                ui.selectable_value(&mut self.settings.trigger, mode, name);
+            }
+            ui.selectable_value(&mut self.settings.source, 0, "X");
+            ui.selectable_value(&mut self.settings.source, 1, "Y");
+            ui.selectable_value(&mut self.settings.falling, false, "Rising");
+            ui.selectable_value(&mut self.settings.falling, true, "Falling");
+            ui.add(
+                egui::DragValue::new(&mut self.settings.level)
+                    .range(-100.0..=100.0)
+                    .speed(0.05)
+                    .prefix("Level "),
+            );
+        });
+        let selection_current =
+            self.applied.as_ref() == Some(&Some(self.selection.clone())) || self.fixture;
+        for (lane, color) in COLORS.iter().enumerate() {
+            ui.push_id(("advanced", lane), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(*color, if lane == 0 { "X" } else { "Y" });
+                    let endpoint = if lane == 0 {
+                        &mut self.selection.x
+                    } else {
+                        &mut self.selection.y
+                    };
+                    ui.label(RichText::new("Voice").color(MUTED));
+                    let mut voice = endpoint.as_ref().map_or(1, |e| e.channel + 1);
+                    if ui
+                        .add_enabled(
+                            endpoint.is_some(),
+                            egui::DragValue::new(&mut voice).range(1..=16),
+                        )
+                        .changed()
+                    {
+                        if let Some(e) = endpoint {
+                            e.channel = voice - 1;
+                        }
+                    }
+                    let units = units(endpoint.as_ref(), patch, catalog);
+                    ui.label(RichText::new("Center").color(MUTED));
+                    ui.add(
+                        egui::DragValue::new(&mut self.offsets[lane])
+                            .range(-100.0..=100.0)
+                            .speed(0.05)
+                            .suffix(format!(" {units}")),
+                    );
+                    if let Some(stats) = selection_current
+                        .then(|| statistics(&self.acquisition.display, lane))
+                        .flatten()
+                    {
+                        ui.label(
+                            RichText::new(format!(
+                                "{:.2}…{:.2}  DC {:.2}  RMS {:.2} {units}",
+                                stats.min, stats.max, stats.dc, stats.rms
+                            ))
+                            .size(11.0)
+                            .color(*color),
+                        );
+                    } else {
+                        ui.label(RichText::new("No active samples").size(11.0).color(MUTED));
+                    }
+                });
+            });
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Reconnect sources")
+                .on_hover_text("Rebind the selected sources after a module was replaced")
+                .clicked()
+            {
+                self.reset_connection();
+            }
+            ui.label(
+                RichText::new("25% pre-trigger · ±0.01 hysteresis")
+                    .size(10.0)
+                    .color(MUTED),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
             if self.acquisition.rate != 0 {
                 ui.label(
                     RichText::new(format!(
                         "{} Hz · {} frames · gaps {}",
                         self.acquisition.rate,
-                        display.len(),
+                        self.acquisition.display.len(),
                         self.acquisition.gaps
                     ))
                     .size(10.0)
@@ -470,29 +495,63 @@ impl Scope {
                     .size(10.0)
                     .color(MUTED),
             );
+        });
+    }
+    fn paint(&self, ui: &mut egui::Ui, patch: &Patch, catalog: &Value) {
+        let display = &self.acquisition.display;
+        let state = if self.fixture {
+            "Offline calibration fixture"
+        } else if self.frozen {
+            "Frozen"
+        } else if display.is_empty() {
+            "Waiting for signal / trigger"
+        } else if self.acquisition.triggered {
+            "Triggered capture · waiting for next trigger"
+        } else {
+            "Auto / free running"
+        };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(state).color(COLORS[0]).size(11.0));
             if !self.status.is_empty() {
-                ui.colored_label(Color32::LIGHT_RED, &self.status);
+                ui.add(
+                    egui::Label::new(RichText::new(&self.status).color(Color32::LIGHT_RED))
+                        .truncate(),
+                );
             }
         });
         let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), ui.available_height().max(70.0)),
+            Vec2::new(
+                ui.available_width().max(0.0),
+                ui.available_height().max(0.0),
+            ),
             egui::Sense::hover(),
         );
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 4.0, Color32::from_rgb(11, 17, 22));
-        let plot = rect.shrink2(Vec2::new(35.0, 18.0));
+        painter.rect_filled(rect, 4.0, Color32::from_rgb(13, 25, 28));
+        if rect.width() < 75.0 || rect.height() < 40.0 {
+            response.on_hover_text("Resize the analysis dock to see the Scope plot");
+            return;
+        }
+        painter.line_segment(
+            [
+                rect.left_top() + Vec2::new(1.0, 1.0),
+                rect.right_top() + Vec2::new(-1.0, 1.0),
+            ],
+            Stroke::new(1.0_f32, Color32::from_rgb(63, 76, 75)),
+        );
+        let plot = rect.shrink2(Vec2::new(35.0, 17.0));
         for x in 0..=10 {
             let x = plot.left() + plot.width() * x as f32 / 10.0;
             painter.line_segment(
                 [pos2(x, plot.top()), pos2(x, plot.bottom())],
-                Stroke::new(1.0_f32, Color32::from_gray(36)),
+                Stroke::new(1.0_f32, Color32::from_rgb(36, 51, 52)),
             );
         }
         for y in 0..=8 {
             let y = plot.top() + plot.height() * y as f32 / 8.0;
             painter.line_segment(
                 [pos2(plot.left(), y), pos2(plot.right(), y)],
-                Stroke::new(1.0_f32, Color32::from_gray(36)),
+                Stroke::new(1.0_f32, Color32::from_rgb(36, 51, 52)),
             );
         }
         painter.line_segment(
@@ -500,7 +559,7 @@ impl Scope {
                 pos2(plot.left(), plot.center().y),
                 pos2(plot.right(), plot.center().y),
             ],
-            Stroke::new(1.0_f32, Color32::from_gray(64)),
+            Stroke::new(1.0_f32, Color32::from_rgb(66, 80, 77)),
         );
         let y = |value: f32, lane: usize| {
             plot.center().y - (value - self.offsets[lane]) / self.scales[lane] * plot.height() / 8.0
@@ -579,7 +638,7 @@ impl Scope {
                 let x = plot.left() + plot.width() * 0.25;
                 painter.line_segment(
                     [pos2(x, plot.top()), pos2(x, plot.bottom())],
-                    Stroke::new(1.0_f32, Color32::from_rgb(93, 109, 130)),
+                    Stroke::new(1.0_f32, Color32::from_rgb(132, 103, 59)),
                 );
                 painter.text(
                     pos2(x, rect.top() + 2.0),
@@ -686,6 +745,15 @@ impl Scope {
         }
     }
 }
+fn compact_label(label: &str, max_chars: usize) -> String {
+    let mut chars = label.chars();
+    let prefix: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{prefix}…")
+    } else {
+        prefix
+    }
+}
 fn units(endpoint: Option<&ScopeEndpoint>, patch: &Patch, catalog: &Value) -> &'static str {
     let Some(e) = endpoint else {
         return "V";
@@ -742,6 +810,126 @@ fn statistics(samples: &[Sample], lane: usize) -> Option<Statistics> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn text_center(output: &egui::FullOutput, label: &str) -> egui::Pos2 {
+        fn find(shape: &egui::Shape, label: &str) -> Option<egui::Pos2> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, label)),
+                _ => None,
+            }
+        }
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| find(&shape.shape, label))
+            .unwrap_or_else(|| panic!("missing Scope label {label}"))
+    }
+    #[test]
+    fn compact_scope_keeps_sources_scales_and_plot_visible_at_minimum_width() {
+        let mut scope = Scope::default();
+        scope.smoke_fixture();
+        let ctx = egui::Context::default();
+        let patch = Patch::new_v2();
+        let catalog = openpatch_core::catalog();
+        let mut draw = |time| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(630.0, 600.0),
+                    )),
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ctx| {
+                    scope.show(ctx, &patch, &catalog, None);
+                    egui::CentralPanel::default().show(ctx, |_ui| {});
+                },
+            )
+        };
+        let _ = draw(0.0);
+        let output = draw(1.0);
+        for label in [
+            "Time",
+            "X/Y",
+            "Freeze",
+            "Advanced…",
+            "calibration · sine",
+            "calibration · triangle",
+            "2 units/div",
+        ] {
+            assert!(text_center(&output, label).x <= 630.0);
+        }
+        let plot = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(13, 25, 28) => {
+                Some(rect.rect)
+            }
+            _ => None,
+        });
+        let plot = plot.expect("scope plot remains visible");
+        assert!(plot.height() >= 70.0, "plot height {}", plot.height());
+        assert!(plot.width() > 500.0, "plot width {}", plot.width());
+    }
+    #[test]
+    fn advanced_popup_exposes_trigger_voice_center_and_reconnect() {
+        let mut scope = Scope::default();
+        scope.smoke_fixture();
+        let ctx = egui::Context::default();
+        let patch = Patch::new_v2();
+        let catalog = openpatch_core::catalog();
+        let mut time = 0.0;
+        let mut draw = |events: Vec<egui::Event>| {
+            time += 0.1;
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(630.0, 600.0),
+                    )),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    scope.show(ctx, &patch, &catalog, None);
+                    egui::CentralPanel::default().show(ctx, |_ui| {});
+                },
+            )
+        };
+        let _ = draw(vec![]);
+        let output = draw(vec![]);
+        let advanced = text_center(&output, "Advanced…");
+        for pressed in [true, false] {
+            let _ = draw(vec![
+                egui::Event::PointerMoved(advanced),
+                egui::Event::PointerButton {
+                    pos: advanced,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+        }
+        let output = draw(vec![]);
+        for label in ["Trigger", "Normal", "Voice", "Center", "Reconnect sources"] {
+            let _ = text_center(&output, label);
+        }
+        let normal = text_center(&output, "Normal");
+        for pressed in [true, false] {
+            let _ = draw(vec![
+                egui::Event::PointerMoved(normal),
+                egui::Event::PointerButton {
+                    pos: normal,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+        }
+        assert_eq!(scope.settings.trigger, Trigger::Normal);
+    }
     #[test]
     fn native_freeze_button_holds_capture_and_resume_rearms() {
         let mut scope = Scope::default();
@@ -821,6 +1009,93 @@ mod tests {
             x_active: [true; 64],
             y_active: [false; 64],
         }
+    }
+    #[derive(Default)]
+    struct FakeSource {
+        generation: u64,
+        bindings: Vec<Option<ScopeSelection>>,
+        packets: VecDeque<ScopePacket>,
+        drained: usize,
+    }
+    impl ScopeSource for FakeSource {
+        fn generation(&self) -> u64 {
+            self.generation
+        }
+        fn bind(
+            &mut self,
+            _patch: &Patch,
+            selection: Option<ScopeSelection>,
+        ) -> Result<u64, String> {
+            self.generation += 1;
+            self.bindings.push(selection);
+            Ok(self.generation)
+        }
+        fn drain(&mut self, mut receive: impl FnMut(ScopePacket)) {
+            while let Some(packet) = self.packets.pop_front() {
+                self.drained += 1;
+                receive(packet);
+            }
+        }
+    }
+    #[test]
+    fn service_captures_while_other_tab_shows_and_disarms_on_close() {
+        let patch = Patch::new_v2();
+        let mut scope = Scope {
+            open: true,
+            settings: Settings {
+                seconds: 0.008,
+                trigger: Trigger::Free,
+                ..Settings::default()
+            },
+            selection: ScopeSelection {
+                x: Some(ScopeEndpoint {
+                    id: "source".into(),
+                    port: "out".into(),
+                    channel: 0,
+                }),
+                y: None,
+            },
+            ..Scope::default()
+        };
+        let mut source = FakeSource::default();
+        let mut first = packet(0);
+        first.generation = 1;
+        source.packets.push_back(first);
+        // No contents call: the Visuals tab is visible instead of Scope.
+        scope.service_source(&patch, &mut source);
+        assert_eq!(scope.acquisition.display.len(), 64);
+        assert_eq!(scope.acquisition.first_frame, 0);
+        assert_eq!(source.bindings.len(), 1);
+
+        let mut next = packet(64);
+        next.generation = 1;
+        source.packets.push_back(next);
+        scope.service_source(&patch, &mut source);
+        assert_eq!(scope.acquisition.first_frame, 64);
+
+        scope.frozen = true;
+        let mut skipped = packet(128);
+        skipped.generation = 1;
+        source.packets.push_back(skipped);
+        scope.service_source(&patch, &mut source);
+        assert_eq!(scope.acquisition.first_frame, 64);
+        assert_eq!(scope.acquisition.display.len(), 64);
+        assert_eq!(source.drained, 3);
+
+        scope.selection.x.as_mut().unwrap().port = "other".into();
+        scope.service_source(&patch, &mut source);
+        assert!(scope.acquisition.display.is_empty());
+        assert_eq!(source.bindings.len(), 2);
+
+        scope.open = false;
+        let mut after_close = packet(192);
+        after_close.generation = 3;
+        source.packets.push_back(after_close);
+        scope.service_source(&patch, &mut source);
+        assert_eq!(source.bindings.last(), Some(&None));
+        assert!(source.packets.is_empty());
+        assert_eq!(source.drained, 4);
+        assert!(scope.acquisition.display.is_empty());
     }
     #[test]
     fn trigger_pre_roll_and_inactive_statistics_are_exact() {

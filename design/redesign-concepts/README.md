@@ -11,7 +11,7 @@ Generated with the built-in image generation tool on 2026-10-13. These are visua
 
 Selected direction: **01 — Studio Rack**, chosen by the user on 2026-10-13. Use its rack-first composition, warm aluminum faceplates, tactile dark controls, restrained amber lighting and clear cable paths as the native application's visual foundation. The other concepts remain alternatives for future exploration, not approved replacements for this direction.
 
-Implemented so far: procedural rack materials, matching graphite application chrome and a docked thumbnail library with search, role filters, favorites, keyboard access and drag-to-add previews. The reference's transport layout and integrated measurement dock still require subsequent interaction work; these changes do not implement the entire mockup. Keep actual port definitions, control geometry and signal behavior authoritative over generated details.
+Implemented so far: procedural rack materials, matching graphite application chrome and a docked thumbnail library with search, role filters, favorites, keyboard access and drag-to-add previews. The next pass adds a compact transport toolbar and a shared Scope/Visuals measurement dock with advanced controls in a popup. These changes follow the reference's composition without claiming its entire mockup is implemented. Keep actual port definitions, control geometry and signal behavior authoritative over generated details.
 
 ## Native implementation progress
 

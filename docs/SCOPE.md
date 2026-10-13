@@ -4,8 +4,17 @@ Open **Scope** in the toolbar or **View → Signal scope**. Right-click any outp
 jack and choose **Inspect in scope X/Y** to probe it without adding a cable or
 changing the audio output. Each lane has an independent source and voice (1–16).
 
-This is a native measurement dock. The older GLSL **Visuals → Scope** is an
-artistic master-output visualizer; it is not a calibrated voltage instrument.
+Scope and Visuals share one resizable bottom dock. Switching tabs keeps scope
+acquisition running and preserves a frozen capture. Closing the dock disarms the
+probes; opening it again starts fresh. The library stays beside the rack, and the
+dock height is bounded to retain rack space at the minimum window size.
+
+Time/X/Y, timebase, Freeze, source selectors and scales stay visible. Open
+**Advanced…** for trigger settings, each lane's voice and center offset, statistics,
+Reconnect, and capture diagnostics. Advanced controls scroll within their popup.
+
+The GLSL **Visuals → Waveform** mode is an artistic master-output visualizer;
+it is not a calibrated voltage instrument.
 
 ## Reading a signal
 
@@ -33,7 +42,7 @@ artistic master-output visualizer; it is not a calibrated voltage instrument.
   silently describe different data.
 - **X/Y:** plots paired X and Y samples as a phase portrait. X has ten divisions
   and Y has eight. It draws at most 2,048 paired points; this view is decimated,
-  unlike the peak-preserving Time view. The same raw statistics remain visible.
+  unlike the peak-preserving Time view. The same raw statistics are available in Advanced.
 
 The engine continues computing while speaker playback is paused. The scope
 therefore remains useful while the instrument is muted. It needs a working

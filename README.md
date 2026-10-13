@@ -30,7 +30,7 @@
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
 - **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
-- **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
+- **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
 
 ## Get started on macOS
@@ -53,8 +53,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 
 | Action | Control |
 |---|---|
-| Play / pause | **Space** |
-| Open the library | **Enter**, **+ Add module**, or right-click empty rack space |
+| Play / pause | **Space** or the transport toolbar button |
+| Open the library | **Enter**, the library toolbar icon, **Edit → Add module**, or right-click empty rack space |
 | Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
 | Stack signals at an input | Hold **Shift** when finishing a cable; right-click the input to move or remove a particular cable |
@@ -68,7 +68,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Bypass a module | Right-click its panel → **Bypass module** |
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
-| Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
+| Inspect a signal | **View → Signal scope**, the scope toolbar icon, or right-click an output jack → **Inspect in scope X/Y** |
 | Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
 | Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** adds inputs for a selection, or all cables for a hovered module when nothing is selected |
 | Save / browse module presets | Right-click a module → **Presets**; preview settings before applying |

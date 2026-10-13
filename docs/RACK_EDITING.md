@@ -183,7 +183,7 @@ and [keyboard dispatch](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f7
 
 ## Docked module library
 
-Open **+ Add** (or press Enter with the rack focused) to browse modules in the
+Click the library toolbar icon (or press Enter with the rack focused) to browse modules in the
 resizable right sidebar. Search names, descriptions, tags, controls and ports;
 filter by musical role or star favorites. Favorites are saved with host preferences.
 The library stays open while you patch cables or edit the rack.
