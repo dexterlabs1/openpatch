@@ -97,6 +97,8 @@ struct StateEntry {
     token: u64,
     born_revision: u64,
     kind: String,
+    initialize_generation: u64,
+    initialize_revision: u64,
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -261,6 +263,8 @@ pub(super) struct Binding {
 pub(super) struct StateBinding {
     pub token: u64,
     pub handle: ModuleHandle,
+    initialize_generation: u64,
+    applied_initialization: u64,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -294,6 +298,28 @@ impl Default for ModulePlan {
     }
 }
 impl ModulePlan {
+    /// Apply the control-thread fence only after normal DSP state adoption.
+    /// The applied generation travels with the live instance, so history and
+    /// stale prepared graphs cannot replay an initialization event.
+    pub(super) fn initialize_pending(&mut self, engine: &mut Engine, previous: Option<&Self>) {
+        for (slot, binding) in self.states.iter_mut().enumerate() {
+            let Some(binding) = binding else { continue };
+            if let Some(old) = previous
+                .and_then(|plan| plan.states[slot])
+                .filter(|old| old.token == binding.token)
+            {
+                binding.applied_initialization = binding
+                    .applied_initialization
+                    .max(old.applied_initialization);
+            }
+            if binding.initialize_generation > binding.applied_initialization
+                && engine.initialize_module_state(binding.handle)
+            {
+                binding.applied_initialization = binding.initialize_generation;
+            }
+        }
+    }
+
     /// Exclusions are fixed stack storage; no control registry reaches audio.
     pub(super) fn adopt_state(&self, engine: &mut Engine, previous: &Self, old: &Engine) {
         let first = self
@@ -425,6 +451,12 @@ impl Performance {
                 plan.states[entry.slot] = Some(StateBinding {
                     token: entry.token,
                     handle,
+                    initialize_generation: if revision >= entry.initialize_revision {
+                        entry.initialize_generation
+                    } else {
+                        0
+                    },
+                    applied_initialization: 0,
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
@@ -531,6 +563,32 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn initialize_modules(&self, ids: &[String]) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        let revision = control.revision;
+        for id in ids {
+            if let Some(entry) = control.state_entries.get_mut(id) {
+                entry.initialize_generation = entry.initialize_generation.saturating_add(1);
+                entry.initialize_revision = revision;
+            }
+            if let Some(entry) = control.entries.get_mut(id) {
+                // Cancel older queued actions without changing the DSP token.
+                // A held momentary button must also be released in both sides
+                // of a graph crossfade, even if initialization is coalesced.
+                if entry.kind.manual() {
+                    self.request_release(entry);
+                } else {
+                    entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                    self.shared.action_epochs[entry.slot]
+                        .store(entry.action_epoch, Ordering::Release);
+                }
+            }
+        }
+    }
+
     fn retire_modules(&self, ids: &[String]) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
@@ -616,6 +674,8 @@ impl LiveModuleEvents for Performance {
                     token,
                     born_revision: revision,
                     kind: node.kind.clone(),
+                    initialize_generation: 0,
+                    initialize_revision: revision,
                 },
             );
         }

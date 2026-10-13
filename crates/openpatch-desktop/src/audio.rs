@@ -861,6 +861,11 @@ impl Callback {
                     }
                 }
             }
+            let active = &mut self.graphs.active;
+            active.modules.initialize_pending(
+                &mut active.engine,
+                self.graphs.previous.as_ref().map(|graph| &graph.modules),
+            );
             self.fade_position = 0;
             self.scope.reset(self.graphs.active.scope.generation);
         }
@@ -1811,6 +1816,310 @@ mod tests {
             .unwrap();
         graph.revision = revision;
         graph
+    }
+
+    #[test]
+    fn initialize_preserves_paused_sequence_and_runs_once_across_history() {
+        for explicit_running in [false, true] {
+            for undo_before_publication in [false, true] {
+                let mut patch = sequence_patch();
+                if !explicit_running {
+                    patch.nodes[0].params.remove("running");
+                }
+                let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+                let workspace = tempfile::tempdir().unwrap();
+                let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+                session.replace_patch(patch, Some(0)).unwrap();
+                session.set_live_module_events(Some(callback.performance.clone()));
+                for action in [ModuleAction::Clock, ModuleAction::Clock, ModuleAction::Run] {
+                    callback.performance.trigger("seq", action).unwrap();
+                }
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                let state = callback.performance.sequence_state("seq").unwrap();
+                assert_eq!((state.step, state.running), (3, false));
+                let token = callback.graphs.active.modules.states[0].unwrap().token;
+                session
+                    .execute("initialize_modules", serde_json::json!({"ids":["seq"]}))
+                    .unwrap();
+                if undo_before_publication {
+                    session.execute("undo", serde_json::json!({})).unwrap();
+                }
+                let graph = sequence_graph(&callback, session.patch(), session.revision());
+                assert_eq!(graph.modules.states[0].unwrap().token, token);
+                assert!(updates.push(graph).is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+                let state = callback.performance.sequence_state("seq").unwrap();
+                assert_eq!((state.step, state.running), (1, false));
+                while disposal.pop().is_ok() {}
+                // Advance after initialization. A history transition must not
+                // reapply the runtime hook or change the live Run state.
+                for action in [ModuleAction::Run, ModuleAction::Clock] {
+                    callback.performance.trigger("seq", action).unwrap();
+                }
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+                if !undo_before_publication {
+                    session.execute("undo", serde_json::json!({})).unwrap();
+                }
+                session.execute("redo", serde_json::json!({})).unwrap();
+                assert!(updates
+                    .push(sequence_graph(
+                        &callback,
+                        session.patch(),
+                        session.revision()
+                    ))
+                    .is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+                let state = callback.performance.sequence_state("seq").unwrap();
+                assert_eq!((state.step, state.running), (2, true));
+            }
+        }
+    }
+
+    #[test]
+    fn initialize_while_bypassed_resets_sequence_without_restarting_it_on_resume() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        for action in [ModuleAction::Clock, ModuleAction::Run] {
+            callback.performance.trigger("seq", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running), (2, false));
+        session
+            .execute(
+                "apply_edits",
+                serde_json::json!({"edits":[
+                    {"tool":"set_bypass","arguments":{"id":"seq","bypassed":true}},
+                    {"tool":"initialize_modules","arguments":{"ids":["seq"]}}
+                ]}),
+            )
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let handle = callback
+            .graphs
+            .active
+            .engine
+            .resolve_module_telemetry("seq")
+            .unwrap();
+        let state = callback
+            .graphs
+            .active
+            .engine
+            .module_telemetry(handle)
+            .unwrap();
+        assert_eq!((state.step, state.running), (1, false));
+        while disposal.pop().is_ok() {}
+        session
+            .execute(
+                "set_bypass",
+                serde_json::json!({"id":"seq","bypassed":false}),
+            )
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running), (1, false));
+        while disposal.pop().is_ok() {}
+        for action in [ModuleAction::Run, ModuleAction::Clock] {
+            callback.performance.trigger("seq", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        session
+            .execute("initialize_modules", serde_json::json!({"ids":["seq"]}))
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 1);
+    }
+
+    #[test]
+    fn initialization_cancels_old_actions_and_new_actions_wait_for_its_graph() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Run)
+            .unwrap();
+        callback.performance.sync_patch(&patch, 2);
+        callback.performance.initialize_modules(&["seq".into()]);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        // Old Run is rejected now; new Clock waits for revision 2.
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let snapshot = callback.performance.snapshot();
+        assert_eq!(snapshot["rejected"], 1);
+        assert_eq!(snapshot["pending"], 1);
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running), (2, true));
+        assert_eq!(callback.performance.snapshot()["pending"], 0);
+    }
+
+    #[test]
+    fn initialization_fence_is_not_consumed_by_stale_graph_or_replayed_by_older_plan() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let stale = sequence_graph(&callback, &patch, 1);
+        callback.performance.sync_patch(&patch, 2);
+        callback.performance.initialize_modules(&["seq".into()]);
+        assert!(updates.push(stale).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let handle = callback
+            .graphs
+            .active
+            .engine
+            .resolve_module_telemetry("seq")
+            .unwrap();
+        assert_eq!(
+            callback
+                .graphs
+                .active
+                .engine
+                .module_telemetry(handle)
+                .unwrap()
+                .step,
+            2
+        );
+        while disposal.pop().is_ok() {}
+        let older = sequence_graph(&callback, &patch, 1);
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 1);
+        while disposal.pop().is_ok() {}
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        assert!(updates.push(older).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+    }
+
+    #[test]
+    fn initialization_releases_held_buttons_without_replacing_the_instance() {
+        for kind in ["logic", "process"] {
+            let patch = manual_patch(kind);
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let (press, _) = manual_actions(kind);
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+            callback.performance.trigger("manual", press).unwrap();
+            callback.performance.sync_patch(&patch, 2);
+            callback.performance.initialize_modules(&["manual".into()]);
+            let graph = sequence_graph(&callback, &patch, 2);
+            assert_eq!(graph.modules.bindings[0].unwrap().token, token);
+            assert!(updates.push(graph).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                !callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+            let old = callback.graphs.previous.as_ref().unwrap();
+            let handle = old.modules.bindings[0].unwrap().handle;
+            assert!(!old.engine.module_control_state(handle).unwrap().pressed);
+            assert_eq!(callback.performance.snapshot()["rejected"], 1);
+            callback.performance.trigger("manual", press).unwrap();
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed
+            );
+        }
+    }
+
+    #[test]
+    fn initialization_at_defaults_preserves_vco_and_unrelated_oscillator_samples() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"vco","kind":"multi_vco","params":{}},
+                {"id":"osc","kind":"oscillator","params":{"frequency":123}}],
+            "output":"vco","output_port":"saw"}))
+        .unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        let mut reference = patch.compile().unwrap();
+        let mut frames = [[0.0; 2]; 137];
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 137], 1));
+        reference.process_audio_block(&mut frames);
+        session
+            .execute("initialize_modules", serde_json::json!({"ids":["vco"]}))
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 137], 1));
+        reference.process_audio_block(&mut frames);
+        let actual = read_raw_pair(
+            &mut callback.graphs.active.engine,
+            ("vco", "saw"),
+            ("osc", "out"),
+        );
+        let expected = read_raw_pair(&mut reference, ("vco", "saw"), ("osc", "out"));
+        assert_eq!(actual, expected);
     }
 
     fn switch_patch(kind: &str) -> Patch {

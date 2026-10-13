@@ -100,6 +100,14 @@ pub(crate) struct MultiLfo {
     voices: [Voice; MAX_CHANNELS],
 }
 impl MultiLfo {
+    pub(crate) fn initialize_state(&mut self) {
+        for voice in &mut self.voices {
+            voice.phase = 0.0;
+            let detector = voice.clock.detector;
+            voice.clock = Clock::default();
+            voice.clock.detector = detector;
+        }
+    }
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         for key in node.params.keys() {
             if ![
@@ -216,6 +224,27 @@ mod tests {
         let mut out = [PortFrame::default(); 4];
         lfo.process(inputs, &mut out);
         out
+    }
+    #[test]
+    fn initialize_restarts_phase_and_clock_without_rearming_reset_detector() {
+        let mut lfo = lfo(&[]);
+        lfo.active = 1;
+        lfo.voices[0].phase = 0.7;
+        lfo.voices[0].reset.high = true;
+        lfo.voices[0].clock.armed = true;
+        lfo.voices[0].clock.detector.high = true;
+        lfo.voices[0].clock.period = Some(48);
+        lfo.voices[0].clock.elapsed = 9;
+        lfo.initialize_state();
+        assert_eq!(lfo.voices[0].phase, 0.0);
+        assert!(lfo.voices[0].reset.high);
+        assert!(!lfo.voices[0].clock.armed);
+        assert!(lfo.voices[0].clock.detector.high);
+        assert_eq!(lfo.voices[0].clock.period, None);
+        assert_eq!(lfo.voices[0].clock.elapsed, 0);
+        assert_eq!(lfo.active, 1);
+        lfo.voices[0].clock.process(10.0, true);
+        assert!(!lfo.voices[0].clock.armed);
     }
     #[test]
     fn schmitt_thresholds_are_inclusive_at_representable_port_voltages() {

@@ -562,6 +562,99 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
         self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
 
+    def test_initialize_modules_atomic_preview_and_parameter_history(self) -> None:
+        patch = {
+            "version": 2,
+            "nodes": [
+                {"id": "vco", "kind": "multi_vco", "bypassed": True,
+                 "params": {"frequency": 440, "fm_amount": 0.5, "pwm_amount": -0.5}},
+                {"id": "seq", "kind": "seq3",
+                 "params": {"running": 0, "tempo": 240, "row1_1": 3, "gate1": 0}},
+            ],
+            "cables": [{"id": "pitch", "from": "seq", "output": "cv1",
+                        "to": "vco", "input": "pitch"}],
+            "output": "vco", "output_port": "sine",
+        }
+        self.require_tool_success("replace_patch", {"patch": patch})
+        before = self.patch_snapshot()
+        edits = [{"tool": "initialize_modules", "arguments": {"ids": ["vco", "seq"]}}]
+        request = {"edits": edits, "expected_revision": before["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", request))
+        self.assertEqual(self.patch_snapshot(), before)
+        committed = self.payload(self.require_tool_success("apply_edits", request))
+        self.assertEqual(committed["patch"], preview["patch"])
+        self.assertEqual(committed["revision"], before["revision"] + 1)
+        self.assertEqual(committed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        nodes = {node["id"]: node for node in committed["patch"]["nodes"]}
+        self.assertTrue(nodes["vco"]["bypassed"])
+        self.assertEqual(nodes["vco"]["params"]["fm_amount"], 0)
+        self.assertEqual(nodes["seq"]["params"]["running"], 0)
+        self.assertEqual(nodes["seq"]["params"]["row1_1"], 0)
+        self.assertEqual(nodes["seq"]["params"]["gate1"], 1)
+        for key in ("cables", "output", "output_port"):
+            self.assertEqual(committed["patch"][key], before["patch"][key])
+        undone = self.payload(self.require_tool_success("undo"))
+        self.assertEqual(undone["patch"], before["patch"])
+        redone = self.payload(self.require_tool_success("redo"))
+        self.assertEqual(redone["patch"], committed["patch"])
+        # Even initialization at saved defaults remains an explicit operation.
+        initialized = self.payload(self.require_tool_success("initialize_modules", {"ids": ["seq"]}))
+        self.assertEqual(initialized["revision"], redone["revision"] + 1)
+        self.assertEqual(initialized["patch"], redone["patch"])
+
+    def test_randomize_modules_seed_policy_strict_arguments_and_rollback(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "a", "kind": "multi_vco", "bypassed": True,
+                 "params": {"frequency": 220, "fm_amount": 0.25, "pwm_amount": -0.5}},
+                {"id": "b", "kind": "seq3",
+                 "params": {"tempo": 240, "steps": 4, "running": 0, "passthrough": 1}},
+            ], "cables": [], "output": "a", "output_port": "sine",
+        }})
+        before = self.patch_snapshot()
+        arguments = {"ids": ["b", "a"], "seed": 4294967295}
+        edits = [{"tool": "randomize_modules", "arguments": arguments}]
+        preview = self.payload(self.require_tool_success("preview_edits", {"edits": edits}))
+        self.assertEqual(self.patch_snapshot(), before)
+        committed = self.payload(self.require_tool_success("randomize_modules", arguments))
+        self.assertEqual(committed["patch"], preview["patch"])
+        nodes = {node["id"]: node for node in committed["patch"]["nodes"]}
+        self.assertTrue(nodes["a"]["bypassed"])
+        self.assertEqual(nodes["a"]["params"]["fm_amount"], 0.25)
+        self.assertEqual(nodes["a"]["params"]["pwm_amount"], -0.5)
+        for key, value in (("tempo", 240), ("steps", 4), ("running", 0), ("passthrough", 1)):
+            self.assertEqual(nodes["b"]["params"][key], value)
+        self.assertNotEqual(committed["patch"]["nodes"], before["patch"]["nodes"])
+        self.require_tool_success("undo")
+        reordered = self.payload(self.require_tool_success("randomize_modules", {
+            "ids": ["a", "b"], "seed": 4294967295,
+        }))
+        self.assertEqual(reordered["patch"], committed["patch"])
+        stable = self.patch_snapshot()
+        for arguments in (
+            {"ids": []}, {"ids": ["a", "a"]}, {"ids": ["a", "missing"]},
+            {"ids": "a"}, {"ids": [False]}, {"ids": ["a"], "extra": True},
+            {"ids": ["a"], "expected_revision": 0},
+        ):
+            self.require_tool_error("initialize_modules", arguments)
+            self.assertEqual(self.patch_snapshot(), stable)
+        for seed in (-1, 4294967296, 0.5, True, None, "1"):
+            self.require_tool_error("randomize_modules", {"ids": ["a"], "seed": seed})
+            self.assertEqual(self.patch_snapshot(), stable)
+        self.require_tool_error("randomize_modules", {"ids": ["a"]})
+        for tool in ("preview_edits", "apply_edits"):
+            self.require_tool_error(tool, {"edits": [
+                {"tool": "initialize_modules", "arguments": {"ids": ["a"]}},
+                {"tool": "set_parameter", "arguments": {"id": "missing", "parameter": "frequency", "value": 440}},
+            ]})
+            self.assertEqual(self.patch_snapshot(), stable)
+        schemas = self.client.request("tools/list")["result"]["tools"]
+        for name in ("initialize_modules", "randomize_modules"):
+            schema = next(tool["inputSchema"] for tool in schemas if tool["name"] == name)
+            self.assertFalse(schema["additionalProperties"])
+            self.assertTrue(schema["properties"]["ids"]["uniqueItems"])
+            self.assertEqual(schema["properties"]["ids"]["maxItems"], 256)
+
     def test_multi_vco_catalog_named_outputs_and_version_boundary(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
         modules = {module["kind"]: module for module in catalog["modules"]}

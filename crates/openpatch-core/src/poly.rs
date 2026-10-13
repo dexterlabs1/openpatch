@@ -610,6 +610,20 @@ impl PolyEngine {
         }
         true
     }
+    pub(crate) fn initialize_module_state(&mut self, index: usize) -> bool {
+        let Some(node) = self.nodes.get_mut(index) else {
+            return false;
+        };
+        match &mut node.model {
+            Model::MultiLfo(lfo) => lfo.initialize_state(),
+            Model::Seq3(seq) => seq.initialize_state(),
+            // Parameter initialization preserves all other adopted runtime
+            // histories, including VCO phase, switch position, and process
+            // hold/slew. The host separately releases momentary controls.
+            _ => {}
+        }
+        true
+    }
     pub(crate) fn resolve_tap(&self, id: &str, port: &str) -> Result<usize, String> {
         let index = *self
             .node_lookup

@@ -125,7 +125,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
 | VCF | Filter | Partial: reference ladder implemented; legacy one-pole is separate | Analytic small-signal response, drive/IMD, resonance and numerical convergence; inventory missing ports/features |
 | VCA | Amplifier | Partial: reference OTA VCA implemented; related legacy gain | Voltage gain law, saturation and CV response; distinguish circuit model from VCV behavior |
-| LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open |
+| LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
 | ADSR EG | Envelope | Partial: reference RC ADSR implemented | Capacitor trajectories, timing convention, sustain, release and retrigger from every stage |

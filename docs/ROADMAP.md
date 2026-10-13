@@ -40,7 +40,7 @@ This plan starts from the code inspected on the baseline date:
 | DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
-| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion and saved bypass | Presets, initialization/randomization, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
+| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion, Initialize/Randomize and saved bypass | Presets, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
 | Parameter/cable interaction | Partial | Precise entry, fine control, reset, reconnect/delete/fan-out, keyboard shortcuts and cable presentation work together; no swallowed gestures or accidental edits behind dialogs. |
 | History | Partial; shared 128-step patch undo/redo, explicit parameter grouping and observed-state layout restoration implemented | Complete project history including layout movement; verify restored geometry, gesture boundaries, branching and concurrent MCP edits without lost updates, including states the GUI has not observed. |
 | Browser/navigation | Partial | Search, filters/favorites, keyboard access, contextual help, zoom/pan and large-rack navigation; selections and newly created modules remain visible. |
@@ -85,8 +85,8 @@ The next gates are:
 
 1. **Complete rack construction workflows.** With stacked inputs available,
    add Rack's hovered-single-module duplication of outgoing connections while
-   retaining selected-group semantics. Add module presets, initialization and
-   randomization, then complete layout-movement history. These actions must
+   retaining selected-group semantics. Initialize and Randomize now share the UI/MCP transaction path; add module
+   presets, then complete layout-movement history. These actions must
    share the UI/MCP transaction path and preserve unrelated live state.
 2. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported

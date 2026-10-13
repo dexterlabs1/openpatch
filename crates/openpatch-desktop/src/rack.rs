@@ -6,6 +6,10 @@ use eframe::egui::{
 use openpatch_core::{Cable, ModuleControlState, ModuleLightState, ModuleTelemetry, Node, Patch};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    OnceLock,
+};
 
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
@@ -115,6 +119,7 @@ pub struct Rack {
     observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
+    shortcuts_enabled: bool,
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
@@ -139,6 +144,7 @@ impl Default for Rack {
             observed_revision: 0,
             dragging_cable: false,
             editing: None,
+            shortcuts_enabled: true,
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
@@ -152,6 +158,10 @@ impl Default for Rack {
 }
 
 impl Rack {
+    pub(crate) fn set_shortcuts_enabled(&mut self, enabled: bool) {
+        self.shortcuts_enabled = enabled;
+    }
+
     pub(crate) fn select_only(&mut self, id: String) {
         self.selection.clear();
         self.selection.insert(id.clone());
@@ -215,6 +225,25 @@ impl Rack {
             self.selected_ids()
         } else {
             vec![id.to_owned()]
+        }
+    }
+
+    fn shortcut_ids(&self, patch: &Patch, canvas: Rect, pointer: Option<Pos2>) -> Vec<String> {
+        let Some(pointer) = pointer.filter(|position| canvas.contains(*position)) else {
+            return Vec::new();
+        };
+        if let Some(node) = patch.nodes.iter().rev().find(|node| {
+            self.positions.get(&node.id).is_some_and(|position| {
+                Rect::from_min_size(
+                    canvas.min + self.pan + position.to_vec2() * self.zoom,
+                    vec2(panel_width(&node.kind), PANEL_HEIGHT) * self.zoom,
+                )
+                .contains(pointer)
+            })
+        }) {
+            self.context_ids(&node.id)
+        } else {
+            self.selected_ids()
         }
     }
 
@@ -504,6 +533,7 @@ impl Rack {
             self.editing = None;
         }
         if interactive
+            && self.shortcuts_enabled
             && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
@@ -512,6 +542,8 @@ impl Rack {
             && self.group_drag.is_none()
             && !ui.input(|i| i.pointer.primary_down())
         {
+            let shortcut_ids =
+                self.shortcut_ids(patch, canvas, ui.input(|i| i.pointer.hover_pos()));
             if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::A)) {
                 self.selection = patch.nodes.iter().map(|node| node.id.clone()).collect();
                 self.selected = self
@@ -532,6 +564,36 @@ impl Rack {
                 });
                 ui.input_mut(|i| {
                     i.consume_key(i.modifiers, egui::Key::D);
+                });
+            } else if ui.input(|i| {
+                i.modifiers.command
+                    && !i.modifiers.shift
+                    && !i.modifiers.alt
+                    && i.key_pressed(egui::Key::I)
+            }) && !shortcut_ids.is_empty()
+            {
+                action = Some(module_state_action(
+                    ModuleStateAction::Initialize,
+                    &shortcut_ids,
+                    self.observed_revision,
+                ));
+                ui.input_mut(|i| {
+                    i.consume_key(i.modifiers, egui::Key::I);
+                });
+            } else if ui.input(|i| {
+                i.modifiers.command
+                    && !i.modifiers.shift
+                    && !i.modifiers.alt
+                    && i.key_pressed(egui::Key::R)
+            }) && !shortcut_ids.is_empty()
+            {
+                action = Some(module_state_action(
+                    ModuleStateAction::Randomize,
+                    &shortcut_ids,
+                    self.observed_revision,
+                ));
+                ui.input_mut(|i| {
+                    i.consume_key(i.modifiers, egui::Key::R);
                 });
             } else if ui
                 .input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
@@ -655,7 +717,12 @@ impl Rack {
                         }
                     }
                 }
-                selection_menu(ui, &self.context_ids(&node.id), &mut action);
+                selection_menu(
+                    ui,
+                    &self.context_ids(&node.id),
+                    self.observed_revision,
+                    &mut action,
+                );
             });
             paint_panel(
                 &painter,
@@ -779,7 +846,12 @@ impl Rack {
                         }
                     }
                 }
-                selection_menu(ui, &self.context_ids(&node.id), &mut action);
+                selection_menu(
+                    ui,
+                    &self.context_ids(&node.id),
+                    self.observed_revision,
+                    &mut action,
+                );
             });
             let description = module
                 .and_then(|module| module["description"].as_str())
@@ -3005,11 +3077,70 @@ fn remove_selection_action(ids: &[String]) -> RackAction {
     }
 }
 
-fn selection_menu(ui: &mut egui::Ui, ids: &[String], action: &mut Option<RackAction>) {
+#[derive(Clone, Copy)]
+enum ModuleStateAction {
+    Initialize,
+    Randomize,
+}
+
+fn randomize_seed() -> u32 {
+    static NEXT: OnceLock<AtomicU32> = OnceLock::new();
+    NEXT.get_or_init(|| {
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        AtomicU32::new(time.as_nanos() as u32)
+    })
+    .fetch_add(0x9e37_79b9, Ordering::Relaxed)
+}
+
+fn module_state_action(kind: ModuleStateAction, ids: &[String], revision: u64) -> RackAction {
+    match kind {
+        ModuleStateAction::Initialize => RackAction::Command(
+            "initialize_modules",
+            json!({"ids":ids,"expected_revision":revision}),
+        ),
+        ModuleStateAction::Randomize => RackAction::Command(
+            "randomize_modules",
+            json!({"ids":ids,"seed":randomize_seed(),"expected_revision":revision}),
+        ),
+    }
+}
+
+fn selection_menu(
+    ui: &mut egui::Ui,
+    ids: &[String],
+    revision: u64,
+    action: &mut Option<RackAction>,
+) {
     ui.separator();
     if ids.len() > 1 {
         ui.strong(format!("{} selected modules", ids.len()));
     }
+    for (kind, label, shortcut, tooltip) in [
+        (
+            ModuleStateAction::Initialize,
+            "Initialize",
+            "Cmd/Ctrl+I",
+            "Restore default controls and reset supported module-specific state (such as sequencer position and LFO timing). Cables, bypass and panel positions stay as they are.",
+        ),
+        (
+            ModuleStateAction::Randomize,
+            "Randomize",
+            "Cmd/Ctrl+R",
+            "Randomize eligible controls; undo restores their previous values. Runtime sequencer and switch positions stay as they are, along with cables, bypass and panel positions.",
+        ),
+    ] {
+        if ui
+            .add(egui::Button::new(label).shortcut_text(shortcut))
+            .on_hover_text(tooltip)
+            .clicked()
+        {
+            *action = Some(module_state_action(kind, ids, revision));
+            ui.close();
+        }
+    }
+    ui.separator();
     for (with_inputs, label, shortcut) in [
         (false, "Duplicate", "Cmd/Ctrl+D"),
         (true, "Duplicate with inputs", "Cmd/Ctrl+Shift+D"),
@@ -5648,52 +5779,212 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_shortcuts_ignore_modal_focus_loss_text_editing_and_active_cable_gestures() {
-        for cause in ["modal", "focus", "editor", "cable"] {
-            let ctx = egui::Context::default();
-            let mut rack = Rack::default();
-            let patch: Patch =
-                serde_json::from_value(json!({"version":2,"nodes":[{"id":"a","kind":"constant"}]}))
-                    .unwrap();
-            rack.select_only("a".into());
-            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            if cause == "editor" {
-                rack.editing = Some(ParameterEdit {
-                    id: "a".into(),
-                    parameter: "value".into(),
-                    text: "0".into(),
-                    min: -10.0,
-                    max: 10.0,
-                    step: None,
-                    display_scale: 1.0,
-                    slew_min: None,
-                    gain_power: None,
-                    raw_max: 10.0,
-                    focus: true,
-                });
-            }
-            if cause == "cable" {
-                rack.pending = Some(PendingCable::new(
-                    CableEnd::Output {
-                        node: "a".into(),
-                        port: "out".into(),
-                    },
+    fn selection_shortcuts_ignore_modal_focus_loss_text_editing_and_active_cable_gestures() {
+        for key in [egui::Key::D, egui::Key::I, egui::Key::R] {
+            for cause in ["modal", "focus", "browser", "editor", "cable"] {
+                let ctx = egui::Context::default();
+                let mut rack = Rack::default();
+                let patch: Patch = serde_json::from_value(json!({
+                    "version":2,"nodes":[{"id":"a","kind":"constant"}]
+                }))
+                .unwrap();
+                rack.select_only("a".into());
+                frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+                if cause == "browser" {
+                    rack.set_shortcuts_enabled(false);
+                }
+                if cause == "editor" {
+                    rack.editing = Some(ParameterEdit {
+                        id: "a".into(),
+                        parameter: "value".into(),
+                        text: "0".into(),
+                        min: -10.0,
+                        max: 10.0,
+                        step: None,
+                        display_scale: 1.0,
+                        slew_min: None,
+                        gain_power: None,
+                        raw_max: 10.0,
+                        focus: true,
+                    });
+                }
+                if cause == "cable" {
+                    rack.pending = Some(PendingCable::new(
+                        CableEnd::Output {
+                            node: "a".into(),
+                            port: "out".into(),
+                        },
+                        &patch,
+                    ));
+                }
+                let action = frame_state(
+                    &ctx,
+                    &mut rack,
                     &patch,
-                ));
+                    1.0,
+                    vec![selection_key(key, false)],
+                    cause != "focus",
+                    cause != "modal",
+                )
+                .0;
+                assert!(action.is_none(), "{key:?}: {cause}");
+                assert_eq!(rack.selected_ids(), vec!["a"]);
             }
-            let action = frame_state(
+        }
+    }
+
+    #[test]
+    fn initialize_and_randomize_shortcuts_dispatch_once_for_selected_group() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,
+            "nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"}]
+        }))
+        .unwrap();
+        rack.select_only("a".into());
+        rack.toggle_selection("b".into());
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            0.0,
+            vec![egui::Event::PointerMoved(pos2(84.0, 300.0))],
+            true,
+            true,
+            17,
+        );
+        for (time, key, name) in [
+            (1.0, egui::Key::I, "initialize_modules"),
+            (2.0, egui::Key::R, "randomize_modules"),
+        ] {
+            let action = frame_revision_state(
                 &ctx,
                 &mut rack,
                 &patch,
-                1.0,
-                vec![selection_key(egui::Key::D, false)],
-                cause != "focus",
-                cause != "modal",
+                time,
+                vec![selection_key(key, false)],
+                true,
+                true,
+                17,
             )
             .0;
-            assert!(action.is_none(), "{cause}");
-            assert_eq!(rack.selected_ids(), vec!["a"]);
+            match action {
+                Some(RackAction::Command(tool, args)) => {
+                    assert_eq!(tool, name);
+                    assert_eq!(args["ids"], json!(["a", "b"]));
+                    assert_eq!(args["expected_revision"], 17);
+                    assert_eq!(args.get("seed").is_some(), key == egui::Key::R);
+                    if key == egui::Key::R {
+                        assert!(args["seed"]
+                            .as_u64()
+                            .is_some_and(|seed| seed <= u32::MAX as u64));
+                    }
+                }
+                _ => panic!("{key:?} did not issue a single module-state command"),
+            }
+            assert_eq!(rack.selected_ids(), vec!["a", "b"]);
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                true,
+                true,
+                17,
+            );
         }
+    }
+
+    #[test]
+    fn module_state_shortcuts_follow_hover_without_changing_selection() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,
+            "nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"}]
+        }))
+        .unwrap();
+        rack.select_only("a".into());
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            0.0,
+            vec![egui::Event::PointerMoved(pos2(204.0, 300.0))],
+        );
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![selection_key(egui::Key::I, false)],
+        );
+        assert!(
+            matches!(action, Some(RackAction::Command("initialize_modules", ref args))
+            if args["ids"] == json!(["b"]))
+        );
+        assert_eq!(rack.selected_ids(), vec!["a"]);
+
+        rack.selection.clear();
+        rack.selected = None;
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::Key {
+                key: egui::Key::I,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            vec![selection_key(egui::Key::R, false)],
+        );
+        assert!(
+            matches!(action, Some(RackAction::Command("randomize_modules", ref args))
+            if args["ids"] == json!(["b"]) && args["seed"].as_u64().is_some())
+        );
+        assert!(rack.selected_ids().is_empty());
+
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.1,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::R,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerMoved(pos2(1200.0, 900.0)),
+            ],
+        );
+        assert!(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.0,
+            vec![selection_key(egui::Key::I, false)]
+        )
+        .is_none());
     }
 
     #[test]
@@ -6361,6 +6652,91 @@ mod tests {
             if let Some(RackAction::Command("set_bypass", args)) = action {
                 assert_eq!(args["bypassed"], true);
             }
+        }
+    }
+
+    #[test]
+    fn module_state_menu_actions_use_context_selection_and_observed_revision() {
+        for (menu_position, label, command) in [
+            (pos2(84.0, 44.0), "Initialize", "initialize_modules"),
+            (pos2(84.0, 300.0), "Initialize", "initialize_modules"),
+            (pos2(84.0, 44.0), "Randomize", "randomize_modules"),
+            (pos2(84.0, 300.0), "Randomize", "randomize_modules"),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch = serde_json::from_value(json!({
+                "version":2,
+                "nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"}]
+            }))
+            .unwrap();
+            rack.select_only("a".into());
+            rack.toggle_selection("b".into());
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 23);
+            for (time, pressed) in [(1.0, true), (1.1, false)] {
+                frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(menu_position),
+                        egui::Event::PointerButton {
+                            pos: menu_position,
+                            button: PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    true,
+                    true,
+                    23,
+                );
+            }
+            let (_, output) =
+                frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, 23);
+            let target = output
+                .shapes
+                .iter()
+                .find_map(|shape| {
+                    if let egui::epaint::Shape::Text(text) = &shape.shape {
+                        (text.galley.text() == label).then_some(text.pos + text.galley.size() * 0.5)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| panic!("Missing {label} at {menu_position:?}"));
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+                true,
+                true,
+                23,
+            );
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![button(target, false)],
+                true,
+                true,
+                23,
+            )
+            .0;
+            match action {
+                Some(RackAction::Command(name, args)) => {
+                    assert_eq!(name, command);
+                    assert_eq!(args["ids"], json!(["a", "b"]));
+                    assert_eq!(args["expected_revision"], 23);
+                    assert_eq!(args.get("seed").is_some(), command == "randomize_modules");
+                }
+                _ => panic!("{label} did not dispatch a module-state command"),
+            }
+            assert_eq!(rack.selected_ids(), vec!["a", "b"]);
         }
     }
 

@@ -70,6 +70,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
 | Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
 | Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** to include internal and incoming cables |
+| Initialize / randomize | **Cmd-I** / **Cmd-R**, or the module context menu; one undo step per group |
 | Remove | **Delete** the selection, or use the module context menu |
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |

@@ -234,6 +234,9 @@ pub(crate) struct Seq3 {
     action_count: usize,
 }
 impl Seq3 {
+    pub(crate) fn initialize_state(&mut self) {
+        self.state.step = 0;
+    }
     pub(crate) fn discard_actions(&mut self) {
         self.action_count = 0;
     }
@@ -534,6 +537,29 @@ mod tests {
         let mut outputs = [PortFrame::default(); 16];
         s.process(inputs, &mut outputs);
         outputs
+    }
+    #[test]
+    fn initialize_selects_first_step_and_preserves_timing_and_detectors() {
+        let mut s = seq(&[("running", 0.0)]);
+        s.state.step = 5;
+        s.state.phase = 0.375;
+        s.state.compensation = 0.125;
+        s.state.running = false;
+        s.state.clock.high = true;
+        s.state.run.high = true;
+        s.state.reset.high = true;
+        s.state.trigger_pulse = 4;
+        s.state.guard = 3;
+        s.enqueue(ModuleAction::Clock);
+        s.initialize_state();
+        assert_eq!(s.state.step, 0);
+        assert_eq!(s.state.phase, 0.375);
+        assert_eq!(s.state.compensation, 0.125);
+        assert!(!s.state.running);
+        assert!(s.state.clock.high && s.state.run.high && s.state.reset.high);
+        assert_eq!(s.state.trigger_pulse, 4);
+        assert_eq!(s.state.guard, 3);
+        assert_eq!(s.action_count, 1);
     }
     #[test]
     fn cv_schmitt_thresholds_track_while_paused_and_reset_precedes_clock() {

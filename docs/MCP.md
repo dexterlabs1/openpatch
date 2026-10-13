@@ -97,6 +97,19 @@ yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
 A window that has committed its final close decision rejects subsequent graph
 mutations and live module actions with `session is closing`; inspection and exports remain available.
 
+## Initialize and Randomize
+
+`initialize_modules` accepts `ids` and optional `expected_revision`.
+`randomize_modules` also requires `seed` (unsigned 32-bit integer). Both work
+inside `preview_edits` / `apply_edits`, validate the whole selection atomically,
+and preserve cables, bypass and module identities. A preview has no live-state
+side effects. The catalog describes per-parameter eligibility and distributions.
+
+Initialize restores default controls and applies a module-specific runtime
+hook once; history restores saved controls without replaying that hook.
+Randomize produces reproducible saved values; redo does not reroll them.
+See the [full editing and live-state contract](RACK_EDITING.md#initialize-and-randomize).
+
 ## Named outputs, polyphony, and feedback
 
 New sessions and **New patch** use patch version 2. Each cable has a source

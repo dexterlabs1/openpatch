@@ -24,6 +24,8 @@ pub mod midi;
 mod mixing;
 mod multi_lfo;
 mod multi_vco;
+mod parameter_actions;
+pub use parameter_actions::ModuleParameterActions;
 mod poly;
 mod routing;
 mod sequence;
@@ -243,6 +245,7 @@ pub fn catalog() -> Value {
         }
         poly::annotate_catalog(module);
         bypass::annotate(module);
+        parameter_actions::annotate_catalog(module);
     }
     result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
     result
@@ -1075,6 +1078,17 @@ impl Engine {
         match &mut self.inner {
             EngineKind::Poly(engine) => engine.reset_module_state(handle.node),
             _ => false,
+        }
+    }
+    /// Apply a module's dedicated Initialize runtime policy after compatible
+    /// state adoption. This leaves cable histories and unrelated state intact.
+    pub fn initialize_module_state(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Legacy(engine) => handle.node < engine.nodes.len(),
+            EngineKind::Poly(engine) => engine.initialize_module_state(handle.node),
         }
     }
     /// Invalid direct events are ignored without allocating on the audio thread.

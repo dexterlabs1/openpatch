@@ -107,3 +107,16 @@ Remaining work includes direct VCV differential comparison, complete native
 configuration/bypass parity, and physical device playback checks. Waveform and
 clock contracts are tested; this does not establish physical hardware fidelity
 or complete Rack LFO equivalence.
+
+## Initialize and Randomize
+
+Initialize restores eligible controls, clears oscillator phase and clock
+acquisition/timing, and preserves clock/reset edge detectors. Randomize
+changes frequency, pulse width, invert and voltage mode while retaining the
+FM/PWM amounts. Both are undoable saved-control edits; undo does not rewind
+live phase. See [rack editing](RACK_EDITING.md#initialize-and-randomize).
+
+OpenPatch retains its documented bipolar default. Fundamental 2.6.4's LFO
+defaults to unipolar output; this remains an explicit compatibility gap, along
+with the waveform and clock differences described above.
+[Reference LFO](https://github.com/VCVRack/Fundamental/blob/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src/LFO.cpp).

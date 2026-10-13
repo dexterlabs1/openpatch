@@ -2288,6 +2288,8 @@ impl eframe::App for OpenPatch {
             self.rack.set_module_states(lights, controls);
         }
         let mut action = None;
+        self.rack
+            .set_shortcuts_enabled(!self.browser_open && !self.settings_open && !self.shader_open);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
             .show(ctx, |ui| {

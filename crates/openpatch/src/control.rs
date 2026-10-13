@@ -3,13 +3,15 @@ mod capture;
 #[cfg(test)]
 mod duplicate_tests;
 #[cfg(test)]
+mod parameter_action_tests;
+#[cfg(test)]
 mod sequence_tests;
 #[cfg(test)]
 mod stack_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
-    write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, Node, Patch, PortFrame,
-    TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
+    write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, ModuleParameterActions, Node,
+    Patch, PortFrame, TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
 };
 use serde_json::{json, Value};
 use std::{
@@ -31,6 +33,9 @@ pub trait LiveModuleEvents: Send + Sync {
     fn retire_modules(&self, _ids: &[String]) {}
     /// Retire explicit cable removals, including reuse of an ID in one batch.
     fn retire_cables(&self, _ids: &[String]) {}
+    /// Initialize final, synchronized module incarnations after a successful edit.
+    /// This hook is not replayed by undo/redo.
+    fn initialize_modules(&self, _ids: &[String]) {}
 }
 
 #[derive(Clone)]
@@ -67,6 +72,8 @@ const EDIT_TOOLS: &[&str] = &[
     "set_parameter",
     "set_bypass",
     "invert_mutes",
+    "initialize_modules",
+    "randomize_modules",
     "set_output",
 ];
 
@@ -210,6 +217,7 @@ impl Session {
             None,
             &retired,
             &retired_cables,
+            &[],
         )
     }
 
@@ -236,6 +244,7 @@ impl Session {
         group: Option<(String, String, String)>,
         retired: &[String],
         retired_cables: &[String],
+        initialized: &[String],
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
@@ -270,6 +279,11 @@ impl Session {
             }
         }
         self.sync_live_module_events();
+        if !initialized.is_empty() {
+            if let Some(backend) = &self.live_module_events {
+                backend.initialize_modules(initialized);
+            }
+        }
         Ok(revision)
     }
 
@@ -597,6 +611,7 @@ impl Session {
         } else {
             Vec::new()
         };
+        let mut initialized = BTreeSet::new();
         match name {
             "rotate_sequence" => rotate_sequence(&mut candidate, &args)?,
             "replace_patch" => {
@@ -643,7 +658,13 @@ impl Session {
                                 "revision and history grouping belong to the transaction, not an edit".into(),
                             );
                         }
-                        apply_edit(&mut candidate, tool, arguments, &mut retired_cables)?;
+                        apply_edit(
+                            &mut candidate,
+                            tool,
+                            arguments,
+                            &mut retired_cables,
+                            &mut initialized,
+                        )?;
                         if tool == "remove_module" {
                             retired.push(string(arguments, "id")?.to_owned());
                         }
@@ -661,9 +682,13 @@ impl Session {
             }
             "undo" => return self.restore_history(false),
             "redo" => return self.restore_history(true),
-            name if EDIT_TOOLS.contains(&name) => {
-                apply_edit(&mut candidate, name, &args, &mut retired_cables)?
-            }
+            name if EDIT_TOOLS.contains(&name) => apply_edit(
+                &mut candidate,
+                name,
+                &args,
+                &mut retired_cables,
+                &mut initialized,
+            )?,
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
@@ -689,6 +714,7 @@ impl Session {
             group,
             &retired,
             &retired_cables,
+            &initialized.into_iter().collect::<Vec<_>>(),
         )?;
         Ok(self.snapshot())
     }
@@ -970,6 +996,7 @@ fn apply_edit(
     name: &str,
     args: &Value,
     retired_cables: &mut Vec<String>,
+    initialized: &mut BTreeSet<String>,
 ) -> Result<(), String> {
     match name {
         "add_module" => {
@@ -989,6 +1016,7 @@ fn apply_edit(
             if !candidate.nodes.iter().any(|n| n.id == id) {
                 return Err("module not found".into());
             }
+            initialized.remove(id);
             candidate.nodes.retain(|n| n.id != id);
             candidate.cables.retain(|c| {
                 let retained = c.from != id && c.to != id;
@@ -1113,6 +1141,33 @@ fn apply_edit(
                 node.params.insert(key, 1.0 - value);
             }
         }
+        "initialize_modules" | "randomize_modules" => {
+            let ids = parameter_action_ids(candidate, args)?;
+            let actions = ModuleParameterActions::new(candidate.sample_rate);
+            let seed = if name == "randomize_modules" {
+                Some(
+                    args.get("seed")
+                        .and_then(Value::as_u64)
+                        .and_then(|value| u32::try_from(value).ok())
+                        .ok_or("seed must be an integer in 0..4294967295")?,
+                )
+            } else {
+                None
+            };
+            for id in ids {
+                let node = candidate
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.id == id)
+                    .unwrap();
+                if let Some(seed) = seed {
+                    actions.randomize(node, module_random_seed(&id, seed))?;
+                } else {
+                    actions.initialize(node)?;
+                    initialized.insert(id);
+                }
+            }
+        }
         "set_output" => {
             candidate.output = Some(string(args, "id")?.into());
             candidate.output_port = optional_string(args, "port", "out")?.into();
@@ -1120,6 +1175,35 @@ fn apply_edit(
         _ => return Err(format!("unknown graph edit: {name}")),
     }
     Ok(())
+}
+
+fn parameter_action_ids(candidate: &Patch, args: &Value) -> Result<BTreeSet<String>, String> {
+    let requested = args
+        .get("ids")
+        .and_then(Value::as_array)
+        .ok_or("ids must be an array")?;
+    if requested.is_empty() || requested.len() > MAX_EDITS {
+        return Err(format!("ids must contain 1..{MAX_EDITS} unique module IDs"));
+    }
+    let mut ids = BTreeSet::new();
+    for value in requested {
+        let id = value.as_str().ok_or("each module ID must be a string")?;
+        if !ids.insert(id.to_owned()) {
+            return Err(format!("duplicate module ID '{id}'"));
+        }
+        if !candidate.nodes.iter().any(|node| node.id == id) {
+            return Err(format!("module '{id}' not found"));
+        }
+    }
+    Ok(ids)
+}
+
+/// UTF-8 FNV-1a32, wrapping after each multiplication, XOR the request seed.
+/// A module's randomization is independent of selection order and other targets.
+fn module_random_seed(id: &str, seed: u32) -> u32 {
+    id.bytes().fold(2_166_136_261_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+    }) ^ seed
 }
 
 fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> {
@@ -1232,6 +1316,7 @@ pub fn tools() -> Value {
         "type":"object","properties":{"id":module_id,"new_id":module_id},
         "required":["id","new_id"],"additionalProperties":false
     }});
+    let module_ids = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"uniqueItems":true,"items":module_id});
     let midi_events = midi_events_schema();
     let module_events = module_events_schema();
     let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
@@ -1259,6 +1344,8 @@ pub fn tools() -> Value {
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("initialize_modules","Initialize saved parameters for 1..256 unique module IDs using catalog policy, preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
+        tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Preview and apply agree; undo/redo restore values without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Modules start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
