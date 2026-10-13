@@ -5,7 +5,7 @@ use eframe::egui::{
 };
 use openpatch_core::{Cable, ModuleControlState, ModuleLightState, ModuleTelemetry, Node, Patch};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
@@ -25,6 +25,10 @@ const CABLES: [Color32; 6] = [
 pub enum RackAction {
     Command(&'static str, Value),
     OpenBrowser,
+    Duplicate {
+        ids: Vec<String>,
+        with_inputs: bool,
+    },
     LayoutChanged,
     Inspect {
         lane: usize,
@@ -80,8 +84,17 @@ struct HeldManual {
     release: &'static str,
 }
 
+struct GroupDrag {
+    anchor: String,
+    origins: BTreeMap<String, Pos2>,
+    delta: Vec2,
+}
+
 pub struct Rack {
     pub selected: Option<String>,
+    selection: BTreeSet<String>,
+    group_drag: Option<GroupDrag>,
+    reveal_group_once: bool,
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
     zoom: f32,
@@ -102,6 +115,9 @@ impl Default for Rack {
     fn default() -> Self {
         Self {
             selected: None,
+            selection: BTreeSet::new(),
+            group_drag: None,
+            reveal_group_once: false,
             positions: BTreeMap::new(),
             pan: vec2(24.0, 12.0),
             zoom: 1.0,
@@ -121,6 +137,145 @@ impl Default for Rack {
 }
 
 impl Rack {
+    pub(crate) fn select_only(&mut self, id: String) {
+        self.selection.clear();
+        self.selection.insert(id.clone());
+        self.selected = Some(id);
+    }
+
+    fn select_primary(&mut self, id: String) {
+        if !self.selection.contains(&id) {
+            self.selection.clear();
+        }
+        self.selection.insert(id.clone());
+        self.selected = Some(id);
+    }
+
+    fn toggle_selection(&mut self, id: String) {
+        if self.selection.remove(&id) {
+            if self.selected.as_ref() == Some(&id) {
+                self.selected = self.selection.iter().next().cloned();
+            }
+        } else {
+            self.selection.insert(id.clone());
+            self.selected = Some(id);
+        }
+    }
+
+    pub(crate) fn selected_ids(&self) -> Vec<String> {
+        self.selection.iter().cloned().collect()
+    }
+
+    pub(crate) fn reconcile_selection(&mut self, patch: &Patch) {
+        self.selection
+            .retain(|id| patch.nodes.iter().any(|node| &node.id == id));
+        if let Some(id) = self
+            .selected
+            .clone()
+            .filter(|id| patch.nodes.iter().any(|node| &node.id == id))
+        {
+            // Existing callers may set the public primary directly when adding a module.
+            if !self.selection.contains(&id) {
+                self.selection.clear();
+                self.selection.insert(id);
+            }
+        } else {
+            self.selected = self.selection.iter().next().cloned();
+        }
+        if self
+            .group_drag
+            .as_ref()
+            .is_some_and(|drag| drag.origins.keys().any(|id| !self.selection.contains(id)))
+        {
+            self.group_drag = None;
+        }
+    }
+
+    fn context_ids(&self, id: &str) -> Vec<String> {
+        if self.selection.contains(id) {
+            self.selected_ids()
+        } else {
+            vec![id.to_owned()]
+        }
+    }
+
+    /// Pure proposal against the observed graph/layout. Never publishes partial clone positions.
+    pub(crate) fn duplicate_placement(
+        &self,
+        patch: &Patch,
+        mappings: &[(String, String)],
+    ) -> Result<BTreeMap<String, Pos2>, String> {
+        let mut positions = self.positions.clone();
+        for node in &patch.nodes {
+            if !positions.contains_key(&node.id) {
+                let x = patch
+                    .nodes
+                    .iter()
+                    .filter_map(|other| {
+                        positions
+                            .get(&other.id)
+                            .filter(|p| p.y.abs() < 1.0)
+                            .map(|p| p.x + panel_width(&other.kind))
+                    })
+                    .fold(0.0, f32::max);
+                positions.insert(node.id.clone(), pos2(x, 0.0));
+            }
+        }
+        let mut source = Vec::new();
+        for (id, new_id) in mappings {
+            let node = patch
+                .nodes
+                .iter()
+                .find(|node| &node.id == id)
+                .ok_or("Selected module no longer exists")?;
+            source.push((new_id.clone(), positions[id], panel_width(&node.kind)));
+        }
+        if source.is_empty() {
+            return Err("Select a module to duplicate".into());
+        }
+        let min = pos2(
+            source
+                .iter()
+                .map(|(_, p, _)| p.x)
+                .fold(f32::INFINITY, f32::min),
+            source
+                .iter()
+                .map(|(_, p, _)| p.y)
+                .fold(f32::INFINITY, f32::min),
+        );
+        let right = source
+            .iter()
+            .map(|(_, p, w)| p.x + w)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let members: Vec<_> = source
+            .iter()
+            .map(|(_, p, w)| (pos2(p.x - min.x, p.y - min.y), *w))
+            .collect();
+        let others: Vec<_> = patch
+            .nodes
+            .iter()
+            .map(|n| (positions[&n.id], panel_width(&n.kind)))
+            .collect();
+        let origin = settle_group(pos2(right, min.y), &members, &others)
+            .ok_or("No free rack position within project bounds")?;
+        Ok(source
+            .into_iter()
+            .zip(members)
+            .map(|((id, _, _), (relative, _))| (id, origin + relative.to_vec2()))
+            .collect())
+    }
+
+    pub(crate) fn apply_duplicate_placement(&mut self, positions: BTreeMap<String, Pos2>) {
+        self.selection = positions.keys().cloned().collect();
+        self.selected = self.selection.iter().next().cloned();
+        self.positions.extend(positions);
+        self.pending = None;
+        self.group_drag = None;
+        self.reveal_group_once = true;
+        self.suppress_reveal_once = false;
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
     pub fn set_sequence_states(
         &mut self,
         states: BTreeMap<String, ModuleTelemetry>,
@@ -228,6 +383,8 @@ impl Rack {
         self.pending = None;
         self.dragging_cable = false;
         self.suppress_reveal_once = true;
+        self.reveal_group_once = false;
+        self.group_drag = None;
         Ok(())
     }
 
@@ -240,10 +397,17 @@ impl Rack {
     ) -> Option<RackAction> {
         let released_manual = self.release_manual_if_needed(ui, patch);
         let interactive = ui.is_enabled();
+        if !interactive || !ui.input(|i| i.focused) {
+            if let Some(drag) = self.group_drag.take() {
+                self.positions.extend(drag.origins);
+                self.layout_revision = self.layout_revision.wrapping_add(1);
+            }
+        }
         if !interactive {
             self.pending = None;
             self.dragging_cable = false;
             self.editing = None;
+            self.group_drag = None;
         }
         let initial_pan = self.pan;
         // Capture this before reconcile assigns new panels their first position.
@@ -261,6 +425,9 @@ impl Rack {
             Sense::click_and_drag(),
         );
         if !suppress_reveal {
+            if std::mem::take(&mut self.reveal_group_once) {
+                self.reveal_selected_group(patch, canvas);
+            }
             if let Some(node) =
                 newly_selected.and_then(|id| patch.nodes.iter().find(|node| node.id == id))
             {
@@ -301,16 +468,49 @@ impl Rack {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if let Some(drag) = self.group_drag.take() {
+                self.positions.extend(drag.origins);
+                self.layout_revision = self.layout_revision.wrapping_add(1);
+            }
             self.pending = None;
             self.dragging_cable = false;
             self.editing = None;
         }
         if interactive
+            && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
-            && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+            && !egui::Popup::is_any_open(ui.ctx())
+            && self.editing.is_none()
+            && self.pending.is_none()
+            && self.group_drag.is_none()
+            && !ui.input(|i| i.pointer.primary_down())
         {
-            if let Some(id) = self.selected.take() {
-                action = Some(RackAction::Command("remove_module", json!({"id":id})));
+            if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::A)) {
+                self.selection = patch.nodes.iter().map(|node| node.id.clone()).collect();
+                self.selected = self
+                    .selected
+                    .clone()
+                    .filter(|id| self.selection.contains(id))
+                    .or_else(|| self.selection.iter().next().cloned());
+                ui.input_mut(|i| {
+                    i.consume_key(i.modifiers, egui::Key::A);
+                });
+            }
+            if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::D))
+                && !self.selection.is_empty()
+            {
+                action = Some(RackAction::Duplicate {
+                    ids: self.selected_ids(),
+                    with_inputs: ui.input(|i| i.modifiers.shift),
+                });
+                ui.input_mut(|i| {
+                    i.consume_key(i.modifiers, egui::Key::D);
+                });
+            } else if ui
+                .input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+                && !self.selection.is_empty()
+            {
+                action = Some(remove_selection_action(&self.selected_ids()));
             }
         }
         paint_background(&painter, canvas, self.pan, self.zoom);
@@ -374,18 +574,29 @@ impl Rack {
             if !rect.intersects(canvas) {
                 continue;
             }
+            let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+            if interactive
+                && ui.input(|i| {
+                    i.pointer.button_pressed(PointerButton::Primary)
+                        && i.pointer.interact_pos().is_some_and(|p| {
+                            rect.contains(p) && !(i.modifiers.shift && header_rect.contains(p))
+                        })
+                })
+            {
+                self.select_primary(node.id.clone());
+            }
             let panel_response =
                 ui.interact(rect, ui.id().with(("module", &node.id)), Sense::click());
             panel_response.widget_info(|| {
                 egui::WidgetInfo::selected(
                     egui::WidgetType::Button,
                     true,
-                    self.selected.as_ref() == Some(&node.id),
+                    self.selection.contains(&node.id),
                     format!("{} module {}", title(&node.kind), node.id),
                 )
             });
             if panel_response.clicked() {
-                self.selected = Some(node.id.clone());
+                self.select_primary(node.id.clone());
             }
             panel_response.context_menu(|ui| {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
@@ -406,17 +617,13 @@ impl Rack {
                         }
                     }
                 }
-                if ui.button("Remove module").clicked() {
-                    action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
-                    self.selected = None;
-                    ui.close();
-                }
+                selection_menu(ui, &self.context_ids(&node.id), &mut action);
             });
             paint_panel(
                 &painter,
                 rect,
                 node,
-                self.selected.as_ref() == Some(&node.id),
+                self.selection.contains(&node.id),
                 patch.output.as_ref() == Some(&node.id),
                 self.zoom,
             );
@@ -433,32 +640,86 @@ impl Rack {
                     format!("Move {} module", node.id),
                 )
             });
-            if header_response.clicked() || header_response.drag_started() {
-                self.selected = Some(node.id.clone());
+            if header_response.clicked() {
+                if ui.input(|i| i.modifiers.shift) {
+                    self.toggle_selection(node.id.clone());
+                } else {
+                    self.select_primary(node.id.clone());
+                }
+            }
+            if header_response.drag_started_by(PointerButton::Primary) {
+                self.select_primary(node.id.clone());
+                self.group_drag = Some(GroupDrag {
+                    anchor: node.id.clone(),
+                    origins: self
+                        .selection
+                        .iter()
+                        .map(|id| (id.clone(), self.positions[id]))
+                        .collect(),
+                    delta: Vec2::ZERO,
+                });
+            }
+            if header_response.secondary_clicked() {
+                self.select_primary(node.id.clone());
             }
             if header_response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
             }
             if interactive && header_response.dragged_by(PointerButton::Primary) {
-                if header_response.drag_delta() != Vec2::ZERO {
-                    self.layout_revision = self.layout_revision.wrapping_add(1);
+                if let Some(drag) = self
+                    .group_drag
+                    .as_mut()
+                    .filter(|drag| drag.anchor == node.id)
+                {
+                    drag.delta += header_response.drag_delta() / self.zoom;
+                    for (id, origin) in &drag.origins {
+                        self.positions.insert(id.clone(), *origin + drag.delta);
+                    }
+                    if header_response.drag_delta() != Vec2::ZERO {
+                        self.layout_revision = self.layout_revision.wrapping_add(1);
+                    }
                 }
-                *self.positions.get_mut(&node.id).unwrap() +=
-                    header_response.drag_delta() / self.zoom;
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
             if interactive && header_response.drag_stopped_by(PointerButton::Primary) {
-                let other: Vec<_> = patch
-                    .nodes
-                    .iter()
-                    .filter(|other| other.id != node.id)
-                    .map(|other| (self.positions[&other.id], panel_width(&other.kind)))
-                    .collect();
-                let snapped = settle(self.positions[&node.id], width, &other);
-                self.positions.insert(node.id.clone(), snapped);
-                self.layout_revision = self.layout_revision.wrapping_add(1);
-                if action.is_none() {
-                    action = Some(RackAction::LayoutChanged);
+                if let Some(drag) = self.group_drag.take().filter(|drag| drag.anchor == node.id) {
+                    let min = pos2(
+                        drag.origins
+                            .values()
+                            .map(|p| p.x)
+                            .fold(f32::INFINITY, f32::min),
+                        drag.origins
+                            .values()
+                            .map(|p| p.y)
+                            .fold(f32::INFINITY, f32::min),
+                    );
+                    let members: Vec<_> = drag
+                        .origins
+                        .iter()
+                        .map(|(id, p)| {
+                            (
+                                pos2(p.x - min.x, p.y - min.y),
+                                panel_width(
+                                    &patch.nodes.iter().find(|n| &n.id == id).unwrap().kind,
+                                ),
+                            )
+                        })
+                        .collect();
+                    let others: Vec<_> = patch
+                        .nodes
+                        .iter()
+                        .filter(|n| !drag.origins.contains_key(&n.id))
+                        .map(|n| (self.positions[&n.id], panel_width(&n.kind)))
+                        .collect();
+                    let origin = settle_group(min + drag.delta, &members, &others).unwrap_or(min);
+                    for ((id, _), (relative, _)) in drag.origins.iter().zip(members) {
+                        self.positions
+                            .insert(id.clone(), origin + relative.to_vec2());
+                    }
+                    self.layout_revision = self.layout_revision.wrapping_add(1);
+                    if action.is_none() {
+                        action = Some(RackAction::LayoutChanged);
+                    }
                 }
             }
             header_response.context_menu(|ui| {
@@ -480,11 +741,7 @@ impl Rack {
                         }
                     }
                 }
-                if ui.button("Remove module").clicked() {
-                    action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
-                    self.selected = None;
-                    ui.close();
-                }
+                selection_menu(ui, &self.context_ids(&node.id), &mut action);
             });
             let description = module
                 .and_then(|module| module["description"].as_str())
@@ -502,7 +759,7 @@ impl Rack {
                     .as_str()
                 })
                 .unwrap_or("mono");
-            header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move. Panels snap to rack rows and free space."));
+            header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows."));
 
             if node.kind == "seq3" {
                 if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
@@ -753,7 +1010,7 @@ impl Rack {
                     };
                     let button = ui.put(rect, egui::Button::new(label).selected(enabled));
                     if button.clicked() {
-                        self.selected = Some(node.id.clone());
+                        self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
                             "set_parameter",
                             json!({"id":node.id,"parameter":name,"value":if enabled { 0.0 } else { 1.0 }}),
@@ -787,7 +1044,7 @@ impl Rack {
                         .selected(value >= 0.5),
                     );
                     if button.clicked() {
-                        self.selected = Some(node.id.clone());
+                        self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
                             "set_parameter",
                             json!({"id":node.id,"parameter":name,"value":if value >= 0.5 { 0.0 } else { 1.0 }}),
@@ -822,7 +1079,7 @@ impl Rack {
                         ui.id().with((&node.id, "scale")),
                         value as u16,
                     ) {
-                        self.selected = Some(node.id.clone());
+                        self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
                             "set_parameter",
                             json!({"id":node.id,"parameter":name,"value":mask}),
@@ -959,7 +1216,7 @@ impl Rack {
                     egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, name))
                 });
                 if knob.drag_started() {
-                    self.selected = Some(node.id.clone());
+                    self.select_primary(node.id.clone());
                     self.gesture = self.gesture.wrapping_add(1);
                     ui.data_mut(|data| {
                         data.insert_temp(knob.id, format!("rack-knob-{}", self.gesture))
@@ -1422,6 +1679,7 @@ impl Rack {
             }
             if response.clicked() {
                 self.selected = None;
+                self.selection.clear();
                 self.pending = None;
             }
         }
@@ -1443,6 +1701,21 @@ impl Rack {
         }
         if self.pan != initial_pan {
             self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+        if self.selection.len() > 1 {
+            let status =
+                Rect::from_min_size(canvas.left_top() + vec2(12.0, 12.0), vec2(360.0, 27.0));
+            painter.rect_filled(status, 4.0, Color32::from_black_alpha(210));
+            painter.text(
+                status.center(),
+                Align2::CENTER_CENTER,
+                format!(
+                    "{} selected · Shift-click headers · Cmd/Ctrl+D to duplicate",
+                    self.selection.len()
+                ),
+                FontId::proportional(10.0),
+                Color32::from_gray(236),
+            );
         }
         self.parameter_editor(ui.ctx(), &mut action);
         released_manual.or(if interactive { action } else { None })
@@ -1657,7 +1930,7 @@ impl Rack {
                     kind: node.kind.clone(),
                     release,
                 });
-                self.selected = Some(node.id.clone());
+                self.select_primary(node.id.clone());
                 action = Some(RackAction::Command(
                     "trigger_module",
                     json!({"id":node.id,"action":press}),
@@ -1801,7 +2074,7 @@ impl Rack {
                     true,
                     zoom,
                 ) {
-                    self.selected = Some(node.id.clone());
+                    self.select_primary(node.id.clone());
                     action = Some(RackAction::Command(
                         "set_parameter",
                         json!({"id":node.id,"parameter":parameter,"value":if muted {0.0} else {1.0}}),
@@ -1924,7 +2197,7 @@ impl Rack {
                 true,
                 zoom,
             ) {
-                self.selected = Some(node.id.clone());
+                self.select_primary(node.id.clone());
                 action = Some(RackAction::Command(
                     "set_parameter",
                     json!({"id":node.id,"parameter":"steps","value":steps}),
@@ -1941,7 +2214,7 @@ impl Rack {
             true,
             zoom,
         ) {
-            self.selected = Some(node.id.clone());
+            self.select_primary(node.id.clone());
             action = Some(RackAction::Command(
                 "set_parameter",
                 json!({"id":node.id,"parameter":"declick","value":if declick {0.0} else {1.0}}),
@@ -2276,7 +2549,7 @@ impl Rack {
             ui.data_mut(|data| data.remove::<String>(id));
         }
         if response.changed() {
-            self.selected = Some(node.id.clone());
+            self.select_primary(node.id.clone());
             let mut args = json!({"id":node.id,"parameter":parameter,"value":quantize(value / scale,min,max,step)});
             if let Some(group) = group {
                 args["history_group"] = json!(group);
@@ -2308,14 +2581,14 @@ impl Rack {
                 self.pending = Some(PendingCable::new(end.clone(), patch));
             }
             self.dragging_cable = false;
-            self.selected = Some(match &end {
+            self.select_primary(match &end {
                 CableEnd::Output { node, .. } | CableEnd::Input { node, .. } => node.clone(),
             });
         }
         if response.drag_started_by(PointerButton::Primary) {
             self.pending = Some(PendingCable::new(end.clone(), patch));
             self.dragging_cable = true;
-            self.selected = Some(match end {
+            self.select_primary(match end {
                 CableEnd::Output { node, .. } | CableEnd::Input { node, .. } => node,
             });
         }
@@ -2328,13 +2601,7 @@ impl Rack {
         if old_count != self.positions.len() {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
-        if self
-            .selected
-            .as_ref()
-            .is_some_and(|id| !patch.nodes.iter().any(|node| &node.id == id))
-        {
-            self.selected = None;
-        }
+        self.reconcile_selection(patch);
         if self.pending.as_ref().is_some_and(|pending| {
             let origin_exists = match &pending.origin {
                 CableEnd::Output { node, port } => port_exists(patch, catalog, node, port, true),
@@ -2363,6 +2630,51 @@ impl Rack {
             }
             self.positions.insert(node.id.clone(), pos2(x, 0.0));
             self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+    }
+
+    fn reveal_selected_group(&mut self, patch: &Patch, canvas: Rect) {
+        let nodes: Vec<_> = patch
+            .nodes
+            .iter()
+            .filter(|n| self.selection.contains(&n.id))
+            .collect();
+        if nodes.is_empty() {
+            return;
+        }
+        let min = pos2(
+            nodes
+                .iter()
+                .map(|n| self.positions[&n.id].x)
+                .fold(f32::INFINITY, f32::min),
+            nodes
+                .iter()
+                .map(|n| self.positions[&n.id].y)
+                .fold(f32::INFINITY, f32::min),
+        );
+        let max = pos2(
+            nodes
+                .iter()
+                .map(|n| self.positions[&n.id].x + panel_width(&n.kind))
+                .fold(f32::NEG_INFINITY, f32::max),
+            nodes
+                .iter()
+                .map(|n| self.positions[&n.id].y + PANEL_HEIGHT)
+                .fold(f32::NEG_INFINITY, f32::max),
+        );
+        let viewport = canvas.shrink(12.0);
+        let start = canvas.min + self.pan + min.to_vec2() * self.zoom;
+        let size = ((max - min) * self.zoom).min(viewport.size());
+        let rect = Rect::from_min_size(start, size);
+        if rect.left() < viewport.left() {
+            self.pan.x += viewport.left() - rect.left();
+        } else if rect.right() > viewport.right() {
+            self.pan.x += viewport.right() - rect.right();
+        }
+        if rect.top() < viewport.top() {
+            self.pan.y += viewport.top() - rect.top();
+        } else if rect.bottom() > viewport.bottom() {
+            self.pan.y += viewport.bottom() - rect.bottom();
         }
     }
 
@@ -2420,6 +2732,50 @@ impl Rack {
         if close {
             self.editing = None;
         }
+    }
+}
+
+fn remove_selection_action(ids: &[String]) -> RackAction {
+    if ids.len() == 1 {
+        RackAction::Command("remove_module", json!({"id":ids[0]}))
+    } else {
+        RackAction::Command(
+            "apply_edits",
+            json!({"edits":ids.iter().map(|id|json!({"tool":"remove_module","arguments":{"id":id}})).collect::<Vec<_>>()}),
+        )
+    }
+}
+
+fn selection_menu(ui: &mut egui::Ui, ids: &[String], action: &mut Option<RackAction>) {
+    ui.separator();
+    if ids.len() > 1 {
+        ui.strong(format!("{} selected modules", ids.len()));
+    }
+    for (with_inputs, label, shortcut) in [
+        (false, "Duplicate", "Cmd/Ctrl+D"),
+        (true, "Duplicate with inputs", "Cmd/Ctrl+Shift+D"),
+    ] {
+        if ui
+            .add(egui::Button::new(label).shortcut_text(shortcut))
+            .clicked()
+        {
+            *action = Some(RackAction::Duplicate {
+                ids: ids.to_vec(),
+                with_inputs,
+            });
+            ui.close();
+        }
+    }
+    if ui
+        .button(if ids.len() > 1 {
+            "Remove selected modules"
+        } else {
+            "Remove module"
+        })
+        .clicked()
+    {
+        *action = Some(remove_selection_action(ids));
+        ui.close();
     }
 }
 
@@ -2923,16 +3279,23 @@ fn cable_action(
             json!({"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}),
         ));
     }
-    let mut candidate = patch.clone();
-    candidate.cables.retain(|existing| {
-        !(existing.to == cable.to && existing.input == cable.input)
-            && !old.is_some_and(|old| same_cable(old, existing))
-    });
-    candidate.cables.push(cable);
-    Some(RackAction::Command(
-        "replace_patch",
-        json!({"patch":candidate}),
-    ))
+    // Replugging is a compatible graph edit, not a document replacement. Keep
+    // disconnects and the new named route in one validated undo transaction.
+    let removals: BTreeSet<_> = patch
+        .cables
+        .iter()
+        .filter(|existing| {
+            (existing.to == cable.to && existing.input == cable.input)
+                || old.is_some_and(|old| same_cable(old, existing))
+        })
+        .map(|existing| (existing.to.clone(), existing.input.clone()))
+        .collect();
+    let mut edits: Vec<_> = removals
+        .into_iter()
+        .map(|(to, input)| json!({"tool":"disconnect","arguments":{"to":to,"input":input}}))
+        .collect();
+    edits.push(json!({"tool":"connect","arguments":{"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}}));
+    Some(RackAction::Command("apply_edits", json!({"edits":edits})))
 }
 
 fn cable_color(source: &str, port: &str) -> Color32 {
@@ -3518,29 +3881,78 @@ fn format_value(value: f32, unit: &str) -> String {
     }
 }
 
-fn settle(position: Pos2, width: f32, others: &[(Pos2, f32)]) -> Pos2 {
-    let y = (position.y / ROW).round().max(0.0) * ROW;
-    let requested = (position.x / HP).round().max(0.0) * HP;
-    let mut candidates = vec![requested, 0.0];
-    for (point, other_width) in others {
-        if (point.y - y).abs() < PANEL_HEIGHT {
-            candidates.push(((point.x + other_width) / HP).ceil() * HP);
-            candidates.push(((point.x - width) / HP).floor() * HP);
+/// Search complete group translations on the HP/row grid. Forbidden x intervals
+/// account for each member separately, so empty spaces inside a group stay usable.
+fn settle_group(requested: Pos2, members: &[(Pos2, f32)], others: &[(Pos2, f32)]) -> Option<Pos2> {
+    if members.is_empty() {
+        return None;
+    }
+    let max_relative_x = members.iter().map(|(p, _)| p.x).fold(0.0, f32::max);
+    let max_relative_y = members.iter().map(|(p, _)| p.y).fold(0.0, f32::max);
+    let max_x = ((100_000.0 - max_relative_x) / HP).floor() * HP;
+    let max_row = ((100_000.0 - max_relative_y) / ROW).floor() as usize;
+    if max_x < 0.0 || max_relative_y > 100_000.0 {
+        return None;
+    }
+    let requested = pos2(
+        (requested.x / HP).round().clamp(0.0, max_x / HP) * HP,
+        (requested.y / ROW).round().max(0.0) * ROW,
+    );
+    let last_row = others
+        .iter()
+        .map(|(p, _)| (p.y / ROW).ceil() as usize + 1)
+        .max()
+        .unwrap_or(0)
+        .max((requested.y / ROW) as usize + 1)
+        .min(max_row);
+    let mut best: Option<(f32, Pos2)> = None;
+    for row in 0..=last_row {
+        let y = row as f32 * ROW;
+        let mut intervals = Vec::new();
+        for (relative, width) in members {
+            for (other, other_width) in others {
+                if (y + relative.y - other.y).abs() < PANEL_HEIGHT {
+                    intervals.push((
+                        other.x - relative.x - width,
+                        other.x + other_width - relative.x,
+                    ));
+                }
+            }
+        }
+        intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut merged: Vec<(f32, f32)> = Vec::new();
+        for (left, right) in intervals {
+            if let Some(last) = merged.last_mut().filter(|last| left < last.1) {
+                last.1 = last.1.max(right);
+            } else {
+                merged.push((left, right));
+            }
+        }
+        let mut candidates = vec![requested.x, 0.0, max_x];
+        for (left, right) in &merged {
+            candidates.push((left / HP).floor() * HP);
+            candidates.push((right / HP).ceil() * HP);
+        }
+        for x in candidates.into_iter().filter(|x| *x >= 0.0 && *x <= max_x) {
+            let index = merged.partition_point(|(_, right)| *right <= x);
+            if merged
+                .get(index)
+                .is_some_and(|(left, right)| *left < x && x < *right)
+            {
+                continue;
+            }
+            let point = pos2(x, y);
+            let distance = point.distance_sq(requested);
+            if best.is_none_or(|(score, old)| {
+                distance < score
+                    || (distance == score
+                        && (point.y - requested.y).abs() < (old.y - requested.y).abs())
+            }) {
+                best = Some((distance, point));
+            }
         }
     }
-    candidates.retain(|x| {
-        *x >= 0.0
-            && others.iter().all(|(point, other_width)| {
-                (point.y - y).abs() >= PANEL_HEIGHT
-                    || *x + width <= point.x
-                    || *x >= point.x + other_width
-            })
-    });
-    let x = candidates
-        .into_iter()
-        .min_by(|a, b| (a - requested).abs().total_cmp(&(b - requested).abs()))
-        .unwrap_or(requested);
-    pos2(x, y)
+    best.map(|(_, point)| point)
 }
 
 fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32) {
@@ -3965,6 +4377,15 @@ mod tests {
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
             time: Some(time),
+            modifiers: events
+                .iter()
+                .rev()
+                .find_map(|event| match event {
+                    egui::Event::Key { modifiers, .. }
+                    | egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
+                    _ => None,
+                })
+                .unwrap_or_default(),
             events,
             focused,
             ..Default::default()
@@ -4014,6 +4435,267 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    fn selection_click(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        position: Pos2,
+        modifiers: egui::Modifiers,
+    ) {
+        for (offset, pressed) in [(0.0, true), (0.1, false)] {
+            frame(
+                ctx,
+                rack,
+                patch,
+                time + offset,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: PointerButton::Primary,
+                        pressed,
+                        modifiers,
+                    },
+                ],
+            );
+        }
+    }
+
+    fn selection_key(key: egui::Key, shift: bool) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers {
+                command: true,
+                ctrl: true,
+                shift,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn shift_headers_group_drag_shortcuts_and_empty_click_keep_selection_coherent() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"},{"id":"c","kind":"constant"}]})).unwrap();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            pos2(84.0, 44.0),
+            egui::Modifiers::NONE,
+        );
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            pos2(204.0, 44.0),
+            egui::Modifiers::SHIFT,
+        );
+        assert_eq!(rack.selected_ids(), vec!["a", "b"]);
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.0,
+            pos2(204.0, 44.0),
+            egui::Modifiers::SHIFT,
+        );
+        assert_eq!(rack.selected_ids(), vec!["a"]);
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            4.0,
+            pos2(204.0, 44.0),
+            egui::Modifiers::SHIFT,
+        );
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            5.0,
+            pos2(84.0, 44.0),
+            pos2(144.0, 464.0),
+        );
+        assert!(matches!(action, Some(RackAction::LayoutChanged)));
+        assert_eq!(rack.positions["a"], pos2(60.0, 420.0));
+        assert_eq!(rack.positions["b"] - rack.positions["a"], vec2(120.0, 0.0));
+        assert_eq!(rack.selected_ids(), vec!["a", "b"]);
+        for (time, shift) in [(6.0, false), (7.0, true)] {
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![selection_key(egui::Key::D, shift)],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Duplicate{ref ids,with_inputs}) if ids==&vec!["a".to_owned(),"b".to_owned()]&&with_inputs==shift)
+            );
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![egui::Event::Key {
+                    key: egui::Key::D,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+        }
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            8.0,
+            vec![egui::Event::Key {
+                key: egui::Key::Delete,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(
+            matches!(action,Some(RackAction::Command("apply_edits",ref args)) if args["edits"].as_array().unwrap().len()==2)
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            9.0,
+            vec![selection_key(egui::Key::A, false)],
+        );
+        assert_eq!(rack.selected_ids(), vec!["a", "b", "c"]);
+        // A control click in a selected member retains the group; outside it selects that member.
+        rack.select_only("a".into());
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            10.0,
+            pos2(324.0, 195.0),
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(rack.selected_ids(), vec!["c"]);
+        selection_click(
+            &ctx,
+            &mut rack,
+            &patch,
+            11.0,
+            pos2(800.0, 650.0),
+            egui::Modifiers::NONE,
+        );
+        assert!(rack.selected_ids().is_empty());
+        assert!(rack.selected.is_none());
+    }
+
+    #[test]
+    fn group_placement_preserves_mixed_width_multirow_offsets_and_avoids_every_panel() {
+        let mut rack = Rack::default();
+        let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"wide","kind":"vca_mix"},{"id":"small","kind":"constant"},{"id":"blocker","kind":"seq3"}]})).unwrap();
+        rack.restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"wide":[0,0],"small":[75,420],"blocker":[390,0]}})).unwrap();
+        let before = rack.layout();
+        let placement = rack
+            .duplicate_placement(
+                &patch,
+                &[
+                    ("wide".into(), "wide-copy".into()),
+                    ("small".into(), "small-copy".into()),
+                ],
+            )
+            .unwrap();
+        assert_eq!(rack.layout(), before, "Planning must be pure");
+        assert_eq!(
+            placement["small-copy"] - placement["wide-copy"],
+            vec2(75.0, 420.0)
+        );
+        for (id, width) in [("wide-copy", 390.0), ("small-copy", 120.0)] {
+            let p = placement[id];
+            assert_eq!(p.x % HP, 0.0);
+            assert_eq!(p.y % ROW, 0.0);
+            for node in &patch.nodes {
+                let q = rack.positions[&node.id];
+                assert!(
+                    (p.y - q.y).abs() >= PANEL_HEIGHT
+                        || p.x + width <= q.x
+                        || p.x >= q.x + panel_width(&node.kind)
+                );
+            }
+        }
+        rack.apply_duplicate_placement(placement);
+        assert_eq!(rack.selected_ids(), vec!["small-copy", "wide-copy"]);
+        let mut updated = patch;
+        updated.nodes.push(Node {
+            id: "wide-copy".into(),
+            kind: "vca_mix".into(),
+            params: Default::default(),
+            bypassed: false,
+        });
+        rack.reconcile_selection(&updated);
+        assert_eq!(rack.selected_ids(), vec!["wide-copy"]);
+    }
+
+    #[test]
+    fn duplicate_shortcuts_ignore_modal_focus_loss_text_editing_and_active_cable_gestures() {
+        for cause in ["modal", "focus", "editor", "cable"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch: Patch =
+                serde_json::from_value(json!({"version":2,"nodes":[{"id":"a","kind":"constant"}]}))
+                    .unwrap();
+            rack.select_only("a".into());
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            if cause == "editor" {
+                rack.editing = Some(ParameterEdit {
+                    id: "a".into(),
+                    parameter: "value".into(),
+                    text: "0".into(),
+                    min: -10.0,
+                    max: 10.0,
+                    step: None,
+                    display_scale: 1.0,
+                    slew_min: None,
+                    gain_power: None,
+                    raw_max: 10.0,
+                    focus: true,
+                });
+            }
+            if cause == "cable" {
+                rack.pending = Some(PendingCable::new(
+                    CableEnd::Output {
+                        node: "a".into(),
+                        port: "out".into(),
+                    },
+                    &patch,
+                ));
+            }
+            let action = frame_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![selection_key(egui::Key::D, false)],
+                cause != "focus",
+                cause != "modal",
+            )
+            .0;
+            assert!(action.is_none(), "{cause}");
+            assert_eq!(rack.selected_ids(), vec!["a"]);
+        }
     }
 
     #[test]
@@ -4903,6 +5585,92 @@ mod tests {
         }
     }
 
+    fn apply_replug(patch: &Patch, args: Value) -> Patch {
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), None).unwrap();
+        session.execute("apply_edits", args).unwrap();
+        session.patch().clone()
+    }
+
+    #[test]
+    fn replug_transaction_preserves_source_incarnation_and_rejects_partial_or_stale_edits() {
+        let workspace = tempfile::tempdir().unwrap();
+        let patch = openpatch_core::demo_patch();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), None).unwrap();
+        let incarnation_tokens = crate::audio::test_module_incarnation_tokens(&mut session);
+        let before_tokens = incarnation_tokens(&patch, session.revision());
+        assert_eq!(before_tokens.len(), patch.nodes.len());
+        let pending = PendingCable::new(
+            CableEnd::Input {
+                node: "vca".into(),
+                port: "signal".into(),
+            },
+            &patch,
+        );
+        let target = CableEnd::Input {
+            node: "filter".into(),
+            port: "signal".into(),
+        };
+        let Some(RackAction::Command("apply_edits", mut args)) =
+            cable_action(&patch, &pending, &target, &openpatch_core::catalog())
+        else {
+            panic!("occupied replug must be an edit transaction")
+        };
+        assert_eq!(args["edits"].as_array().unwrap().len(), 3);
+        let before = session.snapshot();
+        args["expected_revision"] = json!(session.revision());
+        session.execute("apply_edits", args.clone()).unwrap();
+        let committed = session.snapshot();
+        assert_eq!(
+            committed["history"]["undo_steps"].as_u64().unwrap(),
+            before["history"]["undo_steps"].as_u64().unwrap() + 1
+        );
+        assert_eq!(session.patch().output, patch.output);
+        assert_eq!(incarnation_tokens(session.patch(),session.revision()),before_tokens,"Recabling must preserve all original node incarnations, including the oscillator source");
+        // Even after both proposed disconnects, a bad final connect publishes nothing.
+        let moving = PendingCable::new(
+            CableEnd::Input {
+                node: "filter".into(),
+                port: "signal".into(),
+            },
+            session.patch(),
+        );
+        let occupied = CableEnd::Input {
+            node: "out".into(),
+            port: "signal".into(),
+        };
+        let Some(RackAction::Command("apply_edits", mut invalid)) = cable_action(
+            session.patch(),
+            &moving,
+            &occupied,
+            &openpatch_core::catalog(),
+        ) else {
+            panic!("second occupied move must validate")
+        };
+        let mut stale = invalid.clone();
+        stale["expected_revision"] = args["expected_revision"].clone();
+        invalid["expected_revision"] = json!(session.revision());
+        let last = invalid["edits"].as_array_mut().unwrap().last_mut().unwrap();
+        last["arguments"]["output"] = json!("missing-output");
+        assert!(session.execute("apply_edits", invalid).is_err());
+        assert_eq!(session.snapshot(), committed);
+        assert!(
+            session
+                .execute("apply_edits", stale)
+                .unwrap_err()
+                .contains("revision"),
+            "App.command's revision guard must reject an otherwise valid stale replug"
+        );
+        assert_eq!(session.snapshot(), committed);
+        session.execute("undo", json!({})).unwrap();
+        assert_eq!(
+            serde_json::to_value(session.patch()).unwrap(),
+            serde_json::to_value(patch).unwrap()
+        );
+    }
+
     #[test]
     fn input_origin_connects_and_replug_replaces_atomically_without_losing_original() {
         let ctx = egui::Context::default();
@@ -4922,10 +5690,10 @@ mod tests {
         // Drop within the snap zone, beyond the actual socket's painted edge.
         let filter_input = pos2(654.0 + 16.0, 344.0);
         let action = drag(&ctx, &mut rack, &patch, 2.0, vca_input, filter_input);
-        let Some(RackAction::Command("replace_patch", args)) = action else {
+        let Some(RackAction::Command("apply_edits", args)) = action else {
             panic!("expected one atomic replacement");
         };
-        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        let candidate = apply_replug(&patch, args);
         candidate.validate().unwrap();
         assert!(!candidate
             .cables
@@ -4944,7 +5712,7 @@ mod tests {
 
         let action = drag(&ctx, &mut rack, &patch, 3.0, tone_out, pos2(654.0, 344.0));
         assert!(
-            matches!(action, Some(RackAction::Command("replace_patch", _))),
+            matches!(action, Some(RackAction::Command("apply_edits", _))),
             "dropping onto an occupied input should replace its cable"
         );
     }
@@ -5211,10 +5979,10 @@ mod tests {
             input: "signal".into(),
         });
         let action = drag(&ctx, &mut rack, &patch, 2.0, a_signal, b_signal);
-        let Some(RackAction::Command("replace_patch", args)) = action else {
+        let Some(RackAction::Command("apply_edits", args)) = action else {
             panic!("expected atomic named-output replug");
         };
-        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        let candidate = apply_replug(&patch, args);
         assert_eq!(candidate.cables.len(), 1);
         assert_eq!(candidate.cables[0].output, "out16");
         assert_eq!(candidate.cables[0].to, "b");
@@ -5228,10 +5996,10 @@ mod tests {
             &openpatch_core::catalog()
         ));
         let action = drag(&ctx, &mut rack, &patch, 3.0, a_signal, pos2(84.0, 199.0));
-        let Some(RackAction::Command("replace_patch", args)) = action else {
+        let Some(RackAction::Command("apply_edits", args)) = action else {
             panic!("expected a named source replacement");
         };
-        let candidate: Patch = serde_json::from_value(args["patch"].clone()).unwrap();
+        let candidate = apply_replug(&patch, args);
         assert_eq!(candidate.cables[0].output, "out1");
         assert_eq!(candidate.cables[0].to, "a");
     }
@@ -5812,6 +6580,9 @@ mod tests {
     }
     #[test]
     fn placement_snaps_to_rows_and_nearest_free_hp_without_overlap() {
+        let settle = |point, width, others: &[(Pos2, f32)]| {
+            settle_group(point, &[(Pos2::ZERO, width)], others).unwrap()
+        };
         let occupied = [(pos2(0.0, 0.0), 210.0), (pos2(390.0, 0.0), 150.0)];
         assert_eq!(
             settle(pos2(230.0, 17.0), 180.0, &occupied),

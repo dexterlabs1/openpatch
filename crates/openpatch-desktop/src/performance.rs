@@ -92,9 +92,16 @@ struct Entry {
     bypassed: bool,
     action_epoch: u64,
 }
+struct StateEntry {
+    slot: usize,
+    token: u64,
+    born_revision: u64,
+    kind: String,
+}
 struct Control {
     queue: Producer<Event>,
     entries: BTreeMap<String, Entry>,
+    state_entries: BTreeMap<String, StateEntry>,
     revision: u64,
     next_token: u64,
     next_sequence: u64,
@@ -224,14 +231,23 @@ pub(super) struct Binding {
     kind: ModuleKind,
     pub release_epoch: u64,
 }
+#[derive(Clone, Copy)]
+pub(super) struct StateBinding {
+    pub token: u64,
+    pub handle: ModuleHandle,
+}
 #[derive(Clone)]
 pub(super) struct ModulePlan {
     pub bindings: [Option<Binding>; MAX_NODES],
+    pub states: [Option<StateBinding>; MAX_NODES],
+    pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
 }
 impl Default for ModulePlan {
     fn default() -> Self {
         Self {
             bindings: [None; MAX_NODES],
+            states: [None; MAX_NODES],
+            fresh_states: [None; MAX_NODES],
         }
     }
 }
@@ -274,6 +290,7 @@ impl Performance {
                 control: Mutex::new(Control {
                     queue,
                     entries: BTreeMap::new(),
+                    state_entries: BTreeMap::new(),
                     revision: 0,
                     next_token: 1,
                     next_sequence: 1,
@@ -295,6 +312,21 @@ impl Performance {
             .lock()
             .map_err(|_| "Module event registry poisoned")?;
         let mut plan = ModulePlan::default();
+        for (index, node) in patch.nodes.iter().enumerate() {
+            let handle = engine.resolve_module_state(&node.id)?;
+            if let Some(entry) = control
+                .state_entries
+                .get(&node.id)
+                .filter(|entry| revision >= entry.born_revision && node.kind == entry.kind)
+            {
+                plan.states[entry.slot] = Some(StateBinding {
+                    token: entry.token,
+                    handle,
+                });
+            } else {
+                plan.fresh_states[index] = Some(handle);
+            }
+        }
         for (id, entry) in &control.entries {
             // A stale UI snapshot must not bind a newly reincarnated instance.
             if revision < entry.born_revision
@@ -381,6 +413,7 @@ impl LiveModuleEvents for Performance {
     fn retire_modules(&self, ids: &[String]) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
+            control.state_entries.remove(id);
             if let Some(entry) = control.entries.remove(id) {
                 // The following sync assigns a fresh token even when the final
                 // patch recreates an identical module in the same transaction.
@@ -393,6 +426,36 @@ impl LiveModuleEvents for Performance {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
             return;
+        }
+        control.state_entries.retain(|id, entry| {
+            patch
+                .nodes
+                .iter()
+                .any(|node| node.id == *id && node.kind == entry.kind)
+        });
+        let mut state_used = [false; MAX_NODES];
+        for entry in control.state_entries.values() {
+            state_used[entry.slot] = true;
+        }
+        for node in &patch.nodes {
+            if control.state_entries.contains_key(&node.id) {
+                continue;
+            }
+            let Some(slot) = state_used.iter().position(|used| !used) else {
+                break;
+            };
+            state_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.state_entries.insert(
+                node.id.clone(),
+                StateEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    kind: node.kind.clone(),
+                },
+            );
         }
         control.entries.retain(|id, entry| {
             let retained = patch.version == 2

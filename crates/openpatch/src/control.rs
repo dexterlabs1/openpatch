@@ -1,6 +1,8 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod capture;
 #[cfg(test)]
+mod duplicate_tests;
+#[cfg(test)]
 mod sequence_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
@@ -50,6 +52,7 @@ const HISTORY_LIMIT: usize = 128;
 const MAX_EDITS: usize = 256;
 const EDIT_TOOLS: &[&str] = &[
     "add_module",
+    "duplicate_modules",
     "remove_module",
     "connect",
     "disconnect",
@@ -184,34 +187,21 @@ impl Session {
     }
 
     /// Replace the document through the same validation and revision boundary.
-    /// Stateful telemetry modules start fresh even when IDs match the previous document.
+    /// Modules start fresh even when IDs match the previous document.
     /// Failed validation or a stale revision leaves the live patch unchanged.
     pub fn replace_patch(
         &mut self,
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        let retired = self.telemetry_module_ids();
+        let retired = self.module_ids();
         self.commit(candidate, expected_revision, None, &retired)
     }
 
-    fn telemetry_module_ids(&self) -> Vec<String> {
+    fn module_ids(&self) -> Vec<String> {
         self.patch
             .nodes
             .iter()
-            .filter(|node| {
-                matches!(
-                    node.kind.as_str(),
-                    "seq3"
-                        | "switch_1to4"
-                        | "switch_4to1"
-                        | "logic"
-                        | "compare"
-                        | "process"
-                        | "rescale"
-                        | "vca_mix"
-                )
-            })
             .map(|node| node.id.clone())
             .collect()
     }
@@ -555,7 +545,7 @@ impl Session {
         self.check_revision(expected_revision)?;
         let mut candidate = self.patch.clone();
         let mut retired = if matches!(name, "replace_patch" | "load_patch") {
-            self.telemetry_module_ids()
+            self.module_ids()
         } else {
             Vec::new()
         };
@@ -915,6 +905,7 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
                 bypassed: false,
             });
         }
+        "duplicate_modules" => duplicate_modules(candidate, args)?,
         "remove_module" => {
             let id = string(args, "id")?;
             if !candidate.nodes.iter().any(|n| n.id == id) {
@@ -997,6 +988,85 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
     Ok(())
 }
 
+fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> {
+    let requested = args
+        .get("modules")
+        .and_then(Value::as_array)
+        .ok_or("modules must be an array")?;
+    if requested.is_empty() || requested.len() > MAX_EDITS {
+        return Err(format!("modules must contain 1..{MAX_EDITS} mappings"));
+    }
+    let cable_mode = optional_string(args, "cable_mode", "none")?;
+    if !matches!(cable_mode, "none" | "internal" | "inputs") {
+        return Err("cable_mode must be none, internal, or inputs".into());
+    }
+    let mut mapping = BTreeMap::new();
+    let mut destinations = BTreeSet::new();
+    let mut clones = Vec::with_capacity(requested.len());
+    for item in requested {
+        let object = item.as_object().ok_or("module mapping must be an object")?;
+        if object.keys().any(|key| key != "id" && key != "new_id") {
+            return Err("module mapping accepts only id and new_id".into());
+        }
+        let id = string(item, "id")?;
+        let new_id = string(item, "new_id")?;
+        for value in [id, new_id] {
+            if value.is_empty()
+                || value.len() > 64
+                || !value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-.".contains(&byte))
+            {
+                return Err(
+                    "node IDs must contain 1..=64 ASCII letters, digits, '_', '-', or '.'".into(),
+                );
+            }
+        }
+        if mapping.insert(id, new_id).is_some() {
+            return Err(format!("duplicate source module '{id}'"));
+        }
+        if !destinations.insert(new_id) {
+            return Err(format!("duplicate destination module '{new_id}'"));
+        }
+        if candidate.nodes.iter().any(|node| node.id == new_id) {
+            return Err(format!("destination module '{new_id}' already exists"));
+        }
+        let mut node = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .ok_or_else(|| format!("source module '{id}' not found"))?
+            .clone();
+        node.id = new_id.to_owned();
+        clones.push(node);
+    }
+    // Snapshot all originals before appending. Cable limits, cycles, and other
+    // graph constraints are checked on the final transaction like other edits.
+    let cables: Vec<Cable> = candidate
+        .cables
+        .iter()
+        .filter_map(|original| {
+            if cable_mode == "none" {
+                return None;
+            }
+            let destination = mapping.get(original.to.as_str())?;
+            let source = mapping.get(original.from.as_str());
+            if source.is_none() && cable_mode != "inputs" {
+                return None;
+            }
+            let mut cable = original.clone();
+            cable.to = (*destination).to_owned();
+            if let Some(source) = source {
+                cable.from = (*source).to_owned();
+            }
+            Some(cable)
+        })
+        .collect();
+    candidate.nodes.extend(clones);
+    candidate.cables.extend(cables);
+    Ok(())
+}
+
 fn tool(
     name: &str,
     description: &str,
@@ -1010,6 +1080,12 @@ fn tool(
 pub fn tools() -> Value {
     let s = json!({"type":"string"});
     let rev = json!({"type":"integer","minimum":0});
+    let module_id =
+        json!({"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_.-]+$"});
+    let duplicate_mappings = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
+        "type":"object","properties":{"id":module_id,"new_id":module_id},
+        "required":["id","new_id"],"additionalProperties":false
+    }});
     let midi_events = midi_events_schema();
     let module_events = module_events_schema();
     let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
@@ -1028,8 +1104,9 @@ pub fn tools() -> Value {
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
-        tool("replace_patch","Sequencers start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
+        tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
+        tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, and inputs also copies external incoming cables. Does not copy external outgoing cables or change the selected output. Runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
         tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
@@ -1038,7 +1115,7 @@ pub fn tools() -> Value {
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
-        tool("load_patch","Sequencers start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
+        tool("load_patch","Modules start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
         tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI and module events drive reproducible performances. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events,"module_events":module_events}),&["filename","seconds"],false),
         tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI and module events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),
         tool("capture_signal","Capture a calibrated waveform from any named output/channel offline from reset. Returns bounded nonempty min/max/mean bins preserving every active-sample peak, plus active-sample DC/RMS/peak. Raw output units come from catalog; no live audio, summing, clipping, or history changes. Optional sample-frame MIDI and module events reproduce performances; expected_revision guards the captured snapshot.",json!({"id":s,"port":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"seconds":{"type":"number","minimum":0.001,"maximum":2},"points":{"type":"integer","minimum":64,"maximum":2048,"default":512},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),

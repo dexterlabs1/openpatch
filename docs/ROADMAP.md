@@ -33,12 +33,13 @@ This plan starts from the code inspected on the baseline date:
 |---|---|---|
 | Named ports and multiple outputs | Foundation implemented in v2; Split provides 16 named outputs | Extend native interaction and persistence coverage across every multi-output module; retain invalid-port/direction and legacy-file tests as the catalog grows. |
 | Polyphonic engine | Foundation implemented; 0–16-channel frames, voice policies and retirement tested | Broaden cross-talk and shrink/regrowth tests across every stateful model; measure 16-voice callback deadlines and memory; qualify actual multichannel device sinks separately. |
+| Stacked input cables | Missing; one cable per input is enforced | Sum multiple delayed frames with mono broadcast/max width; preserve individual edge history, deterministic feedback, scoped unplug/reconnect, and allocation-free callbacks. |
 | Cable timing and feedback | Foundation implemented; per-cable value/count delay and deterministic loops tested | Retain node-order/callback invariance; add clock/reset and longer modulated feedback fixtures as those modules arrive; test feedback during live graph replacement. |
 | Voltage and event contracts | Partial; reference modules use volts | Catalog every port's units, normaling, thresholds and channel policy; test gate/trigger edges, clock/reset ordering, pitch calibration and legacy conversions. |
 | DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
-| Rack construction | Partial | Module selection/duplication, presets, initialization/randomization, bypass, grouping and placement workflows have interaction and persistence tests. |
+| Rack construction | Partial; group selection, duplication with explicit cable policies, group movement/deletion and saved bypass | Presets, initialization/randomization, hovered-module outgoing duplication with stacked inputs, and complete layout history remain open; [editing contract](RACK_EDITING.md). |
 | Parameter/cable interaction | Partial | Precise entry, fine control, reset, reconnect/delete/fan-out, keyboard shortcuts and cable presentation work together; no swallowed gestures or accidental edits behind dialogs. |
 | History | Partial; shared 128-step patch undo/redo, explicit parameter grouping and observed-state layout restoration implemented | Complete project history including layout movement; verify restored geometry, gesture boundaries, branching and concurrent MCP edits without lost updates, including states the GUI has not observed. |
 | Browser/navigation | Partial | Search, filters/favorites, keyboard access, contextual help, zoom/pan and large-rack navigation; selections and newly created modules remain visible. |
@@ -81,7 +82,14 @@ tested contracts, not a 16-voice live performance guarantee.
 
 The next gates are:
 
-1. **Profile representative polyphonic workloads.** Measure callback deadlines,
+1. **Complete stacked-input routing.** The source audit found that Rack sums
+   multiple cables at a single input, including mono broadcast into the widest
+   contributing polyphonic frame. OpenPatch currently rejects those graphs.
+   Extend the compiled input routing and edge-history model, then qualify
+   per-cable unplug/reconnect, polyphony changes, feedback, bypass, adoption,
+   and callback bounds. This also enables Rack's hovered-single-module
+   duplication of outgoing connections.
+2. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported
    hardware. Preserve the reference timing when introducing SIMD or scheduling
    optimizations. The first circuit optimization retains exact checked results
@@ -89,11 +97,11 @@ The next gates are:
    33%; the sixteen-voice workload remains slower than realtime. Live callback
    tails, crossfade cost and broader hardware results remain open. See
    [PERFORMANCE.md](PERFORMANCE.md).
-2. **Broaden live state/event tests.** Exercise graph edits during envelope
+3. **Broaden live state/event tests.** Exercise graph edits during envelope
    release, circuit transients and feedback; add direct/indirect clock-reset
    fixtures with sequencing modules. Keep crossfades a host policy rather than
    claiming them as circuit behavior.
-3. **Connect the foundation to complete instrument workflows.** Qualify native
+4. **Connect the foundation to complete instrument workflows.** Qualify native
    multi-output patching and persistence, then stereo/multichannel device I/O
    and MIDI allocation. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.

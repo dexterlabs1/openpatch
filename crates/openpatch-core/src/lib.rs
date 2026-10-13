@@ -666,8 +666,11 @@ impl LegacyEngine {
     /// those of `self`. The previous engine is unchanged for crossfade rendering.
     /// Lookup tables are compiled beforehand: this does not allocate, deallocate,
     /// lock, or perform I/O, and is safe to call at an audio callback boundary.
-    pub fn adopt_state_from(&mut self, previous: &Self) {
+    pub fn adopt_state_from_excluding(&mut self, previous: &Self, excluded: &[bool; MAX_NODES]) {
         for (id, &index) in &self.state_lookup {
+            if excluded[index] {
+                continue;
+            }
             let Some(&previous_index) = previous.state_lookup.get(id) else {
                 continue;
             };
@@ -856,6 +859,22 @@ enum EngineKind {
     Poly(poly::PolyEngine),
 }
 impl Engine {
+    /// Resolve any module's state on the control thread, in either patch version.
+    /// This handle is bound to this receiving engine; action support still
+    /// depends on the resolved model and action kind.
+    pub fn resolve_module_state(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Legacy(engine) => *engine
+                .state_lookup
+                .get(id)
+                .ok_or_else(|| format!("module '{id}' does not exist"))?,
+            EngineKind::Poly(engine) => engine.resolve_module_state(id)?,
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
     /// Resolve runtime action/telemetry targets on the control thread. Handles
     /// belong to this compiled engine and must be re-resolved after replacement.
     pub fn resolve_module_event(&self, id: &str) -> Result<ModuleHandle, String> {
@@ -1102,13 +1121,31 @@ impl Engine {
     /// Copy compatible state without allocation. Version and sample rate must
     /// match. Version 2 also retains only edges with unchanged compatible endpoints.
     pub fn adopt_state_from(&mut self, previous: &Self) {
+        self.adopt_state_from_excluding(previous, &[]);
+    }
+    /// Copy compatible state except modules identified as fresh incarnations.
+    /// Resolve exclusions against self; stale/foreign handles are ignored.
+    /// Excluded nodes retain their own compiled state and all their incident
+    /// version-2 cable histories stay empty. Other nodes/edges adopt normally.
+    /// Fixed stack storage; no allocation, deallocation, locks or recompilation.
+    pub fn adopt_state_from_excluding(&mut self, previous: &Self, excluded: &[ModuleHandle]) {
+        let mut mask = [false; MAX_NODES];
+        for handle in excluded {
+            if handle.generation == self.identity {
+                if let Some(slot) = mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
         match (&mut self.inner, &previous.inner) {
             (EngineKind::Legacy(current), EngineKind::Legacy(old))
                 if current.sample_rate == old.sample_rate =>
             {
-                current.adopt_state_from(old)
+                current.adopt_state_from_excluding(old, &mask)
             }
-            (EngineKind::Poly(current), EngineKind::Poly(old)) => current.adopt_state_from(old),
+            (EngineKind::Poly(current), EngineKind::Poly(old)) => {
+                current.adopt_state_from_excluding(old, &mask)
+            }
             _ => {}
         }
     }
@@ -1498,5 +1535,24 @@ mod scope_tap_tests {
             }
             && s[1] == TapSample::default()));
         assert!(engine.resolve_tap("dc", "out2", 0).is_err());
+    }
+    #[test]
+    fn invalid_state_exclusion_index_is_ignored_without_mask_aliasing() {
+        let patch:Patch=serde_json::from_value(json!({"nodes":[{"id":"osc","kind":"oscillator","params":{"frequency":7}}],"output":"osc"})).unwrap();
+        let mut old = patch.compile().unwrap();
+        old.process_block(&mut [0.0; 123]);
+        let mut expected = patch.compile().unwrap();
+        expected.adopt_state_from(&old);
+        let mut actual = patch.compile().unwrap();
+        let invalid = ModuleHandle {
+            generation: actual.identity,
+            node: MAX_NODES + 7,
+        };
+        actual.adopt_state_from_excluding(&old, &[invalid]);
+        let mut a = [0.0; 31];
+        let mut b = [0.0; 31];
+        actual.process_block(&mut a);
+        expected.process_block(&mut b);
+        assert_eq!(a, b);
     }
 }

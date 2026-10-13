@@ -24,6 +24,13 @@ sample of delay. Port names and directions are validated before compilation;
 unknown versions, ports and parameters are errors. Each input accepts one cable;
 an output may fan out to multiple inputs.
 
+The one-cable input rule is an explicit parity gap. The pinned Rack engine
+supports stacked input cables, summing their voltages with mono broadcast and
+the maximum contributing polyphonic width. OpenPatch still rejects these
+graphs. Supporting them requires input aggregation, per-edge history/adoption,
+and unambiguous native cable selection/removal tests; it is not implemented by
+adding a mixer module. [Rack engine reference](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/engine/Engine.cpp).
+
 Version 1 accepts only the existing mono kinds and their implicit `out` source
 port. It rejects the version-2-only polyphonic utilities, non-`out` source
 selection and cycles. Its original signal units and render behavior remain
@@ -98,6 +105,12 @@ fresh. Cable history survives only unchanged source/destination node-and-port
 endpoints with compatible kinds, port contracts and sample rate. Copy both
 values and channel count; rewired/new edges start empty. State adoption does
 not modify the old engine used by the host's transition crossfade.
+
+The desktop additionally tracks node incarnations across control revisions.
+Its filtered adoption path leaves recreated nodes and their incident edge
+history fresh, even when remove/readd or undo/redo revisions coalesce before
+the callback. Same-ID compatible edits continue normally. See
+[rack editing and runtime identity](RACK_EDITING.md).
 
 ## Foundation utilities
 

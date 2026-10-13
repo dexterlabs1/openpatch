@@ -845,7 +845,37 @@ impl Callback {
         if self.graphs.poll() {
             if let Some(previous) = self.graphs.previous.as_ref() {
                 let active = &mut self.graphs.active;
-                active.engine.adopt_state_from(&previous.engine);
+                let first = active
+                    .modules
+                    .states
+                    .iter()
+                    .flatten()
+                    .map(|binding| binding.handle)
+                    .chain(active.modules.fresh_states.iter().flatten().copied())
+                    .next();
+                if let Some(first) = first {
+                    let mut excluded = [first; openpatch_core::MAX_NODES];
+                    let mut count = 0;
+                    for (slot, binding) in active.modules.states.iter().enumerate() {
+                        if let Some(binding) = binding {
+                            let same_instance = previous.modules.states[slot]
+                                .is_some_and(|old| old.token == binding.token);
+                            if !same_instance {
+                                excluded[count] = binding.handle;
+                                count += 1;
+                            }
+                        }
+                    }
+                    for handle in active.modules.fresh_states.iter().flatten() {
+                        excluded[count] = *handle;
+                        count += 1;
+                    }
+                    active
+                        .engine
+                        .adopt_state_from_excluding(&previous.engine, &excluded[..count]);
+                } else {
+                    active.engine.adopt_state_from(&previous.engine);
+                }
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]
@@ -1092,6 +1122,26 @@ fn build_stream<T: OutputSample>(
         },
         None,
     )
+}
+
+#[cfg(test)]
+pub(crate) fn test_module_incarnation_tokens(
+    session: &mut openpatch::control::Session,
+) -> impl Fn(&Patch, u64) -> Vec<u64> {
+    let (performance, reader) = Performance::new(48_000);
+    session.set_live_module_events(Some(performance.clone()));
+    move |patch, revision| {
+        let _keep_reader_alive = &reader;
+        let engine = patch.compile().unwrap();
+        performance
+            .plan(patch, &engine, revision)
+            .unwrap()
+            .states
+            .iter()
+            .flatten()
+            .map(|binding| binding.token)
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -2610,6 +2660,247 @@ mod tests {
                 .unwrap()
                 .brightness,
             [[0.0; 2]; 8]
+        );
+    }
+
+    fn read_raw_pair(engine: &mut Engine, first: (&str, &str), second: (&str, &str)) -> [f32; 2] {
+        let taps = [
+            Some(engine.resolve_tap(first.0, first.1, 0).unwrap()),
+            Some(engine.resolve_tap(second.0, second.1, 0).unwrap()),
+        ];
+        let mut samples = [[TapSample::default(); 2]; 1];
+        without_heap_activity(|| {
+            engine.process_audio_block_with_taps(&mut [[0.0; 2]; 1], &taps, &mut samples)
+        });
+        assert!(samples[0][0].active && samples[0][1].active);
+        [samples[0][0].value, samples[0][1].value]
+    }
+
+    #[test]
+    fn duplicated_oscillators_restart_after_coalesced_undo_redo_while_original_phase_continues() {
+        for version in [1, 2] {
+            let patch: Patch = serde_json::from_value(serde_json::json!({"version":version,
+                "nodes":[{"id":"osc","kind":"oscillator","params":{"frequency":123}}],"output":"osc"})).unwrap();
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(patch.clone(), Some(0)).unwrap();
+            session.set_live_module_events(Some(callback.performance.clone()));
+            let mut reference = patch.compile().unwrap();
+            let mut block = [[0.0; 2]; 256];
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+            reference.process_audio_block(&mut block[..80]);
+            session
+                .execute(
+                    "duplicate_modules",
+                    serde_json::json!({"modules":[{"id":"osc","new_id":"copy"}]}),
+                )
+                .unwrap();
+            assert!(updates
+                .push(sequence_graph(
+                    &callback,
+                    session.patch(),
+                    session.revision()
+                ))
+                .is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+            reference.process_audio_block(&mut block);
+            let pair = read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("osc", "out"),
+                ("copy", "out"),
+            );
+            reference.process_audio_block(&mut block[..1]);
+            assert_eq!(pair[0], block[0][0]);
+            let original_token = callback.graphs.active.modules.states[0].unwrap().token;
+            let copy_token = callback.graphs.active.modules.states[1].unwrap().token;
+            session.execute("undo", serde_json::json!({})).unwrap();
+            session.execute("redo", serde_json::json!({})).unwrap();
+            let stale = sequence_graph(&callback, session.patch(), 2);
+            assert_eq!(stale.modules.states[0].unwrap().token, original_token);
+            assert!(stale.modules.states[1].is_none());
+            assert_eq!(stale.modules.fresh_states.iter().flatten().count(), 1);
+            assert!(updates.push(stale).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+            reference.process_audio_block(&mut block);
+            let pair = read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("osc", "out"),
+                ("copy", "out"),
+            );
+            reference.process_audio_block(&mut block[..1]);
+            assert_eq!(pair[0], block[0][0]);
+            let mut stale_fresh = patch.compile().unwrap();
+            stale_fresh.process_audio_block(&mut block);
+            stale_fresh.process_audio_block(&mut block[..1]);
+            assert_eq!(pair[1], block[0][0]);
+            let redone = sequence_graph(&callback, session.patch(), session.revision());
+            assert_eq!(redone.modules.states[0].unwrap().token, original_token);
+            assert_ne!(redone.modules.states[1].unwrap().token, copy_token);
+            assert!(updates.push(redone).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            reference.process_audio_block(&mut block[..1]);
+            let pair = read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("osc", "out"),
+                ("copy", "out"),
+            );
+            reference.process_audio_block(&mut block[..1]);
+            assert_eq!(pair[0], block[0][0]);
+            let mut fresh = patch.compile().unwrap();
+            fresh.process_audio_block(&mut block[..1]);
+            fresh.process_audio_block(&mut block[..1]);
+            assert_eq!(pair[1], block[0][0]);
+            assert_ne!(pair[0], pair[1]);
+        }
+    }
+
+    #[test]
+    fn maximum_graph_mixed_stale_identities_remain_fresh_until_current_publication() {
+        let mut nodes = vec![serde_json::json!({"id":"seq","kind":"seq3","params":{"tempo":15}})];
+        nodes.extend((1..openpatch_core::MAX_NODES).map(|index| {
+            serde_json::json!({
+            "id":format!("osc{index}"),"kind":"oscillator","params":{"frequency":123}})
+        }));
+        let patch: Patch =
+            serde_json::from_value(serde_json::json!({"version":2,"nodes":nodes,"output":"osc1"}))
+                .unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        let mut removed = patch.clone();
+        removed.nodes.truncate(openpatch_core::MAX_NODES / 2);
+        callback.performance.sync_patch(&removed, 2);
+        callback.performance.sync_patch(&patch, 3);
+        let stale = sequence_graph(&callback, &patch, 1);
+        assert_eq!(stale.modules.states.iter().flatten().count(), 128);
+        assert_eq!(stale.modules.fresh_states.iter().flatten().count(), 128);
+        assert!(updates.push(stale).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let pair = read_raw_pair(
+            &mut callback.graphs.active.engine,
+            ("osc1", "out"),
+            ("osc255", "out"),
+        );
+        let single: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"osc","kind":"oscillator","params":{"frequency":123}}],"output":"osc"}))
+        .unwrap();
+        let mut reference = single.compile().unwrap();
+        let mut source_frames = [[0.0; 2]; 337];
+        reference.process_audio_block(&mut source_frames);
+        assert_eq!(pair[0], source_frames[336][0]);
+        let mut fresh = single.compile().unwrap();
+        let mut fresh_frames = [[0.0; 2]; 257];
+        fresh.process_audio_block(&mut fresh_frames);
+        assert_eq!(pair[1], fresh_frames[256][0]);
+        assert!(callback.performance.sequence_state("seq").is_none());
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["seq"]["available"],
+            false
+        );
+        assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let pair = read_raw_pair(
+            &mut callback.graphs.active.engine,
+            ("osc1", "out"),
+            ("osc255", "out"),
+        );
+        reference.process_audio_block(&mut source_frames[..2]);
+        assert_eq!(pair[0], source_frames[1][0]);
+        let mut restarted = single.compile().unwrap();
+        restarted.process_audio_block(&mut fresh_frames[..2]);
+        assert_eq!(pair[1], fresh_frames[1][0]);
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["seq"]["revision"],
+            3
+        );
+    }
+
+    #[test]
+    fn duplicated_midi_modules_are_fresh_after_coalesced_history_and_document_replacement() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"midi","kind":"midi_cv","params":{"channels":1}}],
+            "output":"midi","output_port":"gate"}))
+        .unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback.graphs.active.engine.handle_midi(note_on(60));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        session
+            .execute(
+                "duplicate_modules",
+                serde_json::json!({"modules":[{"id":"midi","new_id":"copy"}]}),
+            )
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("midi", "gate"),
+                ("copy", "gate")
+            ),
+            [10.0, 0.0]
+        );
+        callback.graphs.active.engine.handle_midi(note_on(62));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("midi", "gate"),
+                ("copy", "gate")
+            ),
+            [10.0, 10.0]
+        );
+        session.execute("undo", serde_json::json!({})).unwrap();
+        session.execute("redo", serde_json::json!({})).unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("midi", "gate"),
+                ("copy", "gate")
+            ),
+            [10.0, 0.0]
+        );
+        session
+            .replace_patch(session.patch().clone(), None)
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("midi", "gate"),
+                ("copy", "gate")
+            ),
+            [0.0, 0.0]
         );
     }
 

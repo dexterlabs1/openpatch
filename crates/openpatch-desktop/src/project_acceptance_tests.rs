@@ -529,3 +529,38 @@ fn layered_stereo_morph_native_roundtrip_preserves_all_mixing_settings_and_named
         .iter()
         .any(|c| c.from == "morph" && c.output == "complement" && c.input == "right"));
 }
+
+#[test]
+fn duplicated_group_native_roundtrip_preserves_fresh_ids_bypass_named_cables_and_geometry() {
+    let (directory, store) = store();
+    let mut session = openpatch::control::Session::new(directory.path()).unwrap();
+    let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"voltage","kind":"poly_constant","params":{"channels":2,"v1":1,"v2":2}},{"id":"split","kind":"poly_split","bypassed":true},{"id":"out","kind":"audio_out"}],"cables":[{"from":"voltage","to":"split","input":"signal"},{"from":"split","output":"out2","to":"out","input":"signal"}],"output":"out"})).unwrap();
+    session.replace_patch(patch, None).unwrap();
+    session.execute("duplicate_modules",json!({"modules":[{"id":"voltage","new_id":"voltage-copy"},{"id":"split","new_id":"split-copy"}],"cable_mode":"inputs"})).unwrap();
+    let layout = json!({"version":1,"zoom":0.8,"pan":[-100,12],"positions":{"voltage":[0,0],"split":[360,0],"voltage-copy":[660,0],"split-copy":[1020,0],"out":[0,420]}});
+    let document = Document::new(session.patch().clone(), layout).unwrap();
+    store.save_new("copies.openpatch", &document).unwrap();
+    let loaded = store.load("copies.openpatch").unwrap().document;
+    assert!(loaded.equivalent(&document));
+    assert_eq!(loaded.patch.output.as_deref(), Some("out"));
+    assert!(
+        loaded
+            .patch
+            .nodes
+            .iter()
+            .find(|n| n.id == "split-copy")
+            .unwrap()
+            .bypassed
+    );
+    assert!(loaded
+        .patch
+        .cables
+        .iter()
+        .any(|c| c.from == "voltage-copy" && c.to == "split-copy"));
+    assert!(!loaded
+        .patch
+        .cables
+        .iter()
+        .any(|c| c.from == "split-copy" && c.to == "out"));
+    assert_eq!(loaded.layout["positions"]["split-copy"], json!([1020, 0]));
+}

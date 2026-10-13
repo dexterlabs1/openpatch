@@ -264,6 +264,74 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(redone["patch"], committed["patch"])
         self.assertEqual(redone["revision"], committed["revision"] + 2)
 
+    def test_duplicate_groups_copy_explicit_cables_atomically_and_roundtrip(self) -> None:
+        patch = {"version": 2, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": 4}},
+            {"id": "octave", "kind": "octave", "params": {"octaves": 1}},
+            {"id": "split", "kind": "poly_split"},
+            {"id": "sink", "kind": "audio_out"},
+        ], "cables": [
+            {"from": "source", "to": "octave", "input": "pitch"},
+            {"from": "octave", "to": "split", "input": "signal"},
+            {"from": "split", "output": "out2", "to": "sink", "input": "signal"},
+        ], "output": "split", "output_port": "out2"}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        mapping = [{"id": "octave", "new_id": "octave_copy"},
+                   {"id": "split", "new_id": "split_copy"}]
+        for mode, expected_cables in [(None, 3), ("none", 3), ("internal", 4), ("inputs", 5)]:
+            before = self.patch_snapshot()
+            arguments = {"modules": mapping, "expected_revision": before["revision"]}
+            if mode is not None:
+                arguments["cable_mode"] = mode
+            duplicated = self.payload(self.require_tool_success("duplicate_modules", arguments))
+            self.assertEqual(len(duplicated["patch"]["nodes"]), 6)
+            self.assertEqual(len(duplicated["patch"]["cables"]), expected_cables)
+            self.assertEqual(duplicated["patch"]["output"], "split")
+            self.assertEqual(duplicated["patch"]["output_port"], "out2")
+            self.assertEqual(duplicated["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+            self.assertFalse(any(c["from"] == "split_copy" and c["to"] == "sink"
+                                 for c in duplicated["patch"]["cables"]))
+            capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": "split_copy", "port": "out2", "seconds": 0.002, "points": 64,
+            }))
+            self.assertEqual(capture["bins"][-1]["mean"], 5 if mode == "inputs" else 0)
+            self.require_tool_error("duplicate_modules", arguments)
+            self.assertEqual(self.patch_snapshot(), duplicated)
+            self.require_tool_success("undo")
+            self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+
+        before = self.patch_snapshot()
+        invalid = [
+            {"modules": []},
+            {"modules": [{"id": "octave", "new_id": "source"}]},
+            {"modules": [{"id": "missing", "new_id": "new"}]},
+            {"modules": [{"id": "octave", "new_id": "new", "extra": True}]},
+            {"modules": mapping, "cable_mode": "all"},
+            {"modules": mapping, "cable_mode": False},
+            {"modules": mapping, "include_inputs": True},
+            {"modules": [mapping[0], mapping[0]]},
+        ]
+        for arguments in invalid:
+            self.require_tool_error("duplicate_modules", arguments)
+            self.assertEqual(self.patch_snapshot(), before)
+        edits = [
+            {"tool": "duplicate_modules", "arguments": {"modules": mapping, "cable_mode": "inputs"}},
+            {"tool": "set_parameter", "arguments": {"id": "octave_copy", "parameter": "octaves", "value": 2}},
+        ]
+        arguments = {"edits": edits, "expected_revision": before["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", arguments))
+        self.assertEqual(self.patch_snapshot(), before)
+        committed = self.payload(self.require_tool_success("apply_edits", arguments))
+        self.assertEqual(committed["patch"], preview["patch"])
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+        self.require_tool_success("save_patch", {"filename": "duplicated.json"})
+        self.require_tool_success("remove_module", {"id": "octave_copy"})
+        self.require_tool_success("load_patch", {"filename": "duplicated.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+
     def test_v2_named_ports_polyphony_analysis_and_legacy_loading(self) -> None:
         initial = self.patch_snapshot()
         self.assertEqual(initial["patch"]["version"], 2)

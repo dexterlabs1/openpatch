@@ -361,6 +361,16 @@ form a single undo step for one parameter gesture, while each edit still advance
 the revision. Use a unique group per gesture; unrelated edits and undo/redo
 break the group. Omit this field inside transactions.
 
+## Duplicating module groups
+
+`duplicate_modules` atomically copies a module group using explicit
+`modules: [{id, new_id}]` mappings. `cable_mode` is `none` (default), `internal`,
+or `inputs` (internal plus external incoming cables). Saved parameters and
+bypass are copied; new runtime instances start fresh. The selected patch output
+and external outgoing connections remain unchanged. It supports
+`expected_revision`, transaction previews, batches, and one-step undo/redo.
+See [duplication arguments and native workflows](RACK_EDITING.md).
+
 ## Headless offline mode
 
 The original CLI remains available without a display or audio device:

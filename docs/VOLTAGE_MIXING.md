@@ -53,7 +53,7 @@ Behavior reference: [pinned Fade source](https://github.com/VCVRack/Fundamental/
 The mixer displays actual amplitude gain in dB. Its channel controls account
 for the squared gain law; the master uses the linear law. Saved CV response
 and pan-law settings participate in project persistence and shared UI/MCP
-undo. Inspect `module_catalog` for exact parameter bounds and port metadata.
+undo. Inspect `catalog` for exact parameter bounds and port metadata.
 
 Live `inspect_performance` publishes four mixer meter values through `lights`:
 `count=4`, channel brightness in each pair's first element, second element

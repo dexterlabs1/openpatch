@@ -527,6 +527,7 @@ impl OpenPatch {
                 let retained: BTreeSet<_> = s.history_state_ids().collect();
                 self.history_layouts.retain(|id, _| retained.contains(id));
                 self.patch = s.patch().clone();
+                self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
             }
         }
@@ -930,10 +931,102 @@ impl OpenPatch {
             edits.push(json!({"tool":"set_output","arguments":{"id":id,"port":"out"}}));
         }
         if self.command("apply_edits", json!({"edits":edits})) {
-            self.rack.selected = Some(id);
+            self.rack.select_only(id);
             self.browser_open = false;
         }
     }
+    fn duplicate_modules(&mut self, ids: &[String], with_inputs: bool) -> bool {
+        let mut reserved: BTreeSet<String> = self
+            .patch
+            .nodes
+            .iter()
+            .map(|node| node.id.clone())
+            .collect();
+        let mut mappings = Vec::new();
+        for id in ids {
+            if !self.patch.nodes.iter().any(|node| &node.id == id) {
+                self.status = "Selected module no longer exists".into();
+                return false;
+            }
+            let new_id = (1..)
+                .map(|index| {
+                    let suffix = format!("-copy-{index}");
+                    format!("{}{}", &id[..id.len().min(64 - suffix.len())], suffix)
+                })
+                .find(|candidate| !reserved.contains(candidate))
+                .unwrap();
+            reserved.insert(new_id.clone());
+            mappings.push((id.clone(), new_id));
+        }
+        let placement = match self.rack.duplicate_placement(&self.patch, &mappings) {
+            Ok(placement) => placement,
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        let modules: Vec<_> = mappings
+            .iter()
+            .map(|(id, new_id)| json!({"id":id,"new_id":new_id}))
+            .collect();
+        let base_state_id = self.state_id;
+        let base_layout = self.rack.layout();
+        let receipt = match execute_shared(
+            &self.shared,
+            "duplicate_modules",
+            json!({"modules":modules,"cable_mode":if with_inputs{"inputs"}else{"none"},"expected_revision":self.revision}),
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        self.install_duplicate_receipt(&receipt, placement, base_state_id, base_layout)
+            .expect("shared duplicate command returns a committed graph snapshot");
+        self.sync();
+        self.status = format!(
+            "Duplicated {} module{}{}",
+            ids.len(),
+            if ids.len() == 1 { "" } else { "s" },
+            if with_inputs { " with inputs" } else { "" }
+        );
+        true
+    }
+
+    /// Install the exact commit before polling newer MCP revisions. This path
+    /// must not acquire the shared mutex: another request may already own it.
+    fn install_duplicate_receipt(
+        &mut self,
+        receipt: &Value,
+        placement: BTreeMap<String, egui::Pos2>,
+        base_state_id: u64,
+        base_layout: Value,
+    ) -> Result<(), String> {
+        let patch: Patch =
+            serde_json::from_value(receipt["patch"].clone()).map_err(|error| error.to_string())?;
+        let revision = receipt["revision"]
+            .as_u64()
+            .ok_or("duplicate receipt has no revision")?;
+        let state_id = receipt["state_id"]
+            .as_u64()
+            .ok_or("duplicate receipt has no state identity")?;
+        self.history_layouts.insert(base_state_id, base_layout);
+        self.patch = patch;
+        self.revision = revision;
+        self.state_id = state_id;
+        self.can_undo = receipt["history"]["undo_steps"]
+            .as_u64()
+            .is_some_and(|count| count > 0);
+        self.can_redo = receipt["history"]["redo_steps"]
+            .as_u64()
+            .is_some_and(|count| count > 0);
+        self.rack.apply_duplicate_placement(placement);
+        self.capture_document();
+        self.history_layouts.insert(state_id, self.rack.layout());
+        Ok(())
+    }
+
     fn save_or_load(&mut self, mode: FileMode) {
         let name = self.filename.clone();
         if mode == FileMode::Save {
@@ -1920,6 +2013,29 @@ impl OpenPatch {
                 .set_module_states(BTreeMap::from([("mix".into(), lights)]), BTreeMap::new());
             self.title = "Layered stereo morph · offline DSP snapshot".into();
         }
+        if *frame == 308 {
+            let patch:Patch=serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[
+                {"id":"tone","kind":"analog_vco","params":{"frequency":130.8128}},
+                {"id":"filter","kind":"ladder_vcf","params":{"cutoff":1200}},
+                {"id":"pitch","kind":"constant","params":{"value":0.0}},
+                {"id":"out","kind":"audio_out"}],
+                "cables":[{"from":"pitch","to":"tone","input":"pitch"},{"from":"tone","to":"filter","input":"signal"},{"from":"filter","to":"out","input":"signal"}],"output":"out"})).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("duplication fixture compiles");
+            self.rack = Rack::default();
+            self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{"tone":[0,0],"filter":[210,0],"pitch":[0,420],"out":[210,420]}})).unwrap();
+            let mapping = vec![
+                ("tone".into(), "tone-copy-1".into()),
+                ("filter".into(), "filter-copy-1".into()),
+            ];
+            let placement = self
+                .rack
+                .duplicate_placement(&patch, &mapping)
+                .expect("duplicate group placement");
+            execute_shared(&self.shared,"duplicate_modules",json!({"modules":[{"id":"tone","new_id":"tone-copy-1"},{"id":"filter","new_id":"filter-copy-1"}],"cable_mode":"inputs"})).expect("duplicate group fixture");
+            self.rack.apply_duplicate_placement(placement);
+            self.title = "Duplicated voice pair · two selected".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
@@ -1945,6 +2061,7 @@ impl OpenPatch {
                 | 256
                 | 272
                 | 296
+                | 320
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1983,7 +2100,8 @@ impl OpenPatch {
                 17 => path.with_file_name("rack-bypass.png"),
                 18 => path.with_file_name("rack-gate-shaping.png"),
                 19 => path.with_file_name("rack-manual-gates.png"),
-                _ => path.with_file_name("rack-vca-mix-fade.png"),
+                20 => path.with_file_name("rack-vca-mix-fade.png"),
+                _ => path.with_file_name("rack-duplication.png"),
             };
             image::save_buffer(
                 target,
@@ -1994,16 +2112,19 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 21 {
+            if *captures == 22 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 322, "Native screenshot timeout");
+        assert!(*frame < 346, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.smoke_test.is_some() {
+            ctx.style_mut(|style| style.interaction.tooltip_delay = f32::INFINITY);
+        }
         self.sync();
         self.observe_document();
         if !ctx.wants_keyboard_input()
@@ -2100,6 +2221,9 @@ impl eframe::App for OpenPatch {
         match action {
             Some(RackAction::Command(name, args)) => {
                 self.command(name, args);
+            }
+            Some(RackAction::Duplicate { ids, with_inputs }) => {
+                self.duplicate_modules(&ids, with_inputs);
             }
             Some(RackAction::OpenBrowser) => self.browse(),
             Some(RackAction::Inspect { lane, id, port }) => self.scope.inspect(lane, id, port),
@@ -2308,6 +2432,186 @@ mod project_workflow_tests {
                     && p.extension().is_some_and(|ext| ext == "openpatch")
             })
             .collect()
+    }
+
+    fn duplication_patch() -> Patch {
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"tone","kind":"analog_vco","params":{"frequency":130.8128},"bypassed":true},{"id":"filter","kind":"ladder_vcf","params":{"cutoff":1200}},{"id":"pitch","kind":"constant","params":{"value":1}},{"id":"out","kind":"audio_out"}],"cables":[{"from":"pitch","to":"tone","input":"pitch"},{"from":"tone","to":"filter","input":"signal"},{"from":"filter","to":"out","input":"signal"}],"output":"out"})).unwrap()
+    }
+
+    #[test]
+    fn duplicate_group_is_one_undo_step_with_geometry_inputs_and_unchanged_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command("replace_patch", json!({"patch":duplication_patch()})));
+        app.rack.restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"tone":[0,0],"filter":[210,0],"pitch":[0,420],"out":[210,420]}})).unwrap();
+        let before = app.capture_document();
+        let steps = app.shared.lock().unwrap().snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap();
+        assert!(app.duplicate_modules(&["tone".into(), "filter".into()], true));
+        let duplicated = app.capture_document();
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
+            steps + 1
+        );
+        assert_eq!(app.patch.output, before.patch.output);
+        assert_eq!(app.patch.output_port, before.patch.output_port);
+        assert_eq!(app.patch.cables.len(), 5);
+        assert!(
+            app.patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "tone-copy-1")
+                .unwrap()
+                .bypassed
+        );
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "pitch" && c.to == "tone-copy-1" && c.input == "pitch"));
+        assert!(!app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "filter-copy-1" && c.to == "out"));
+        assert_eq!(
+            app.rack.selected_ids(),
+            vec!["filter-copy-1", "tone-copy-1"]
+        );
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+        assert!(app.rack.selected_ids().is_empty());
+        app.history(true);
+        assert!(app.capture_document().equivalent(&duplicated));
+        assert!(app.command("apply_edits",json!({"edits":[{"tool":"remove_module","arguments":{"id":"tone-copy-1"}},{"tool":"remove_module","arguments":{"id":"filter-copy-1"}}]})));
+        app.capture_document();
+        app.history(false);
+        assert!(app.capture_document().equivalent(&duplicated));
+    }
+
+    #[test]
+    fn stale_duplicate_and_node_limit_failure_preserve_layout_selection_and_graph_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command("replace_patch", json!({"patch":duplication_patch()})));
+        app.capture_document();
+        app.rack.select_only("tone".into());
+        let layout = app.rack.layout();
+        let selection = app.rack.selected_ids();
+        execute_shared(
+            &app.shared,
+            "set_parameter",
+            json!({"id":"pitch","parameter":"value","value":2}),
+        )
+        .unwrap();
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert!(!app.duplicate_modules(&["tone".into()], false));
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), selection);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+        app.sync();
+        let full = Patch {
+            nodes: (0..openpatch_core::MAX_NODES)
+                .map(|i| openpatch_core::Node {
+                    id: format!("node{i}"),
+                    kind: "constant".into(),
+                    params: Default::default(),
+                    bypassed: false,
+                })
+                .collect(),
+            ..Patch::new_v2()
+        };
+        assert!(app.command("replace_patch", json!({"patch":full})));
+        app.capture_document();
+        app.rack.select_only("node0".into());
+        let layout = app.rack.layout();
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert!(!app.duplicate_modules(&["node0".into()], false));
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.selected_ids(), vec!["node0"]);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+    }
+
+    #[test]
+    fn duplicate_ids_reserve_entire_batch_and_support_maximum_length_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let long = "a".repeat(64);
+        let sources = vec![
+            long.clone(),
+            "tone".into(),
+            "tone-copy-1".into(),
+            "tone_copy".into(),
+            "tone_copy2".into(),
+        ];
+        let mut original = sources.clone();
+        original.push("tone-copy-2".into());
+        let patch = Patch {
+            nodes: original
+                .iter()
+                .map(|id| openpatch_core::Node {
+                    id: id.clone(),
+                    kind: "constant".into(),
+                    params: Default::default(),
+                    bypassed: false,
+                })
+                .collect(),
+            output: Some("tone".into()),
+            ..Patch::new_v2()
+        };
+        assert!(app.command("replace_patch", json!({"patch":patch})));
+        app.capture_document();
+        assert!(app.duplicate_modules(&sources, false));
+        assert_eq!(app.patch.nodes.len(), 11);
+        let ids: BTreeSet<_> = app.patch.nodes.iter().map(|n| &n.id).collect();
+        assert_eq!(ids.len(), 11);
+        assert!(ids.iter().all(|id| id.len() <= 64));
+        assert!(ids.contains(&"tone-copy-3".to_string()));
+        assert_eq!(app.patch.output.as_deref(), Some("tone"));
+        assert!(app
+            .rack
+            .selected_ids()
+            .iter()
+            .all(|id| !original.contains(id)));
+    }
+
+    #[test]
+    fn duplicate_receipt_records_exact_commit_even_when_newer_mcp_revision_holds_mutex() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command("replace_patch", json!({"patch":duplication_patch()})));
+        let before = app.capture_document();
+        let base_state = app.state_id;
+        let mappings = vec![("tone".into(), "copy".into())];
+        let placement = app.rack.duplicate_placement(&app.patch, &mappings).unwrap();
+        let receipt=execute_shared(&app.shared,"duplicate_modules",json!({"modules":[{"id":"tone","new_id":"copy"}],"cable_mode":"none","expected_revision":app.revision})).unwrap();
+        let committed_state = receipt["state_id"].as_u64().unwrap();
+        let shared = app.shared.clone();
+        let mut live = shared.lock().unwrap();
+        live.execute("remove_module", json!({"id":"copy"})).unwrap();
+        let later_revision = live.revision();
+        app.install_duplicate_receipt(&receipt, placement, base_state, before.layout.clone())
+            .unwrap();
+        let committed = app.capture_document();
+        assert_eq!(app.state_id, committed_state);
+        assert_eq!(app.history_layouts[&base_state], before.layout);
+        assert_eq!(app.history_layouts[&committed_state], committed.layout);
+        assert!(app.patch.nodes.iter().any(|n| n.id == "copy"));
+        app.sync();
+        assert_eq!(
+            app.state_id, committed_state,
+            "Busy polling must not relabel the receipt"
+        );
+        drop(live);
+        app.sync();
+        assert_eq!(app.revision, later_revision);
+        assert!(!app.patch.nodes.iter().any(|n| n.id == "copy"));
+        assert!(app.rack.selected_ids().is_empty());
+        app.history(false);
+        assert!(app.capture_document().equivalent(&committed));
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
     }
 
     #[test]

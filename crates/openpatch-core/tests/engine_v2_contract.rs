@@ -871,3 +871,66 @@ fn vca_mix_fade_meters_bypass_and_state_adoption_do_not_allocate_or_free() {
     TRACK_MEMORY.with(|t| t.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn generic_state_exclusions_and_incident_edge_clearing_neither_allocate_nor_free() {
+    use openpatch_core::MidiEvent;
+    for version in [1, 2] {
+        let p = if version == 1 {
+            Patch {
+                sample_rate: 8000,
+                nodes: vec![
+                    node("osc", "oscillator", &[("frequency", 7.0)]),
+                    node("gate", "gate", &[]),
+                    node("env", "adsr", &[]),
+                ],
+                cables: vec![cable("gate", "out", "env", "gate")],
+                output: Some("osc".into()),
+                ..Patch::default()
+            }
+        } else {
+            patch(
+                vec![
+                    node("osc", "oscillator", &[("frequency", 7.0)]),
+                    node("midi", "midi_cv", &[("channels", 16.0)]),
+                    node("env", "adsr", &[]),
+                    node("seq", "seq3", &[("row1_1", 10.0)]),
+                    node("out", "audio_stereo", &[]),
+                ],
+                vec![
+                    cable("midi", "gate", "env", "gate"),
+                    cable("seq", "cv1", "seq", "clock"),
+                    cable("osc", "out", "out", "left"),
+                    cable("env", "out", "out", "right"),
+                ],
+                "out",
+            )
+        };
+        let mut old = p.compile().unwrap();
+        let mut new = p.compile().unwrap();
+        let handles = [
+            new.resolve_module_state("osc").unwrap(),
+            new.resolve_module_state("env").unwrap(),
+            old.resolve_module_state("osc").unwrap(),
+        ];
+        let mut audio = [[0.0; 2]; 129];
+        let mut frames = [PortFrame::default(); 129];
+        MEMORY_OPERATIONS.with(|c| c.set(0));
+        TRACK_MEMORY.with(|t| t.set(true));
+        for count in [0, 1, 3, 64, 127, 128, 129] {
+            for _ in 0..20 {
+                old.handle_midi(MidiEvent::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 100,
+                });
+                old.process_audio_block(&mut audio[..count]);
+                new.adopt_state_from_excluding(&old, &handles);
+                new.process_poly_block(&mut frames[..count]);
+                old.adopt_state_from_excluding(&new, &handles);
+            }
+        }
+        TRACK_MEMORY.with(|t| t.set(false));
+        assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    }
+}

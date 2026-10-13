@@ -64,7 +64,9 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
 | Inspect a signal | **Scope**, or right-click an output jack → **Inspect in scope X/Y** |
-| Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |
+| Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
+| Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** to include internal and incoming cables |
+| Remove | **Delete** the selection, or use the module context menu |
 | Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
@@ -287,6 +289,7 @@ New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 
 
 | Guide | What it covers |
 |---|---|
+| [Rack editing](docs/RACK_EDITING.md) | Group selection, duplication, placement, cable-copy policies, and runtime identity |
 | [Projects and recovery](docs/PROJECTS.md) | Save, Save As, legacy imports, concurrent edits, and recovery copies |
 | [Stereo and routing](docs/ROUTING_MODULES.md) | Mid/Side width, six-input mixing, octave shifts, and signal distribution |
 | [Voltage-controlled mixing](docs/VOLTAGE_MIXING.md) | Four-channel VCA mixing, live strip meters, CV response, and complementary fades |

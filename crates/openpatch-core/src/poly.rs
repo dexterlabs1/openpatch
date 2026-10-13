@@ -424,6 +424,12 @@ pub(crate) struct PolyEngine {
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_module_state(&self, id: &str) -> Result<usize, String> {
+        self.node_lookup
+            .get(id)
+            .copied()
+            .ok_or_else(|| format!("module '{id}' does not exist"))
+    }
     pub(crate) fn resolve_module_control(&self, id: &str) -> Result<usize, String> {
         let index = self.resolve_module_lights(id)?;
         if self.module_control_state(index).is_none() {
@@ -973,11 +979,18 @@ impl PolyEngine {
             _ => false,
         }
     }
+    #[cfg(test)]
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
+        self.adopt_state_from_excluding(old, &[false; MAX_NODES]);
+    }
+    pub(crate) fn adopt_state_from_excluding(&mut self, old: &Self, excluded: &[bool; MAX_NODES]) {
         if self.rate != old.rate {
             return;
         }
         for (id, index) in &self.node_lookup {
+            if excluded[*index] {
+                continue;
+            }
             let Some(old_index) = old.node_lookup.get(id) else {
                 continue;
             };
@@ -1069,6 +1082,9 @@ impl PolyEngine {
                 continue;
             };
             let edge = &self.edges[*index];
+            if excluded[edge.source_node] || excluded[edge.destination_node] {
+                continue;
+            }
             let previous = &old.edges[*old_index];
             if self.nodes[edge.source_node].bypassed != old.nodes[previous.source_node].bypassed {
                 self.edge_frames[*index] = PortFrame::mono(0.0);
