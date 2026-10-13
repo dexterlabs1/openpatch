@@ -22,7 +22,7 @@
 </p>
 
 ![OpenPatch native rack with a VCO, ladder filter, OTA VCA, ADSR, gate clock, and audio output](docs/images/openpatch-rack.png)
-<p align="center"><sub>Studio Rack material pass in the native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
+<p align="center"><sub>Studio Rack panels, transport toolbar and analysis dock in the native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
 
 - **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).

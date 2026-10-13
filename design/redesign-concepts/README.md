@@ -11,20 +11,37 @@ Generated with the built-in image generation tool on 2026-10-13. These are visua
 
 Selected direction: **01 — Studio Rack**, chosen by the user on 2026-10-13. Use its rack-first composition, warm aluminum faceplates, tactile dark controls, restrained amber lighting and clear cable paths as the native application's visual foundation. The other concepts remain alternatives for future exploration, not approved replacements for this direction.
 
-Implemented so far: procedural rack materials, matching graphite application chrome and a docked thumbnail library with search, role filters, favorites, keyboard access and drag-to-add previews. The next pass adds a compact transport toolbar and a shared Scope/Visuals measurement dock with advanced controls in a popup. These changes follow the reference's composition without claiming its entire mockup is implemented. Keep actual port definitions, control geometry and signal behavior authoritative over generated details.
+Implemented so far: warm panel materials, graphite application chrome, a docked
+module library, direct transport/save/history controls, and a shared Scope/Visuals
+analysis dock. These changes follow the reference's composition without claiming
+every detail of the generated mockup is implemented. Actual port definitions,
+control geometry and signal behavior remain authoritative.
 
 ## Native implementation progress
 
-![First Studio Rack material pass in the actual OpenPatch application](../../docs/images/openpatch-rack.png)
+![Studio Rack materials and transport toolbar in OpenPatch](../../docs/images/openpatch-rack.png)
 
-The first pass adds smoothly lit warm aluminum panels, beveled edges, machined knobs, recessed jacks, amber selection outlines, raised cable shading and graphite application controls. Existing control positions and patching interactions remain in place. This is an actual Linux/Mesa native render from [commit 4483066](https://github.com/dexterlabs1/openpatch/commit/448306620e42f72edab2767a9cd8455660af4ffe), separate from the generated concepts below; it does not establish macOS device or playback qualification.
+Warm aluminum panels, machined knobs, recessed jacks, amber selection and shaded
+cables sit beneath a compact toolbar. The project title truncates to keep
+transport, save/history, library, scope, visuals and zoom controls accessible.
 
-![Docked Studio Rack library in the actual OpenPatch application](../../docs/images/openpatch-library.png)
+![Docked Studio Rack library in OpenPatch](../../docs/images/openpatch-library.png)
 
-The second pass adds a resizable right library with compact module previews, search,
-role filters, saved favorites, keyboard navigation and drag placement. This native
-render is from [commit dda4dc7](https://github.com/dexterlabs1/openpatch/commit/dda4dc7b9c48043338a2383724bc068fc65fe726).
-The library was also reviewed at the 940 × 680 minimum window size.
+The resizable library has module previews, search, role filters, saved favorites,
+keyboard navigation and drag placement. It stays open while editing the rack.
+
+![Scope, library and keyboard at the minimum window size](../../docs/images/openpatch-analysis-compact.png)
+
+Scope and Visuals share a bounded bottom dock. Scope retains capture across tab
+switches, shows each monitored voice, and keeps detailed trigger/offset controls
+in an Advanced popup. Closing the dock disarms probes. The minimum 940 × 680
+layout was reviewed with the library, keyboard and a previously enlarged dock.
+
+These are actual Linux/Mesa native renders from
+[commit fba176e](https://github.com/dexterlabs1/openpatch/commit/fba176edcc0de17e0333a7ffd05b6b9d4bedba2a),
+separate from the generated concepts below. Scope traces shown are offline
+calibration fixtures; these renders do not establish macOS device or playback
+qualification.
 
 ## Visual previews
 
