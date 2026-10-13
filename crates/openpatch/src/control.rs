@@ -1,5 +1,6 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod capture;
+mod layout_history;
 mod preset_tools;
 mod project_capture;
 mod running;

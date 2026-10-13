@@ -26,6 +26,19 @@ Run toggle or MCP edit during Save remains unsaved. Open, New, Revert, and Close
 Cancel when needed; Save continues the requested action only if no newer edits
 remain. Recovery and newly opened projects start with playback paused.
 
+## Moving modules
+
+Drag a module header to move it; Shift-click headers to select a group. A
+completed move creates one undo step in the same history as parameter and cable
+edits. Cmd-Z / Shift-Cmd-Z and MCP undo/redo traverse that shared order. Moves
+preserve selection, pan, zoom, and compatible DSP state.
+
+While dragging, Save and recovery use the last committed module positions.
+Releasing commits the snapped placement. Escape, focus loss, a modal dialog,
+a blocked/no-op drop, or a concurrent graph revision cancels the preview without
+adding a move to history. Pan/zoom remain saved view settings rather than
+independent undo entries.
+
 ## Recovery
 
 When changes are unsaved, OpenPatch writes a separate recovery copy after about
@@ -123,7 +136,8 @@ phase, delay history, held controls, external assets,
 custom GLSL, keyboard/device preferences, or the undo stack. Device preferences
 remain separate host settings. [Native module presets](MODULE_PRESETS.md) are
 available separately. Asset packaging, portable paths, factory templates,
-layout-move history, and broader platform/device qualification remain open.
+complete geometry history for states the GUI has never observed, and broader
+platform/device qualification remain open.
 
 Tests cover malformed and oversized files, legacy imports, changed-file
 conflicts, failures before/after publication, active/orphan recovery ownership,

@@ -1950,9 +1950,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn project_capture_reads_two_live_sequences_without_touching_dsp_state() {
-        let patch: Patch = serde_json::from_value(serde_json::json!({
+    fn project_capture_fixture() -> Patch {
+        serde_json::from_value(serde_json::json!({
             "version":2,
             "nodes":[
                 {"id":"seq_a","kind":"seq3","params":{"tempo":15,"running":1,"steps":8}},
@@ -1968,7 +1967,12 @@ mod tests {
             ],
             "output":"sum"
         }))
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn project_capture_reads_two_live_sequences_without_touching_dsp_state() {
+        let patch = project_capture_fixture();
         let (mut callback, _updates, _disposal) = sequence_callback(&patch);
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
@@ -2058,6 +2062,170 @@ mod tests {
             ),
             read_raw_pair(&mut reference, ("osc", "out"), ("sum", "out"))
         );
+    }
+
+    #[test]
+    fn layout_checkpoint_history_preserves_live_state_identity_and_first_delayed_samples() {
+        let patch = project_capture_fixture();
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        for (id, action) in [
+            ("seq_a", ModuleAction::Clock),
+            ("seq_b", ModuleAction::Clock),
+            ("seq_b", ModuleAction::Run),
+            ("manual", ModuleAction::BPress),
+        ] {
+            callback.performance.trigger(id, action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let a = callback.performance.sequence_state("seq_a").unwrap();
+        let b = callback.performance.sequence_state("seq_b").unwrap();
+        assert_eq!((a.step, a.running), (2, true));
+        assert_eq!((b.step, b.running), (2, false));
+        assert!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed
+        );
+        assert_eq!(session.patch().nodes[1].params["running"], 1.0);
+        let states = callback
+            .graphs
+            .active
+            .modules
+            .states
+            .map(|binding| binding.map(|binding| binding.token));
+        let bindings = callback
+            .graphs
+            .active
+            .modules
+            .bindings
+            .map(|binding| binding.map(|binding| binding.token));
+        let routes = [
+            callback.graphs.active.modules.cables[0].unwrap().token,
+            callback.graphs.active.modules.cables[1].unwrap().token,
+        ];
+        let original_state = session.state_id();
+        let mut checkpoint_state = None;
+        let original_patch = session.snapshot()["patch"].clone();
+        let mut reference = patch.compile().unwrap();
+        reference.adopt_state_from(&callback.graphs.active.engine);
+        let mut reference_frames = [[0.0; 2]; 256];
+        for operation in ["checkpoint", "undo", "redo", "coalesced_undo_redo"] {
+            let expected_state = match operation {
+                "checkpoint" => {
+                    session
+                        .record_layout_checkpoint(session.revision())
+                        .unwrap();
+                    checkpoint_state = Some(session.state_id());
+                    assert_ne!(checkpoint_state, Some(original_state));
+                    session.state_id()
+                }
+                "undo" => {
+                    session.execute("undo", serde_json::json!({})).unwrap();
+                    original_state
+                }
+                "redo" => {
+                    session.execute("redo", serde_json::json!({})).unwrap();
+                    checkpoint_state.unwrap()
+                }
+                "coalesced_undo_redo" => {
+                    session.execute("undo", serde_json::json!({})).unwrap();
+                    session.execute("redo", serde_json::json!({})).unwrap();
+                    checkpoint_state.unwrap()
+                }
+                _ => unreachable!(),
+            };
+            assert_eq!(session.state_id(), expected_state, "{operation}");
+            assert_eq!(session.snapshot()["patch"], original_patch, "{operation}");
+            assert!(updates
+                .push(sequence_graph(
+                    &callback,
+                    session.patch(),
+                    session.revision()
+                ))
+                .is_ok());
+            // Poll the real adoption path without processing audio yet. Reading
+            // its very first sample catches lost one-frame cable histories,
+            // which would have refilled before the end of a normal callback.
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 0], 1));
+            assert_eq!(callback.graphs.active.revision, session.revision());
+            assert_eq!(
+                callback
+                    .graphs
+                    .active
+                    .modules
+                    .states
+                    .map(|binding| binding.map(|binding| binding.token)),
+                states,
+                "{operation}"
+            );
+            assert_eq!(
+                callback
+                    .graphs
+                    .active
+                    .modules
+                    .bindings
+                    .map(|binding| binding.map(|binding| binding.token)),
+                bindings,
+                "{operation}"
+            );
+            assert_eq!(
+                [
+                    callback.graphs.active.modules.cables[0].unwrap().token,
+                    callback.graphs.active.modules.cables[1].unwrap().token
+                ],
+                routes,
+                "{operation}"
+            );
+            assert_eq!(
+                read_raw_pair(
+                    &mut callback.graphs.active.engine,
+                    ("osc", "out"),
+                    ("sum", "out")
+                ),
+                read_raw_pair(&mut reference, ("osc", "out"), ("sum", "out")),
+                "first sample after {operation}"
+            );
+            without_heap_activity(|| {
+                callback.render(&mut [0.0_f32; 256], 1);
+                reference.process_audio_block(&mut reference_frames);
+            });
+            assert_eq!(
+                callback.performance.sequence_state("seq_a"),
+                Some(a),
+                "{operation}"
+            );
+            assert_eq!(
+                callback.performance.sequence_state("seq_b"),
+                Some(b),
+                "{operation}"
+            );
+            assert!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed,
+                "{operation}"
+            );
+            assert_eq!(
+                read_raw_pair(
+                    &mut callback.graphs.active.engine,
+                    ("osc", "out"),
+                    ("sum", "out")
+                ),
+                read_raw_pair(&mut reference, ("osc", "out"), ("sum", "out")),
+                "advancing samples after {operation}"
+            );
+            assert!(callback.graphs.previous.is_none());
+            while disposal.pop().is_ok() {}
+        }
     }
 
     #[test]

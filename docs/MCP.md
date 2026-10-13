@@ -400,10 +400,15 @@ If a GUI or MCP edit happened meanwhile, the revision check rejects the request;
 inspect again and revise the proposal. Preview does not reserve the session.
 
 `undo`, `redo`, and `inspect_history` share the desktop's history, bounded to 128
-graph edits. Cmd-Z and Shift-Cmd-Z invoke the same commands. Revisions always
-increase, including undo/redo. New edits clear redo. History is in memory only;
-layout movement, file writes, and playback state are not included yet. The desktop
-retains layouts for graph states it has displayed, so undoing a module deletion
+graph edits and committed module moves. Cmd-Z and Shift-Cmd-Z invoke the same
+commands. One completed single/group drag is one checkpoint in this ordered
+history; its graph is unchanged, but revision and state identity advance. Moves
+and their undo/redo preserve compatible live DSP state. A new move breaks a
+parameter gesture group and clears redo like other edits. Revisions always
+increase, including undo/redo. History is in memory only; file writes and
+playback state are not included. Pan/zoom remain saved view settings without
+separate undo entries. The desktop retains layouts for states it has displayed,
+so undoing a module deletion
 restores its placement. States created and undone entirely between GUI polls may
 not have a recorded layout. `state_id` identifies a retained history state; use
 `revision`, not `state_id`, for concurrency checks.

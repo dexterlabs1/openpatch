@@ -1,5 +1,5 @@
-//! Native rack surface. Graph edits are returned to the owning session; layout
-//! lives separately so moving a panel never rebuilds the audio graph.
+//! Native rack surface. Graph and layout edits are returned to the owning
+//! session; a committed move can join session history without resetting DSP.
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, FontId, PointerButton, Pos2, Rect, Sense, Stroke, Vec2,
 };
@@ -26,7 +26,7 @@ const CABLES: [Color32; 6] = [
     Color32::from_rgb(195, 138, 80),
 ];
 
-pub enum RackAction {
+pub(crate) enum RackAction {
     Command(&'static str, Value),
     OpenBrowser,
     Preset {
@@ -41,12 +41,19 @@ pub enum RackAction {
         revision: u64,
         select_copies: bool,
     },
-    LayoutChanged,
+    MoveModules(ModuleMove),
     Inspect {
         lane: usize,
         id: String,
         port: String,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ModuleMove {
+    pub revision: u64,
+    pub before: BTreeMap<String, Pos2>,
+    pub after: BTreeMap<String, Pos2>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -136,6 +143,7 @@ struct GroupDrag {
     anchor: String,
     origins: BTreeMap<String, Pos2>,
     delta: Vec2,
+    revision: u64,
 }
 
 pub struct Rack {
@@ -192,6 +200,9 @@ impl Default for Rack {
 
 impl Rack {
     pub(crate) fn set_shortcuts_enabled(&mut self, enabled: bool) {
+        if !enabled {
+            self.cancel_module_drag();
+        }
         self.shortcuts_enabled = enabled;
     }
 
@@ -249,7 +260,7 @@ impl Rack {
             .as_ref()
             .is_some_and(|drag| drag.origins.keys().any(|id| !self.selection.contains(id)))
         {
-            self.group_drag = None;
+            self.cancel_module_drag();
         }
     }
 
@@ -573,9 +584,53 @@ impl Rack {
         let positions: BTreeMap<_, _> = self
             .positions
             .iter()
-            .map(|(id, point)| (id, [point.x, point.y]))
+            .map(|(id, point)| {
+                let committed = self
+                    .group_drag
+                    .as_ref()
+                    .and_then(|drag| drag.origins.get(id))
+                    .unwrap_or(point);
+                (id, [committed.x, committed.y])
+            })
             .collect();
         json!({"version":1,"zoom":self.zoom,"pan":[self.pan.x,self.pan.y],"positions":positions})
+    }
+
+    pub(crate) fn cancel_module_drag(&mut self) {
+        if let Some(drag) = self.group_drag.take() {
+            for (id, origin) in drag.origins {
+                if let Some(position) = self.positions.get_mut(&id) {
+                    *position = origin;
+                }
+            }
+        }
+    }
+
+    /// Install a reviewed move only after the graph owner validates its revision
+    /// and accepts it. Geometry validation precedes every write so a stale
+    /// sidecar cannot partially shift a group. A scratch rack need not have
+    /// observed a graph frame to perform this validation.
+    pub(crate) fn apply_module_move(&mut self, proposal: &ModuleMove) -> Result<(), String> {
+        if self.group_drag.is_some() {
+            return Err("A module move is still in progress".into());
+        }
+        if proposal.before.is_empty() || proposal.before.keys().ne(proposal.after.keys()) {
+            return Err("Module move has mismatched members".into());
+        }
+        for (id, before) in &proposal.before {
+            if self.positions.get(id) != Some(before) {
+                return Err(format!("Module {id} moved or was removed"));
+            }
+            let after = proposal.after[id];
+            if !after.is_finite() || after.x.abs() > 100_000.0 || after.y.abs() > 100_000.0 {
+                return Err("Module move is outside rack bounds".into());
+            }
+        }
+        if proposal.before != proposal.after {
+            self.positions.extend(proposal.after.clone());
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+        Ok(())
     }
 
     /// Validate the entire sidecar before replacing any current layout state.
@@ -611,7 +666,7 @@ impl Rack {
         Ok(())
     }
 
-    pub fn show(
+    pub(crate) fn show(
         &mut self,
         ui: &mut egui::Ui,
         patch: &Patch,
@@ -620,19 +675,22 @@ impl Rack {
         revision: u64,
     ) -> Option<RackAction> {
         if self.observed_revision != revision {
+            self.cancel_module_drag();
             self.pending = None;
             self.dragging_cable = false;
             self.observed_revision = revision;
         }
         let released_manual = self.release_manual_if_needed(ui, patch);
         let interactive = ui.is_enabled();
-        if !interactive || !ui.input(|i| i.focused) {
+        let drag_interactive = interactive
+            && self.shortcuts_enabled
+            && ui.input(|i| i.focused)
+            && !egui::Popup::is_any_open(ui.ctx())
+            && !ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if !drag_interactive {
             self.pending = None;
             self.dragging_cable = false;
-            if let Some(drag) = self.group_drag.take() {
-                self.positions.extend(drag.origins);
-                self.layout_revision = self.layout_revision.wrapping_add(1);
-            }
+            self.cancel_module_drag();
         }
         if !interactive {
             self.pending = None;
@@ -706,10 +764,7 @@ impl Rack {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            if let Some(drag) = self.group_drag.take() {
-                self.positions.extend(drag.origins);
-                self.layout_revision = self.layout_revision.wrapping_add(1);
-            }
+            self.cancel_module_drag();
             self.pending = None;
             self.dragging_cable = false;
             self.editing = None;
@@ -957,7 +1012,7 @@ impl Rack {
                     self.select_primary(node.id.clone());
                 }
             }
-            if header_response.drag_started_by(PointerButton::Primary) {
+            if drag_interactive && header_response.drag_started_by(PointerButton::Primary) {
                 self.select_primary(node.id.clone());
                 self.group_drag = Some(GroupDrag {
                     anchor: node.id.clone(),
@@ -967,12 +1022,13 @@ impl Rack {
                         .map(|id| (id.clone(), self.positions[id]))
                         .collect(),
                     delta: Vec2::ZERO,
+                    revision,
                 });
             }
             if header_response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
             }
-            if interactive && header_response.dragged_by(PointerButton::Primary) {
+            if drag_interactive && header_response.dragged_by(PointerButton::Primary) {
                 if let Some(drag) = self
                     .group_drag
                     .as_mut()
@@ -982,13 +1038,10 @@ impl Rack {
                     for (id, origin) in &drag.origins {
                         self.positions.insert(id.clone(), *origin + drag.delta);
                     }
-                    if header_response.drag_delta() != Vec2::ZERO {
-                        self.layout_revision = self.layout_revision.wrapping_add(1);
-                    }
                 }
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             }
-            if interactive && header_response.drag_stopped_by(PointerButton::Primary) {
+            if drag_interactive && header_response.drag_stopped_by(PointerButton::Primary) {
                 if let Some(drag) = self.group_drag.take().filter(|drag| drag.anchor == node.id) {
                     let min = pos2(
                         drag.origins
@@ -1018,14 +1071,29 @@ impl Rack {
                         .filter(|n| !drag.origins.contains_key(&n.id))
                         .map(|n| (self.positions[&n.id], panel_width(&n.kind)))
                         .collect();
-                    let origin = settle_group(min + drag.delta, &members, &others).unwrap_or(min);
-                    for ((id, _), (relative, _)) in drag.origins.iter().zip(members) {
-                        self.positions
-                            .insert(id.clone(), origin + relative.to_vec2());
+                    let settled = (drag.delta != Vec2::ZERO)
+                        .then(|| settle_group(min + drag.delta, &members, &others))
+                        .flatten();
+                    let after = settled.map(|origin| {
+                        drag.origins
+                            .keys()
+                            .zip(members.iter())
+                            .map(|(id, (relative, _))| (id.clone(), origin + relative.to_vec2()))
+                            .collect::<BTreeMap<_, _>>()
+                    });
+                    for (id, origin) in &drag.origins {
+                        if let Some(position) = self.positions.get_mut(id) {
+                            *position = *origin;
+                        }
                     }
-                    self.layout_revision = self.layout_revision.wrapping_add(1);
-                    if action.is_none() {
-                        action = Some(RackAction::LayoutChanged);
+                    if let Some(after) = after.filter(|after| *after != drag.origins) {
+                        if action.is_none() {
+                            action = Some(RackAction::MoveModules(ModuleMove {
+                                revision: drag.revision,
+                                before: drag.origins,
+                                after,
+                            }));
+                        }
                     }
                 }
             }
@@ -6267,7 +6335,11 @@ mod tests {
             pos2(84.0, 44.0),
             pos2(144.0, 464.0),
         );
-        assert!(matches!(action, Some(RackAction::LayoutChanged)));
+        let Some(RackAction::MoveModules(proposal)) = action else {
+            panic!("expected group move proposal");
+        };
+        assert_eq!(rack.positions["a"], pos2(0.0, 0.0));
+        rack.apply_module_move(&proposal).unwrap();
         assert_eq!(rack.positions["a"], pos2(60.0, 420.0));
         assert_eq!(rack.positions["b"] - rack.positions["a"], vec2(120.0, 0.0));
         assert_eq!(rack.selected_ids(), vec!["a", "b"]);
@@ -6341,6 +6413,258 @@ mod tests {
         );
         assert!(rack.selected_ids().is_empty());
         assert!(rack.selected.is_none());
+    }
+
+    #[test]
+    fn pointer_move_previews_without_publishing_layout_until_accepted() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"a","kind":"constant"}]
+        }))
+        .unwrap();
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+        let baseline = rack.layout();
+        let layout_revision = rack.layout_revision();
+        let from = pos2(84.0, 44.0);
+        let to = from + vec2(60.0, 420.0);
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(from), button(from, true)],
+            true,
+            true,
+            7,
+        );
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::PointerMoved(to)],
+            true,
+            true,
+            7,
+        );
+        assert_eq!(rack.positions["a"], pos2(60.0, 420.0));
+        assert_eq!(rack.layout(), baseline);
+        assert_eq!(rack.layout_revision(), layout_revision);
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![button(to, false)],
+            true,
+            true,
+            7,
+        )
+        .0;
+        let Some(RackAction::MoveModules(proposal)) = action else {
+            panic!("expected move proposal");
+        };
+        assert_eq!(proposal.revision, 7);
+        assert_eq!(proposal.before["a"], pos2(0.0, 0.0));
+        assert_eq!(proposal.after["a"], pos2(60.0, 420.0));
+        assert_eq!(rack.layout(), baseline);
+        assert_eq!(rack.layout_revision(), layout_revision);
+        rack.apply_module_move(&proposal).unwrap();
+        assert_eq!(rack.positions["a"], pos2(60.0, 420.0));
+        assert_eq!(rack.layout_revision(), layout_revision + 1);
+    }
+
+    #[test]
+    fn pointer_drag_cancels_without_layout_write_on_escape_focus_modal_or_graph_change() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"a","kind":"constant"}]
+        }))
+        .unwrap();
+        for cause in ["escape", "focus", "disabled", "modal", "revision"] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 3);
+            let baseline = rack.layout();
+            let layout_revision = rack.layout_revision();
+            let from = pos2(84.0, 44.0);
+            let to = from + vec2(60.0, 420.0);
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(from), button(from, true)],
+                true,
+                true,
+                3,
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.1,
+                vec![egui::Event::PointerMoved(to)],
+                true,
+                true,
+                3,
+            );
+            assert_ne!(rack.positions["a"], pos2(0.0, 0.0), "{cause}");
+            if cause == "modal" {
+                rack.set_shortcuts_enabled(false);
+            }
+            let events = if cause == "escape" {
+                vec![selection_key(egui::Key::Escape, false)]
+            } else {
+                vec![]
+            };
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.2,
+                events,
+                cause != "focus",
+                cause != "disabled",
+                if cause == "revision" { 4 } else { 3 },
+            )
+            .0;
+            assert!(action.is_none(), "{cause}");
+            assert_eq!(rack.positions["a"], pos2(0.0, 0.0), "{cause}");
+            assert_eq!(rack.layout(), baseline, "{cause}");
+            assert_eq!(rack.layout_revision(), layout_revision, "{cause}");
+            rack.set_shortcuts_enabled(true);
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![button(to, false)],
+                true,
+                true,
+                if cause == "revision" { 4 } else { 3 },
+            )
+            .0
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn pointer_drag_snapping_to_same_slot_or_blocked_group_emits_no_move() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"}]
+        }))
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let baseline = rack.layout();
+        let revision = rack.layout_revision();
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            pos2(84.0, 44.0),
+            pos2(76.0, 44.0),
+        );
+        assert!(action.is_none());
+        assert_eq!(rack.layout(), baseline);
+        assert_eq!(rack.layout_revision(), revision);
+
+        // Individually valid sidecar coordinates can span more than the entire
+        // legal group translation range. The placement search must reject it.
+        rack.positions.insert("a".into(), pos2(-100_000.0, 0.0));
+        rack.positions.insert("b".into(), pos2(100.0, 0.0));
+        rack.select_only("b".into());
+        rack.toggle_selection("a".into());
+        let baseline = rack.layout();
+        let revision = rack.layout_revision();
+        let action = drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            pos2(184.0, 44.0),
+            pos2(244.0, 464.0),
+        );
+        assert!(action.is_none());
+        assert_eq!(rack.layout(), baseline);
+        assert_eq!(rack.layout_revision(), revision);
+    }
+
+    #[test]
+    fn cancel_module_drag_restores_only_members_still_present() {
+        let mut rack = Rack {
+            positions: BTreeMap::from([
+                ("a".into(), pos2(60.0, 420.0)),
+                ("unrelated".into(), pos2(100.0, 100.0)),
+            ]),
+            group_drag: Some(GroupDrag {
+                anchor: "a".into(),
+                origins: BTreeMap::from([
+                    ("a".into(), pos2(0.0, 0.0)),
+                    ("removed".into(), pos2(120.0, 0.0)),
+                ]),
+                delta: vec2(60.0, 420.0),
+                revision: 4,
+            }),
+            ..Default::default()
+        };
+        let revision = rack.layout_revision();
+        rack.cancel_module_drag();
+        assert_eq!(rack.positions["a"], pos2(0.0, 0.0));
+        assert!(!rack.positions.contains_key("removed"));
+        assert_eq!(rack.positions["unrelated"], pos2(100.0, 100.0));
+        assert_eq!(rack.layout_revision(), revision);
+    }
+
+    #[test]
+    fn move_application_validates_all_members_before_writing_any_position() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"constant"}]
+        }))
+        .unwrap();
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 3);
+        let before = BTreeMap::from([
+            ("a".into(), rack.positions["a"]),
+            ("b".into(), rack.positions["b"]),
+        ]);
+        let after = BTreeMap::from([
+            ("a".into(), pos2(15.0, 0.0)),
+            ("b".into(), pos2(135.0, 0.0)),
+        ]);
+        let proposal = ModuleMove {
+            revision: 3,
+            before: before.clone(),
+            after,
+        };
+        let baseline = rack.positions.clone();
+        let layout_revision = rack.layout_revision();
+        let mut invalid = proposal.clone();
+        invalid.after.insert("b".into(), pos2(f32::NAN, 0.0));
+        assert!(rack.apply_module_move(&invalid).is_err());
+        invalid = proposal.clone();
+        invalid.before.insert("b".into(), pos2(999.0, 0.0));
+        assert!(rack.apply_module_move(&invalid).is_err());
+        invalid = proposal.clone();
+        invalid.after.remove("b");
+        assert!(rack.apply_module_move(&invalid).is_err());
+        assert_eq!(rack.positions, baseline);
+        assert_eq!(rack.layout_revision(), layout_revision);
+        rack.apply_module_move(&ModuleMove {
+            revision: 3,
+            before: before.clone(),
+            after: before,
+        })
+        .unwrap();
+        assert_eq!(rack.layout_revision(), layout_revision);
+        rack.apply_module_move(&proposal).unwrap();
+        assert_eq!(rack.positions["a"], pos2(15.0, 0.0));
+        assert_eq!(rack.positions["b"], pos2(135.0, 0.0));
+        assert_eq!(rack.layout_revision(), layout_revision + 1);
     }
 
     #[test]
@@ -6433,6 +6757,7 @@ mod tests {
                         anchor: "a".into(),
                         origins: BTreeMap::from([("a".into(), rack.positions["a"])]),
                         delta: Vec2::ZERO,
+                        revision: 0,
                     });
                 }
                 let action = frame_state(
@@ -8421,7 +8746,11 @@ mod tests {
             vec![egui::Event::PointerMoved(moved)],
         );
         let action = frame(&ctx, &mut rack, &patch, 4.2, vec![button(moved, false)]);
-        assert!(matches!(action, Some(RackAction::LayoutChanged)));
+        let Some(RackAction::MoveModules(proposal)) = action else {
+            panic!("expected single move proposal");
+        };
+        assert_eq!(rack.positions["tone"], pos2(0.0, 0.0));
+        rack.apply_module_move(&proposal).unwrap();
         assert_eq!(rack.positions["tone"], pos2(105.0, 420.0));
     }
     #[test]

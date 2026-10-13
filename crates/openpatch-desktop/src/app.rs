@@ -8,7 +8,7 @@ use crate::{
     project::{Document, FileToken, Store},
     rack::{
         duplicate_all_supported, parameter_label, parameter_value, title as module_title,
-        DuplicateCableMode, PresetMode, Rack, RackAction,
+        DuplicateCableMode, ModuleMove, PresetMode, Rack, RackAction,
     },
     scope::Scope,
     visuals::{Visualizer, DEFAULT_SHADER},
@@ -692,6 +692,9 @@ impl OpenPatch {
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
             if s.revision() != self.revision {
+                // Preview positions never belong to the outgoing history state.
+                // Cancel even when a grouped edit retains the same state ID.
+                self.rack.cancel_module_drag();
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
                 if self.state_id != s.state_id() {
@@ -1339,6 +1342,96 @@ impl OpenPatch {
             None => self.rack.select_only(id),
         }
         self.capture_document();
+        self.history_layouts.insert(state_id, self.rack.layout());
+        Ok(())
+    }
+
+    fn move_modules(&mut self, movement: ModuleMove) -> bool {
+        self.rack.cancel_module_drag();
+        if movement.revision != self.revision {
+            self.status = "Rack changed; retry the move".into();
+            self.sync();
+            return false;
+        }
+        if movement.before == movement.after {
+            return false;
+        }
+        let base_state_id = self.state_id;
+        let base_layout = self.rack.layout();
+        // Prepare and validate geometry before recording the shared history step.
+        let prepared = (|| {
+            if movement
+                .before
+                .keys()
+                .any(|id| !self.patch.nodes.iter().any(|node| &node.id == id))
+            {
+                return Err("Moved module is no longer in the patch".to_string());
+            }
+            let mut candidate = Rack::default();
+            candidate.restore_layout(&base_layout)?;
+            candidate.apply_module_move(&movement)?;
+            Ok(())
+        })();
+        if let Err(error) = prepared {
+            self.status = error;
+            return false;
+        }
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_string())
+            .and_then(|mut live| live.record_layout_checkpoint(movement.revision));
+        let receipt = match result {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.status = error;
+                self.sync();
+                return false;
+            }
+        };
+        self.install_move_receipt(&receipt, &movement, base_state_id, base_layout)
+            .expect("validated move and exact checkpoint receipt");
+        self.sync();
+        if let Ok(live) = self.shared.try_lock() {
+            let retained: BTreeSet<_> = live.history_state_ids().collect();
+            self.history_layouts.retain(|id, _| retained.contains(id));
+        }
+        self.observe_document();
+        self.status = if movement.after.len() == 1 {
+            "Module moved".into()
+        } else {
+            format!("Moved {} modules", movement.after.len())
+        };
+        true
+    }
+
+    fn install_move_receipt(
+        &mut self,
+        receipt: &Value,
+        movement: &ModuleMove,
+        base_state_id: u64,
+        base_layout: Value,
+    ) -> Result<(), String> {
+        let patch: Patch =
+            serde_json::from_value(receipt["patch"].clone()).map_err(|error| error.to_string())?;
+        let revision = receipt["revision"]
+            .as_u64()
+            .ok_or("move receipt has no revision")?;
+        let state_id = receipt["state_id"]
+            .as_u64()
+            .ok_or("move receipt has no state identity")?;
+        // No Session read here: newer MCP commits must not acquire this move's geometry.
+        self.rack.apply_module_move(movement)?;
+        self.history_layouts.insert(base_state_id, base_layout);
+        self.patch = patch;
+        self.revision = revision;
+        self.state_id = state_id;
+        self.can_undo = receipt["history"]["undo_steps"]
+            .as_u64()
+            .is_some_and(|n| n > 0);
+        self.can_redo = receipt["history"]["redo_steps"]
+            .as_u64()
+            .is_some_and(|n| n > 0);
         self.history_layouts.insert(state_id, self.rack.layout());
         Ok(())
     }
@@ -2093,8 +2186,8 @@ impl OpenPatch {
                 self.scope.inspect(lane, id, port);
                 self.select_analysis(Some(AnalysisTab::Scope));
             }
-            Some(RackAction::LayoutChanged) => {
-                self.status = "Module moved".into();
+            Some(RackAction::MoveModules(movement)) => {
+                self.move_modules(movement);
             }
             None => {}
         }
@@ -3963,6 +4056,302 @@ mod project_workflow_tests {
         assert!(app.capture_document().equivalent(&committed));
         app.history(false);
         assert!(app.capture_document().equivalent(&before));
+    }
+
+    fn movement(app: &OpenPatch, ids: &[String], delta: egui::Vec2) -> ModuleMove {
+        let layout = app.rack.layout();
+        let before: BTreeMap<_, _> = ids
+            .iter()
+            .map(|id| {
+                let p = &layout["positions"][id];
+                (
+                    id.clone(),
+                    egui::pos2(p[0].as_f64().unwrap() as f32, p[1].as_f64().unwrap() as f32),
+                )
+            })
+            .collect();
+        let after = before
+            .iter()
+            .map(|(id, point)| (id.clone(), *point + delta))
+            .collect();
+        ModuleMove {
+            revision: app.revision,
+            before,
+            after,
+        }
+    }
+
+    #[test]
+    fn module_moves_share_ordered_history_with_ui_and_mcp_edits_and_saved_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.save_document("moves.openpatch", true);
+        let before = app.capture_document();
+        let id = app.patch.nodes[0].id.clone();
+        let first = movement(&app, std::slice::from_ref(&id), egui::vec2(0.0, 420.0));
+        let original_history = app.shared.lock().unwrap().snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap();
+        assert!(app.move_modules(first));
+        let moved = app.capture_document();
+        assert!(app.dirty());
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
+            original_history + 1
+        );
+        edit(&mut app, 330.0);
+        let edited = app.capture_document();
+        let second = movement(&app, std::slice::from_ref(&id), egui::vec2(300.0, 0.0));
+        assert!(app.move_modules(second));
+        let last = app.capture_document();
+        app.history(false);
+        assert!(app.capture_document().equivalent(&edited));
+        execute_shared(&app.shared, "undo", json!({})).unwrap();
+        app.sync();
+        assert!(app.capture_document().equivalent(&moved));
+        execute_shared(&app.shared, "undo", json!({})).unwrap();
+        app.sync();
+        assert!(app.capture_document().equivalent(&before));
+        assert!(!app.dirty());
+        for _ in 0..3 {
+            execute_shared(&app.shared, "redo", json!({})).unwrap();
+            app.sync();
+        }
+        assert!(app.capture_document().equivalent(&last));
+        app.save_current();
+        assert!(!app.dirty());
+        app.history(false);
+        app.capture_document();
+        assert!(app.dirty());
+        app.history(true);
+        app.capture_document();
+        assert!(!app.dirty());
+    }
+
+    #[test]
+    fn group_move_is_one_step_preserves_view_selection_and_branches_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.rack.set_zoom(0.75);
+        let ids: Vec<_> = app.patch.nodes.iter().map(|node| node.id.clone()).collect();
+        app.rack.select_only(ids[0].clone());
+        let before = app.capture_document();
+        let selection = app.rack.selected_ids();
+        let proposal = movement(&app, &ids, egui::vec2(30.0, 420.0));
+        assert!(app.move_modules(proposal));
+        let after = app.capture_document();
+        assert_eq!(after.layout["zoom"], before.layout["zoom"]);
+        assert_eq!(after.layout["pan"], before.layout["pan"]);
+        assert_eq!(app.rack.selected_ids(), selection);
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+        assert!(app.can_redo);
+        let branched = movement(&app, &ids, egui::vec2(60.0, 420.0));
+        assert!(app.move_modules(branched));
+        assert!(!app.can_redo);
+        assert!(execute_shared(&app.shared, "redo", json!({})).is_err());
+    }
+
+    #[test]
+    fn movement_history_eviction_prunes_geometry_to_retained_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let id = app.patch.nodes[0].id.clone();
+        for _ in 0..132 {
+            let proposal = movement(&app, std::slice::from_ref(&id), egui::vec2(15.0, 0.0));
+            assert!(app.move_modules(proposal));
+        }
+        let retained: BTreeSet<_> = app.shared.lock().unwrap().history_state_ids().collect();
+        assert_eq!(
+            app.history_layouts.keys().copied().collect::<BTreeSet<_>>(),
+            retained
+        );
+        assert_eq!(retained.len(), 129);
+        app.history(false);
+        app.history(false);
+        let branch = movement(&app, std::slice::from_ref(&id), egui::vec2(0.0, 420.0));
+        assert!(app.move_modules(branch));
+        let retained: BTreeSet<_> = app.shared.lock().unwrap().history_state_ids().collect();
+        assert_eq!(
+            app.history_layouts.keys().copied().collect::<BTreeSet<_>>(),
+            retained
+        );
+    }
+
+    #[test]
+    fn no_op_invalid_and_stale_move_proposals_cannot_create_history_or_replace_newer_geometry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let id = app.patch.nodes[0].id.clone();
+        let before = app.capture_document();
+        let state = app.shared.lock().unwrap().snapshot();
+        let no_op = movement(&app, std::slice::from_ref(&id), egui::Vec2::ZERO);
+        assert!(!app.move_modules(no_op));
+        let mut invalid = movement(&app, std::slice::from_ref(&id), egui::vec2(0.0, 420.0));
+        invalid.after.get_mut(&id).unwrap().x = f32::NAN;
+        assert!(!app.move_modules(invalid));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), state);
+        assert!(app.capture_document().equivalent(&before));
+        let stale = movement(&app, std::slice::from_ref(&id), egui::vec2(0.0, 420.0));
+        execute_shared(
+            &app.shared,
+            "set_parameter",
+            json!({"id":id,"parameter":"frequency","value":330}),
+        )
+        .unwrap();
+        let newer = app.shared.lock().unwrap().snapshot();
+        assert!(!app.move_modules(stale));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
+        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
+    }
+
+    #[test]
+    fn move_receipt_binds_geometry_to_its_state_before_newer_mcp_work_is_synced() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let before = app.capture_document();
+        let base_state = app.state_id;
+        let id = app.patch.nodes[0].id.clone();
+        let proposal = movement(&app, std::slice::from_ref(&id), egui::vec2(0.0, 420.0));
+        let receipt = app
+            .shared
+            .lock()
+            .unwrap()
+            .record_layout_checkpoint(app.revision)
+            .unwrap();
+        let committed_state = receipt["state_id"].as_u64().unwrap();
+        let shared = app.shared.clone();
+        let mut live = shared.lock().unwrap();
+        live.execute(
+            "set_parameter",
+            json!({"id":id,"parameter":"frequency","value":330}),
+        )
+        .unwrap();
+        app.install_move_receipt(&receipt, &proposal, base_state, before.layout.clone())
+            .unwrap();
+        let moved = app.capture_document();
+        assert_eq!(app.history_layouts[&committed_state], moved.layout);
+        assert_eq!(app.history_layouts[&base_state], before.layout);
+        drop(live);
+        app.sync();
+        assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
+        app.history(false);
+        assert!(app.capture_document().equivalent(&moved));
+        app.history(false);
+        assert!(app.capture_document().equivalent(&before));
+    }
+
+    fn start_module_preview(app: &mut OpenPatch, ctx: &egui::Context) -> egui::Pos2 {
+        library_frame(app, ctx, 0.0, vec![], true);
+        let start = egui::pos2(85.0, 55.0);
+        library_frame(
+            app,
+            ctx,
+            0.1,
+            vec![egui::Event::PointerMoved(start), pointer_event(start, true)],
+            true,
+        );
+        let target = start + egui::vec2(30.0, 430.0);
+        library_frame(app, ctx, 0.2, vec![egui::Event::PointerMoved(target)], true);
+        target
+    }
+
+    #[test]
+    fn saving_and_recovery_during_pointer_drag_keep_committed_geometry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.save_document("drag.openpatch", true);
+        let before = app.capture_document();
+        let ctx = egui::Context::default();
+        let target = start_module_preview(&mut app, &ctx);
+        assert_eq!(app.rack.layout(), before.layout);
+        app.save_current();
+        assert!(app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("drag.openpatch")
+            .unwrap()
+            .document
+            .equivalent(&before));
+        assert!(!app.dirty());
+        app.documents.mark_unsaved();
+        app.autosave_needed = true;
+        make_autosave_due(&mut app);
+        app.autosave();
+        let recoveries = recovery_files(dir.path());
+        assert_eq!(recoveries.len(), 1);
+        let recovery: Value =
+            serde_json::from_slice(&std::fs::read(&recoveries[0]).unwrap()).unwrap();
+        assert_eq!(recovery["layout"], before.layout);
+        library_frame(
+            &mut app,
+            &ctx,
+            0.3,
+            vec![pointer_event(target, false)],
+            true,
+        );
+        assert_ne!(app.rack.layout()["positions"], before.layout["positions"]);
+        app.history(false);
+        assert_eq!(app.rack.layout(), before.layout);
+    }
+
+    #[test]
+    fn new_mcp_revisions_cancel_preview_even_with_unchanged_history_identity() {
+        for mutation in ["grouped", "remove", "replace"] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            let id = app.patch.nodes[0].id.clone();
+            assert!(app.command(
+                "set_parameter",
+                json!({"id":id,"parameter":"frequency","value":220,"history_group":"knob"})
+            ));
+            let before = app.capture_document();
+            let base_state = app.state_id;
+            let ctx = egui::Context::default();
+            let target = start_module_preview(&mut app, &ctx);
+            match mutation {
+                "grouped" => {
+                    execute_shared(
+                        &app.shared,
+                        "set_parameter",
+                        json!({"id":id,"parameter":"frequency","value":330,"history_group":"knob"}),
+                    )
+                    .unwrap();
+                }
+                "remove" => {
+                    execute_shared(&app.shared, "remove_module", json!({"id":id})).unwrap();
+                }
+                _ => {
+                    execute_shared(
+                        &app.shared,
+                        "replace_patch",
+                        json!({"patch":{"version":2,"nodes":[{"id":"new","kind":"constant"}]}}),
+                    )
+                    .unwrap();
+                }
+            }
+            let graph = app.shared.lock().unwrap().snapshot();
+            app.sync();
+            if mutation == "grouped" {
+                assert_eq!(app.state_id, base_state);
+            }
+            assert_eq!(app.history_layouts[&base_state], before.layout);
+            library_frame(
+                &mut app,
+                &ctx,
+                0.3,
+                vec![pointer_event(target, false)],
+                true,
+            );
+            assert_eq!(app.shared.lock().unwrap().snapshot(), graph);
+            if mutation == "grouped" {
+                assert_eq!(app.rack.layout(), before.layout);
+            } else {
+                assert!(app.rack.layout()["positions"].get(&id).is_none());
+            }
+        }
     }
 
     #[test]

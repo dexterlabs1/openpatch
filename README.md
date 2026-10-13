@@ -78,7 +78,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
-Compatible jacks glow and snap during patching. An ordinary drop onto an occupied input replaces its cables atomically; hold **Shift** to add a signal to the stack. **Esc** or an invalid drop keeps the existing connections. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
+Compatible jacks glow and snap during patching. An ordinary drop onto an occupied input replaces its cables atomically; hold **Shift** to add a signal to the stack. **Esc** or an invalid drop keeps the existing connections. The quantizer’s piano keys toggle scale notes. One knob drag or completed single/group module move is one undo step. Module drag previews stay out of saves and recovery. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
