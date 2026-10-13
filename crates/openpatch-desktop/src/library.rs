@@ -1,13 +1,13 @@
 //! Docked, keyboard-accessible module library. The catalog remains the source
 //! of truth for module names, controls, ports, and engine requirements.
+use crate::rack::ModulePreview;
 use eframe::egui::{self, pos2, vec2, Align2, Color32, FontId, Rect, Sense, Stroke, Vec2};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const PANEL: Color32 = Color32::from_rgb(35, 38, 39);
 const PANEL_TEXT: Color32 = Color32::from_rgb(233, 229, 217);
 const PANEL_MUTED: Color32 = Color32::from_rgb(157, 158, 151);
-const METAL: Color32 = Color32::from_rgb(218, 214, 202);
 const METAL_INK: Color32 = Color32::from_rgb(39, 39, 36);
 const AMBER: Color32 = Color32::from_rgb(226, 175, 88);
 
@@ -105,6 +105,7 @@ pub struct ModuleLibrary {
     highlighted: Option<String>,
     focused_last_frame: Option<FocusKind>,
     scroll_to_kind: Option<String>,
+    previews: BTreeMap<String, ModulePreview>,
 }
 
 impl ModuleLibrary {
@@ -361,8 +362,13 @@ impl ModuleLibrary {
                                     for module in row {
                                         if let Some(kind) = module["kind"].as_str() {
                                             visible_kinds.push(kind);
-                                            let (tile_action, id, star_id) =
-                                                self.tile(ui, module, tile_width, patch_version);
+                                            let (tile_action, id, star_id) = self.tile(
+                                                ui,
+                                                module,
+                                                catalog,
+                                                tile_width,
+                                                patch_version,
+                                            );
                                             tile_ids.push((kind, id));
                                             other_ids.push(star_id);
                                             if tile_action.is_some() {
@@ -521,13 +527,14 @@ impl ModuleLibrary {
         &mut self,
         ui: &mut egui::Ui,
         module: &Value,
+        catalog: &Value,
         width: f32,
         patch_version: u32,
     ) -> (Option<LibraryAction>, egui::Id, egui::Id) {
         let kind = module["kind"].as_str().unwrap_or("");
         let title = module["title"].as_str().unwrap_or(kind);
         let supported = available(module, patch_version);
-        let (_, rect) = ui.allocate_space(vec2(width, 151.0));
+        let (_, rect) = ui.allocate_space(vec2(width, 217.0));
         let id = ui.make_persistent_id(("module-library-tile", kind));
         let response = ui.interact(rect, id, Sense::click_and_drag());
         if self.scroll_to_kind.as_deref() == Some(kind) {
@@ -546,14 +553,37 @@ impl ModuleLibrary {
                 },
             )
         });
-        paint_tile(
-            ui.painter(),
-            rect,
-            module,
-            self.highlighted.as_deref() == Some(kind),
-            response.hovered(),
-            supported,
-        );
+        if ui.is_rect_visible(rect) {
+            paint_tile(
+                ui.painter(),
+                rect,
+                module,
+                self.highlighted.as_deref() == Some(kind),
+                response.hovered(),
+                supported,
+            );
+            let preview_bounds =
+                Rect::from_min_max(rect.min + vec2(8.0, 30.0), rect.max - vec2(8.0, 21.0));
+            let preview = self
+                .previews
+                .entry(kind.to_owned())
+                .or_insert_with(|| ModulePreview::new(module));
+            if !preview.matches(module) {
+                *preview = ModulePreview::new(module);
+            }
+            preview.show(ui, preview_bounds, catalog);
+            if !supported {
+                ui.painter()
+                    .rect_filled(preview_bounds, 0, Color32::from_black_alpha(105));
+                ui.painter().text(
+                    rect.center_bottom() - vec2(0.0, 11.0),
+                    Align2::CENTER_CENTER,
+                    "ENGINE V2",
+                    FontId::proportional(10.0),
+                    PANEL_TEXT,
+                );
+            }
+        }
         let star_rect =
             Rect::from_center_size(rect.right_top() + vec2(-15.0, 16.0), Vec2::splat(25.0));
         let star = ui.interact(star_rect, id.with("favorite"), Sense::click());
@@ -563,11 +593,7 @@ impl ModuleLibrary {
             Align2::CENTER_CENTER,
             if favorite { "★" } else { "☆" },
             FontId::proportional(17.0),
-            if favorite {
-                AMBER
-            } else {
-                Color32::from_rgb(103, 99, 88)
-            },
+            if favorite { AMBER } else { PANEL_MUTED },
         );
         let star = star.on_hover_text(if favorite {
             "Remove from favorites"
@@ -637,210 +663,57 @@ fn paint_tile(
     hovered: bool,
     supported: bool,
 ) {
-    let kind = module["kind"].as_str().unwrap_or("");
-    let title = module["title"].as_str().unwrap_or(kind);
-    let face = rect.shrink(2.0);
+    // The card is browser chrome; only the shared rack renderer paints hardware.
     painter.rect_filled(
-        rect.translate(vec2(1.0, 2.0)),
-        3.0,
-        Color32::from_black_alpha(85),
+        rect.translate(vec2(0.0, 2.0)),
+        5.0,
+        Color32::from_black_alpha(55),
     );
-    painter.rect_filled(rect, 3.0, Color32::from_rgb(85, 82, 74));
     painter.rect_filled(
-        face,
-        2.0,
+        rect,
+        5.0,
         if hovered {
-            Color32::from_rgb(235, 229, 213)
+            Color32::from_rgb(48, 53, 51)
         } else {
-            METAL
+            Color32::from_rgb(29, 33, 32)
         },
     );
-    painter.line_segment(
-        [face.left_top(), face.right_top()],
-        Stroke::new(1.0_f32, Color32::from_rgb(249, 244, 230)),
+    painter.rect_stroke(
+        rect,
+        5.0,
+        Stroke::new(
+            if highlighted { 1.5_f32 } else { 1.0 },
+            if highlighted {
+                AMBER
+            } else {
+                Color32::from_rgb(67, 72, 67)
+            },
+        ),
+        egui::StrokeKind::Inside,
     );
-    painter.line_segment(
-        [face.right_top(), face.right_bottom()],
-        Stroke::new(1.0_f32, Color32::from_rgb(109, 104, 92)),
-    );
-    for grain in 0..4 {
-        let y = face.top() + 40.0 + grain as f32 * 27.0;
-        painter.line_segment(
-            [pos2(face.left() + 4.0, y), pos2(face.right() - 4.0, y)],
-            Stroke::new(0.6_f32, Color32::from_white_alpha(14)),
-        );
-    }
-    if highlighted {
-        painter.rect_stroke(
-            rect.shrink(1.0),
-            2.0,
-            Stroke::new(1.5_f32, AMBER),
-            egui::StrokeKind::Inside,
-        );
-    }
-    for center in [
-        face.left_top() + vec2(7.0, 7.0),
-        face.left_bottom() + vec2(7.0, -7.0),
-        face.right_bottom() + vec2(-7.0, -7.0),
-    ] {
-        painter.circle_filled(center, 2.0, Color32::from_rgb(121, 117, 108));
-        painter.circle_filled(
-            center - vec2(0.3, 0.4),
-            1.2,
-            Color32::from_rgb(232, 228, 216),
-        );
-    }
+    let kind = module["kind"].as_str().unwrap_or("");
+    let title = module["title"].as_str().unwrap_or(kind);
     let mut job = egui::text::LayoutJob::simple(
         title.to_owned(),
-        FontId::proportional(12.0),
-        METAL_INK,
-        face.width() - 42.0,
+        crate::panel_skin::print_font(painter.ctx(), 14.0),
+        PANEL_TEXT,
+        rect.width() - 39.0,
     );
     job.wrap.max_rows = 1;
     painter.galley(
-        face.min + vec2(15.0, 12.0),
+        rect.min + vec2(10.0, 9.0),
         painter.layout_job(job),
-        METAL_INK,
+        PANEL_TEXT,
     );
-    let params = module["params"]
-        .as_object()
-        .map_or(0, |params| params.len());
-    let inputs = module["inputs"].as_array().map_or(0, Vec::len);
-    let outputs = module["outputs"].as_array().map_or(1, Vec::len);
-    let area = Rect::from_min_max(face.min + vec2(12.0, 37.0), face.max - vec2(12.0, 26.0));
-    if kind == "seq3" && params >= 8 {
-        for step in 0..8 {
-            let x = area.left() + area.width() * (step as f32 + 0.5) / 8.0;
-            painter.circle_filled(
-                pos2(x, area.top() + 13.0),
-                2.8,
-                if step == 0 {
-                    AMBER
-                } else {
-                    Color32::from_rgb(135, 133, 124)
-                },
-            );
-            mini_knob(painter, pos2(x, area.top() + 34.0), 4.8);
-        }
-    } else if kind == "push" {
-        for (index, x) in [area.left() + 28.0, area.right() - 28.0]
-            .into_iter()
-            .enumerate()
-        {
-            painter.rect_filled(
-                Rect::from_center_size(pos2(x, area.center().y - 5.0), vec2(28.0, 22.0)),
-                3.0,
-                if index == 0 {
-                    AMBER
-                } else {
-                    Color32::from_rgb(163, 158, 143)
-                },
-            );
-            painter.circle_filled(pos2(x, area.center().y + 17.0), 3.5, AMBER);
-        }
-    } else if kind == "gates" {
-        mini_knob(
-            painter,
-            pos2(area.left() + 27.0, area.center().y - 8.0),
-            13.0,
-        );
-        painter.rect_filled(
-            Rect::from_center_size(
-                pos2(area.right() - 27.0, area.center().y - 8.0),
-                vec2(32.0, 20.0),
-            ),
-            3.0,
-            Color32::from_rgb(163, 158, 143),
-        );
-        for index in 0..6 {
-            let x = area.left() + 24.0 + (index % 3) as f32 * (area.width() - 48.0) / 2.0;
-            let y = area.bottom() - 22.0 + (index / 3) as f32 * 14.0;
-            mini_jack(painter, pos2(x, y));
-        }
-    } else if kind == "pulses" {
-        for row in 0..4 {
-            let y = area.top() + 7.0 + row as f32 * 16.0;
-            painter.rect_filled(
-                Rect::from_center_size(pos2(area.left() + 21.0, y), vec2(20.0, 8.0)),
-                2.0,
-                if row == 0 {
-                    AMBER
-                } else {
-                    Color32::from_rgb(150, 146, 135)
-                },
-            );
-            mini_jack(painter, pos2(area.center().x + 8.0, y));
-            mini_jack(painter, pos2(area.right() - 10.0, y));
-        }
-    } else if params == 0 {
-        let y = area.center().y;
-        let left = pos2(area.left() + 17.0, y);
-        let right = pos2(area.right() - 17.0, y);
-        painter.line_segment(
-            [left, right],
-            Stroke::new(1.1_f32, Color32::from_rgb(113, 110, 99)),
-        );
-        mini_jack(painter, left);
-        mini_jack(painter, right);
-    } else {
-        let count = params.min(4);
-        for index in 0..count {
-            let columns = if count == 1 { 1 } else { 2 };
-            let rows = count.div_ceil(columns);
-            let column = index % columns;
-            let row = index / columns;
-            let x = area.left() + area.width() * (column as f32 + 0.5) / columns as f32;
-            let y = area.top() + area.height() * (row as f32 + 0.5) / rows as f32;
-            mini_knob(painter, pos2(x, y), if count == 1 { 18.0 } else { 11.0 });
-        }
-    }
-    let port_y = face.bottom() - 18.0;
-    for index in 0..inputs.min(3) {
-        mini_jack(
-            painter,
-            pos2(face.left() + 18.0 + index as f32 * 13.0, port_y),
-        );
-    }
-    for index in 0..outputs.min(3) {
-        mini_jack(
-            painter,
-            pos2(face.right() - 18.0 - index as f32 * 13.0, port_y),
-        );
-    }
-    if !supported {
-        painter.rect_filled(face, 2.0, Color32::from_black_alpha(105));
+    if supported {
         painter.text(
-            face.center_bottom() - vec2(0.0, 17.0),
+            rect.center_bottom() - vec2(0.0, 10.0),
             Align2::CENTER_CENTER,
-            "ENGINE V2",
+            Category::of_kind(kind).label(),
             FontId::proportional(10.0),
-            PANEL_TEXT,
+            PANEL_MUTED,
         );
     }
-}
-
-fn mini_knob(painter: &egui::Painter, center: egui::Pos2, radius: f32) {
-    painter.circle_filled(
-        center + vec2(0.7, 1.4),
-        radius + 1.5,
-        Color32::from_black_alpha(65),
-    );
-    painter.circle_filled(center, radius + 0.6, Color32::from_rgb(105, 104, 98));
-    painter.circle_filled(center, radius * 0.81, Color32::from_rgb(35, 38, 39));
-    painter.line_segment(
-        [
-            center - vec2(0.0, radius * 0.32),
-            center - vec2(0.0, radius * 0.7),
-        ],
-        Stroke::new(1.3_f32, Color32::from_rgb(238, 234, 222)),
-    );
-}
-
-fn mini_jack(painter: &egui::Painter, center: egui::Pos2) {
-    painter.circle_filled(center + vec2(0.4, 0.8), 5.5, Color32::from_black_alpha(69));
-    painter.circle_filled(center, 5.0, Color32::from_rgb(127, 123, 112));
-    painter.circle_filled(center, 3.7, Color32::from_rgb(226, 223, 211));
-    painter.circle_filled(center, 2.5, Color32::from_rgb(28, 30, 30));
 }
 
 #[cfg(test)]
@@ -1226,6 +1099,139 @@ mod tests {
         }
         assert_eq!(action, Some(LibraryAction::EnablePolyphony));
         assert!(open);
+    }
+
+    #[test]
+    fn actual_preview_fields_and_buttons_keep_tile_click_drag_and_focus() {
+        fn target(shapes: &[egui::epaint::ClippedShape], kind: &str) -> egui::Pos2 {
+            fn find(shape: &egui::Shape, kind: &str) -> Option<egui::Pos2> {
+                match shape {
+                    egui::Shape::Vec(children) => {
+                        children.iter().find_map(|shape| find(shape, kind))
+                    }
+                    egui::Shape::Text(text)
+                        if match kind {
+                            "seq3" => text.galley.text().ends_with(" BPM"),
+                            "poly_constant" => text.galley.text().ends_with(" V"),
+                            "push" => text.galley.text() == "HOLD",
+                            _ => false,
+                        } =>
+                    {
+                        Some(text.pos + text.galley.size() * 0.5)
+                    }
+                    _ => None,
+                }
+            }
+            shapes
+                .iter()
+                .find_map(|shape| find(&shape.shape, kind))
+                .unwrap_or_else(|| panic!("missing actual {kind} field/button"))
+        }
+        fn pointer(pos: egui::Pos2, pressed: bool) -> egui::Event {
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            }
+        }
+        let all = openpatch_core::catalog();
+        for kind in ["seq3", "poly_constant", "push"] {
+            let module = all["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|module| module["kind"] == kind)
+                .unwrap();
+            let catalog = json!({"modules": [module]});
+            let ctx = egui::Context::default();
+            let mut library = ModuleLibrary::default();
+            let mut open = true;
+            let (_, output) = frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+            let start = target(&output.shapes, kind);
+            // Native compact fields and performance buttons are painted inside
+            // the card at its fitted scale, but the card owns every gesture.
+            frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                1.0,
+                vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                true,
+            );
+            let (action, _) = frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                1.1,
+                vec![pointer(start, false)],
+                true,
+            );
+            assert_eq!(
+                action,
+                Some(LibraryAction::Add(kind.to_owned())),
+                "click {kind}"
+            );
+            // Focus belongs to a tile, never its disabled controls.
+            assert_eq!(
+                library.focused_last_frame,
+                Some(FocusKind::Tile),
+                "focus {kind}"
+            );
+            assert!(!egui::Popup::is_any_open(&ctx));
+            frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                2.0,
+                vec![egui::Event::PointerMoved(start), pointer(start, true)],
+                true,
+            );
+            let (action, _) = frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                2.1,
+                vec![egui::Event::PointerMoved(start + vec2(40.0, 25.0))],
+                true,
+            );
+            assert_eq!(action, None, "drag {kind}");
+            assert_eq!(
+                egui::DragAndDrop::payload::<LibraryDrag>(&ctx).map(|drag| drag.kind.clone()),
+                Some(kind.to_owned())
+            );
+            frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                2.2,
+                vec![pointer(start + vec2(40.0, 25.0), false)],
+                true,
+            );
+        }
+    }
+
+    #[test]
+    fn offscreen_cards_do_not_construct_or_render_previews() {
+        let catalog = openpatch_core::catalog();
+        let mut library = ModuleLibrary::default();
+        let mut open = true;
+        frame(
+            &egui::Context::default(),
+            &mut library,
+            &mut open,
+            &catalog,
+            0.0,
+            vec![],
+            true,
+        );
+        assert!(!library.previews.is_empty());
+        assert!(library.previews.len() < catalog["modules"].as_array().unwrap().len());
     }
 
     #[test]

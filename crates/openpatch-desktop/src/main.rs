@@ -7,6 +7,7 @@ mod expression;
 mod keyboard;
 mod library;
 mod midi;
+mod panel_skin;
 mod project;
 #[cfg(test)]
 mod project_acceptance_tests;
@@ -37,6 +38,10 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--font-license" => {
+                println!("{}", include_str!("../assets/fonts/OFL-Barlow.txt"));
+                return Ok(());
+            }
             "--mcp" => mcp = true,
             "--smoke-test" => {
                 smoke_test = Some(PathBuf::from(
@@ -47,7 +52,7 @@ fn run() -> Result<(), String> {
                 workspace = PathBuf::from(args.next().ok_or("--workspace needs a directory")?)
             }
             "--help" => {
-                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)");
+                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --font-license         Print the bundled panel font license");
                 return Ok(());
             }
             _ => return Err(format!("Unknown argument: {arg}")),

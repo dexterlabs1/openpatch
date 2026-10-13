@@ -23,6 +23,9 @@ resources = contents / "Resources"
 resources.mkdir(parents=True, exist_ok=True)
 icon = pathlib.Path(__file__).resolve().parents[1] / "crates/openpatch-desktop/assets/OpenPatch.icns"
 shutil.copy2(icon, resources / "OpenPatch.icns")
+licenses = resources / "Licenses"
+licenses.mkdir(parents=True, exist_ok=True)
+shutil.copy2(icon.parent / "fonts/OFL-Barlow.txt", licenses / "Barlow.txt")
 with (contents / "Info.plist").open("wb") as stream:
     plistlib.dump({
         "CFBundleName": "OpenPatch",

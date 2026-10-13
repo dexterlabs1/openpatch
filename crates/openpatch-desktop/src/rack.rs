@@ -15,7 +15,7 @@ const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
 const PANEL_HEIGHT: f32 = 396.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
-const INK: Color32 = Color32::from_rgb(35, 34, 31);
+const INK: Color32 = crate::panel_skin::INK;
 const MUTED: Color32 = Color32::from_rgb(95, 91, 82);
 const CABLES: [Color32; 6] = [
     Color32::from_rgb(211, 101, 83),
@@ -196,6 +196,113 @@ struct GroupDrag {
     revision: u64,
 }
 
+#[derive(Clone, Copy)]
+enum RenderMode {
+    Interactive {
+        drag_interactive: bool,
+        allow_manual_press: bool,
+    },
+    Preview,
+}
+impl RenderMode {
+    fn is_interactive(self) -> bool {
+        matches!(self, Self::Interactive { .. })
+    }
+}
+struct RenderedModules<'a> {
+    outputs: BTreeMap<(String, String), Pos2>,
+    inputs: BTreeMap<(String, String), Pos2>,
+    jack_targets: Vec<(CableEnd, Pos2)>,
+    pointer_on_module: bool,
+    stack_badges: Vec<(Pos2, usize)>,
+    input_groups: BTreeMap<(&'a str, &'a str), Vec<&'a Cable>>,
+    cable_ordinals: Vec<usize>,
+    action: Option<RackAction>,
+}
+
+/// Cached metadata and presentation state only: no DSP engine or live graph.
+pub(crate) struct ModulePreview {
+    source: Value,
+    patch: Patch,
+    renderer: Rack,
+}
+impl ModulePreview {
+    pub(crate) fn new(module: &Value) -> Self {
+        let kind = module["kind"].as_str().unwrap_or("").to_owned();
+        let node = Node {
+            id: String::new(),
+            kind,
+            bypassed: false,
+            params: module["params"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, spec)| {
+                    spec["default"].as_f64().map(|v| (name.clone(), v as f32))
+                })
+                .collect(),
+        };
+        let mut renderer = Rack {
+            preview_only: true,
+            shortcuts_enabled: false,
+            pan: Vec2::ZERO,
+            ..Rack::default()
+        };
+        renderer.positions.insert(node.id.clone(), Pos2::ZERO);
+        Self {
+            source: module.clone(),
+            patch: Patch {
+                version: 2,
+                nodes: vec![node],
+                ..Patch::default()
+            },
+            renderer,
+        }
+    }
+
+    pub(crate) fn matches(&self, module: &Value) -> bool {
+        &self.source == module
+    }
+
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, bounds: Rect, catalog: &Value) {
+        if !bounds.is_positive()
+            || !bounds.min.is_finite()
+            || !bounds.max.is_finite()
+            || !ui.is_rect_visible(bounds)
+        {
+            return;
+        }
+        let size = vec2(panel_width(&self.patch.nodes[0].kind), PANEL_HEIGHT);
+        let scale = (bounds.width() / size.x).min(bounds.height() / size.y);
+        let rect = Rect::from_center_size(bounds.center(), size * scale);
+        self.renderer.zoom = scale;
+        // Disabled egui controls retain their actual normal rendering, but can
+        // neither receive focus nor handle pointer/keyboard input. There are no
+        // preview menus, rack shortcuts, cable gestures, or parameter editors.
+        let mut style = (**ui.style()).clone();
+        style.visuals.disabled_alpha = 1.0;
+        style.visuals.widgets.noninteractive = style.visuals.widgets.inactive;
+        let mut preview_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt(("actual-module-preview", &self.patch.nodes[0].kind))
+                .max_rect(rect)
+                .style(style)
+                .disabled(),
+        );
+        preview_ui.set_clip_rect(ui.clip_rect().intersect(bounds));
+        let rendered = self.renderer.render_modules(
+            &mut preview_ui,
+            &self.patch,
+            catalog,
+            rect,
+            self.patch.sample_rate,
+            0,
+            RenderMode::Preview,
+        );
+        debug_assert!(rendered.action.is_none());
+    }
+}
+
 pub struct Rack {
     pub selected: Option<String>,
     selection: BTreeSet<String>,
@@ -212,6 +319,7 @@ pub struct Rack {
     editing: Option<ParameterEdit>,
     requested_parameter_menu: Option<(String, String)>,
     shortcuts_enabled: bool,
+    preview_only: bool,
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
@@ -240,6 +348,7 @@ impl Default for Rack {
             editing: None,
             requested_parameter_menu: None,
             shortcuts_enabled: true,
+            preview_only: false,
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
@@ -945,6 +1054,298 @@ impl Rack {
         }
         paint_background(&painter, canvas, self.pan, self.zoom);
 
+        let RenderedModules {
+            outputs,
+            inputs,
+            jack_targets,
+            pointer_on_module,
+            stack_badges,
+            input_groups,
+            cable_ordinals,
+            action: module_action,
+        } = self.render_modules(
+            ui,
+            patch,
+            catalog,
+            canvas,
+            device_rate,
+            revision,
+            RenderMode::Interactive {
+                drag_interactive,
+                allow_manual_press: released_manual.is_none(),
+            },
+        );
+        if module_action.is_some() {
+            action = module_action;
+        }
+
+        let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
+        let nearest = pointer.filter(|p| canvas.contains(*p)).and_then(|pointer| {
+            jack_targets
+                .iter()
+                .filter(|(_, point)| canvas.contains(*point))
+                .filter(|(_, point)| pointer.distance(*point) <= (19.0 * self.zoom).max(10.0))
+                .min_by(|(_, a), (_, b)| pointer.distance(*a).total_cmp(&pointer.distance(*b)))
+        });
+        let target_valid =
+            self.pending
+                .as_ref()
+                .zip(nearest)
+                .is_some_and(|(pending, (target, _))| {
+                    let stack = pending.stack_requested || ui.input(|i| i.modifiers.shift);
+                    (!stack || patch.version >= 2)
+                        && cable_plan(pending, target).is_some_and(|(cable, old)| {
+                            connection_allowed_mode(
+                                patch,
+                                &cable,
+                                old,
+                                catalog,
+                                stack
+                                    || (old.is_some() && matches!(target, CableEnd::Output { .. })),
+                            )
+                        })
+                });
+        if interactive
+            && self.dragging_cable
+            && ui.input(|i| i.pointer.button_released(PointerButton::Primary))
+        {
+            if let Some(pending) = self.pending.take() {
+                if let Some((target, _)) = nearest {
+                    action = cable_action_mode(
+                        patch,
+                        &pending,
+                        target,
+                        catalog,
+                        ui.input(|i| i.modifiers.shift),
+                    );
+                }
+            }
+            self.dragging_cable = false;
+        }
+        // Connected plugs remain visible until an atomic edit succeeds. The
+        // picked-up cable becomes a ghost so cancellation never loses a route.
+        for (cable_index, cable) in patch.cables.iter().enumerate() {
+            if let (Some(&from), Some(&to)) = (
+                outputs.get(&(cable.from.clone(), cable.output.clone())),
+                inputs.get(&(cable.to.clone(), cable.input.clone())),
+            ) {
+                let picked_up = self
+                    .pending
+                    .as_ref()
+                    .and_then(|pending| pending.original.as_ref())
+                    .is_some_and(|old| same_cable(old, cable));
+                let traced = nearest.is_some_and(|(end, _)| match end {
+                    CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
+                    CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
+                });
+                let color = cable_instance_color(cable).gamma_multiply(if picked_up {
+                    0.24
+                } else if nearest.is_some() && !traced && self.pending.is_none() {
+                    0.48
+                } else {
+                    1.0
+                });
+                paint_cable(
+                    &painter,
+                    from,
+                    to,
+                    color,
+                    self.zoom,
+                    true,
+                    configured_bus(patch, catalog, &cable.from),
+                    {
+                        let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
+                        let ordinal = cable_ordinals[cable_index];
+                        if count > 1 {
+                            (ordinal as f32 / (count - 1) as f32 - 0.5) * 40.0
+                        } else {
+                            0.0
+                        }
+                    },
+                );
+                if traced && !picked_up {
+                    paint_jack_light(&painter, to, self.zoom, cable_instance_color(cable));
+                }
+            }
+        }
+        for (center, count) in stack_badges {
+            painter.circle_filled(center, 8.0 * self.zoom, INK);
+            painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
+            painter.text(
+                center,
+                Align2::CENTER_CENTER,
+                count.to_string(),
+                FontId::monospace(8.0 * self.zoom),
+                PAPER,
+            );
+        }
+        if let Some(pending) = &self.pending {
+            if let Some(pointer) = pointer {
+                let original_source = pending.original.as_ref().and_then(|old| {
+                    outputs
+                        .get(&(old.from.clone(), old.output.clone()))
+                        .copied()
+                });
+                let origin = match &pending.origin {
+                    CableEnd::Output { node, port } => {
+                        outputs.get(&(node.clone(), port.clone())).copied()
+                    }
+                    CableEnd::Input { node, port } => {
+                        inputs.get(&(node.clone(), port.clone())).copied()
+                    }
+                };
+                let changing_source =
+                    nearest.is_some_and(|(end, _)| matches!(end, CableEnd::Output { .. }));
+                let picked_output =
+                    matches!(pending.origin, CableEnd::Output { .. }) && pending.original.is_some();
+                let anchor = if picked_output {
+                    pending
+                        .original
+                        .as_ref()
+                        .and_then(|old| inputs.get(&(old.to.clone(), old.input.clone())).copied())
+                } else if changing_source {
+                    origin
+                } else {
+                    original_source.or(origin)
+                };
+                let color = match &pending.origin {
+                    CableEnd::Output { node, port } => pending
+                        .original
+                        .as_ref()
+                        .map_or_else(|| cable_color(node, port), cable_instance_color),
+                    _ => pending
+                        .original
+                        .as_ref()
+                        .map_or(CABLES[2], cable_instance_color),
+                };
+                if let Some(anchor) = anchor {
+                    let endpoint = nearest.map_or(pointer, |(_, point)| *point);
+                    let bus = match &pending.origin {
+                        CableEnd::Output { node, .. } => configured_bus(patch, catalog, node),
+                        _ => pending
+                            .original
+                            .as_ref()
+                            .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
+                    };
+                    paint_cable(
+                        &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
+                    );
+                    paint_jack_light(&painter, anchor, self.zoom, color);
+                }
+                if let Some((_, target)) = nearest {
+                    let light = if target_valid {
+                        Color32::from_rgb(71, 195, 139)
+                    } else {
+                        Color32::from_rgb(229, 88, 75)
+                    };
+                    paint_jack_light(&painter, *target, self.zoom, light);
+                    ui.ctx().set_cursor_icon(if target_valid {
+                        egui::CursorIcon::PointingHand
+                    } else {
+                        egui::CursorIcon::NotAllowed
+                    });
+                }
+                let message = if (pending.stack_requested || ui.input(|i| i.modifiers.shift))
+                    && patch.version < 2
+                {
+                    "Stacking requires engine v2. Release Shift for ordinary replacement. Esc cancels."
+                } else if nearest.is_some() && !target_valid {
+                    "Cannot connect here. Original cable is kept. Esc cancels."
+                } else if picked_output {
+                    "Choose a new OUT for this cable. Original destination stays connected. Esc cancels."
+                } else if pending.original.is_some() {
+                    "Move this cable to IN or choose a new OUT. Shift-drop stacks; Esc cancels."
+                } else if matches!(pending.origin, CableEnd::Input { .. }) {
+                    "Choose an OUT to connect this input. Esc cancels."
+                } else {
+                    "Choose IN. Ordinary drop replaces its cables; Shift-drop stacks in v2. Esc cancels."
+                };
+                let galley = painter.layout_no_wrap(
+                    message.into(),
+                    FontId::proportional(11.0),
+                    Color32::from_gray(225),
+                );
+                let rect = Rect::from_min_size(
+                    canvas.left_bottom() + vec2(14.0, -38.0),
+                    galley.size() + vec2(20.0, 12.0),
+                );
+                painter.rect_filled(rect, 4.0, Color32::from_black_alpha(220));
+                painter.galley(rect.min + vec2(10.0, 6.0), galley, Color32::from_gray(225));
+            }
+        }
+
+        if !pointer_on_module {
+            if response.secondary_clicked() || response.double_clicked() {
+                if self.pending.take().is_none() {
+                    action = Some(RackAction::OpenBrowser);
+                }
+                self.dragging_cable = false;
+            }
+            if !popup_open_at_frame_start && response.clicked() {
+                self.selected = None;
+                self.selection.clear();
+                self.pending = None;
+                self.cable_press = None;
+            }
+        }
+        if patch.nodes.is_empty() {
+            painter.text(
+                canvas.center() - vec2(0.0, 12.0),
+                Align2::CENTER_CENTER,
+                "Your rack is ready",
+                FontId::proportional(24.0),
+                Color32::from_gray(171),
+            );
+            painter.text(
+                canvas.center() + vec2(0.0, 22.0),
+                Align2::CENTER_CENTER,
+                "Right-click or press Enter to add a module",
+                FontId::proportional(13.0),
+                Color32::from_gray(118),
+            );
+        }
+        if self.pan != initial_pan {
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+        if self.editing.as_ref().is_some_and(|edit| {
+            edit.surface == ParameterEditSurface::KnobMenu
+                && edit
+                    .menu_popup
+                    .is_none_or(|id| !egui::Popup::is_id_open(ui.ctx(), id))
+        }) {
+            self.editing = None;
+        }
+        self.parameter_editor(ui.ctx(), &mut action);
+        released_manual.or(if interactive { action } else { None })
+    }
+
+    /// Shared actual module drawing. The preview caller supplies an isolated,
+    /// catalog-default graph and a disabled child UI, never the live rack.
+    #[allow(clippy::too_many_arguments)]
+    fn render_modules<'a>(
+        &mut self,
+        ui: &mut egui::Ui,
+        patch: &'a Patch,
+        catalog: &Value,
+        canvas: Rect,
+        device_rate: u32,
+        revision: u64,
+        mode: RenderMode,
+    ) -> RenderedModules<'a> {
+        let interactive = mode.is_interactive() && ui.is_enabled();
+        let (drag_interactive, allow_manual_press) = match mode {
+            RenderMode::Interactive {
+                drag_interactive,
+                allow_manual_press,
+            } => (drag_interactive, allow_manual_press),
+            RenderMode::Preview => (false, false),
+        };
+        let popup_open_at_frame_start =
+            !mode.is_interactive() || egui::Popup::is_any_open(ui.ctx());
+        let painter = ui
+            .painter()
+            .with_clip_rect(ui.clip_rect().intersect(canvas));
+        let mut action = None;
         let mut outputs = BTreeMap::<(String, String), Pos2>::new();
         let mut inputs = BTreeMap::<(String, String), Pos2>::new();
         let mut jack_targets = Vec::new();
@@ -1015,233 +1416,247 @@ impl Rack {
             if !rect.intersects(canvas) {
                 continue;
             }
-            let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
-            if interactive
-                && !popup_open_at_frame_start
-                && !egui::Popup::is_any_open(ui.ctx())
-                && ui.input(|i| {
-                    i.pointer.button_pressed(PointerButton::Primary)
-                        && i.pointer.interact_pos().is_some_and(|p| {
-                            rect.contains(p) && !(i.modifiers.shift && header_rect.contains(p))
-                        })
-                })
-            {
-                self.select_primary(node.id.clone());
-            }
-            let panel_response =
-                ui.interact(rect, ui.id().with(("module", &node.id)), Sense::click());
-            panel_response.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::WidgetType::Button,
-                    true,
-                    self.selection.contains(&node.id),
-                    format!("{} module {}", title(&node.kind), node.id),
-                )
-            });
-            if !popup_open_at_frame_start && panel_response.clicked() {
-                self.select_primary(node.id.clone());
-            }
-            panel_response.context_menu(|ui| {
-                ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
-                ui.separator();
-                monitor_menu(ui, node, &output_ports, patch, &mut action);
-                utility_menu(ui, node, &mut action);
-                if node.kind == "seq3" {
-                    for (direction, label) in [
-                        ("left", "Rotate pattern left"),
-                        ("right", "Rotate pattern right"),
-                    ] {
-                        if ui.button(label).clicked() {
-                            action = Some(RackAction::Command(
-                                "rotate_sequence",
-                                json!({"id":node.id,"direction":direction}),
-                            ));
-                            ui.close();
-                        }
-                    }
-                }
-                preset_menu(
-                    ui,
-                    node,
-                    &self.context_ids(&node.id),
-                    self.observed_revision,
-                    &mut action,
-                );
-                selection_menu(
-                    ui,
-                    &self.context_ids(&node.id),
-                    self.observed_revision,
-                    self.selection.contains(&node.id),
-                    patch,
-                    &mut action,
-                );
-            });
-            paint_panel(
-                &painter,
-                rect,
-                node,
-                self.selection.contains(&node.id),
-                patch.output.as_ref() == Some(&node.id),
-                self.zoom,
-            );
-            let header = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
-            let header_response = ui.interact(
-                header,
-                ui.id().with(("module-header", &node.id)),
-                Sense::click_and_drag(),
-            );
-            header_response.widget_info(|| {
-                egui::WidgetInfo::labeled(
-                    egui::WidgetType::Button,
-                    true,
-                    format!("Move {} module", node.id),
-                )
-            });
-            if !popup_open_at_frame_start && header_response.clicked() {
-                if ui.input(|i| i.modifiers.shift) {
-                    self.toggle_selection(node.id.clone());
-                } else {
-                    self.select_primary(node.id.clone());
-                }
-            }
-            if drag_interactive && header_response.drag_started_by(PointerButton::Primary) {
-                self.select_primary(node.id.clone());
-                self.group_drag = Some(GroupDrag {
-                    anchor: node.id.clone(),
-                    origins: self
-                        .selection
-                        .iter()
-                        .map(|id| (id.clone(), self.positions[id]))
-                        .collect(),
-                    delta: Vec2::ZERO,
-                    revision,
-                });
-            }
-            if header_response.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-            }
-            if drag_interactive && header_response.dragged_by(PointerButton::Primary) {
-                if let Some(drag) = self
-                    .group_drag
-                    .as_mut()
-                    .filter(|drag| drag.anchor == node.id)
-                {
-                    drag.delta += header_response.drag_delta() / self.zoom;
-                    for (id, origin) in &drag.origins {
-                        self.positions.insert(id.clone(), *origin + drag.delta);
-                    }
-                }
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            }
-            if drag_interactive && header_response.drag_stopped_by(PointerButton::Primary) {
-                if let Some(drag) = self.group_drag.take().filter(|drag| drag.anchor == node.id) {
-                    let min = pos2(
-                        drag.origins
-                            .values()
-                            .map(|p| p.x)
-                            .fold(f32::INFINITY, f32::min),
-                        drag.origins
-                            .values()
-                            .map(|p| p.y)
-                            .fold(f32::INFINITY, f32::min),
-                    );
-                    let members: Vec<_> = drag
-                        .origins
-                        .iter()
-                        .map(|(id, p)| {
-                            (
-                                pos2(p.x - min.x, p.y - min.y),
-                                panel_width(
-                                    &patch.nodes.iter().find(|n| &n.id == id).unwrap().kind,
-                                ),
-                            )
-                        })
-                        .collect();
-                    let others: Vec<_> = patch
-                        .nodes
-                        .iter()
-                        .filter(|n| !drag.origins.contains_key(&n.id))
-                        .map(|n| (self.positions[&n.id], panel_width(&n.kind)))
-                        .collect();
-                    let settled = (drag.delta != Vec2::ZERO)
-                        .then(|| settle_group(min + drag.delta, &members, &others))
-                        .flatten();
-                    let after = settled.map(|origin| {
-                        drag.origins
-                            .keys()
-                            .zip(members.iter())
-                            .map(|(id, (relative, _))| (id.clone(), origin + relative.to_vec2()))
-                            .collect::<BTreeMap<_, _>>()
-                    });
-                    for (id, origin) in &drag.origins {
-                        if let Some(position) = self.positions.get_mut(id) {
-                            *position = *origin;
-                        }
-                    }
-                    if let Some(after) = after.filter(|after| *after != drag.origins) {
-                        if action.is_none() {
-                            action = Some(RackAction::MoveModules(ModuleMove {
-                                revision: drag.revision,
-                                before: drag.origins,
-                                after,
-                            }));
-                        }
-                    }
-                }
-            }
-            header_response.context_menu(|ui| {
-                ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
-                ui.separator();
-                monitor_menu(ui, node, &output_ports, patch, &mut action);
-                utility_menu(ui, node, &mut action);
-                if node.kind == "seq3" {
-                    for (direction, label) in [
-                        ("left", "Rotate pattern left"),
-                        ("right", "Rotate pattern right"),
-                    ] {
-                        if ui.button(label).clicked() {
-                            action = Some(RackAction::Command(
-                                "rotate_sequence",
-                                json!({"id":node.id,"direction":direction}),
-                            ));
-                            ui.close();
-                        }
-                    }
-                }
-                preset_menu(
-                    ui,
-                    node,
-                    &self.context_ids(&node.id),
-                    self.observed_revision,
-                    &mut action,
-                );
-                selection_menu(
-                    ui,
-                    &self.context_ids(&node.id),
-                    self.observed_revision,
-                    self.selection.contains(&node.id),
-                    patch,
-                    &mut action,
-                );
-            });
             let description = module
                 .and_then(|module| module["description"].as_str())
                 .unwrap_or("Built-in OpenPatch module");
-            let model = module
-                .and_then(|module| module["model"].as_str())
-                .unwrap_or("legacy");
-            let policy = module
-                .and_then(|module| {
-                    module["polyphony"][if patch.version == 2 {
-                        "version_2"
+            if !mode.is_interactive() {
+                paint_panel(
+                    &painter,
+                    rect,
+                    node,
+                    self.selection.contains(&node.id),
+                    patch.output.as_ref() == Some(&node.id),
+                    self.zoom,
+                );
+            }
+            if mode.is_interactive() {
+                let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                if interactive
+                    && !popup_open_at_frame_start
+                    && !egui::Popup::is_any_open(ui.ctx())
+                    && ui.input(|i| {
+                        i.pointer.button_pressed(PointerButton::Primary)
+                            && i.pointer.interact_pos().is_some_and(|p| {
+                                rect.contains(p) && !(i.modifiers.shift && header_rect.contains(p))
+                            })
+                    })
+                {
+                    self.select_primary(node.id.clone());
+                }
+                let panel_response =
+                    ui.interact(rect, ui.id().with(("module", &node.id)), Sense::click());
+                panel_response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::Button,
+                        true,
+                        self.selection.contains(&node.id),
+                        format!("{} module {}", title(&node.kind), node.id),
+                    )
+                });
+                if !popup_open_at_frame_start && panel_response.clicked() {
+                    self.select_primary(node.id.clone());
+                }
+                panel_response.context_menu(|ui| {
+                    ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
+                    ui.separator();
+                    monitor_menu(ui, node, &output_ports, patch, &mut action);
+                    utility_menu(ui, node, &mut action);
+                    if node.kind == "seq3" {
+                        for (direction, label) in [
+                            ("left", "Rotate pattern left"),
+                            ("right", "Rotate pattern right"),
+                        ] {
+                            if ui.button(label).clicked() {
+                                action = Some(RackAction::Command(
+                                    "rotate_sequence",
+                                    json!({"id":node.id,"direction":direction}),
+                                ));
+                                ui.close();
+                            }
+                        }
+                    }
+                    preset_menu(
+                        ui,
+                        node,
+                        &self.context_ids(&node.id),
+                        self.observed_revision,
+                        &mut action,
+                    );
+                    selection_menu(
+                        ui,
+                        &self.context_ids(&node.id),
+                        self.observed_revision,
+                        self.selection.contains(&node.id),
+                        patch,
+                        &mut action,
+                    );
+                });
+                paint_panel(
+                    &painter,
+                    rect,
+                    node,
+                    self.selection.contains(&node.id),
+                    patch.output.as_ref() == Some(&node.id),
+                    self.zoom,
+                );
+                let header = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                let header_response = ui.interact(
+                    header,
+                    ui.id().with(("module-header", &node.id)),
+                    Sense::click_and_drag(),
+                );
+                header_response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Button,
+                        true,
+                        format!("Move {} module", node.id),
+                    )
+                });
+                if !popup_open_at_frame_start && header_response.clicked() {
+                    if ui.input(|i| i.modifiers.shift) {
+                        self.toggle_selection(node.id.clone());
                     } else {
-                        "version_1"
-                    }]
-                    .as_str()
-                })
-                .unwrap_or("mono");
-            header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows."));
-
+                        self.select_primary(node.id.clone());
+                    }
+                }
+                if drag_interactive && header_response.drag_started_by(PointerButton::Primary) {
+                    self.select_primary(node.id.clone());
+                    self.group_drag = Some(GroupDrag {
+                        anchor: node.id.clone(),
+                        origins: self
+                            .selection
+                            .iter()
+                            .map(|id| (id.clone(), self.positions[id]))
+                            .collect(),
+                        delta: Vec2::ZERO,
+                        revision,
+                    });
+                }
+                if header_response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                }
+                if drag_interactive && header_response.dragged_by(PointerButton::Primary) {
+                    if let Some(drag) = self
+                        .group_drag
+                        .as_mut()
+                        .filter(|drag| drag.anchor == node.id)
+                    {
+                        drag.delta += header_response.drag_delta() / self.zoom;
+                        for (id, origin) in &drag.origins {
+                            self.positions.insert(id.clone(), *origin + drag.delta);
+                        }
+                    }
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+                if drag_interactive && header_response.drag_stopped_by(PointerButton::Primary) {
+                    if let Some(drag) = self.group_drag.take().filter(|drag| drag.anchor == node.id)
+                    {
+                        let min = pos2(
+                            drag.origins
+                                .values()
+                                .map(|p| p.x)
+                                .fold(f32::INFINITY, f32::min),
+                            drag.origins
+                                .values()
+                                .map(|p| p.y)
+                                .fold(f32::INFINITY, f32::min),
+                        );
+                        let members: Vec<_> = drag
+                            .origins
+                            .iter()
+                            .map(|(id, p)| {
+                                (
+                                    pos2(p.x - min.x, p.y - min.y),
+                                    panel_width(
+                                        &patch.nodes.iter().find(|n| &n.id == id).unwrap().kind,
+                                    ),
+                                )
+                            })
+                            .collect();
+                        let others: Vec<_> = patch
+                            .nodes
+                            .iter()
+                            .filter(|n| !drag.origins.contains_key(&n.id))
+                            .map(|n| (self.positions[&n.id], panel_width(&n.kind)))
+                            .collect();
+                        let settled = (drag.delta != Vec2::ZERO)
+                            .then(|| settle_group(min + drag.delta, &members, &others))
+                            .flatten();
+                        let after = settled.map(|origin| {
+                            drag.origins
+                                .keys()
+                                .zip(members.iter())
+                                .map(|(id, (relative, _))| {
+                                    (id.clone(), origin + relative.to_vec2())
+                                })
+                                .collect::<BTreeMap<_, _>>()
+                        });
+                        for (id, origin) in &drag.origins {
+                            if let Some(position) = self.positions.get_mut(id) {
+                                *position = *origin;
+                            }
+                        }
+                        if let Some(after) = after.filter(|after| *after != drag.origins) {
+                            if action.is_none() {
+                                action = Some(RackAction::MoveModules(ModuleMove {
+                                    revision: drag.revision,
+                                    before: drag.origins,
+                                    after,
+                                }));
+                            }
+                        }
+                    }
+                }
+                header_response.context_menu(|ui| {
+                    ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
+                    ui.separator();
+                    monitor_menu(ui, node, &output_ports, patch, &mut action);
+                    utility_menu(ui, node, &mut action);
+                    if node.kind == "seq3" {
+                        for (direction, label) in [
+                            ("left", "Rotate pattern left"),
+                            ("right", "Rotate pattern right"),
+                        ] {
+                            if ui.button(label).clicked() {
+                                action = Some(RackAction::Command(
+                                    "rotate_sequence",
+                                    json!({"id":node.id,"direction":direction}),
+                                ));
+                                ui.close();
+                            }
+                        }
+                    }
+                    preset_menu(
+                        ui,
+                        node,
+                        &self.context_ids(&node.id),
+                        self.observed_revision,
+                        &mut action,
+                    );
+                    selection_menu(
+                        ui,
+                        &self.context_ids(&node.id),
+                        self.observed_revision,
+                        self.selection.contains(&node.id),
+                        patch,
+                        &mut action,
+                    );
+                });
+                let model = module
+                    .and_then(|module| module["model"].as_str())
+                    .unwrap_or("legacy");
+                let policy = module
+                    .and_then(|module| {
+                        module["polyphony"][if patch.version == 2 {
+                            "version_2"
+                        } else {
+                            "version_1"
+                        }]
+                        .as_str()
+                    })
+                    .unwrap_or("mono");
+                header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows."));
+            }
             if node.kind == "seq3" {
                 if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
                     action = Some(edit);
@@ -1256,22 +1671,22 @@ impl Rack {
                 self.mixing_panel(ui, node, rect);
             }
             if is_signal_utility(&node.kind) {
-                if let Some(edit) = self.signal_panel(ui, node, rect, released_manual.is_none()) {
+                if let Some(edit) = self.signal_panel(ui, node, rect, allow_manual_press) {
                     action = Some(edit);
                 }
             }
             if node.kind == "pulses" {
-                if let Some(edit) = self.pulses_panel(ui, node, rect, released_manual.is_none()) {
+                if let Some(edit) = self.pulses_panel(ui, node, rect, allow_manual_press) {
                     action = Some(edit);
                 }
             }
             if node.kind == "push" {
-                if let Some(edit) = self.push_panel(ui, node, rect, released_manual.is_none()) {
+                if let Some(edit) = self.push_panel(ui, node, rect, allow_manual_press) {
                     action = Some(edit);
                 }
             }
             if node.kind == "gates" {
-                if let Some(edit) = self.gates_panel(ui, node, rect, released_manual.is_none()) {
+                if let Some(edit) = self.gates_panel(ui, node, rect, allow_manual_press) {
                     action = Some(edit);
                 }
             }
@@ -1796,132 +2211,145 @@ impl Rack {
                 };
                 let knob_rect =
                     Rect::from_center_size(center, Vec2::splat((radius + 10.0) * 2.0 * self.zoom));
-                let knob = ui.interact(
-                    knob_rect,
-                    ui.id().with(("knob", &node.id, name)),
-                    Sense::click_and_drag(),
-                );
-                knob.widget_info(|| {
-                    egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, name))
-                });
-                if self
-                    .requested_parameter_menu
-                    .as_ref()
-                    .is_some_and(|(id, parameter)| id == &node.id && parameter == name)
-                {
-                    egui::Popup::open_id(ui.ctx(), knob.id.with("popup"));
-                    self.requested_parameter_menu = None;
-                }
-                let mut parameter_popup = egui::Popup::context_menu(&knob)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-                // A programmatic smoke opening has no saved pointer anchor.
-                // Real right-clicks retain their fixed pointer position.
-                if !knob.secondary_clicked()
-                    && egui::Popup::position_of_id(ui.ctx(), knob.id.with("popup")).is_none()
-                {
-                    parameter_popup = parameter_popup
-                        .anchor(egui::PopupAnchor::Position(knob.rect.right_bottom()));
-                }
-                parameter_popup.show(|ui| {
-                    let same_target = self.editing.as_ref().is_some_and(|edit| {
-                        edit.surface == ParameterEditSurface::KnobMenu
-                            && edit.id == node.id
-                            && edit.parameter == *name
+                let mut knob_highlighted = false;
+                if mode.is_interactive() {
+                    let knob = ui.interact(
+                        knob_rect,
+                        ui.id().with(("knob", &node.id, name)),
+                        Sense::click_and_drag(),
+                    );
+                    knob.widget_info(|| {
+                        egui::WidgetInfo::slider(
+                            true,
+                            value as f64,
+                            format!("{} {}", node.id, name),
+                        )
                     });
-                    if !same_target {
-                        self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                    if self
+                        .requested_parameter_menu
+                        .as_ref()
+                        .is_some_and(|(id, parameter)| id == &node.id && parameter == name)
+                    {
+                        egui::Popup::open_id(ui.ctx(), knob.id.with("popup"));
+                        self.requested_parameter_menu = None;
                     }
-                    self.editing.as_mut().unwrap().menu_popup = Some(knob.id.with("popup"));
-                    ui.set_min_width(244.0);
-                    ui.strong(parameter_label(name));
-                    ui.label(format!("Current: {display_value}"));
-                    let outcome = parameter_editor_contents(ui, self.editing.as_mut().unwrap());
-                    match outcome {
-                        ParameterEditOutcome::Keep => {}
-                        ParameterEditOutcome::Apply(raw) => {
-                            let edit = self.editing.take().unwrap();
-                            action = Some(parameter_edit_action(&edit, raw));
-                            ui.close();
-                        }
-                        ParameterEditOutcome::Cancel => {
-                            self.editing = None;
-                            ui.close();
-                        }
+                    let mut parameter_popup = egui::Popup::context_menu(&knob)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                    // A programmatic smoke opening has no saved pointer anchor.
+                    // Real right-clicks retain their fixed pointer position.
+                    if !knob.secondary_clicked()
+                        && egui::Popup::position_of_id(ui.ctx(), knob.id.with("popup")).is_none()
+                    {
+                        parameter_popup = parameter_popup
+                            .anchor(egui::PopupAnchor::Position(knob.rect.right_bottom()));
                     }
-                });
-                if knob.drag_started() {
-                    self.select_primary(node.id.clone());
-                    self.gesture = self.gesture.wrapping_add(1);
-                    ui.data_mut(|data| {
-                        data.insert_temp(knob.id, format!("rack-knob-{}", self.gesture))
+                    parameter_popup.show(|ui| {
+                        let same_target = self.editing.as_ref().is_some_and(|edit| {
+                            edit.surface == ParameterEditSurface::KnobMenu
+                                && edit.id == node.id
+                                && edit.parameter == *name
+                        });
+                        if !same_target {
+                            self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                        }
+                        self.editing.as_mut().unwrap().menu_popup = Some(knob.id.with("popup"));
+                        ui.set_min_width(244.0);
+                        ui.strong(parameter_label(name));
+                        ui.label(format!("Current: {display_value}"));
+                        let outcome = parameter_editor_contents(ui, self.editing.as_mut().unwrap());
+                        match outcome {
+                            ParameterEditOutcome::Keep => {}
+                            ParameterEditOutcome::Apply(raw) => {
+                                let edit = self.editing.take().unwrap();
+                                action = Some(parameter_edit_action(&edit, raw));
+                                ui.close();
+                            }
+                            ParameterEditOutcome::Cancel => {
+                                self.editing = None;
+                                ui.close();
+                            }
+                        }
                     });
-                    if step.is_some() {
-                        ui.data_mut(|data| data.insert_temp(knob.id, normalized));
+                    if knob.drag_started() {
+                        self.select_primary(node.id.clone());
+                        self.gesture = self.gesture.wrapping_add(1);
+                        ui.data_mut(|data| {
+                            data.insert_temp(knob.id, format!("rack-knob-{}", self.gesture))
+                        });
+                        if step.is_some() {
+                            ui.data_mut(|data| data.insert_temp(knob.id, normalized));
+                        }
                     }
-                }
-                let modifiers = ui.input(|i| i.modifiers);
-                let speed = if modifiers.command || modifiers.ctrl {
-                    if modifiers.shift {
-                        0.000_02
-                    } else {
-                        0.000_2
-                    }
-                } else if modifiers.shift {
-                    0.01
-                } else {
-                    0.003
-                };
-                let change = -knob.drag_motion().y * speed;
-                let drag_normalized = if step.is_some() && knob.dragged() {
-                    let prior = ui
-                        .data(|data| data.get_temp::<f32>(knob.id))
-                        .unwrap_or(normalized);
-                    let next = (prior + change).clamp(0.0, 1.0);
-                    ui.data_mut(|data| data.insert_temp(knob.id, next));
-                    next
-                } else {
-                    (normalized + change).clamp(0.0, 1.0)
-                };
-                let new_value = if knob.double_clicked() {
-                    Some(default)
-                } else if change != 0.0 {
-                    Some(quantize(
-                        if geometric {
-                            denormalize_geometric(drag_normalized, min, max)
+                    let modifiers = ui.input(|i| i.modifiers);
+                    let speed = if modifiers.command || modifiers.ctrl {
+                        if modifiers.shift {
+                            0.000_02
                         } else {
-                            denormalize(drag_normalized, min, max, logarithmic)
-                        },
-                        min,
-                        max,
-                        step,
-                    ))
-                } else {
-                    None
-                };
-                if knob.drag_stopped() {
-                    ui.data_mut(|data| {
-                        data.remove::<f32>(knob.id);
-                        data.remove::<String>(knob.id);
-                    });
-                }
-                if let Some(new_value) = new_value.filter(|new_value| *new_value != value) {
-                    let mut args = json!({"id":node.id,"parameter":name,"value":new_value});
-                    if knob.dragged() && !knob.double_clicked() {
-                        if let Some(group) = ui.data(|data| data.get_temp::<String>(knob.id)) {
-                            args["history_group"] = json!(group);
+                            0.000_2
                         }
+                    } else if modifiers.shift {
+                        0.01
+                    } else {
+                        0.003
+                    };
+                    let change = -knob.drag_motion().y * speed;
+                    let drag_normalized = if step.is_some() && knob.dragged() {
+                        let prior = ui
+                            .data(|data| data.get_temp::<f32>(knob.id))
+                            .unwrap_or(normalized);
+                        let next = (prior + change).clamp(0.0, 1.0);
+                        ui.data_mut(|data| data.insert_temp(knob.id, next));
+                        next
+                    } else {
+                        (normalized + change).clamp(0.0, 1.0)
+                    };
+                    let new_value = if knob.double_clicked() {
+                        Some(default)
+                    } else if change != 0.0 {
+                        Some(quantize(
+                            if geometric {
+                                denormalize_geometric(drag_normalized, min, max)
+                            } else {
+                                denormalize(drag_normalized, min, max, logarithmic)
+                            },
+                            min,
+                            max,
+                            step,
+                        ))
+                    } else {
+                        None
+                    };
+                    if knob.drag_stopped() {
+                        ui.data_mut(|data| {
+                            data.remove::<f32>(knob.id);
+                            data.remove::<String>(knob.id);
+                        });
                     }
-                    action = Some(RackAction::Command("set_parameter", args));
-                }
-                if knob.hovered() || knob.dragged() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                    if let Some(new_value) = new_value.filter(|new_value| *new_value != value) {
+                        let mut args = json!({"id":node.id,"parameter":name,"value":new_value});
+                        if knob.dragged() && !knob.double_clicked() {
+                            if let Some(group) = ui.data(|data| data.get_temp::<String>(knob.id)) {
+                                args["history_group"] = json!(group);
+                            }
+                        }
+                        action = Some(RackAction::Command("set_parameter", args));
+                    }
+                    knob_highlighted = knob.hovered() || knob.dragged();
+                    if knob_highlighted {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                    }
+                    knob.on_hover_text(format!(
+                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset; right-click to type a value.",
+                    name, display_value,
+                    if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
+                ));
                 }
                 paint_knob(
                     &painter,
                     center,
                     radius * self.zoom,
                     normalized,
-                    knob.hovered() || knob.dragged(),
+                    knob_highlighted,
                     self.zoom,
                 );
                 painter.text(
@@ -1942,7 +2370,7 @@ impl Rack {
                     } else {
                         parameter_label(name)
                     },
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 11.0 * self.zoom),
                     INK,
                 );
                 let value_offset = if node.kind == "vca_mix" {
@@ -1955,51 +2383,58 @@ impl Rack {
                     15.0
                 };
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                painter.text(
+                let readout_width = if node.kind == "vca_mix" {
+                    70.0
+                } else if node.kind == "seq3" {
+                    54.0
+                } else if node.kind == "gates" {
+                    110.0
+                } else if count >= 4 || node.kind == "mid_side" {
+                    width * 0.5 - 12.0
+                } else {
+                    width - 20.0
+                };
+                crate::panel_skin::readout(
+                    &painter,
                     value_center,
-                    Align2::CENTER_CENTER,
                     &display_value,
-                    FontId::monospace(11.0 * self.zoom),
-                    INK,
+                    readout_width * self.zoom,
+                    self.zoom,
                 );
-                let value_response = ui.interact(
-                    Rect::from_center_size(
-                        value_center,
-                        vec2(
-                            if node.kind == "vca_mix" {
-                                70.0
-                            } else if node.kind == "seq3" {
-                                54.0
-                            } else if node.kind == "gates" {
-                                110.0
-                            } else if count >= 4 || node.kind == "mid_side" {
-                                width * 0.5 - 12.0
-                            } else {
-                                width - 20.0
-                            },
-                            19.0,
-                        ) * self.zoom,
-                    ),
-                    ui.id().with(("value", &node.id, name)),
-                    Sense::click(),
-                );
-                value_response.widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::WidgetType::Button,
-                        true,
-                        format!("Edit {} {} value, {}", node.id, name, display_value),
-                    )
-                });
-                if value_response.double_clicked() {
-                    self.editing = Some(make_edit(ParameterEditSurface::Window));
+                if mode.is_interactive() {
+                    let value_response = ui.interact(
+                        Rect::from_center_size(
+                            value_center,
+                            vec2(
+                                if node.kind == "vca_mix" {
+                                    70.0
+                                } else if node.kind == "seq3" {
+                                    54.0
+                                } else if node.kind == "gates" {
+                                    110.0
+                                } else if count >= 4 || node.kind == "mid_side" {
+                                    width * 0.5 - 12.0
+                                } else {
+                                    width - 20.0
+                                },
+                                19.0,
+                            ) * self.zoom,
+                        ),
+                        ui.id().with(("value", &node.id, name)),
+                        Sense::click(),
+                    );
+                    value_response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            true,
+                            format!("Edit {} {} value, {}", node.id, name, display_value),
+                        )
+                    });
+                    if value_response.double_clicked() {
+                        self.editing = Some(make_edit(ParameterEditSurface::Window));
+                    }
+                    value_response.on_hover_text("Double-click to type a value");
                 }
-                knob.on_hover_text(format!(
-                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset; right-click to type a value.",
-                    name,
-                    display_value,
-                    if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
-                ));
-                value_response.on_hover_text("Double-click to type a value");
             }
             if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
                 paint_center_mark(
@@ -2017,6 +2452,18 @@ impl Rack {
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
                 let connected = !cables.is_empty();
+                if !mode.is_interactive() {
+                    paint_jack(
+                        &painter,
+                        location,
+                        port,
+                        false,
+                        false,
+                        self.zoom,
+                        is_voltage_utility(&node.kind),
+                    );
+                    continue;
+                }
                 let jack = jack(
                     ui,
                     &painter,
@@ -2085,6 +2532,19 @@ impl Rack {
                     .cables
                     .iter()
                     .any(|c| c.from == node.id && c.output == *port);
+                if !mode.is_interactive() {
+                    paint_jack(
+                        &painter,
+                        output_point,
+                        port,
+                        false,
+                        true,
+                        self.zoom,
+                        is_voltage_utility(&node.kind) || node.kind == "pulses",
+                    );
+                    self.paint_output_signal_light(&painter, node, port_index, output_point);
+                    continue;
+                }
                 let jack = jack(
                     ui,
                     &painter,
@@ -2108,25 +2568,7 @@ impl Rack {
                         &mut action,
                     );
                 }
-                let light_index = match node.kind.as_str() {
-                    "logic" => Some(port_index),
-                    "compare" if port_index >= 4 => Some(port_index - 4),
-                    "gates" => Some(port_index),
-                    _ => None,
-                };
-                if let Some(index) = light_index {
-                    let brightness = self
-                        .module_lights
-                        .get(&node.id)
-                        .filter(|s| index < usize::from(s.count))
-                        .map_or([0.0; 2], |s| s.brightness[index]);
-                    paint_signal_light(
-                        &painter,
-                        output_point + vec2(0.0, 17.0) * self.zoom,
-                        brightness,
-                        self.zoom,
-                    );
-                }
+                self.paint_output_signal_light(&painter, node, port_index, output_point);
                 if patch.output.as_ref() == Some(&node.id) && patch.output_port == *port {
                     paint_jack_light(
                         &painter,
@@ -2167,244 +2609,44 @@ impl Rack {
             }
         }
 
-        let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
-        let nearest = pointer.filter(|p| canvas.contains(*p)).and_then(|pointer| {
-            jack_targets
-                .iter()
-                .filter(|(_, point)| canvas.contains(*point))
-                .filter(|(_, point)| pointer.distance(*point) <= (19.0 * self.zoom).max(10.0))
-                .min_by(|(_, a), (_, b)| pointer.distance(*a).total_cmp(&pointer.distance(*b)))
-        });
-        let target_valid =
-            self.pending
-                .as_ref()
-                .zip(nearest)
-                .is_some_and(|(pending, (target, _))| {
-                    let stack = pending.stack_requested || ui.input(|i| i.modifiers.shift);
-                    (!stack || patch.version >= 2)
-                        && cable_plan(pending, target).is_some_and(|(cable, old)| {
-                            connection_allowed_mode(
-                                patch,
-                                &cable,
-                                old,
-                                catalog,
-                                stack
-                                    || (old.is_some() && matches!(target, CableEnd::Output { .. })),
-                            )
-                        })
-                });
-        if interactive
-            && self.dragging_cable
-            && ui.input(|i| i.pointer.button_released(PointerButton::Primary))
-        {
-            if let Some(pending) = self.pending.take() {
-                if let Some((target, _)) = nearest {
-                    action = cable_action_mode(
-                        patch,
-                        &pending,
-                        target,
-                        catalog,
-                        ui.input(|i| i.modifiers.shift),
-                    );
-                }
-            }
-            self.dragging_cable = false;
+        RenderedModules {
+            outputs,
+            inputs,
+            jack_targets,
+            pointer_on_module,
+            stack_badges,
+            input_groups,
+            cable_ordinals,
+            action,
         }
-        // Connected plugs remain visible until an atomic edit succeeds. The
-        // picked-up cable becomes a ghost so cancellation never loses a route.
-        for (cable_index, cable) in patch.cables.iter().enumerate() {
-            if let (Some(&from), Some(&to)) = (
-                outputs.get(&(cable.from.clone(), cable.output.clone())),
-                inputs.get(&(cable.to.clone(), cable.input.clone())),
-            ) {
-                let picked_up = self
-                    .pending
-                    .as_ref()
-                    .and_then(|pending| pending.original.as_ref())
-                    .is_some_and(|old| same_cable(old, cable));
-                let traced = nearest.is_some_and(|(end, _)| match end {
-                    CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
-                    CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
-                });
-                let color = cable_instance_color(cable).gamma_multiply(if picked_up {
-                    0.24
-                } else if nearest.is_some() && !traced && self.pending.is_none() {
-                    0.48
-                } else {
-                    1.0
-                });
-                paint_cable(
-                    &painter,
-                    from,
-                    to,
-                    color,
-                    self.zoom,
-                    true,
-                    configured_bus(patch, catalog, &cable.from),
-                    {
-                        let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
-                        let ordinal = cable_ordinals[cable_index];
-                        if count > 1 {
-                            (ordinal as f32 / (count - 1) as f32 - 0.5) * 40.0
-                        } else {
-                            0.0
-                        }
-                    },
-                );
-                if traced && !picked_up {
-                    paint_jack_light(&painter, to, self.zoom, cable_instance_color(cable));
-                }
-            }
-        }
-        for (center, count) in stack_badges {
-            painter.circle_filled(center, 8.0 * self.zoom, INK);
-            painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
-            painter.text(
-                center,
-                Align2::CENTER_CENTER,
-                count.to_string(),
-                FontId::monospace(8.0 * self.zoom),
-                PAPER,
-            );
-        }
-        if let Some(pending) = &self.pending {
-            if let Some(pointer) = pointer {
-                let original_source = pending.original.as_ref().and_then(|old| {
-                    outputs
-                        .get(&(old.from.clone(), old.output.clone()))
-                        .copied()
-                });
-                let origin = match &pending.origin {
-                    CableEnd::Output { node, port } => {
-                        outputs.get(&(node.clone(), port.clone())).copied()
-                    }
-                    CableEnd::Input { node, port } => {
-                        inputs.get(&(node.clone(), port.clone())).copied()
-                    }
-                };
-                let changing_source =
-                    nearest.is_some_and(|(end, _)| matches!(end, CableEnd::Output { .. }));
-                let picked_output =
-                    matches!(pending.origin, CableEnd::Output { .. }) && pending.original.is_some();
-                let anchor = if picked_output {
-                    pending
-                        .original
-                        .as_ref()
-                        .and_then(|old| inputs.get(&(old.to.clone(), old.input.clone())).copied())
-                } else if changing_source {
-                    origin
-                } else {
-                    original_source.or(origin)
-                };
-                let color = match &pending.origin {
-                    CableEnd::Output { node, port } => pending
-                        .original
-                        .as_ref()
-                        .map_or_else(|| cable_color(node, port), cable_instance_color),
-                    _ => pending
-                        .original
-                        .as_ref()
-                        .map_or(CABLES[2], cable_instance_color),
-                };
-                if let Some(anchor) = anchor {
-                    let endpoint = nearest.map_or(pointer, |(_, point)| *point);
-                    let bus = match &pending.origin {
-                        CableEnd::Output { node, .. } => configured_bus(patch, catalog, node),
-                        _ => pending
-                            .original
-                            .as_ref()
-                            .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
-                    };
-                    paint_cable(
-                        &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
-                    );
-                    paint_jack_light(&painter, anchor, self.zoom, color);
-                }
-                if let Some((_, target)) = nearest {
-                    let light = if target_valid {
-                        Color32::from_rgb(71, 195, 139)
-                    } else {
-                        Color32::from_rgb(229, 88, 75)
-                    };
-                    paint_jack_light(&painter, *target, self.zoom, light);
-                    ui.ctx().set_cursor_icon(if target_valid {
-                        egui::CursorIcon::PointingHand
-                    } else {
-                        egui::CursorIcon::NotAllowed
-                    });
-                }
-                let message = if (pending.stack_requested || ui.input(|i| i.modifiers.shift))
-                    && patch.version < 2
-                {
-                    "Stacking requires engine v2. Release Shift for ordinary replacement. Esc cancels."
-                } else if nearest.is_some() && !target_valid {
-                    "Cannot connect here. Original cable is kept. Esc cancels."
-                } else if picked_output {
-                    "Choose a new OUT for this cable. Original destination stays connected. Esc cancels."
-                } else if pending.original.is_some() {
-                    "Move this cable to IN or choose a new OUT. Shift-drop stacks; Esc cancels."
-                } else if matches!(pending.origin, CableEnd::Input { .. }) {
-                    "Choose an OUT to connect this input. Esc cancels."
-                } else {
-                    "Choose IN. Ordinary drop replaces its cables; Shift-drop stacks in v2. Esc cancels."
-                };
-                let galley = painter.layout_no_wrap(
-                    message.into(),
-                    FontId::proportional(11.0),
-                    Color32::from_gray(225),
-                );
-                let rect = Rect::from_min_size(
-                    canvas.left_bottom() + vec2(14.0, -38.0),
-                    galley.size() + vec2(20.0, 12.0),
-                );
-                painter.rect_filled(rect, 4.0, Color32::from_black_alpha(220));
-                painter.galley(rect.min + vec2(10.0, 6.0), galley, Color32::from_gray(225));
-            }
-        }
+    }
 
-        if !pointer_on_module {
-            if response.secondary_clicked() || response.double_clicked() {
-                if self.pending.take().is_none() {
-                    action = Some(RackAction::OpenBrowser);
-                }
-                self.dragging_cable = false;
-            }
-            if !popup_open_at_frame_start && response.clicked() {
-                self.selected = None;
-                self.selection.clear();
-                self.pending = None;
-                self.cable_press = None;
-            }
-        }
-        if patch.nodes.is_empty() {
-            painter.text(
-                canvas.center() - vec2(0.0, 12.0),
-                Align2::CENTER_CENTER,
-                "Your rack is ready",
-                FontId::proportional(24.0),
-                Color32::from_gray(171),
-            );
-            painter.text(
-                canvas.center() + vec2(0.0, 22.0),
-                Align2::CENTER_CENTER,
-                "Right-click or press Enter to add a module",
-                FontId::proportional(13.0),
-                Color32::from_gray(118),
+    fn paint_output_signal_light(
+        &self,
+        painter: &egui::Painter,
+        node: &Node,
+        port_index: usize,
+        output_point: Pos2,
+    ) {
+        let light_index = match node.kind.as_str() {
+            "logic" => Some(port_index),
+            "compare" if port_index >= 4 => Some(port_index - 4),
+            "gates" => Some(port_index),
+            _ => None,
+        };
+        if let Some(index) = light_index {
+            let brightness = self
+                .module_lights
+                .get(&node.id)
+                .filter(|s| index < usize::from(s.count))
+                .map_or([0.0; 2], |s| s.brightness[index]);
+            paint_signal_light(
+                painter,
+                output_point + vec2(0.0, 17.0) * self.zoom,
+                brightness,
+                self.zoom,
             );
         }
-        if self.pan != initial_pan {
-            self.layout_revision = self.layout_revision.wrapping_add(1);
-        }
-        if self.editing.as_ref().is_some_and(|edit| {
-            edit.surface == ParameterEditSurface::KnobMenu
-                && edit
-                    .menu_popup
-                    .is_none_or(|id| !egui::Popup::is_id_open(ui.ctx(), id))
-        }) {
-            self.editing = None;
-        }
-        self.parameter_editor(ui.ctx(), &mut action);
-        released_manual.or(if interactive { action } else { None })
     }
 
     fn mixing_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
@@ -3575,6 +3817,11 @@ impl Rack {
                 .id_salt((&node.id, parameter)),
             |ui| {
                 *ui.visuals_mut() = egui::Visuals::light();
+                if self.preview_only && !ui.is_enabled() {
+                    let visuals = ui.visuals_mut();
+                    visuals.disabled_alpha = 1.0;
+                    visuals.widgets.noninteractive = visuals.widgets.inactive;
+                }
                 ui.style_mut().override_font_id = Some(FontId::proportional(12.0 * self.zoom));
                 egui::ComboBox::from_id_salt("choice")
                     .width(rect.width())
@@ -3647,6 +3894,11 @@ impl Rack {
                 visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
                 visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
                 visuals.text_edit_bg_color = Some(Color32::from_rgb(246, 241, 227));
+                if self.preview_only && !ui.is_enabled() {
+                    let visuals = ui.visuals_mut();
+                    visuals.disabled_alpha = 1.0;
+                    visuals.widgets.noninteractive = visuals.widgets.inactive;
+                }
                 ui.add_sized(
                     rect.size(),
                     egui::DragValue::new(&mut value)
@@ -5692,56 +5944,7 @@ fn paint_panel(
     master: bool,
     zoom: f32,
 ) {
-    painter.rect_filled(
-        rect.translate(vec2(4.0, 5.0) * zoom),
-        1.5 * zoom,
-        Color32::from_black_alpha(100),
-    );
-    painter.rect_filled(rect, 1.5 * zoom, Color32::from_rgb(84, 81, 74));
-    let face = rect.shrink(1.5 * zoom);
-    // Six vertices provide continuous overhead lighting at every zoom, with
-    // no texture upload or resolution-dependent tessellation.
-    let mut lighting = egui::epaint::Mesh::default();
-    for (y, color) in [
-        (face.top(), Color32::from_rgb(237, 233, 221)),
-        (face.center().y, PAPER),
-        (face.bottom(), Color32::from_rgb(207, 203, 191)),
-    ] {
-        lighting.colored_vertex(pos2(face.left(), y), color);
-        lighting.colored_vertex(pos2(face.right(), y), color);
-    }
-    lighting.add_triangle(0, 1, 2);
-    lighting.add_triangle(1, 3, 2);
-    lighting.add_triangle(2, 3, 4);
-    lighting.add_triangle(3, 5, 4);
-    painter.add(egui::Shape::mesh(lighting));
-    // Sparse horizontal brushing remains legible at the minimum rack zoom.
-    for grain in 0..9 {
-        let y = face.top() + (32.0 + grain as f32 * 39.0) * zoom;
-        painter.line_segment(
-            [
-                pos2(face.left() + 3.0 * zoom, y),
-                pos2(face.right() - 3.0 * zoom, y),
-            ],
-            Stroke::new(0.6 * zoom, Color32::from_white_alpha(9)),
-        );
-    }
-    painter.line_segment(
-        [rect.left_top(), rect.left_bottom()],
-        Stroke::new(1.0_f32, Color32::from_rgb(246, 242, 228)),
-    );
-    painter.line_segment(
-        [rect.left_top(), rect.right_top()],
-        Stroke::new(1.0_f32, Color32::from_rgb(242, 238, 224)),
-    );
-    painter.line_segment(
-        [rect.right_top(), rect.right_bottom()],
-        Stroke::new(1.0_f32, Color32::from_rgb(94, 89, 79)),
-    );
-    painter.line_segment(
-        [rect.left_bottom(), rect.right_bottom()],
-        Stroke::new(1.0_f32, Color32::from_rgb(111, 105, 92)),
-    );
+    crate::panel_skin::metal(painter, rect, zoom);
     if node.bypassed {
         painter.rect_stroke(
             rect.shrink(3.0),
@@ -5801,7 +6004,10 @@ fn paint_panel(
         point(width * 0.5, 32.0),
         Align2::CENTER_CENTER,
         title(&node.kind),
-        FontId::proportional(if width < 140.0 { 17.0 } else { 20.0 } * zoom),
+        crate::panel_skin::print_font(
+            painter.ctx(),
+            if width < 140.0 { 18.0 } else { 21.0 } * zoom,
+        ),
         INK,
     );
     painter.text(
@@ -5847,77 +6053,7 @@ fn paint_knob(
     active: bool,
     zoom: f32,
 ) {
-    let angle = |value: f32| (-225.0 + value * 270.0).to_radians();
-    for step in 0..=10 {
-        let a = angle(step as f32 / 10.0);
-        let direction = vec2(a.cos(), a.sin());
-        painter.line_segment(
-            [
-                center + direction * (radius + 6.0 * zoom),
-                center + direction * (radius + 9.0 * zoom),
-            ],
-            Stroke::new(1.0 * zoom, MUTED),
-        );
-    }
-    painter.circle_filled(
-        center + vec2(1.5, 3.0) * zoom,
-        radius + 2.5 * zoom,
-        Color32::from_black_alpha(78),
-    );
-    painter.circle_filled(center, radius + 1.2 * zoom, Color32::from_rgb(67, 67, 63));
-    painter.circle_stroke(
-        center,
-        radius + 0.7 * zoom,
-        Stroke::new(
-            1.0 * zoom,
-            if active {
-                Color32::from_rgb(218, 162, 70)
-            } else {
-                Color32::from_rgb(174, 172, 162)
-            },
-        ),
-    );
-    painter.circle_filled(center, radius * 0.94, Color32::from_rgb(24, 25, 25));
-    for step in 0..16 {
-        let a = step as f32 * std::f32::consts::TAU / 16.0;
-        let direction = vec2(a.cos(), a.sin());
-        painter.line_segment(
-            [
-                center + direction * radius * 0.86,
-                center + direction * radius * 0.95,
-            ],
-            Stroke::new(0.8 * zoom, Color32::from_rgb(105, 105, 98)),
-        );
-    }
-    painter.circle_filled(
-        center - vec2(0.8, 1.0) * zoom,
-        radius * 0.79,
-        Color32::from_rgb(54, 56, 54),
-    );
-    painter.circle_filled(
-        center + vec2(0.7, 0.9) * zoom,
-        radius * 0.74,
-        Color32::from_rgb(29, 31, 31),
-    );
-    painter.circle_stroke(
-        center,
-        radius * 0.77,
-        Stroke::new(0.8 * zoom, Color32::from_rgb(14, 16, 17)),
-    );
-    let a = angle(normalized);
-    let direction = vec2(a.cos(), a.sin());
-    painter.line_segment(
-        [
-            center + direction * radius * 0.29,
-            center + direction * radius * 0.73,
-        ],
-        Stroke::new(2.5 * zoom, Color32::from_rgb(237, 235, 225)),
-    );
-    painter.circle_filled(
-        center - vec2(radius * 0.33, radius * 0.34),
-        radius * 0.08,
-        Color32::from_white_alpha(35),
-    );
+    crate::panel_skin::knob(painter, center, radius, normalized, active, zoom);
 }
 
 fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32, master: bool) {
@@ -6000,51 +6136,7 @@ fn jack(
             ),
         )
     });
-    let label_rect =
-        Rect::from_center_size(center - vec2(0.0, 19.0) * zoom, vec2(39.0, 13.0) * zoom);
-    if !compact {
-        if output {
-            painter.rect_filled(label_rect, 1.0, INK);
-        }
-        painter.text(
-            label_rect.center(),
-            Align2::CENTER_CENTER,
-            port_label(label).to_uppercase(),
-            FontId::proportional(9.0 * zoom),
-            if output { PAPER } else { INK },
-        );
-    }
-    painter.circle_filled(
-        center + vec2(0.8, 1.8) * zoom,
-        11.3 * zoom,
-        Color32::from_black_alpha(79),
-    );
-    painter.circle_filled(center, 10.2 * zoom, Color32::from_rgb(66, 65, 61));
-    painter.circle_filled(
-        center - vec2(0.4, 0.5) * zoom,
-        9.2 * zoom,
-        Color32::from_rgb(218, 215, 205),
-    );
-    painter.circle_filled(center, 7.9 * zoom, Color32::from_rgb(111, 108, 99));
-    painter.circle_stroke(
-        center,
-        9.4 * zoom,
-        Stroke::new(1.0 * zoom, Color32::from_rgb(247, 243, 229)),
-    );
-    painter.circle_filled(center, 6.5 * zoom, Color32::from_rgb(30, 31, 30));
-    painter.circle_stroke(
-        center,
-        6.5 * zoom,
-        Stroke::new(0.7 * zoom, Color32::from_rgb(68, 68, 63)),
-    );
-    painter.circle_filled(center, 3.7 * zoom, Color32::from_rgb(12, 14, 14));
-    if connected {
-        painter.circle_stroke(
-            center,
-            8.2 * zoom,
-            Stroke::new(0.7 * zoom, Color32::from_rgb(145, 126, 91)),
-        );
-    }
+    paint_jack(painter, center, label, connected, output, zoom, compact);
     if response.hovered() {
         painter.circle_stroke(
             center,
@@ -6058,6 +6150,26 @@ fn jack(
     } else {
         "Drag to OUT to connect. Drag a connected input to another input to move its cable. Right-click to unplug; Esc cancels."
     })
+}
+
+fn paint_jack(
+    painter: &egui::Painter,
+    center: Pos2,
+    label: &str,
+    connected: bool,
+    _output: bool,
+    zoom: f32,
+    compact: bool,
+) {
+    if !compact {
+        crate::panel_skin::port_label(
+            painter,
+            center - vec2(0.0, 19.0) * zoom,
+            &port_label(label).to_uppercase(),
+            zoom,
+        );
+    }
+    crate::panel_skin::socket(painter, center, connected, zoom);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6235,6 +6347,159 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    /// Compare the real rack body with its preview at identical geometry. This
+    /// covers every catalog kind, including specialized buttons, fields, note
+    /// keyboards, sequencer cells, lights, meters, labels, knobs and sockets.
+    #[test]
+    fn every_catalog_preview_matches_actual_default_module_drawing() {
+        fn primitives(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
+            fn visit(shape: &egui::Shape, result: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Vec(children) => {
+                        for child in children {
+                            visit(child, result);
+                        }
+                    }
+                    egui::Shape::Text(text) => result.push(format!(
+                        "text:{:?}:{:?}:{}:{:?}:{:?}:{:?}:{:?}:{}:{}",
+                        text.pos,
+                        text.galley.size(),
+                        text.galley.text(),
+                        text.galley.job.sections,
+                        text.fallback_color,
+                        text.override_text_color,
+                        text.underline,
+                        text.opacity_factor,
+                        text.angle
+                    )),
+                    egui::Shape::Circle(circle) => result.push(format!("circle:{circle:?}")),
+                    egui::Shape::Rect(rect) => result.push(format!("rect:{rect:?}")),
+                    egui::Shape::LineSegment { points, stroke } => {
+                        result.push(format!("line:{points:?}:{stroke:?}"))
+                    }
+                    egui::Shape::Mesh(mesh) => {
+                        result.push(format!("mesh:{:?}:{:?}", mesh.vertices, mesh.indices))
+                    }
+                    other => result.push(format!("shape:{other:?}")),
+                }
+            }
+            let mut result = Vec::new();
+            for shape in shapes {
+                visit(&shape.shape, &mut result);
+            }
+            result
+        }
+        let catalog = openpatch_core::catalog();
+        let modules = catalog["modules"].as_array().unwrap();
+        assert_eq!(
+            modules.len(),
+            45,
+            "update coverage when adding module kinds"
+        );
+        for module in modules {
+            let kind = module["kind"].as_str().unwrap();
+            let rect = Rect::from_min_size(pos2(12.0, 12.0), vec2(panel_width(kind), PANEL_HEIGHT));
+            let ctx = egui::Context::default();
+            crate::panel_skin::install_fonts(&ctx);
+            let mut preview = ModulePreview::new(module);
+            let input = || egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 500.0))),
+                focused: true,
+                ..Default::default()
+            };
+            // Warm the font atlas and first-frame widget layout.
+            let _ = ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    preview.show(ui, rect, &catalog);
+                });
+            });
+            let thumbnail = ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    preview.show(ui, rect, &catalog);
+                });
+            });
+            let actual = ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                    child.set_clip_rect(ui.clip_rect().intersect(rect));
+                    let rendered = preview.renderer.render_modules(
+                        &mut child,
+                        &preview.patch,
+                        &catalog,
+                        rect,
+                        48_000,
+                        0,
+                        RenderMode::Interactive {
+                            drag_interactive: false,
+                            allow_manual_press: false,
+                        },
+                    );
+                    assert!(rendered.action.is_none(), "{kind}");
+                });
+            });
+            let thumbnail = primitives(&thumbnail.shapes);
+            let actual = primitives(&actual.shapes);
+            let difference = thumbnail.iter().zip(&actual).position(|(a, b)| a != b);
+            assert!(
+                difference.is_none() && thumbnail.len() == actual.len(),
+                "{kind}: preview has {} primitives, actual {}; first difference {:?}",
+                thumbnail.len(),
+                actual.len(),
+                difference.map(|i| (i, &thumbnail[i], &actual[i]))
+            );
+        }
+    }
+
+    #[test]
+    fn preview_never_changes_defaults_focus_input_or_renderer_state() {
+        let catalog = openpatch_core::catalog();
+        for module in catalog["modules"].as_array().unwrap() {
+            let mut preview = ModulePreview::new(module);
+            let before = serde_json::to_value(&preview.patch).unwrap();
+            let ctx = egui::Context::default();
+            let focus = egui::Id::new("outside-preview-focus");
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 500.0))),
+                    focused: true,
+                    events: vec![egui::Event::Key {
+                        key: egui::Key::Enter,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let _ = ui.interact(
+                            Rect::from_min_size(pos2(900.0, 10.0), vec2(80.0, 30.0)),
+                            focus,
+                            Sense::click(),
+                        );
+                        ctx.memory_mut(|memory| memory.request_focus(focus));
+                        preview.show(
+                            ui,
+                            Rect::from_min_size(pos2(12.0, 12.0), vec2(780.0, PANEL_HEIGHT)),
+                            &catalog,
+                        );
+                        assert_eq!(ctx.memory(|memory| memory.focused()), Some(focus));
+                        assert!(ctx.input(|input| input.key_pressed(egui::Key::Enter)));
+                        assert!(!egui::Popup::is_any_open(ctx));
+                    });
+                },
+            );
+            assert!(!output.shapes.is_empty());
+            assert_eq!(serde_json::to_value(&preview.patch).unwrap(), before);
+            assert_eq!(preview.renderer.layout_revision, 0);
+            assert!(preview.renderer.selection.is_empty());
+            assert!(preview.renderer.held_manual.is_none());
+            assert!(preview.renderer.editing.is_none());
+            assert!(preview.renderer.pending.is_none());
+        }
     }
 
     #[test]

@@ -336,6 +336,7 @@ impl OpenPatch {
         mcp: bool,
         smoke_test: Option<PathBuf>,
     ) -> Self {
+        crate::panel_skin::install_fonts(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style()).clone();
         style.visuals = egui::Visuals::dark();
         style.visuals.panel_fill = CHROME;
