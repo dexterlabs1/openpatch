@@ -58,7 +58,8 @@ histories; repeated fresh replacements start new histories.
 
 ### Headless callback observation — Apple M1 Max
 
-A local release run on 2026-10-13 (Rust 1.99.0) produced the results below.
+A local release run of `058d3dd` on 2026-10-13 (Rust 1.99.0), before the
+paired-circuit optimization below, produced these results.
 Each buffer has **5.333 ms** of frame-time budget. Steady observations use 256
 callbacks per workload; checkpoint transitions use 16 observations and include
 state adoption plus both graphs during the crossfade.
@@ -84,6 +85,65 @@ and varied with background activity (the one-voice functional median difference
 was about 0.143 µs per callback). This run does **not** resolve a reliable precise
 instrumentation overhead. Checked output buffers matched exactly. It establishes
 neither faster-than-Rack performance nor glitch-free hardware playback.
+
+## Paired circuit voices
+
+The version-2 engine now processes independent ladder and OTA VCA voices in
+pairs. Each FIR coefficient is shared across two independent accumulation
+chains. Mono and odd final voices retain scalar processing. The equations,
+f64 precision, tap order, separate multiply/add operations, eight circuit steps,
+solver limits and 64-sample latency are unchanged. Each voice retains its own
+history, parameters and diagnostics; persistent state size is unchanged.
+
+On the M1 Max, the compiler generates paired **scalar** arithmetic, not SIMD.
+The paired interpolation path still spills some accumulators to the stack, so
+further improvement remains possible. New tests compare every sample and
+internal solver state against independent scalar instances and frozen reference
+code, including unequal histories/parameters, control-history draining, invalid
+inputs, state adoption and voice shrink/regrowth. Public Engine tests cover odd
+and even widths, CV normaling/broadcast/zero-padding, bypass and callback splits.
+Existing response, alias rejection, latency and callback allocation tests remain
+in place. These tests do not constitute commercial-hardware calibration.
+
+A local Apple M1 Max / Rust 1.99.0 release comparison used five randomized,
+interleaved pairs per workload at 48 kHz and 128-frame blocks. Each timed call
+renders one audio second after warmup; compilation/RPC are excluded.
+[Raw patches, timings, compiler details, binary and source hashes](benchmarks/paired-circuits-m1max.json).
+
+| Workload | Before µs/frame | After µs/frame | Processing time reduction |
+|---|---:|---:|---:|
+| Ladder, one voice | 1.603 | 1.596 | 0.4% |
+| Ladder, sixteen voices | 25.183 | 21.064 | 16.4% |
+| OTA VCA, one voice | 0.724 | 0.732 | -1.1% |
+| OTA VCA, sixteen voices | 10.898 | 6.736 | 38.2% |
+| Full circuit voice, one voice | 2.319 | 2.294 | 1.1% |
+| Full circuit voice, sixteen voices | 35.927 | 28.079 | 21.8% |
+
+With audio-rate CV, sixteen-voice reductions were **14.4% for the ladder** and
+**36.7% for the VCA**. Single-voice VCA median time increased by about 1.1%
+(0.8% with audio-rate CV); those paired timing ranges crossed no change. The
+single-voice full patch improved about 1.1%. These small changes should be read
+alongside the raw ranges, not as universal speed guarantees. The sixteen-voice
+full patch improved about **21.8%**, from approximately 0.580× to **0.742×
+realtime**: it still runs slower than realtime on this machine.
+
+All 50 paired benchmark checksums matched; all ten per-channel analyses matched
+exactly and reported zero solver failures over their 0.5-second windows. This is
+a comparison with the previous OpenPatch implementation, **not VCV Rack**.
+Background activity, thermal state and lack of core affinity limit the result.
+
+A separate headless callback profile of the final build recorded a sixteen-voice
+circuit steady median of **6.885 ms**, versus **9.117 ms** in a fresh baseline
+profile. Checkpoint medians were **13.718 ms** versus **18.286 ms**. Both builds
+exceeded the 5.333 ms budget on all 256 steady circuit buffers. One-voice circuit
+medians were 0.604 ms versus 0.575 ms; the functional and Gates workloads remained
+well below budget at their medians. These are single sequential profiles per
+build, so they do not isolate small regressions or establish a precise callback
+speedup. The randomized offline comparison above provides stronger evidence of
+the processing improvement.
+[Complete callback observations and binary provenance](benchmarks/paired-circuit-callbacks-m1max.json).
+Within each build, all checked instrumented/raw buffers matched exactly. This
+comparison does not measure audio-device behavior or scheduling lateness.
 
 ## Offline engine throughput
 
