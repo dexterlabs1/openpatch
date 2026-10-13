@@ -4106,7 +4106,7 @@ fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
                 "Power".into()
             }
         }
-        "gain" => format!("{value:.2}x"),
+        "gain" => format_value(value, "x"),
         "fm_amount" | "pwm_amount" => format!("{:+.0}%", value * 100.0),
         "encode_width" | "decode_width" => format!("{:.0}%", value * 100.0),
         "octaves" => format!("{value:+.0} oct"),
@@ -4157,7 +4157,13 @@ fn format_value(value: f32, unit: &str) -> String {
     } else if matches!(unit, "V" | "V RMS") {
         format!("{value:.2} {unit}")
     } else if unit == "x" {
-        format!("{value:.2}x")
+        if value == 0.0 || value.abs() >= 0.01 {
+            format!("{value:.2}x")
+        } else if value.abs() >= 0.001 {
+            format!("{value:.3}x")
+        } else {
+            format!("{value:.2e}x")
+        }
     } else {
         format!("{value:.3}")
     }
