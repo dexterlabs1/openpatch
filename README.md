@@ -1,119 +1,116 @@
-# OpenPatch
+<p align="center">
+  <img src="docs/images/openpatch-banner.svg" alt="OpenPatch — patch sound, shape motion" width="100%">
+</p>
 
-An open-source **native desktop modular synthesizer in Rust**, with live audio,
-GPU visualizers, and MCP control for Claude and Codex.
+<p align="center">
+  A native modular synthesizer in Rust.<br>
+  Build a voice, follow the voltage, and make it move.
+</p>
 
-**Early prototype, v0.2.** OpenPatch now has a native rack window: add modules,
-adjust parameters, connect cables, and hear the patch through your audio device.
-Aurora, Spectrum, and Scope visuals run inside the app with an editable GLSL shader.
-It aims to handle large modular patches efficiently; it has **not yet been
-benchmarked against VCV Rack**.
+<p align="center">
+  <a href="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml"><img src="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml/badge.svg" alt="Build and test"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8bb9a6" alt="MIT license"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/built_with-Rust-dea584" alt="Built with Rust"></a>
+</p>
 
-## Launch the desktop app
+<p align="center">
+  <a href="#get-started-on-macos">Get started</a> ·
+  <a href="#play-the-rack">Controls</a> ·
+  <a href="docs/MCP.md">Claude &amp; Codex</a> ·
+  <a href="#where-it-stands">Project status</a> ·
+  <a href="#go-deeper">Documentation</a>
+</p>
 
-Install stable Rust from [rustup.rs](https://rustup.rs). On macOS, install Xcode
-Command Line Tools; on Windows, install the MSVC C++ build tools. Linux needs
-ALSA, udev, XKB, Wayland, and OpenGL development packages:
+![OpenPatch native rack with a VCO, ladder filter, OTA VCA, ADSR, gate clock, and audio output](docs/images/openpatch-rack.png)
+<p align="center"><sub>Native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
 
-```sh
-# Debian / Ubuntu only
-sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev
-```
+- **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
+- **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
+- **Sound into motion.** Open the optional Aurora, Spectrum, or Scope dock. Edit GLSL shaders in the app while the last working shader keeps running.
+- **A rack agents can work with.** Claude and Codex can inspect, patch, tune, save, and render through a local MCP server using the same validated controls as the UI.
+
+## Get started on macOS
+
+For Apple Silicon, install stable [Rust](https://rustup.rs), Xcode Command Line Tools (`xcode-select --install`), and Python 3. Build a native application bundle:
 
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
-cargo run --release -p openpatch-desktop
-```
-
-The app opens a tremolo patch with playback paused. Press **Play** (or Space).
-Current design and feature development focuses on the **macOS ARM app** and a
-familiar modular rack workflow:
-
-- Drag a rotary knob vertically to change it; hold Command for fine adjustment.
-  Double-click to reset, or right-click to enter a value.
-- Drag from **OUT** to an input, or click the two jacks in sequence. Right-click
-  an input to unplug it.
-- Drag module headers to rearrange panels; they snap onto rack rails. Right-click
-  a module for removal and output options.
-- Press Enter or **+ Add module** for the searchable module browser.
-- Scroll or middle-drag to pan; pinch or Command-scroll to zoom. Command-0 resets
-  the view. **Visuals** opens the optional visualizer dock.
-
-Patch files live in `~/OpenPatch` by default. **File → Save as** (Command-S)
-writes a new JSON file; existing files are never overwritten. Panel positions
-and the view are saved in an adjacent `.json.layout.json` file. **File → Open**
-(Command-O) lists saved patches. Command-Z recovers the previous patch edit;
-undo currently records individual knob updates rather than whole drag gestures.
-Closing, opening another patch, or starting a new rack with unsaved edits prompts
-you to keep working or discard. There is no autosave yet.
-
-On macOS, create a double-clickable application bundle:
-
-```sh
-cargo build --release -p openpatch-desktop
+cargo build --locked --release -p openpatch-desktop
 python3 scripts/package_macos.py
-# The native application is now dist/OpenPatch.app
+open dist/OpenPatch.app
 ```
 
-The bundle is locally ad-hoc signed, not notarized. CI builds both desktop and
-CLI binaries for **Linux x86-64, Windows x86-64, and macOS ARM64**, plus a zipped
-Mac app. Apple Silicon audio initialization has been checked; automated native
-window and shader checks run with Mesa in CI. Interactive macOS graphics and
-audio playback still need verification. Other platforms remain compile/test
-targets pending device testing.
+The app opens a connected reference voice with playback paused. Press **Play** or **Space** to hear it. To run directly from source, use `cargo run --locked --release -p openpatch-desktop`.
 
-## Visualizers
+This is a **v0.2 development preview**, built from source. The local `.app` is ad-hoc signed; it is not notarized. CI also builds Linux and Windows targets; platform notes are below.
 
-The native **Visuals** dock has Aurora, Spectrum, and Scope modes driven by the
-live audio output. **Edit GLSL** opens the shader editor. Compile errors leave the
-last working shader running. The visualizer uses desktop OpenGL / GLSL 330 core,
-not a browser or webview. It requires a compatible GPU/driver.
+## Play the rack
 
-The older standalone HTML visualizer is still available as an optional export.
-See [visualizer details](docs/VISUALIZERS.md).
+| Action | Control |
+|---|---|
+| Play / pause | **Space** |
+| Add a module | **Enter**, **+ Add module**, or right-click empty rack space |
+| Patch / unplug | Drag **OUT** to an input, or click the two jacks; right-click an input to unplug |
+| Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
+| Type a value | Double-click the displayed value |
+| Arrange / remove | Drag a module header; right-click a module for options, or **Delete** the selection |
+| Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
+| Save / open / undo | **Cmd-S** / **Cmd-O** / **Cmd-Z** |
 
-## Agent control
+Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
-Launch the desktop executable as an MCP server to give Claude or Codex control
-of **the patch in that same window**:
+Patches live in `~/OpenPatch` by default. **Save as** creates a new JSON file and an adjacent layout sidecar for module positions and the view. Existing patch files are kept; choose a new name to save another version.
+
+<details>
+<summary><strong>See the visualizer dock</strong></summary>
+
+![OpenPatch native rack with the audio-reactive visualizer dock open](docs/images/openpatch-visuals.png)
+
+<sub>Linux / Mesa CI render. The dock uses native OpenGL; it requires a compatible GPU and driver.</sub>
+
+[Visualizer modes and shader interface →](docs/VISUALIZERS.md)
+
+</details>
+
+## Claude & Codex
+
+Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. The client launches OpenPatch with `--mcp` and controls the live patch in that window. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
+
+Each launch owns its own app session. The separate CLI supports headless MCP, offline rendering, and visualizer export.
+
+## Where it stands
+
+**Thirteen built-in kinds:** six reference-voice modules and seven legacy utilities. The browser labels circuit-derived, idealized, and legacy models. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+
+macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
+
+The current engine is mono, uses the default output device, and rejects feedback cycles. MIDI, polyphony, device selection, VCV patch/plugin compatibility, and broader module coverage remain ahead. See the [architecture and roadmap](docs/ARCHITECTURE.md) for the detailed boundaries.
+
+**Performance goal:** low CPU use and predictable audio deadlines on large patches. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [measurement methodology](docs/PERFORMANCE.md).
+
+## Go deeper
+
+| Guide | What it covers |
+|---|---|
+| [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
+| [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
+| [MCP integration](docs/MCP.md) | Client configuration, tools, revision checks, and file safety |
+| [Visualizers](docs/VISUALIZERS.md) | Native rendering, shader uniforms, and optional HTML export |
+| [Architecture](docs/ARCHITECTURE.md) | DSP, audio/control thread boundaries, persistence, and roadmap |
+| [Performance](docs/PERFORMANCE.md) | Benchmarks and fair comparisons |
+
+<details>
+<summary><strong>Linux, Windows, and contributor checks</strong></summary>
+
+Linux requires ALSA, udev, XKB, Wayland, and OpenGL development libraries. On Debian / Ubuntu:
 
 ```sh
-/path/to/openpatch-desktop --mcp --workspace /absolute/path/to/patches
+sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev
+cargo run --locked --release -p openpatch-desktop
 ```
 
-Use this command in your MCP client configuration; stdout is JSON-RPC only.
-Each launch creates its own window and session. It does not attach to an
-already-running app. Press Play locally to hear agent changes. The UI and MCP
-share validation and revision checks; the audio callback never takes their lock.
-Read [the Claude and Codex setup guide](docs/MCP.md) for configuration examples.
-
-The separate CLI continues to support offline/headless MCP and WAV rendering:
-
-```sh
-cargo run --release -p openpatch -- mcp --workspace /absolute/path/to/patches
-cargo run --release -p openpatch -- demo demo.wav
-cargo run --release -p openpatch -- render examples/tremolo.json tremolo.wav 5
-cargo run --release -p openpatch -- visualizer visualizer.html
-```
-
-## Engine and current limits
-
-- Seven built-in modules: sine oscillator, LFO, constant, VCA, two-input mixer,
-  one-pole low-pass, and output.
-- Deterministic acyclic mono graph, preallocated 128-frame DSP buffers.
-- Native audio at the device's sample rate; mono is duplicated across its channels.
-- Bounded graph exchange and reclamation outside the callback, a 5 ms graph
-  crossfade, and smoothed transport/master gain. Graph edits currently reset DSP
-  state; this is not yet a phase-preserving automation system.
-- Callback tests check zero allocations and deallocations during processing and
-  graph swaps. Spectrum analysis and GPU work happen on the UI thread.
-- Default audio device only; device selection, MIDI, polyphony, feedback/delays,
-  plugin loading, and VCV patch compatibility are future work.
-- Native MCP controls patches; transport, shaders, and master volume are local
-  controls for now. GPU driver behavior and audio latency need wider testing.
-
-## Development
+Windows requires stable Rust with the MSVC toolchain and C++ build tools. Run the same Cargo command; use `python` instead of `python3` for repository scripts.
 
 ```sh
 cargo fmt --all -- --check
@@ -121,16 +118,13 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 cargo build --locked --release --workspace
 python3 -m unittest discover -s scripts -v
-cargo bench -p openpatch-core
+cargo bench --locked -p openpatch-core
 ```
 
-On Windows use `python` instead of `python3`.
-[Architecture](docs/ARCHITECTURE.md) describes thread boundaries and the roadmap.
-[Performance methodology](docs/PERFORMANCE.md) explains the benchmark limits.
+See the [CI workflow](.github/workflows/ci.yml) for the platform build matrix and native smoke tests.
 
-## License and independence
+</details>
 
-MIT. This is original code, not a translated or copied VCV Rack codebase.
-OpenPatch is independent and is not affiliated with or endorsed by VCV.
-It does not load VCV Rack plugins or patches, and uses no VCV branding or panel
-artwork. Third-party dependencies retain their respective licenses.
+---
+
+[MIT licensed](LICENSE). Original Rust code and artwork. OpenPatch is independent of VCV and is not affiliated with or endorsed by VCV. Dependency licenses remain with their respective authors.
