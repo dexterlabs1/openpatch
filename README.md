@@ -79,6 +79,25 @@ Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpa
 </details>
 
 <details>
+<summary><strong>Inspect voltage, timing, and phase</strong></summary>
+
+![Native signal scope showing two 100 Hz waveforms with calibrated scales and measurements](docs/images/openpatch-signal-scope.png)
+
+Right-click an output jack and choose **Inspect in scope X/Y**. Select a voice,
+set the trigger and timebase, or freeze a capture to examine it. The scope reads
+raw module outputs before master level. Claude and Codex can request calibrated
+waveform bins with `capture_signal`, rendered offline from a patch snapshot.
+
+![Paired sine and triangle signals in the native X/Y scope](docs/images/openpatch-signal-scope-xy.png)
+
+<sub>Native Linux / Mesa CI renders using an offline engine calibration fixture;
+these images do not demonstrate live audio-device qualification.</sub>
+
+[Scope controls, sampling contract, and remaining parity →](docs/SCOPE.md)
+
+</details>
+
+<details>
 <summary><strong>Make a voice move with a clocked LFO</strong></summary>
 
 ![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)

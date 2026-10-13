@@ -94,6 +94,31 @@ The next gates are:
    and MIDI allocation. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
+## Next instrument milestone: three-row sequencer
+
+After project recovery and calibrated signal inspection, implement the complete
+8-step, 3-row sequencing workflow. The [SEQ 3 manual](https://vcvrack.com/Free#vcv-seq-3)
+and [official v2 implementation](https://github.com/VCVRack/Fundamental/blob/v2/src/SEQ3.cpp)
+are reference contracts; implementation remains original Rust. This is planned,
+not present in the module catalog yet.
+
+- Specify all five inputs and sixteen outputs, 24 voltage cells, eight trigger
+  flags, tempo/length CV, run/reset/clock behavior, passthrough, and atomic pattern
+  rotation before adding the panel. Provide a real 3×8 voltage editor and
+  DSP-derived step/run indicators.
+- Add bounded, ordered runtime module events for Clock/Run/Reset buttons, with
+  matching offline sample-frame events for MCP capture/render. Momentary
+  parameter edits are insufficient: the graph exchange deliberately coalesces
+  pending graph updates and could lose button presses.
+- Test simultaneous and one-sample-skewed reset/clock paths, one-step patterns,
+  dynamic length changes, stopped clocks, rewiring, exact pulse lengths,
+  compatible state adoption, chained sequencers, and callback allocation bounds.
+- Pin a VCV release and resolve reference discrepancies with differential traces.
+  The manual describes RESET on wrap; current source generates it from reset
+  controls. Source pulse-mode CLK/TRIG behavior also depends on a changed step
+  index, which matters for length one. Do not call a preferred musical policy
+  equivalent without recording these differences and validating the target.
+
 ## MCP and visuals beyond the baseline
 
 These are OpenPatch differentiators and do not substitute for missing host or module functionality.
