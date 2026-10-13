@@ -80,7 +80,11 @@ The next gates are:
 1. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported
    hardware. Preserve the reference timing when introducing SIMD or scheduling
-   optimizations.
+   optimizations. The first circuit optimization retains exact checked results
+   and reduces the paired M1 Max reference-workload processing time by about
+   33%; the sixteen-voice workload remains slower than realtime. Live callback
+   tails, crossfade cost and broader hardware results remain open. See
+   [PERFORMANCE.md](PERFORMANCE.md).
 2. **Broaden live state/event tests.** Exercise graph edits during envelope
    release, circuit transients and feedback; add direct/indirect clock-reset
    fixtures with sequencing modules. Keep crossfades a host policy rather than

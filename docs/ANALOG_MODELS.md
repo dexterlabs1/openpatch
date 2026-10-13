@@ -114,6 +114,19 @@ with the analytic transfer function and nonlinear behavior with an independently
 integrated finer-step RK4 reference. Those comparisons validate the specified
 equations and numerics; they do not establish physical-hardware accuracy.
 
+The optimized implementation keeps the same circuit equations, `tanh`, FIR
+coefficients, oversampling rate, Newton limits, convergence tolerance and failure
+policy. Mirrored histories remove circular addressing inside FIR loops, and
+independent interpolation phases are accumulated together while retaining the
+addition order of each sample. The ladder reuses already evaluated currents at
+accepted solver states. A frozen scalar implementation from `98edb73` checks
+exact output/callback bits, solver state and diagnostics, including failed-step
+recovery. Bit equality is checked within each build/platform; it does not imply
+that different platforms' math libraries produce identical bits. These checks
+complement the independent physical-response tests above. See
+[performance measurements](PERFORMANCE.md) for results and the memory tradeoff.
+
 Next validation targets are wider spectral alias/IMD sweeps, measured component
-tolerances and supply effects, hardware captures, named outputs, and parallel-path
-latency policy. [Module coverage](MODULE_COVERAGE.md) tracks the larger VCV scope.
+tolerances and supply effects, hardware captures, additional VCO waveform outputs,
+and parallel-path latency policy. [Module coverage](MODULE_COVERAGE.md) tracks the
+larger VCV scope.

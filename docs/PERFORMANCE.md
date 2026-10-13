@@ -48,6 +48,67 @@ any future VCV comparison. The version-1 and version-2 graphs also intentionally
 have different cable timing, so these figures are diagnostic overhead/scaling
 observations, not an identical-signal comparison or claimed speedup.
 
+## Circuit implementation comparison
+
+The `a9144a0` optimization preserves the circuit equations, coefficients,
+8× oversampling, 64-sample latency per circuit module, and solver tolerances.
+It removes repeated kernel copies, uses mirrored histories and independent
+interpolation phase lanes, and reuses already evaluated Newton currents. Four
+frozen-reference tests compare exact floating-point outputs, callback order,
+solver state and diagnostics against the previous scalar implementation;
+independent circuit-response and allocation tests remain in the suite.
+
+On an Apple M1 Max, five randomized/interleaved pairs per workload at 48 kHz
+and 128-frame blocks produced these **median offline processing times**. Each
+call renders two audio seconds after warmup; compilation and RPC are excluded.
+Both binaries were built with Rust 1.99.0 in release mode. See the
+[full report](benchmarks/circuit-optimization-m1max.md) and
+[patches, binary hashes and raw results](benchmarks/circuit-optimization-m1max.json).
+
+| Workload | Before µs/frame | After µs/frame | Processing time reduction |
+|---|---:|---:|---:|
+| Ladder, one voice | 2.267 | 1.582 | 30.2% |
+| Ladder, sixteen voices | 35.831 | 24.871 | 30.6% |
+| OTA VCA, one voice | 1.083 | 0.701 | 35.2% |
+| OTA VCA, sixteen voices | 16.919 | 10.833 | 36.0% |
+| Full reference voice, one voice | 3.339 | 2.260 | 32.3% |
+| Full reference voice, sixteen voices | 53.354 | 35.775 | 33.0% |
+
+Audio-rate-CV cases reduced processing time by 29.1–29.7% for the ladder and
+34.6–35.4% for the VCA. All 50 paired benchmark checksums matched; all ten
+per-channel analyses matched exactly and observed zero solver failures during
+their 0.5-second windows. These checks are evidence for the stated workloads,
+not an exhaustive proof for every patch.
+
+The full reference workloads achieved **9.22× realtime for one voice** and
+**0.582× for sixteen**. The sixteen-voice case therefore remains slower than
+realtime. These are approximately 1.48–1.49× throughput improvements over the
+previous OpenPatch implementation, not over VCV Rack. Background system activity,
+thermal state and lack of core affinity limit this single-machine comparison.
+
+Mirrored storage adds **5,144 bytes per oversampler**. A compiled version-2 graph
+with one ladder and one VCA preallocates 16 voices plus a template for each, so
+its histories grow by **174,896 bytes (about 171 KiB)** even with one active voice.
+Live state transfer copies these larger histories. Process RSS and callback-tail
+cost during a live crossfade have not been measured.
+
+Reproduce a paired comparison using two separately built release CLI binaries:
+
+```sh
+python3 scripts/compare_engines.py \
+  --baseline /path/to/baseline/openpatch \
+  --candidate target/release/openpatch \
+  --baseline-source 98edb73 --candidate-source a9144a0 \
+  --runs 5 --seconds 2 --output comparison.json
+```
+
+The standard-library script includes all ten patches, binary hashes and every
+raw timing. It shuffles workload order and interleaves baseline/candidate calls,
+checks benchmark checksums and per-channel analysis, and exits unsuccessfully
+if the checked signals differ. It does not build either binary or infer source
+identity: provide source IDs that match the binaries you built. These offline
+measurements do not establish live device deadlines or a VCV Rack speedup.
+
 ## Fair comparison protocol
 
 - Same machine, audio rate, channel/voice count, oscillator/filter algorithms,
@@ -62,5 +123,5 @@ observations, not an identical-signal comparison or claimed speedup.
   Rack oscillator and label the difference an engine speedup.
 
 CI timing is diagnostic: shared runners are noisy. No hard speed threshold or
-speedup claim should be based on one CI run. SIMD, multicore scheduling and
-feedback optimization remain future work.
+speedup claim should be based on one CI run. Broader SIMD work, multicore
+scheduling and feedback optimization remain future work.

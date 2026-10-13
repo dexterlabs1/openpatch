@@ -123,7 +123,7 @@ macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux
 
 New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. Hardware output and WAV export currently use the first channel; **SUM** mixes polyphonic voices to mono. MIDI, device selection, multichannel hardware audio, VCV patch/plugin compatibility, and broader module coverage remain ahead.
 
-**Performance goal:** low CPU use and predictable audio deadlines on large patches. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [measurement methodology](docs/PERFORMANCE.md).
+**Performance goal:** low CPU use and predictable audio deadlines on large patches. The latest paired M1 Max reference-voice benchmark takes about **33% less processing time** than the previous OpenPatch build, with matching checked signals. Sixteen full circuit voices still exceed realtime capacity. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [results and methodology](docs/PERFORMANCE.md).
 
 ## Go deeper
 
