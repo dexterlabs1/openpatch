@@ -1,5 +1,5 @@
-//! Public-engine regressions for paired circuit voices. Each expected lane is
-//! rendered by its own one-channel Engine, not by a copy of the paired code.
+//! Public-engine regressions for grouped circuit voices. Each expected lane is
+//! rendered by its own one-channel Engine, not by a copy of the grouped code.
 use openpatch_core::{Cable, Engine, Node, Patch, PortFrame};
 use std::collections::BTreeMap;
 
@@ -227,9 +227,9 @@ fn cv_values(kind: &str, count: usize) -> Vec<f32> {
 }
 
 #[test]
-fn paired_ladder_and_vca_match_independent_voices_at_odd_even_and_limit_widths() {
+fn grouped_ladder_and_vca_match_independent_voices_at_odd_even_and_limit_widths() {
     for kind in ["ladder_vcf", "analog_vca"] {
-        for width in [1, 2, 3, 15, 16] {
+        for width in [1, 2, 3, 4, 5, 7, 8, 15, 16] {
             let signal = signal_values(width);
             let cv = cv_values(kind, width);
             let patch = fixture(kind, &signal, Some(&cv), false, false);
@@ -295,8 +295,8 @@ fn primary_signal_width_and_cv_broadcast_or_zero_padding_match_mono_engines() {
 #[test]
 fn parameter_edit_adoption_and_callback_partition_preserve_each_circuit_lane() {
     for kind in ["ladder_vcf", "analog_vca"] {
-        let signal = signal_values(3);
-        let cv = cv_values(kind, 2);
+        let signal = signal_values(7);
+        let cv = cv_values(kind, 4);
         let old_patch = fixture(kind, &signal, Some(&cv), false, false);
         let changed_patch = fixture(kind, &signal, Some(&cv), false, true);
         let mut old = old_patch.compile().unwrap();
@@ -333,8 +333,8 @@ fn parameter_edit_adoption_and_callback_partition_preserve_each_circuit_lane() {
 #[test]
 fn shrink_retires_inactive_circuits_and_regrowth_starts_them_fresh() {
     for kind in ["ladder_vcf", "analog_vca"] {
-        let signal = signal_values(3);
-        let cv = cv_values(kind, 3);
+        let signal = signal_values(5);
+        let cv = cv_values(kind, 5);
         let wide_patch = fixture(kind, &signal, Some(&cv), false, false);
         let narrow_patch = fixture(kind, &signal[..1], Some(&cv[..1]), false, false);
         let mut wide = wide_patch.compile().unwrap();
@@ -342,7 +342,7 @@ fn shrink_retires_inactive_circuits_and_regrowth_starts_them_fresh() {
         let mut narrow = narrow_patch.compile().unwrap();
         narrow.adopt_state_from(&wide);
         let narrowed = render(&mut narrow, 83);
-        assert_eq!(narrowed[0].channels, 3, "{kind} delayed prior width");
+        assert_eq!(narrowed[0].channels, 5, "{kind} delayed prior width");
         assert!(narrowed[2..].iter().all(|frame| frame.channels == 1));
 
         let mut old_mono = lane_fixture(kind, signal[0], Some(&cv), 0, false, false)
@@ -362,8 +362,8 @@ fn shrink_retires_inactive_circuits_and_regrowth_starts_them_fresh() {
         regrown.adopt_state_from(&narrow);
         let actual = render(&mut regrown, 103);
         assert_eq!(actual[0].channels, 1, "{kind} delayed narrow width");
-        assert!(actual[2..].iter().all(|frame| frame.channels == 3));
-        let expected = (0..3)
+        assert!(actual[2..].iter().all(|frame| frame.channels == 5));
+        let expected = (0..5)
             .map(|lane| {
                 if lane == 0 {
                     let mut continuing = lane_fixture(kind, signal[0], Some(&cv), 0, false, false)
@@ -401,10 +401,83 @@ fn shrink_retires_inactive_circuits_and_regrowth_starts_them_fresh() {
 }
 
 #[test]
+fn quartet_to_pair_and_tail_and_back_keeps_survivors_and_restarts_reactivated_lane() {
+    for kind in ["ladder_vcf", "analog_vca"] {
+        let signal = signal_values(4);
+        let cv = cv_values(kind, 4);
+        let wide_patch = fixture(kind, &signal, Some(&cv), false, false);
+        let narrow_patch = fixture(kind, &signal[..3], Some(&cv[..3]), false, false);
+        let mut wide = wide_patch.compile().unwrap();
+        render(&mut wide, 117);
+
+        let old_mono = (0..4)
+            .map(|lane| advance_independent_lane(kind, signal[lane], Some(&cv), lane, 117))
+            .collect::<Vec<_>>();
+        let mut narrow = narrow_patch.compile().unwrap();
+        narrow.adopt_state_from(&wide);
+        let narrowed = render(&mut narrow, 83);
+        assert_eq!(narrowed[0].channels, 4, "{kind} delayed prior width");
+        assert!(narrowed[2..].iter().all(|frame| frame.channels == 3));
+
+        let mut narrow_mono = (0..3)
+            .map(|lane| {
+                let mut next = lane_fixture(kind, signal[lane], Some(&cv[..3]), lane, false, false)
+                    .compile()
+                    .unwrap();
+                next.adopt_state_from(&old_mono[lane]);
+                next
+            })
+            .collect::<Vec<_>>();
+        let expected_narrow = narrow_mono
+            .iter_mut()
+            .map(|engine| render(engine, 83))
+            .collect::<Vec<_>>();
+        for (frame_index, frame) in narrowed.iter().enumerate() {
+            for (lane, expected) in expected_narrow.iter().enumerate() {
+                assert_eq!(
+                    frame.values[lane], expected[frame_index].values[0],
+                    "{kind} narrowed frame {frame_index} lane {lane}"
+                );
+            }
+        }
+
+        let mut regrown = wide_patch.compile().unwrap();
+        regrown.adopt_state_from(&narrow);
+        let actual = render(&mut regrown, 103);
+        assert_eq!(actual[0].channels, 3, "{kind} delayed narrow width");
+        assert!(actual[2..].iter().all(|frame| frame.channels == 4));
+        let continuing = (0..3)
+            .map(|lane| {
+                let mut next = lane_fixture(kind, signal[lane], Some(&cv), lane, false, false)
+                    .compile()
+                    .unwrap();
+                next.adopt_state_from(&narrow_mono[lane]);
+                render(&mut next, actual.len())
+            })
+            .collect::<Vec<_>>();
+        let restarted = render_independent_lane(kind, signal[3], Some(&cv), 3, false, actual.len());
+        for (frame_index, frame) in actual.iter().enumerate() {
+            for (lane, expected) in continuing.iter().enumerate() {
+                assert_eq!(
+                    frame.values[lane], expected[frame_index].values[0],
+                    "{kind} continuing frame {frame_index} lane {lane}"
+                );
+            }
+            if frame_index >= 1 {
+                assert_eq!(
+                    frame.values[3], restarted[frame_index].values[0],
+                    "{kind} restarted frame {frame_index} lane 3"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn bypass_then_resume_matches_independent_voices_without_advancing_circuit_state() {
     for kind in ["ladder_vcf", "analog_vca"] {
-        let signal = signal_values(3);
-        let cv = cv_values(kind, 3);
+        let signal = signal_values(5);
+        let cv = cv_values(kind, 5);
         let active_patch = fixture(kind, &signal, Some(&cv), false, false);
         let bypass_patch = fixture(kind, &signal, Some(&cv), true, false);
         let mut active = active_patch.compile().unwrap();

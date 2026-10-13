@@ -224,6 +224,107 @@ impl Oversampler {
         }
         result
     }
+    /// Reconstruct one independent pair without retaining four voices' FIR
+    /// accumulators at once. Used by process_four; the original pair path stays
+    /// unchanged for two voices and quartet remainders.
+    #[inline]
+    fn interpolate_pair(
+        first: &Self,
+        second: &Self,
+    ) -> ([[f64; 2]; OVERSAMPLING], [[f64; 2]; OVERSAMPLING]) {
+        let signals = [
+            &first.input[first.input_head + 1..first.input_head + 1 + INPUT_TAPS],
+            &second.input[second.input_head + 1..second.input_head + 1 + INPUT_TAPS],
+        ];
+        let controls = [
+            &first.control[first.input_head + 1..first.input_head + 1 + INPUT_TAPS],
+            &second.control[second.input_head + 1..second.input_head + 1 + INPUT_TAPS],
+        ];
+        match (first.control_nonzero > 0, second.control_nonzero > 0) {
+            (false, false) => interpolate_two::<false, false>(signals, controls),
+            (true, false) => interpolate_two::<true, false>(signals, controls),
+            (false, true) => interpolate_two::<false, true>(signals, controls),
+            (true, true) => interpolate_two::<true, true>(signals, controls),
+        }
+    }
+    /// Four independent voice histories share one coefficient traversal during
+    /// decimation. Each voice retains its original tap order and eight scalar
+    /// circuit evaluations; all phase-zero sums finish before phase-one writes.
+    #[inline]
+    pub(crate) fn process_four(
+        first: &mut Self,
+        second: &mut Self,
+        third: &mut Self,
+        fourth: &mut Self,
+        inputs: [f64; 4],
+        controls: [f64; 4],
+        mut circuits: impl FnMut([f64; 4], [f64; 4]) -> [f64; 4],
+    ) -> [f64; 4] {
+        for (lane, voice) in [&mut *first, &mut *second, &mut *third, &mut *fourth]
+            .into_iter()
+            .enumerate()
+        {
+            voice.input_head = (voice.input_head + 1) % INPUT_TAPS;
+            voice.input[voice.input_head] = inputs[lane];
+            voice.input[voice.input_head + INPUT_TAPS] = inputs[lane];
+            voice.control_nonzero -= usize::from(voice.control[voice.input_head] != 0.0);
+            voice.control[voice.input_head] = controls[lane];
+            voice.control[voice.input_head + INPUT_TAPS] = controls[lane];
+            voice.control_nonzero += usize::from(controls[lane] != 0.0);
+        }
+        let (signal01, control01) = Self::interpolate_pair(first, second);
+        let (signal23, control23) = Self::interpolate_pair(third, fourth);
+        let mut result = [0.0; 4];
+        for phase in 0..OVERSAMPLING {
+            for voice in [&mut *first, &mut *second, &mut *third, &mut *fourth] {
+                voice.output_head = (voice.output_head + 1) % TAPS;
+            }
+            let output = circuits(
+                [
+                    signal01[phase][0],
+                    signal01[phase][1],
+                    signal23[phase][0],
+                    signal23[phase][1],
+                ]
+                .map(|value| value * OVERSAMPLING as f64),
+                [
+                    control01[phase][0],
+                    control01[phase][1],
+                    control23[phase][0],
+                    control23[phase][1],
+                ]
+                .map(|value| value * OVERSAMPLING as f64),
+            );
+            for (lane, voice) in [&mut *first, &mut *second, &mut *third, &mut *fourth]
+                .into_iter()
+                .enumerate()
+            {
+                voice.output[voice.output_head] = output[lane];
+                voice.output[voice.output_head + TAPS] = output[lane];
+            }
+            if phase == 0 {
+                let history0 = &first.output[first.output_head + 1..first.output_head + 1 + TAPS];
+                let history1 =
+                    &second.output[second.output_head + 1..second.output_head + 1 + TAPS];
+                let history2 = &third.output[third.output_head + 1..third.output_head + 1 + TAPS];
+                let history3 =
+                    &fourth.output[fourth.output_head + 1..fourth.output_head + 1 + TAPS];
+                for ((((coefficient, sample0), sample1), sample2), sample3) in KERNEL
+                    .iter()
+                    .zip(history0.iter().rev())
+                    .zip(history1.iter().rev())
+                    .zip(history2.iter().rev())
+                    .zip(history3.iter().rev())
+                {
+                    result[0] += coefficient * sample0;
+                    result[1] += coefficient * sample1;
+                    result[2] += coefficient * sample2;
+                    result[3] += coefficient * sample3;
+                }
+            }
+        }
+        result
+    }
     #[cfg(test)]
     #[inline]
     pub(crate) fn process(&mut self, input: f64, mut circuit: impl FnMut(f64) -> f64) -> f64 {
@@ -565,6 +666,105 @@ impl Ladder {
                         feedback1,
                     ),
                 ]
+            },
+        )
+        .map(|sample| sample as f32)
+    }
+    /// Four independent scalar circuits share FIR traversal. No solver state
+    /// or constructor parameter is combined between voices.
+    pub(crate) fn process_four(
+        first: &mut Self,
+        second: &mut Self,
+        third: &mut Self,
+        fourth: &mut Self,
+        inputs: [f32; 4],
+        cvs: [f32; 4],
+    ) -> [f32; 4] {
+        let mut inputs = inputs.map(f64::from);
+        let mut cvs = cvs.map(f64::from);
+        for (lane, voice) in [&mut *first, &mut *second, &mut *third, &mut *fourth]
+            .into_iter()
+            .enumerate()
+        {
+            if !inputs[lane].is_finite() {
+                voice.integrator.diagnostics.invalid_inputs = voice
+                    .integrator
+                    .diagnostics
+                    .invalid_inputs
+                    .saturating_add(1);
+                inputs[lane] = 0.0;
+            }
+            if !cvs[lane].is_finite() {
+                voice.integrator.diagnostics.invalid_inputs = voice
+                    .integrator
+                    .diagnostics
+                    .invalid_inputs
+                    .saturating_add(1);
+                cvs[lane] = 0.0;
+            }
+        }
+        let parameters = [
+            (
+                first.cutoff,
+                first.sample_rate,
+                first.fixed_g,
+                first.input_scale,
+                first.feedback,
+            ),
+            (
+                second.cutoff,
+                second.sample_rate,
+                second.fixed_g,
+                second.input_scale,
+                second.feedback,
+            ),
+            (
+                third.cutoff,
+                third.sample_rate,
+                third.fixed_g,
+                third.input_scale,
+                third.feedback,
+            ),
+            (
+                fourth.cutoff,
+                fourth.sample_rate,
+                fourth.fixed_g,
+                fourth.input_scale,
+                fourth.feedback,
+            ),
+        ];
+        let mut integrators = [
+            &mut first.integrator,
+            &mut second.integrator,
+            &mut third.integrator,
+            &mut fourth.integrator,
+        ];
+        let mut last_cvs = [
+            &mut first.last_cv,
+            &mut second.last_cv,
+            &mut third.last_cv,
+            &mut fourth.last_cv,
+        ];
+        Oversampler::process_four(
+            &mut first.oversampler,
+            &mut second.oversampler,
+            &mut third.oversampler,
+            &mut fourth.oversampler,
+            inputs,
+            cvs,
+            |signal, control| {
+                let mut output = [0.0; 4];
+                for lane in 0..4 {
+                    *last_cvs[lane] = control[lane];
+                    let (cutoff, rate, fixed, scale, feedback) = parameters[lane];
+                    output[lane] = integrators[lane].step(
+                        signal[lane],
+                        scale,
+                        coefficient(cutoff, rate, fixed, control[lane]),
+                        feedback,
+                    );
+                }
+                output
             },
         )
         .map(|sample| sample as f32)

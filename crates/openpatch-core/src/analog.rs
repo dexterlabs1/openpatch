@@ -109,6 +109,36 @@ impl Vca {
         )
         .map(|sample| sample as f32)
     }
+    /// Four separate differential pairs retain their individual gain/control
+    /// histories while sharing the FIR coefficient traversal.
+    pub(crate) fn process_four(
+        first: &mut Self,
+        second: &mut Self,
+        third: &mut Self,
+        fourth: &mut Self,
+        inputs: [f32; 4],
+        cvs: [f32; 4],
+    ) -> [f32; 4] {
+        let gains = [first.gain, second.gain, third.gain, fourth.gain];
+        Oversampler::process_four(
+            &mut first.oversampler,
+            &mut second.oversampler,
+            &mut third.oversampler,
+            &mut fourth.oversampler,
+            inputs.map(f64::from),
+            cvs.map(f64::from),
+            |signal, control| {
+                let scale = 2.0 * THERMAL_VOLTAGE / 0.01;
+                std::array::from_fn(|lane| {
+                    scale
+                        * (signal[lane] / scale).tanh()
+                        * gains[lane]
+                        * (control[lane] / 10.0).clamp(0.0, 1.0)
+                })
+            },
+        )
+        .map(|sample| sample as f32)
+    }
     pub(crate) fn copy_state_from(&mut self, old: &Self) {
         self.oversampler.copy_state_from(&old.oversampler);
     }

@@ -1155,21 +1155,57 @@ impl PolyEngine {
                             self.rate as f64,
                         );
                     } else {
-                        // Independent circuit voices can share FIR loop traversal while
-                        // retaining each voice's scalar arithmetic order and history.
-                        // Mono, odd tails and all other models keep the scalar path.
-                        let paired = if matches!(template, Dsp::Ladder(_) | Dsp::Vca(_)) {
-                            usize::from(count) & !1
+                        // Independent circuit voices share FIR traversal without
+                        // changing per-voice arithmetic or history. Quartets
+                        // expose four decimation chains; smaller remainders
+                        // retain the existing paired and scalar paths.
+                        let circuit = matches!(template, Dsp::Ladder(_) | Dsp::Vca(_));
+                        let quartets = if circuit { usize::from(count) & !3 } else { 0 };
+                        for (quartet_index, quartet) in voices[..quartets]
+                            .as_chunks_mut::<4>()
+                            .0
+                            .iter_mut()
+                            .enumerate()
+                        {
+                            let voice = quartet_index * 4;
+                            let inputs =
+                                std::array::from_fn(|lane| a.voice(voice + lane, normal_a));
+                            let controls =
+                                std::array::from_fn(|lane| b.voice(voice + lane, normal_b));
+                            let [first, second, third, fourth] = quartet;
+                            let values = match (first, second, third, fourth) {
+                                (
+                                    Dsp::Ladder(first),
+                                    Dsp::Ladder(second),
+                                    Dsp::Ladder(third),
+                                    Dsp::Ladder(fourth),
+                                ) => crate::ladder::Ladder::process_four(
+                                    first, second, third, fourth, inputs, controls,
+                                ),
+                                (
+                                    Dsp::Vca(first),
+                                    Dsp::Vca(second),
+                                    Dsp::Vca(third),
+                                    Dsp::Vca(fourth),
+                                ) => crate::analog::Vca::process_four(
+                                    first, second, third, fourth, inputs, controls,
+                                ),
+                                _ => unreachable!("circuit voices retain their template's model"),
+                            };
+                            frame.values[voice..voice + 4].copy_from_slice(&values);
+                        }
+                        let paired = if circuit {
+                            (usize::from(count) - quartets) & !1
                         } else {
                             0
                         };
-                        for (pair_index, pair) in voices[..paired]
+                        for (pair_index, pair) in voices[quartets..quartets + paired]
                             .as_chunks_mut::<2>()
                             .0
                             .iter_mut()
                             .enumerate()
                         {
-                            let voice = pair_index * 2;
+                            let voice = quartets + pair_index * 2;
                             let inputs = [a.voice(voice, normal_a), a.voice(voice + 1, normal_a)];
                             let controls = [b.voice(voice, normal_b), b.voice(voice + 1, normal_b)];
                             let [first, second] = pair;
@@ -1186,10 +1222,11 @@ impl PolyEngine {
                             };
                             frame.values[voice..voice + 2].copy_from_slice(&values);
                         }
-                        for (offset, dsp) in
-                            voices[paired..usize::from(count)].iter_mut().enumerate()
+                        for (offset, dsp) in voices[quartets + paired..usize::from(count)]
+                            .iter_mut()
+                            .enumerate()
                         {
-                            let voice = paired + offset;
+                            let voice = quartets + paired + offset;
                             frame.values[voice] = dsp.process_sample(
                                 a.voice(voice, normal_a),
                                 b.voice(voice, normal_b),
