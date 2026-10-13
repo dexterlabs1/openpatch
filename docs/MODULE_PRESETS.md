@@ -98,9 +98,10 @@ rejects more than 1,024 matching filenames rather than silently hiding them.
 
 This is OpenPatch's native format. Rack `.vcvm` conversion, factory presets,
 user templates/defaults for new modules, preset rename/delete/overwrite and
-cross-workspace browsing remain unfinished. Whole-project serialization still
-uses its existing saved-setting/fresh-load contract; module preset capture is
-not a claim that every project/history path captures all live custom state.
+cross-workspace browsing remain unfinished. Native project Save/recovery also
+capture current Run coherently; step position and other DSP histories restart
+on load. Graph-only MCP interchange retains configured parameters. These
+contracts do not claim that every project/history path captures all live state.
 
 The custom Run behavior follows Fundamental 2.6.4
 [SEQ-3 serialization](https://github.com/VCVRack/Fundamental/blob/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src/SEQ3.cpp)

@@ -640,6 +640,26 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
         self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
 
+    def test_project_capture_is_read_only_and_exposes_offline_run_provenance(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "a", "kind": "seq3"},
+            {"id": "b", "kind": "seq3", "params": {"running": 0}},
+        ]}})
+        before = self.patch_snapshot()
+        captured = self.payload(self.require_tool_success("capture_project_patch", {
+            "expected_revision": before["revision"],
+        }))
+        self.assertEqual(captured["revision"], before["revision"])
+        self.assertEqual(captured["state_source"], "offline_reset")
+        self.assertIsNone(captured["frame"])
+        self.assertEqual(captured["running"], {"a": True, "b": False})
+        self.assertEqual([node["params"]["running"] for node in captured["patch"]["nodes"]], [1, 0])
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_error("capture_project_patch", {"expected_revision": before["revision"] + 1})
+        self.require_tool_error("capture_project_patch", {"filename": "unexpected.openpatch"})
+        self.assertFalse((self.workspace / "unexpected.openpatch").exists())
+        self.assertEqual(self.patch_snapshot(), before)
+
     def test_native_module_preset_capture_exact_save_partial_apply_and_history(self) -> None:
         self.require_tool_success("replace_patch", {"patch": {
             "version": 2, "nodes": [

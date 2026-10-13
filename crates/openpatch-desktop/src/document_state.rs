@@ -1,42 +1,70 @@
 //! Content-based saved state, independent of revision/history identities.
-//! Only refreshed when the graph or persisted rack layout changes.
+//! Refreshed when graph, persisted rack layout, or effective sequencer Run changes.
 use crate::{project::Document, rack::Rack};
 use openpatch_core::Patch;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 
 pub struct DocumentState {
     current: Value,
     baseline: Option<Value>,
     observed: Option<(u64, u64)>,
     dirty: bool,
+    running: BTreeMap<String, bool>,
+    known: bool,
 }
 impl DocumentState {
     pub fn new(patch: &Patch, revision: u64, rack: &Rack) -> Self {
-        let current = json!({"patch":patch,"layout":rack.layout()});
+        let running = configured_running(patch);
+        let current = content(patch, rack.layout(), &running);
         Self {
             baseline: Some(current.clone()),
             current,
             observed: Some((revision, rack.layout_revision())),
             dirty: false,
+            running,
+            known: true,
         }
     }
+    #[cfg(test)]
     pub fn observe(&mut self, patch: &Patch, revision: u64, rack: &Rack) -> bool {
+        self.observe_running(patch, revision, rack, Some(configured_running(patch)))
+    }
+    pub fn observe_running(
+        &mut self,
+        patch: &Patch,
+        revision: u64,
+        rack: &Rack,
+        running: Option<BTreeMap<String, bool>>,
+    ) -> bool {
+        let Some(running) = running else {
+            let changed = self.known;
+            self.known = false;
+            self.observed = None;
+            return changed;
+        };
         let key = (revision, rack.layout_revision());
-        if self.observed == Some(key) {
+        if self.known && self.observed == Some(key) && self.running == running {
             return false;
         }
+        let was_unknown = !self.known;
+        self.known = true;
         self.observed = Some(key);
-        let next = json!({"patch":patch,"layout":rack.layout()});
-        let changed = self.current != next;
+        let next = content(patch, rack.layout(), &running);
+        self.running = running;
+        let changed = was_unknown || self.current != next;
         self.current = next;
         self.dirty = self.baseline.as_ref() != Some(&self.current);
         changed
     }
     pub fn dirty(&self) -> bool {
-        self.dirty
+        !self.known || self.dirty
+    }
+    pub fn matches_saved(&self, document: &Document) -> bool {
+        self.baseline.as_ref() == Some(&document_content(document))
     }
     pub fn mark_saved(&mut self, document: &Document) {
-        self.baseline = Some(json!({"patch":document.patch,"layout":document.layout}));
+        self.baseline = Some(document_content(document));
         self.dirty = self.baseline.as_ref() != Some(&self.current);
     }
     pub fn mark_unsaved(&mut self) {
@@ -49,6 +77,43 @@ impl DocumentState {
     }
 }
 
+fn configured_running(patch: &Patch) -> BTreeMap<String, bool> {
+    patch
+        .nodes
+        .iter()
+        .filter(|node| node.kind == "seq3")
+        .map(|node| {
+            (
+                node.id.clone(),
+                node.params.get("running").copied().unwrap_or(1.0) == 1.0,
+            )
+        })
+        .collect()
+}
+
+fn document_content(document: &Document) -> Value {
+    content(
+        &document.patch,
+        document.layout.clone(),
+        &configured_running(&document.patch),
+    )
+}
+
+// Missing Run and its explicit default represent the same saved content.
+// Normalize only the serialized projection; never edit the live patch/history.
+fn content(patch: &Patch, layout: Value, running: &BTreeMap<String, bool>) -> Value {
+    let mut value = json!({"patch":patch,"layout":layout});
+    for node in value["patch"]["nodes"]
+        .as_array_mut()
+        .expect("serialized patch nodes")
+    {
+        if let Some(run) = node["id"].as_str().and_then(|id| running.get(id)) {
+            node["params"]["running"] = json!(if *run { 1.0 } else { 0.0 });
+        }
+    }
+    value
+}
+
 pub struct AppliedDocument {
     pub patch: Patch,
     pub rack: Rack,
@@ -58,16 +123,27 @@ pub struct AppliedDocument {
 
 /// Prepare every fallible part before committing the session. The caller only
 /// installs the returned view/path/save baseline after this succeeds.
+#[cfg(test)]
 pub fn apply_document(
     shared: &openpatch::control::SharedSession,
     expected_revision: u64,
     document: &Document,
+) -> Result<AppliedDocument, String> {
+    apply_document_guarded(shared, expected_revision, document, |_| Ok(()))
+}
+
+pub fn apply_document_guarded(
+    shared: &openpatch::control::SharedSession,
+    expected_revision: u64,
+    document: &Document,
+    before_commit: impl FnOnce(&openpatch::control::Session) -> Result<(), String>,
 ) -> Result<AppliedDocument, String> {
     let validated = Document::new(document.patch.clone(), document.layout.clone())?;
     let mut rack = Rack::default();
     rack.restore_layout(&validated.layout)?;
     rack.reconcile(&validated.patch, &openpatch_core::catalog());
     let mut live = shared.lock().map_err(|_| "Session lock poisoned")?;
+    before_commit(&live)?;
     let revision = live.replace_patch(validated.patch.clone(), Some(expected_revision))?;
     Ok(AppliedDocument {
         patch: live.patch().clone(),
@@ -81,6 +157,36 @@ pub fn apply_document(
 mod tests {
     use super::*;
     use openpatch::control::Session;
+
+    #[test]
+    fn run_projection_normalizes_defaults_and_unknown_state_never_claims_clean() {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"seq","kind":"seq3"}
+        ]}))
+        .unwrap();
+        let mut rack = Rack::default();
+        rack.reconcile(&patch, &openpatch_core::catalog());
+        let mut state = DocumentState::new(&patch, 1, &rack);
+        let original = Document {
+            patch: patch.clone(),
+            layout: rack.layout(),
+        };
+        let running = |run| Some(BTreeMap::from([("seq".into(), run)]));
+        assert!(!state.observe_running(&patch, 1, &rack, running(true)));
+        assert!(!state.dirty());
+        let mut explicit = original.clone();
+        explicit.patch.nodes[0].params.insert("running".into(), 1.0);
+        assert!(state.matches_saved(&explicit));
+        assert!(state.observe_running(&patch, 1, &rack, running(false)));
+        assert!(state.dirty());
+        assert!(state.observe_running(&patch, 1, &rack, None));
+        assert!(!state.observe_running(&patch, 1, &rack, None));
+        state.mark_saved(&original);
+        assert!(state.dirty());
+        assert!(state.observe_running(&patch, 1, &rack, running(true)));
+        assert!(!state.dirty());
+        assert!(!state.observe_running(&patch, 1, &rack, running(true)));
+    }
 
     #[test]
     fn newer_edits_remain_dirty_when_an_older_snapshot_finishes_saving() {

@@ -1,7 +1,7 @@
 use crate::{
     audio::Audio,
     chrome::{icon_button, Icon},
-    document_state::{apply_document, DocumentState},
+    document_state::{apply_document_guarded, DocumentState},
     keyboard::Keyboard,
     library::{LibraryAction, LibraryDrag, ModuleLibrary},
     midi::{MidiInputManager, MidiPortInfo},
@@ -49,6 +49,8 @@ enum PendingAction {
     Load(String),
     Recover(String),
     Close,
+    // Retain explicit Discard permission across a busy session lock.
+    DiscardClose,
 }
 
 struct PresetDialog {
@@ -781,12 +783,75 @@ impl OpenPatch {
         self.file_focus = true;
     }
     fn observe_document(&mut self) {
+        let running = self
+            .shared
+            .try_lock()
+            .ok()
+            .and_then(|live| live.capture_project_running(Some(self.revision)).ok())
+            .map(|snapshot| snapshot.running);
         if self
             .documents
-            .observe(&self.patch, self.revision, &self.rack)
+            .observe_running(&self.patch, self.revision, &self.rack, running)
         {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
+        }
+    }
+    // Persist one coherent graph/Run/layout snapshot. Raw capture_document below
+    // remains the graph/layout receipt used by history and UI installers.
+    fn capture_persisted_document(&mut self) -> Result<Document, String> {
+        self.rack.reconcile(&self.patch, &self.catalog);
+        let captured = self
+            .shared
+            .try_lock()
+            .map_err(|_| "Project is busy; try again".to_string())?
+            .capture_project_patch(Some(self.revision))?;
+        if self.documents.observe_running(
+            &self.patch,
+            self.revision,
+            &self.rack,
+            Some(captured.running),
+        ) {
+            self.last_document_change = Instant::now();
+            self.autosave_needed = true;
+        }
+        Ok(Document {
+            patch: captured.patch,
+            layout: self.rack.layout(),
+        })
+    }
+    fn close_if_saved(&mut self) {
+        let result = match self.shared.try_lock() {
+            Ok(mut live) => live
+                .capture_project_patch(Some(self.revision))
+                .and_then(|snapshot| {
+                    let document = Document {
+                        patch: snapshot.patch,
+                        layout: self.rack.layout(),
+                    };
+                    if self.documents.matches_saved(&document) {
+                        live.seal_for_close(self.revision).map(|()| true)
+                    } else {
+                        Ok(false)
+                    }
+                }),
+            Err(_) => {
+                self.deferred_action = Some(PendingAction::Close);
+                return;
+            }
+        };
+        match result {
+            Ok(true) => {
+                self.clear_recovery();
+                self.allow_close = true;
+            }
+            other => {
+                if let Err(error) = other {
+                    self.status = format!("Could not verify saved live state: {error}");
+                }
+                self.observe_document();
+                self.confirm_discard = Some(PendingAction::Close);
+            }
         }
     }
     fn dirty(&self) -> bool {
@@ -801,6 +866,10 @@ impl OpenPatch {
         }
     }
     fn request_action(&mut self, action: PendingAction) {
+        if matches!(action, PendingAction::DiscardClose) {
+            self.perform_action(action);
+            return;
+        }
         self.sync();
         let current = self
             .shared
@@ -815,42 +884,84 @@ impl OpenPatch {
         self.recovery_open = false;
         if self.dirty() {
             self.confirm_discard = Some(action);
+        } else if matches!(action, PendingAction::Close) {
+            self.close_if_saved();
         } else {
-            self.perform_action(action);
+            match action {
+                PendingAction::Replace(patch, title) => {
+                    self.replace_now_guarded(patch, &title, true)
+                }
+                PendingAction::Load(name) => self.load_document_guarded(&name, false, true),
+                PendingAction::Recover(name) => self.load_document_guarded(&name, true, true),
+                PendingAction::Close | PendingAction::DiscardClose => unreachable!(),
+            }
         }
     }
     fn replace_from_menu(&mut self, patch: Patch, title: &str) {
         self.request_action(PendingAction::Replace(patch, title.into()));
     }
     fn replace_now(&mut self, patch: Patch, title: &str) {
-        if self.command("replace_patch", json!({"patch":patch})) {
-            self.panic_notes();
-            self.clear_recovery();
-            self.title = title.into();
-            self.active_file = None;
-            self.active_token = None;
-            self.rack = Rack::default();
-            if title == "Sequenced analog voice" {
-                self.sequence_layout();
-            } else if title == "Switched stereo voice" {
-                self.switched_stereo_layout();
-            } else if title == "Synced waveform voice" {
-                self.rack
-                    .restore_layout(&Self::waveform_layout())
-                    .expect("bundled waveform layout");
-            } else if title == "Stacked pitch voice" {
-                self.rack
-                    .restore_layout(&Self::stacked_layout())
-                    .expect("bundled stacked layout");
-            } else if title == "Layered stereo morph" {
-                self.rack
-                    .restore_layout(&Self::mixing_layout())
-                    .expect("bundled mixer layout");
-            }
-            self.documents.mark_unsaved();
-            self.autosave_needed = true;
-            self.capture_document();
+        self.replace_now_guarded(patch, title, false);
+    }
+    fn check_saved_content(&self, live: &openpatch::control::Session) -> Result<(), String> {
+        let snapshot = live.capture_project_patch(Some(self.revision))?;
+        let document = Document {
+            patch: snapshot.patch,
+            layout: self.rack.layout(),
+        };
+        if self.documents.matches_saved(&document) {
+            Ok(())
+        } else {
+            Err("New unsaved changes arrived; choose Save, Discard, or Cancel".into())
         }
+    }
+    fn replace_now_guarded(&mut self, patch: Patch, title: &str, require_saved: bool) {
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_string())
+            .and_then(|mut live| {
+                if require_saved {
+                    self.check_saved_content(&live)?;
+                }
+                live.replace_patch(patch.clone(), Some(self.revision))
+            });
+        if let Err(error) = result {
+            self.status = error;
+            if require_saved {
+                self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+            }
+            self.sync();
+            self.observe_document();
+            return;
+        }
+        self.sync();
+        self.panic_notes();
+        self.clear_recovery();
+        self.title = title.into();
+        self.active_file = None;
+        self.active_token = None;
+        self.rack = Rack::default();
+        if title == "Sequenced analog voice" {
+            self.sequence_layout();
+        } else if title == "Switched stereo voice" {
+            self.switched_stereo_layout();
+        } else if title == "Synced waveform voice" {
+            self.rack
+                .restore_layout(&Self::waveform_layout())
+                .expect("bundled waveform layout");
+        } else if title == "Stacked pitch voice" {
+            self.rack
+                .restore_layout(&Self::stacked_layout())
+                .expect("bundled stacked layout");
+        } else if title == "Layered stereo morph" {
+            self.rack
+                .restore_layout(&Self::mixing_layout())
+                .expect("bundled mixer layout");
+        }
+        self.documents.mark_unsaved();
+        self.autosave_needed = true;
+        self.capture_document();
     }
     fn switched_stereo_layout(&mut self) {
         let _ = self.rack.restore_layout(
@@ -891,17 +1002,16 @@ impl OpenPatch {
             PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
             PendingAction::Load(name) => self.load_document(&name, false),
             PendingAction::Recover(name) => self.load_document(&name, true),
-            PendingAction::Close => {
-                let sealed = self
-                    .shared
-                    .try_lock()
-                    .ok()
-                    .map(|mut live| live.seal_for_close(self.revision));
+            PendingAction::Close | PendingAction::DiscardClose => {
+                let sealed = self.shared.try_lock().ok().map(|mut live| {
+                    let revision = live.revision();
+                    live.seal_for_close(revision)
+                });
                 if matches!(sealed, Some(Ok(()))) {
                     self.clear_recovery();
                     self.allow_close = true;
                 } else {
-                    self.deferred_action = Some(PendingAction::Close);
+                    self.deferred_action = Some(PendingAction::DiscardClose);
                 }
             }
         }
@@ -961,7 +1071,17 @@ impl OpenPatch {
         // This pair belongs to one observed UI revision. Never re-sync between
         // capturing its graph and layout, or while doing disk I/O.
         self.sync();
-        let document = self.capture_document();
+        let document = match self.capture_persisted_document() {
+            Ok(document) => document,
+            Err(error) => {
+                self.observe_document();
+                self.status = format!(
+                    "Save needs current live state: {error}. Try again when the engine is ready."
+                );
+                self.restore_save_continuation();
+                return;
+            }
+        };
         let result = self
             .projects
             .as_ref()
@@ -1000,11 +1120,22 @@ impl OpenPatch {
                 }
             }
             Err(error) => {
-                self.status = format!("Save failed: {error}. Use Save As to keep a separate copy.")
+                self.status = format!("Save failed: {error}. Use Save As to keep a separate copy.");
+                self.restore_save_continuation();
             }
         }
     }
+    fn restore_save_continuation(&mut self) {
+        if let Some(action) = self.after_save.take() {
+            self.file_mode = None;
+            self.confirm_discard = Some(action);
+        }
+    }
     fn load_document(&mut self, name: &str, recovery: bool) {
+        self.load_document_guarded(name, recovery, false);
+    }
+    fn load_document_guarded(&mut self, name: &str, recovery: bool, require_saved: bool) {
+        let mut changed = false;
         let expected_revision = self.revision;
         let result = self
             .projects
@@ -1018,7 +1149,20 @@ impl OpenPatch {
                 }
             })
             .and_then(|loaded| {
-                let applied = apply_document(&self.shared, expected_revision, &loaded.document)?;
+                let applied = apply_document_guarded(
+                    &self.shared,
+                    expected_revision,
+                    &loaded.document,
+                    |live| {
+                        if require_saved {
+                            if let Err(error) = self.check_saved_content(live) {
+                                changed = true;
+                                return Err(error);
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
                 Ok((loaded, applied))
             });
         match result {
@@ -1071,6 +1215,13 @@ impl OpenPatch {
             }
             Err(error) => {
                 self.status = format!("Open failed: {error}");
+                if changed {
+                    self.confirm_discard = Some(if recovery {
+                        PendingAction::Recover(name.into())
+                    } else {
+                        PendingAction::Load(name.into())
+                    });
+                }
                 self.sync();
                 self.capture_document();
             }
@@ -1080,6 +1231,7 @@ impl OpenPatch {
         if self.smoke_test.is_some() || self.allow_close {
             return;
         }
+        self.observe_document();
         if !self.dirty() {
             self.autosave_needed = false;
             if self.autosaved_document.is_some() {
@@ -1097,7 +1249,14 @@ impl OpenPatch {
         {
             return;
         }
-        let document = self.capture_document();
+        self.last_autosave_attempt = now;
+        let document = match self.capture_persisted_document() {
+            Ok(document) => document,
+            Err(error) => {
+                self.status = format!("Recovery is waiting for current live state: {error}");
+                return;
+            }
+        };
         if self
             .autosaved_document
             .as_ref()
@@ -2397,7 +2556,7 @@ impl OpenPatch {
         egui::Modal::new(egui::Id::new("unsaved-project")).show(ctx, |ui| {
             ui.set_width(430.0);
             ui.heading("Save your changes?");
-            ui.label("Your current project has unsaved changes to its modules or rack layout.");
+            ui.label("Your project has unsaved changes, or its current live state could not be verified.");
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
                     decision = 1;
@@ -2419,6 +2578,7 @@ impl OpenPatch {
                 self.save_current();
             }
             2 => {
+                self.after_save = None;
                 if let Some(action) = self.confirm_discard.take() {
                     self.perform_action(action);
                 }
@@ -2426,6 +2586,7 @@ impl OpenPatch {
             3 => {
                 self.confirm_discard = None;
                 self.after_save = None;
+                self.deferred_action = None;
             }
             _ => {}
         }
@@ -4625,6 +4786,260 @@ mod project_workflow_tests {
         assert!(app.after_save.is_none());
         assert!(!app.allow_close);
         assert!(app.dirty());
+    }
+
+    struct ProjectTelemetry(std::sync::Mutex<Value>);
+    impl openpatch::control::LiveModuleEvents for ProjectTelemetry {
+        fn snapshot(&self) -> Value {
+            self.0.lock().unwrap().clone()
+        }
+        fn trigger(&self, _: &str, _: openpatch_core::ModuleAction) -> Result<Value, String> {
+            panic!("project capture must never issue runtime actions")
+        }
+    }
+    fn sequencer_host(path: &Path) -> (OpenPatch, std::sync::Arc<ProjectTelemetry>) {
+        let mut app = host(path);
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+                {"id":"a","kind":"seq3","params":{"running":1}},
+                {"id":"b","kind":"seq3","params":{"running":0}}
+            ]}})
+        ));
+        app.save_document("sequence.openpatch", true);
+        assert!(!app.dirty());
+        let telemetry = std::sync::Arc::new(ProjectTelemetry(std::sync::Mutex::new(json!({
+            "coherent":true,"modules":{
+                "a":{"available":true,"revision":app.revision,"frame":128,"state":{"running":true,"step":3}},
+                "b":{"available":true,"revision":app.revision,"frame":128,"state":{"running":false,"step":6}}
+            }
+        }))));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(telemetry.clone()));
+        (app, telemetry)
+    }
+    fn set_project_run(telemetry: &ProjectTelemetry, a: bool, b: bool, frame: u64) {
+        let mut value = telemetry.0.lock().unwrap();
+        for (id, running) in [("a", a), ("b", b)] {
+            value["modules"][id]["state"]["running"] = json!(running);
+            value["modules"][id]["frame"] = json!(frame);
+            value["modules"][id]["state"]["step"] = json!(frame % 8);
+        }
+    }
+
+    #[test]
+    fn live_run_save_and_recovery_roundtrip_without_editing_graph_or_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        let before = app.shared.lock().unwrap().snapshot();
+        app.observe_document();
+        assert!(!app.dirty());
+        set_project_run(&telemetry, true, false, 257);
+        app.observe_document();
+        assert!(!app.dirty(), "steps and frames are not project edits");
+        set_project_run(&telemetry, false, true, 512);
+        app.observe_document();
+        assert!(app.dirty(), "Run alone changes saved content");
+        make_autosave_due(&mut app);
+        app.autosave();
+        let files = recovery_files(dir.path());
+        assert_eq!(files.len(), 1);
+        std::fs::copy(&files[0], dir.path().join("recovery-copy.openpatch")).unwrap();
+        let recovery = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("recovery-copy.openpatch")
+            .unwrap()
+            .document;
+        assert_eq!(recovery.patch.nodes[0].params["running"], 0.0);
+        assert_eq!(recovery.patch.nodes[1].params["running"], 1.0);
+        app.save_current();
+        assert!(!app.dirty());
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("sequence.openpatch")
+            .unwrap()
+            .document;
+        assert!(saved.equivalent(&recovery));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert!(recovery_files(dir.path()).is_empty());
+        // Reload with no device resets to the saved current Run values.
+        app.shared.lock().unwrap().set_live_module_events(None);
+        app.load_document("sequence.openpatch", false);
+        assert!(!app.dirty());
+        assert_eq!(app.patch.nodes[0].params["running"], 0.0);
+        assert_eq!(app.patch.nodes[1].params["running"], 1.0);
+    }
+
+    #[test]
+    fn live_run_change_during_publication_preserves_exact_bytes_and_blocks_close() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        set_project_run(&telemetry, false, true, 256);
+        let captured = app.capture_persisted_document().unwrap();
+        crate::project::before_next_publish(move || set_project_run(&telemetry, true, true, 512));
+        app.after_save = Some(PendingAction::Close);
+        app.save_current();
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("sequence.openpatch")
+            .unwrap()
+            .document;
+        assert!(saved.equivalent(&captured));
+        assert!(app.dirty());
+        assert!(!app.allow_close);
+        assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+        assert!(app.after_save.is_none());
+    }
+
+    #[test]
+    fn unavailable_live_state_preserves_file_recovery_and_allows_explicit_discard() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        set_project_run(&telemetry, false, true, 256);
+        app.observe_document();
+        make_autosave_due(&mut app);
+        app.autosave();
+        let files = recovery_files(dir.path());
+        let recovery = std::fs::read(&files[0]).unwrap();
+        let bytes = std::fs::read(dir.path().join("sequence.openpatch")).unwrap();
+        *telemetry.0.lock().unwrap() = json!({"coherent":false});
+        app.observe_document();
+        app.save_current();
+        assert!(app.dirty());
+        assert!(app.status.contains("live state"));
+        make_autosave_due(&mut app);
+        app.autosave();
+        assert_eq!(std::fs::read(&files[0]).unwrap(), recovery);
+        assert_eq!(
+            std::fs::read(dir.path().join("sequence.openpatch")).unwrap(),
+            bytes
+        );
+        app.request_action(PendingAction::Close);
+        assert!(!app.allow_close);
+        assert!(app.confirm_discard.is_some());
+        let shared = app.shared.clone();
+        let guard = shared.lock().unwrap();
+        let action = app.confirm_discard.take().unwrap();
+        app.perform_action(action);
+        assert!(matches!(
+            app.deferred_action,
+            Some(PendingAction::DiscardClose)
+        ));
+        drop(guard);
+        let pending = app.deferred_action.take().unwrap();
+        app.request_action(pending);
+        assert!(app.allow_close);
+        assert!(app.confirm_discard.is_none());
+        assert!(recovery_files(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn final_clean_close_rechecks_run_but_ignores_frame_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        app.observe_document();
+        assert!(!app.dirty());
+        set_project_run(&telemetry, false, false, 256);
+        app.close_if_saved();
+        assert!(!app.allow_close);
+        assert!(app.confirm_discard.is_some());
+        app.confirm_discard = None;
+        set_project_run(&telemetry, true, false, 512);
+        app.request_action(PendingAction::Close);
+        assert!(app.allow_close);
+        assert!(app.confirm_discard.is_none());
+    }
+
+    #[test]
+    fn final_replacement_guard_rechecks_run_before_loading_or_starting_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        app.observe_document();
+        assert!(!app.dirty());
+        let before = app.shared.lock().unwrap().snapshot();
+        set_project_run(&telemetry, false, true, 256);
+        app.load_document_guarded("sequence.openpatch", false, true);
+        assert!(matches!(app.confirm_discard, Some(PendingAction::Load(_))));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        app.confirm_discard = None;
+        app.replace_now_guarded(openpatch_core::demo_patch(), "New", true);
+        assert!(matches!(
+            app.confirm_discard,
+            Some(PendingAction::Replace(_, _))
+        ));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        app.confirm_discard = None;
+        app.replace_now(openpatch_core::demo_patch(), "New");
+        assert_ne!(app.shared.lock().unwrap().snapshot(), before);
+    }
+
+    #[test]
+    fn failed_save_continuation_stays_visible_and_cancel_prevents_later_close() {
+        for unavailable in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut app, telemetry) = sequencer_host(dir.path());
+            set_project_run(&telemetry, false, true, 256);
+            app.after_save = Some(PendingAction::Close);
+            if unavailable {
+                *telemetry.0.lock().unwrap() = json!({});
+            } else {
+                crate::project::fail_next_publish();
+            }
+            app.save_current();
+            assert!(app.after_save.is_none());
+            assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+            let ctx = egui::Context::default();
+            let _ = ctx.run(
+                egui::RawInput {
+                    events: vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ctx| app.unsaved_window(ctx),
+            );
+            assert!(app.confirm_discard.is_none());
+            assert!(app.deferred_action.is_none());
+            app.shared.lock().unwrap().set_live_module_events(None);
+            app.save_current();
+            assert!(!app.allow_close);
+            assert!(!app.dirty());
+        }
+    }
+
+    #[test]
+    fn failed_live_save_keeps_saved_baseline_file_token_and_runtime_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        let path = dir.path().join("sequence.openpatch");
+        let bytes = std::fs::read(&path).unwrap();
+        let token = format!("{:?}", app.active_token.as_ref().unwrap());
+        set_project_run(&telemetry, false, true, 256);
+        let live = telemetry.0.lock().unwrap().clone();
+        let graph = app.shared.lock().unwrap().snapshot();
+        crate::project::fail_next_publish();
+        app.save_current();
+        assert!(app.status.contains("injected failure"));
+        assert!(app.dirty());
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+        assert_eq!(format!("{:?}", app.active_token.as_ref().unwrap()), token);
+        assert_eq!(*telemetry.0.lock().unwrap(), live);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), graph);
+        set_project_run(&telemetry, true, false, 512);
+        app.observe_document();
+        assert!(!app.dirty(), "failed save did not change the baseline");
     }
 
     #[test]

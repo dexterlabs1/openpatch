@@ -1,7 +1,9 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod capture;
 mod preset_tools;
+mod project_capture;
 mod running;
+pub use project_capture::{ProjectPatchSnapshot, ProjectRunningSnapshot};
 use running::EditEffects;
 #[cfg(test)]
 mod duplicate_tests;
@@ -500,6 +502,12 @@ impl Session {
         validate_arguments(&schemas, name, &args)?;
         match name {
             "catalog" => return Ok(catalog()),
+            "capture_project_patch" => {
+                let captured = self.capture_project_patch(expected_revision(&args)?)?;
+                return Ok(json!({"patch":captured.patch,"revision":captured.revision,
+                    "state_id":captured.state_id,"running":captured.running,
+                    "state_source":captured.state_source,"frame":captured.frame}));
+            }
             "capture_module_preset" => return self.capture_module_preset(&args),
             "save_module_preset" | "read_module_preset" | "list_module_presets" => {
                 return self.preset_file_tool(name, &args)
@@ -1370,6 +1378,7 @@ pub fn tools() -> Value {
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
+        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run overlaid on a cloned graph. All live sequencers must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default Run. No sequencers means parameter-only capture without reading the backend. Returns patch, revision, state_id, running map, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),

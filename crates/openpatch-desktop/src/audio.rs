@@ -1951,6 +1951,116 @@ mod tests {
     }
 
     #[test]
+    fn project_capture_reads_two_live_sequences_without_touching_dsp_state() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({
+            "version":2,
+            "nodes":[
+                {"id":"seq_a","kind":"seq3","params":{"tempo":15,"running":1,"steps":8}},
+                {"id":"seq_b","kind":"seq3","params":{"tempo":15,"running":1,"steps":8}},
+                {"id":"manual","kind":"logic"},
+                {"id":"osc","kind":"oscillator","params":{"frequency":123}},
+                {"id":"bias","kind":"constant","params":{"value":3}},
+                {"id":"sum","kind":"gain"}
+            ],
+            "cables":[
+                {"id":"osc_route","from":"osc","to":"sum","input":"signal"},
+                {"id":"bias_route","from":"bias","to":"sum","input":"signal"}
+            ],
+            "output":"sum"
+        }))
+        .unwrap();
+        let (mut callback, _updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        for (id, action) in [
+            ("seq_a", ModuleAction::Clock),
+            ("seq_b", ModuleAction::Clock),
+            ("seq_b", ModuleAction::Run),
+            ("manual", ModuleAction::BPress),
+        ] {
+            callback.performance.trigger(id, action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let a = callback.performance.sequence_state("seq_a").unwrap();
+        let b = callback.performance.sequence_state("seq_b").unwrap();
+        assert_eq!((a.step, a.running), (2, true));
+        assert_eq!((b.step, b.running), (2, false));
+        assert!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed
+        );
+        let before_session = session.snapshot();
+        let before_live = callback.performance.snapshot();
+        let before_frame = callback.frame_clock;
+        let before_bindings = callback
+            .graphs
+            .active
+            .modules
+            .states
+            .map(|b| b.map(|b| b.token));
+        let before_routes = [
+            callback.graphs.active.modules.cables[0].unwrap().token,
+            callback.graphs.active.modules.cables[1].unwrap().token,
+        ];
+        let mut reference = patch.compile().unwrap();
+        reference.adopt_state_from(&callback.graphs.active.engine);
+
+        let captured = session.capture_project_patch(Some(1)).unwrap();
+        assert_eq!(captured.state_source, "live");
+        assert_eq!(captured.frame, Some(before_frame));
+        assert!(captured.running["seq_a"]);
+        assert!(!captured.running["seq_b"]);
+        assert_eq!(captured.patch.nodes[0].params["running"], 1.0);
+        assert_eq!(captured.patch.nodes[1].params["running"], 0.0);
+        assert_eq!(session.patch().nodes[1].params["running"], 1.0);
+        assert_eq!(session.snapshot(), before_session);
+        assert_eq!(callback.performance.snapshot(), before_live);
+        assert_eq!(callback.frame_clock, before_frame);
+        assert_eq!(callback.performance.sequence_state("seq_a"), Some(a));
+        assert_eq!(callback.performance.sequence_state("seq_b"), Some(b));
+        assert!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed
+        );
+        assert_eq!(
+            callback
+                .graphs
+                .active
+                .modules
+                .states
+                .map(|b| b.map(|b| b.token)),
+            before_bindings
+        );
+        assert_eq!(
+            [
+                callback.graphs.active.modules.cables[0].unwrap().token,
+                callback.graphs.active.modules.cables[1].unwrap().token,
+            ],
+            before_routes
+        );
+        // Advancing identical engines once compares oscillator phase and both
+        // cable-delay histories after the read-only project capture.
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("osc", "out"),
+                ("sum", "out")
+            ),
+            read_raw_pair(&mut reference, ("osc", "out"), ("sum", "out"))
+        );
+    }
+
+    #[test]
     fn explicit_preset_run_assigns_even_when_saved_value_matches_and_history_preserves_step() {
         let patch = sequence_patch();
         let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);

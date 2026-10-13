@@ -82,7 +82,7 @@ Compatible jacks glow and snap during patching. An ordinary drop onto an occupie
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
-Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, and view; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
+Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, view, and current sequencer Run settings; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
 
 <details>
 <summary><strong>See the visualizer dock</strong></summary>

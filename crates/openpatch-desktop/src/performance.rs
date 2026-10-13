@@ -244,6 +244,9 @@ struct Shared {
     emergency_release_applied: AtomicU64,
     meters: [Meter; MAX_NODES],
     closed: AtomicBool,
+    // One writer (the audio callback) surrounds the complete meter batch.
+    // Readers can reject a partial cross-module publication without waiting.
+    publish_serial: AtomicU64,
     frame: AtomicU64,
     queued: AtomicU64,
     applied: AtomicU64,
@@ -255,6 +258,14 @@ struct Shared {
     closed_dropped: AtomicU64,
     crossfade_rejected: AtomicU64,
     last_applied_sequence: AtomicU64,
+}
+impl Shared {
+    fn publish_frame(&self, frame: u64, publish: impl FnOnce()) {
+        self.publish_serial.fetch_add(1, Ordering::SeqCst);
+        self.frame.store(frame, Ordering::SeqCst);
+        publish();
+        self.publish_serial.fetch_add(1, Ordering::SeqCst);
+    }
 }
 pub(super) struct Performance {
     control: Mutex<Control>,
@@ -428,6 +439,7 @@ impl Performance {
             emergency_release_applied: AtomicU64::new(0),
             meters: std::array::from_fn(|_| Meter::new()),
             closed: AtomicBool::new(false),
+            publish_serial: AtomicU64::new(0),
             frame: AtomicU64::new(0),
             queued: AtomicU64::new(0),
             applied: AtomicU64::new(0),
@@ -891,13 +903,35 @@ impl LiveModuleEvents for Performance {
         let applied = shared.applied.load(Ordering::Acquire);
         let dropped = shared.dropped.load(Ordering::Acquire);
         let available = !shared.closed.load(Ordering::Acquire);
-        let modules: serde_json::Map<String, Value> = control.entries.iter().map(|(id, entry)| {
-            let actual = available.then(|| shared.meters[entry.slot].read(*entry, control.revision)).flatten();
+        let mut snapshots = vec![None; control.entries.len()];
+        let mut coherent_frame = None;
+        if available {
+            for _ in 0..4 {
+                let before = shared.publish_serial.load(Ordering::SeqCst);
+                if before & 1 != 0 {
+                    continue;
+                }
+                let frame = shared.frame.load(Ordering::SeqCst);
+                for (snapshot, (_, entry)) in snapshots.iter_mut().zip(&control.entries) {
+                    *snapshot = shared.meters[entry.slot]
+                        .read(*entry, control.revision)
+                        .filter(|actual| actual.frame == frame);
+                }
+                if shared.publish_serial.load(Ordering::SeqCst) == before {
+                    coherent_frame = Some(frame);
+                    break;
+                }
+            }
+        }
+        if coherent_frame.is_none() {
+            snapshots.fill(None);
+        }
+        let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
                 "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot|snapshot.state).map(|state|json!({"step":state.step,"length":state.length,"running":state.running})),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
         }).collect();
-        json!({"available":available,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
+        json!({"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
             "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
             "closed_dropped":shared.closed_dropped.load(Ordering::Relaxed),"crossfade_rejected":shared.crossfade_rejected.load(Ordering::Relaxed),
@@ -1042,32 +1076,117 @@ impl EventReader {
         }
     }
     pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
-        self.shared.frame.store(frame, Ordering::Release);
-        for (slot, binding) in plan.bindings.iter().enumerate() {
-            if let Some(binding) = binding {
-                self.shared.meters[slot].write(
-                    binding.token,
-                    ModuleSnapshot {
-                        revision,
-                        frame,
-                        state: if binding.kind.sequential() {
-                            engine.module_telemetry(binding.handle)
-                        } else {
-                            None
+        self.shared.publish_frame(frame, || {
+            for (slot, binding) in plan.bindings.iter().enumerate() {
+                if let Some(binding) = binding {
+                    self.shared.meters[slot].write(
+                        binding.token,
+                        ModuleSnapshot {
+                            revision,
+                            frame,
+                            state: if binding.kind.sequential() {
+                                engine.module_telemetry(binding.handle)
+                            } else {
+                                None
+                            },
+                            controls: if binding.kind.manual() {
+                                engine.module_control_state(binding.handle)
+                            } else {
+                                None
+                            },
+                            lights: if !binding.kind.sequential() {
+                                engine.module_lights(binding.handle)
+                            } else {
+                                None
+                            },
                         },
-                        controls: if binding.kind.manual() {
-                            engine.module_control_state(binding.handle)
-                        } else {
-                            None
-                        },
-                        lights: if !binding.kind.sequential() {
-                            engine.module_lights(binding.handle)
-                        } else {
-                            None
-                        },
+                    );
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multi_module_snapshot_never_exposes_a_partial_publish() {
+        let (performance, _reader) = Performance::new(48_000);
+        {
+            let mut control = performance.control.lock().unwrap();
+            control.revision = 1;
+            for (slot, id) in ["first", "second"].into_iter().enumerate() {
+                control.entries.insert(
+                    id.into(),
+                    Entry {
+                        slot,
+                        token: slot as u64 + 11,
+                        born_revision: 1,
+                        kind: ModuleKind::Sequence,
+                        bypassed: false,
+                        action_epoch: 1,
                     },
                 );
             }
+        }
+        let shared = performance.shared.clone();
+        shared.publish_serial.fetch_add(1, Ordering::SeqCst);
+        let interrupted = performance.snapshot();
+        assert_eq!(interrupted["coherent"], false);
+        assert!(interrupted["frame"].is_null());
+        for id in ["first", "second"] {
+            assert_eq!(interrupted["modules"][id]["available"], false);
+            assert!(interrupted["modules"][id]["state"].is_null());
+        }
+        shared.publish_serial.fetch_add(1, Ordering::SeqCst);
+
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=2_000_u64 {
+                shared.publish_frame(frame, || {
+                    for slot in 0..2 {
+                        shared.meters[slot].write(
+                            slot as u64 + 11,
+                            ModuleSnapshot {
+                                revision: 1,
+                                frame,
+                                state: Some(ModuleTelemetry {
+                                    step: frame as u8,
+                                    length: 8,
+                                    running: true,
+                                }),
+                                controls: None,
+                                lights: None,
+                            },
+                        );
+                        std::thread::yield_now();
+                    }
+                });
+            }
+        });
+        for _ in 0..2_000 {
+            let snapshot = performance.snapshot();
+            if snapshot["coherent"] == false {
+                assert!(snapshot["frame"].is_null());
+                assert_eq!(snapshot["modules"]["first"]["available"], false);
+                assert_eq!(snapshot["modules"]["second"]["available"], false);
+            } else if snapshot["modules"]["first"]["available"] == true {
+                let frame = snapshot["frame"].as_u64().unwrap();
+                for id in ["first", "second"] {
+                    assert_eq!(snapshot["modules"][id]["available"], true);
+                    assert_eq!(snapshot["modules"][id]["frame"], frame);
+                    assert_eq!(snapshot["modules"][id]["state"]["step"], frame as u8);
+                }
+            }
+        }
+        writer.join().unwrap();
+        let final_snapshot = performance.snapshot();
+        assert_eq!(final_snapshot["coherent"], true);
+        assert_eq!(final_snapshot["frame"], 2_000);
+        for id in ["first", "second"] {
+            assert_eq!(final_snapshot["modules"][id]["available"], true);
+            assert_eq!(final_snapshot["modules"][id]["frame"], 2_000);
         }
     }
 }

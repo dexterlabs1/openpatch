@@ -427,6 +427,11 @@ pub(crate) fn before_next_publish(callback: impl FnOnce() + 'static) {
 }
 
 #[cfg(test)]
+pub(crate) fn fail_next_publish() {
+    FAIL_BEFORE_PUBLISH.with(|flag| flag.set(true));
+}
+
+#[cfg(test)]
 thread_local! {
     static BEFORE_NEXT_PUBLISH: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
     static FAIL_BEFORE_PUBLISH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

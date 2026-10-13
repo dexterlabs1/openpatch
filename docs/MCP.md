@@ -97,6 +97,21 @@ yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
 A window that has committed its final close decision rejects subsequent graph
 mutations and live module actions with `session is closing`; inspection and exports remain available.
 
+## Capture current project Run state
+
+`capture_project_patch` accepts optional `expected_revision` and returns
+`patch`, `revision`, `state_id`, `running` (module ID → boolean), `state_source`,
+and `frame`. It projects current SEQ-3 Run into a cloned graph without modifying
+history, queuing controls, resetting DSP state, or writing a file. Native Save
+and recovery use this same capture path; the MCP result does not include layout.
+
+With live audio, every sequencer must be available at the requested revision
+and one completed callback frame. Stale, missing, or incoherent telemetry
+rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
+configured initial Run when no backend is attached, or `parameters` when there
+are no sequencers. The latter two return a null frame. This is a point-in-time
+capture, not an acknowledgment of controls awaiting audio processing.
+
 ## Initialize and Randomize
 
 `initialize_modules` accepts `ids` and optional `expected_revision`.
@@ -283,7 +298,10 @@ the second value zero. Only the first
 `count` pairs are meaningful; names and interpretation come from the catalog's
 `light_names` and `light_policy`. Unsupported fields are null.
 
-Each module snapshot is coherent and must meet the current requested revision.
+The desktop snapshot reports global `coherent` and a common `frame`. It uses a
+bounded read retry around callback publication; contention returns unavailable
+module telemetry rather than mixing callbacks. Each available module snapshot
+must meet the current requested revision and that common frame.
 An unavailable snapshot is not a zero voltage or a released button. Availability
 also does not mean playback is running. Values observe the live backend; they
 do not provide arbitrary raw waveforms. Use the native scope for live waveforms,
