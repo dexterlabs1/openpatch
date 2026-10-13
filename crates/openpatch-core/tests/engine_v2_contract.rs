@@ -387,12 +387,14 @@ fn poly_processing_and_state_adoption_neither_allocate_nor_deallocate() {
             ),
             node("osc", "analog_vco", &[]),
             node("filter", "ladder_vcf", &[]),
+            node("vca", "analog_vca", &[]),
             node("sum", "poly_sum", &[]),
         ],
         vec![
             cable("source", "out", "osc", "pitch"),
             cable("osc", "out", "filter", "signal"),
-            cable("filter", "out", "sum", "signal"),
+            cable("filter", "out", "vca", "signal"),
+            cable("vca", "out", "sum", "signal"),
         ],
         "sum",
     );

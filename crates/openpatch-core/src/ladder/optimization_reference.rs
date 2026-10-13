@@ -475,3 +475,88 @@ fn frozen_solver_failure_retention_saturation_and_recovery_match() {
     assert_solver_state(&actual, &expected, 0);
     assert_eq!(actual.diagnostics.solver_failures, u64::MAX);
 }
+
+#[test]
+fn paired_ladders_match_independent_frozen_circuits_sample_for_sample() {
+    for rate in [8_000.0_f64, 48_000.0, 192_000.0] {
+        let poles = [20.0, 18_000.0_f64.min(rate * 0.4)];
+        let drives = [0.25, 4.0];
+        let feedback = [0.0, 4.4];
+        let mut actual = [
+            super::Ladder::new(rate, poles[0], feedback[0] / 4.0, drives[0]),
+            super::Ladder::new(rate, poles[1], feedback[1] / 4.0, drives[1]),
+        ];
+        let mut resamplers = [FrozenOversampler::new(), FrozenOversampler::new()];
+        let mut solvers = [FrozenIntegrator::new(), FrozenIntegrator::new()];
+        for n in 0..1025 {
+            let signals = [stimulus(n).0 as f32, stimulus(n + 319).0 as f32];
+            let controls = [stimulus(n).1 as f32, stimulus(n + 71).1 as f32];
+            let [first, second] = &mut actual;
+            let output = super::Ladder::process_two(first, second, signals, controls);
+            for lane in 0..2 {
+                let mut expected_cv = 0.0;
+                let expected = resamplers[lane].process_pair(
+                    f64::from(signals[lane]),
+                    f64::from(controls[lane]),
+                    |signal, cv| {
+                        expected_cv = cv;
+                        let g = if cv == 0.0 {
+                            PI * poles[lane] / (rate * FROZEN_OVERSAMPLING as f64)
+                        } else {
+                            let frequency = (poles[lane] * cv.clamp(-32.0, 32.0).exp2())
+                                .clamp(20.0, 18_000.0_f64.min(0.4 * rate));
+                            PI * frequency / (rate * FROZEN_OVERSAMPLING as f64)
+                        };
+                        solvers[lane].step(
+                            signal,
+                            0.01 * drives[lane] / (2.0 * FROZEN_THERMAL_VOLTAGE),
+                            g,
+                            feedback[lane],
+                        )
+                    },
+                ) as f32;
+                assert_eq!(
+                    output[lane].to_bits(),
+                    expected.to_bits(),
+                    "rate {rate} lane {lane} sample {n}"
+                );
+                assert_bits(actual[lane].last_cv, expected_cv, "paired last CV", n);
+                assert_solver_state(&actual[lane].integrator, &solvers[lane], n);
+            }
+        }
+    }
+}
+
+#[test]
+fn paired_vcas_match_independent_frozen_resamplers_and_ota_equations() {
+    let gains = [0.37, 2.0];
+    let mut actual = [
+        crate::analog::Vca::new(gains[0]),
+        crate::analog::Vca::new(gains[1]),
+    ];
+    let mut expected = [FrozenOversampler::new(), FrozenOversampler::new()];
+    for n in 0..2049 {
+        let signals = [stimulus(n).0 as f32, stimulus(n + 349).0 as f32];
+        let controls = [
+            stimulus(n).1 as f32 * 10.0,
+            5.0 + stimulus(n + 37).1 as f32 * 7.0,
+        ];
+        let [first, second] = &mut actual;
+        let output = crate::analog::Vca::process_two(first, second, signals, controls);
+        for lane in 0..2 {
+            let value = expected[lane].process_pair(
+                f64::from(signals[lane]),
+                f64::from(controls[lane]),
+                |signal, control| {
+                    let scale = 2.0 * FROZEN_THERMAL_VOLTAGE / 0.01;
+                    scale * (signal / scale).tanh() * gains[lane] * (control / 10.0).clamp(0.0, 1.0)
+                },
+            ) as f32;
+            assert_eq!(
+                output[lane].to_bits(),
+                value.to_bits(),
+                "lane {lane} sample {n}"
+            );
+        }
+    }
+}

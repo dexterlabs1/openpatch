@@ -89,6 +89,40 @@ const fn make_kernel() -> [f64; TAPS] {
 }
 const KERNEL: [f64; TAPS] = make_kernel();
 
+/// Independent voice lanes permit parallel multiply/add instructions without
+/// changing the chronological additions within either reconstructed phase.
+/// Const branches avoid touching a lane's zero control history.
+#[inline]
+fn interpolate_two<const FIRST_CONTROL: bool, const SECOND_CONTROL: bool>(
+    signals: [&[f64]; 2],
+    controls: [&[f64]; 2],
+) -> ([[f64; 2]; OVERSAMPLING], [[f64; 2]; OVERSAMPLING]) {
+    let mut signal = [[0.0; 2]; OVERSAMPLING];
+    let mut control = [[0.0; 2]; OVERSAMPLING];
+    for (tap, coefficients) in KERNEL.as_chunks::<OVERSAMPLING>().0.iter().enumerate() {
+        let index = INPUT_TAPS - 1 - tap;
+        for phase in 0..OVERSAMPLING {
+            signal[phase][0] += coefficients[phase] * signals[0][index];
+            signal[phase][1] += coefficients[phase] * signals[1][index];
+            if FIRST_CONTROL {
+                control[phase][0] += coefficients[phase] * controls[0][index];
+            }
+            if SECOND_CONTROL {
+                control[phase][1] += coefficients[phase] * controls[1][index];
+            }
+        }
+    }
+    signal[0][0] += KERNEL[TAPS - 1] * signals[0][0];
+    signal[0][1] += KERNEL[TAPS - 1] * signals[1][0];
+    if FIRST_CONTROL {
+        control[0][0] += KERNEL[TAPS - 1] * controls[0][0];
+    }
+    if SECOND_CONTROL {
+        control[0][1] += KERNEL[TAPS - 1] * controls[1][0];
+    }
+    (signal, control)
+}
+
 /// Shared allocation-free oversampling for memoryless or stateful circuits.
 /// The callback is invoked eight times in chronological order per host sample.
 #[derive(Clone, Debug)]
@@ -120,6 +154,75 @@ impl Oversampler {
         self.control_nonzero = previous.control_nonzero;
         self.input_head = previous.input_head;
         self.output_head = previous.output_head;
+    }
+    /// Process two independent voices. Their ring heads may differ. Only the
+    /// local arithmetic lanes are paired; storage and per-voice tap order stay
+    /// identical to process_pair, including phase-zero decimation timing.
+    #[inline]
+    pub(crate) fn process_two(
+        first: &mut Self,
+        second: &mut Self,
+        inputs: [f64; 2],
+        controls: [f64; 2],
+        mut circuits: impl FnMut([f64; 2], [f64; 2]) -> [f64; 2],
+    ) -> [f64; 2] {
+        for (voice, (input, control)) in [
+            (&mut *first, (inputs[0], controls[0])),
+            (&mut *second, (inputs[1], controls[1])),
+        ] {
+            voice.input_head = (voice.input_head + 1) % INPUT_TAPS;
+            voice.input[voice.input_head] = input;
+            voice.input[voice.input_head + INPUT_TAPS] = input;
+            voice.control_nonzero -= usize::from(voice.control[voice.input_head] != 0.0);
+            voice.control[voice.input_head] = control;
+            voice.control[voice.input_head + INPUT_TAPS] = control;
+            voice.control_nonzero += usize::from(control != 0.0);
+        }
+        let signals = [
+            &first.input[first.input_head + 1..first.input_head + 1 + INPUT_TAPS],
+            &second.input[second.input_head + 1..second.input_head + 1 + INPUT_TAPS],
+        ];
+        let controls = [
+            &first.control[first.input_head + 1..first.input_head + 1 + INPUT_TAPS],
+            &second.control[second.input_head + 1..second.input_head + 1 + INPUT_TAPS],
+        ];
+        let (interpolated, interpolated_control) =
+            match (first.control_nonzero > 0, second.control_nonzero > 0) {
+                (false, false) => interpolate_two::<false, false>(signals, controls),
+                (true, false) => interpolate_two::<true, false>(signals, controls),
+                (false, true) => interpolate_two::<false, true>(signals, controls),
+                (true, true) => interpolate_two::<true, true>(signals, controls),
+            };
+        let mut result = [0.0; 2];
+        for phase in 0..OVERSAMPLING {
+            first.output_head = (first.output_head + 1) % TAPS;
+            second.output_head = (second.output_head + 1) % TAPS;
+            let output = circuits(
+                interpolated[phase].map(|sample| sample * OVERSAMPLING as f64),
+                interpolated_control[phase].map(|sample| sample * OVERSAMPLING as f64),
+            );
+            first.output[first.output_head] = output[0];
+            first.output[first.output_head + TAPS] = output[0];
+            second.output[second.output_head] = output[1];
+            second.output[second.output_head + TAPS] = output[1];
+            if phase == 0 {
+                let first_history =
+                    &first.output[first.output_head + 1..first.output_head + 1 + TAPS];
+                let second_history =
+                    &second.output[second.output_head + 1..second.output_head + 1 + TAPS];
+                // Two serial tap sums, with independent accumulators. Never
+                // combine taps within one voice or use a fused multiply-add.
+                for ((coefficient, first_sample), second_sample) in KERNEL
+                    .iter()
+                    .zip(first_history.iter().rev())
+                    .zip(second_history.iter().rev())
+                {
+                    result[0] += coefficient * first_sample;
+                    result[1] += coefficient * second_sample;
+                }
+            }
+        }
+        result
     }
     #[cfg(test)]
     #[inline]
@@ -393,6 +496,78 @@ impl Ladder {
                     k,
                 )
             }) as f32
+    }
+    /// Pair independent voices without altering each integrator's eight
+    /// chronological scalar steps or coefficient precision.
+    pub(crate) fn process_two(
+        first: &mut Self,
+        second: &mut Self,
+        inputs: [f32; 2],
+        cvs: [f32; 2],
+    ) -> [f32; 2] {
+        let mut inputs = inputs.map(f64::from);
+        let mut cvs = cvs.map(f64::from);
+        for (lane, voice) in [&mut *first, &mut *second].into_iter().enumerate() {
+            if !inputs[lane].is_finite() {
+                voice.integrator.diagnostics.invalid_inputs = voice
+                    .integrator
+                    .diagnostics
+                    .invalid_inputs
+                    .saturating_add(1);
+                inputs[lane] = 0.0;
+            }
+            if !cvs[lane].is_finite() {
+                voice.integrator.diagnostics.invalid_inputs = voice
+                    .integrator
+                    .diagnostics
+                    .invalid_inputs
+                    .saturating_add(1);
+                cvs[lane] = 0.0;
+            }
+        }
+        let (cutoff0, rate0, fixed0, scale0, feedback0) = (
+            first.cutoff,
+            first.sample_rate,
+            first.fixed_g,
+            first.input_scale,
+            first.feedback,
+        );
+        let (cutoff1, rate1, fixed1, scale1, feedback1) = (
+            second.cutoff,
+            second.sample_rate,
+            second.fixed_g,
+            second.input_scale,
+            second.feedback,
+        );
+        let integrator0 = &mut first.integrator;
+        let integrator1 = &mut second.integrator;
+        let last_cv0 = &mut first.last_cv;
+        let last_cv1 = &mut second.last_cv;
+        Oversampler::process_two(
+            &mut first.oversampler,
+            &mut second.oversampler,
+            inputs,
+            cvs,
+            |signal, control| {
+                *last_cv0 = control[0];
+                *last_cv1 = control[1];
+                [
+                    integrator0.step(
+                        signal[0],
+                        scale0,
+                        coefficient(cutoff0, rate0, fixed0, control[0]),
+                        feedback0,
+                    ),
+                    integrator1.step(
+                        signal[1],
+                        scale1,
+                        coefficient(cutoff1, rate1, fixed1, control[1]),
+                        feedback1,
+                    ),
+                ]
+            },
+        )
+        .map(|sample| sample as f32)
     }
     /// Preserve capacitor voltages and both FIR histories across graph rebuilds;
     /// constructor parameters on `self` remain in force. Recompute the previous
@@ -772,3 +947,6 @@ mod tests {
         assert_eq!(ladder.diagnostics().invalid_inputs, 2);
     }
 }
+
+#[cfg(test)]
+mod pair_tests;

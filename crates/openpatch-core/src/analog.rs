@@ -79,6 +79,36 @@ impl Vca {
                 scale * (input / scale).tanh() * gain * (control / 10.0).clamp(0.0, 1.0)
             }) as f32
     }
+    /// Independent voice lanes share FIR arithmetic while preserving each
+    /// voice's chronological nonlinear evaluations and original gain.
+    pub(crate) fn process_two(
+        first: &mut Self,
+        second: &mut Self,
+        inputs: [f32; 2],
+        cvs: [f32; 2],
+    ) -> [f32; 2] {
+        let gains = [first.gain, second.gain];
+        Oversampler::process_two(
+            &mut first.oversampler,
+            &mut second.oversampler,
+            inputs.map(f64::from),
+            cvs.map(f64::from),
+            |signal, control| {
+                let scale = 2.0 * THERMAL_VOLTAGE / 0.01;
+                [
+                    scale
+                        * (signal[0] / scale).tanh()
+                        * gains[0]
+                        * (control[0] / 10.0).clamp(0.0, 1.0),
+                    scale
+                        * (signal[1] / scale).tanh()
+                        * gains[1]
+                        * (control[1] / 10.0).clamp(0.0, 1.0),
+                ]
+            },
+        )
+        .map(|sample| sample as f32)
+    }
     pub(crate) fn copy_state_from(&mut self, old: &Self) {
         self.oversampler.copy_state_from(&old.oversampler);
     }

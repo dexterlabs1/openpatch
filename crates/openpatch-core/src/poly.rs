@@ -1146,14 +1146,58 @@ impl PolyEngine {
                     } else {
                         0.0
                     };
-                    for (voice, dsp) in voices[..usize::from(count)].iter_mut().enumerate() {
-                        frame.values[voice] = dsp.process_sample(
-                            a.voice(voice, normal_a),
-                            b.voice(voice, normal_b),
+                    if count == 1 {
+                        frame.values[0] = voices[0].process_sample(
+                            a.voice(0, normal_a),
+                            b.voice(0, normal_b),
                             a.channels > 0,
                             b.channels > 0,
                             self.rate as f64,
                         );
+                    } else {
+                        // Independent circuit voices can share FIR loop traversal while
+                        // retaining each voice's scalar arithmetic order and history.
+                        // Mono, odd tails and all other models keep the scalar path.
+                        let paired = if matches!(template, Dsp::Ladder(_) | Dsp::Vca(_)) {
+                            usize::from(count) & !1
+                        } else {
+                            0
+                        };
+                        for (pair_index, pair) in voices[..paired]
+                            .as_chunks_mut::<2>()
+                            .0
+                            .iter_mut()
+                            .enumerate()
+                        {
+                            let voice = pair_index * 2;
+                            let inputs = [a.voice(voice, normal_a), a.voice(voice + 1, normal_a)];
+                            let controls = [b.voice(voice, normal_b), b.voice(voice + 1, normal_b)];
+                            let [first, second] = pair;
+                            let values = match (first, second) {
+                                (Dsp::Ladder(first), Dsp::Ladder(second)) => {
+                                    crate::ladder::Ladder::process_two(
+                                        first, second, inputs, controls,
+                                    )
+                                }
+                                (Dsp::Vca(first), Dsp::Vca(second)) => {
+                                    crate::analog::Vca::process_two(first, second, inputs, controls)
+                                }
+                                _ => unreachable!("circuit voices retain their template's model"),
+                            };
+                            frame.values[voice..voice + 2].copy_from_slice(&values);
+                        }
+                        for (offset, dsp) in
+                            voices[paired..usize::from(count)].iter_mut().enumerate()
+                        {
+                            let voice = paired + offset;
+                            frame.values[voice] = dsp.process_sample(
+                                a.voice(voice, normal_a),
+                                b.voice(voice, normal_b),
+                                a.channels > 0,
+                                b.channels > 0,
+                                self.rate as f64,
+                            );
+                        }
                     }
                     self.outputs[node.output_start] = frame;
                 }
