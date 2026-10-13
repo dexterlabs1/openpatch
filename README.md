@@ -143,6 +143,21 @@ playback qualification remains separate.</sub>
 </details>
 
 <details>
+<summary><strong>Blend voices with voltage-controlled mixing</strong></summary>
+
+![Four voices feeding VCA Mix, a complementary Fade, and stereo output with LFO modulation](docs/images/openpatch-mixing.png)
+
+Choose **File → Layered stereo morph**. Mix four voices with independent level
+and CV controls, watch each channel's meter, and use Fade's complementary
+outputs to move the blend across stereo. Both modules support polyphonic signals.
+
+<sub>Native Linux / Mesa CI render with offline engine meter data.</sub>
+
+[Mixing controls, response curves, and channel behavior →](docs/VOLTAGE_MIXING.md)
+
+</details>
+
+<details>
 <summary><strong>Shape voltages and mute a voice</strong></summary>
 
 ![8vert voltage bank and CV Mix setting a VCO pitch, with a ten-row Mutes bank feeding audio](docs/images/openpatch-voltage-utilities.png)

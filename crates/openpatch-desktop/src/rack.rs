@@ -166,6 +166,10 @@ impl Rack {
         self.selection.iter().cloned().collect()
     }
 
+    pub(crate) fn selection_count(&self) -> usize {
+        self.selection.len()
+    }
+
     pub(crate) fn reconcile_selection(&mut self, patch: &Patch) {
         self.selection
             .retain(|id| patch.nodes.iter().any(|node| &node.id == id));
@@ -1701,21 +1705,6 @@ impl Rack {
         }
         if self.pan != initial_pan {
             self.layout_revision = self.layout_revision.wrapping_add(1);
-        }
-        if self.selection.len() > 1 {
-            let status =
-                Rect::from_min_size(canvas.left_top() + vec2(12.0, 12.0), vec2(360.0, 27.0));
-            painter.rect_filled(status, 4.0, Color32::from_black_alpha(210));
-            painter.text(
-                status.center(),
-                Align2::CENTER_CENTER,
-                format!(
-                    "{} selected · Shift-click headers · Cmd/Ctrl+D to duplicate",
-                    self.selection.len()
-                ),
-                FontId::proportional(10.0),
-                Color32::from_gray(236),
-            );
         }
         self.parameter_editor(ui.ctx(), &mut action);
         released_manual.or(if interactive { action } else { None })

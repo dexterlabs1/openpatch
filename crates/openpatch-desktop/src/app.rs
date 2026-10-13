@@ -1301,6 +1301,15 @@ impl OpenPatch {
                         .size(10.0)
                         .color(MUTED),
                     );
+                    if self.rack.selection_count() > 1 {
+                        ui.separator();
+                        ui.label(
+                            RichText::new(format!("{} selected", self.rack.selection_count()))
+                                .size(10.0)
+                                .color(ACCENT),
+                        )
+                        .on_hover_text("Shift-click headers to select modules. Cmd/Ctrl+D duplicates the selection; add Shift to include incoming cables.");
+                    }
                     ui.separator();
                     ui.add(
                         egui::Label::new(RichText::new(&self.status).size(10.0).color(ACCENT))
