@@ -76,6 +76,18 @@ Patches live in `~/OpenPatch` by default. **Save as** creates a new JSON file an
 </details>
 
 <details>
+<summary><strong>Make a voice move with a clocked LFO</strong></summary>
+
+Choose **File → Clocked modulation**. Four simultaneous waveforms let one LFO
+shape volume, filter cutoff, and other CV destinations. Patch a clock and the
+rate knob displays a multiplier; use reset to align phase independently. FM,
+PWM, bipolar/unipolar ranges, and inversion are available directly on the panel.
+
+[Modulation controls and signal contract →](docs/MODULATION.md)
+
+</details>
+
+<details>
 <summary><strong>Try a clocked random voice</strong></summary>
 
 ![Clocked random voice with seeded noise, sample-and-hold, and a piano-key quantizer](docs/images/openpatch-utilities.png)
@@ -153,7 +165,7 @@ Each launch owns its own app session. The separate CLI supports headless MCP, of
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**Twenty-eight built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, four stereo/pitch/routing modules, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
+**Twenty-nine built-in kinds:** six reference-voice modules, five voltage utilities, four polyphonic utilities, MIDI → CV, stereo audio, four stereo/pitch/routing modules, a four-output clocked LFO, and seven legacy modules. Choose **File → MIDI keyboard voice** to play from the performance keyboard or a MIDI controller; **Audio / MIDI** selects devices. Try **File → Polyphonic voice** for a three-note chord, or **File → Clocked random voice** for a repeatable pentatonic patch. The browser distinguishes model classes. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; it is a roadmap, not 49 implemented equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 

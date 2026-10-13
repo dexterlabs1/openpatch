@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 2,
+        "duty": 0.5
+      }
+    },
+    {
+      "id": "lfo",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 1,
+        "unipolar": 1
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 1600,
+        "resonance": 0.3
+      }
+    },
+    {
+      "id": "depth",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.2,
+        "offset": -1
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca",
+      "params": {}
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.3
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "lfo",
+      "input": "clock"
+    },
+    {
+      "from": "lfo",
+      "output": "sine",
+      "to": "vca",
+      "input": "cv"
+    },
+    {
+      "from": "lfo",
+      "output": "triangle",
+      "to": "depth",
+      "input": "signal"
+    },
+    {
+      "from": "depth",
+      "output": "out",
+      "to": "filter",
+      "input": "cutoff_cv"
+    },
+    {
+      "from": "vco",
+      "output": "out",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "output": "out",
+      "to": "vca",
+      "input": "signal"
+    },
+    {
+      "from": "vca",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    }
+  ],
+  "output": "out"
+}

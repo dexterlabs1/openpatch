@@ -19,6 +19,7 @@ use std::path::Path;
 mod analog;
 pub mod ladder;
 pub mod midi;
+mod multi_lfo;
 mod poly;
 mod routing;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
@@ -162,6 +163,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(routing::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(multi_lfo::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");

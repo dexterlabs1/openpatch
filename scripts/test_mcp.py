@@ -375,6 +375,32 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.05})
         self.assertEqual((self.workspace / "wide.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
 
+    def test_multi_lfo_named_outputs_and_modulation_preset_through_mcp(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        module = next(m for m in catalog["modules"] if m["kind"] == "multi_lfo")
+        self.assertEqual(module["outputs"], ["sine", "triangle", "saw", "square"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "lfo", "kind": "multi_lfo", "params": {"frequency": 20}}]}})
+        before = self.patch_snapshot()
+        for port, rms in [("sine", 5 / 2**0.5), ("triangle", 5 / 3**0.5), ("saw", 5 / 3**0.5), ("square", 5)]:
+            measured = self.payload(self.require_tool_success("analyze_signal", {"id": "lfo", "port": port, "seconds": 0.05}))
+            self.assertEqual(measured["max_channels"], 1)
+            self.assertAlmostEqual(measured["channels"][0]["rms"], rms, delta=0.005)
+            self.assertAlmostEqual(measured["channels"][0]["mean"], 0, delta=0.005)
+        self.assertEqual(self.patch_snapshot(), before)
+        patch = json.loads((REPOSITORY / "examples" / "clocked-modulation.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        self.require_tool_success("render_audio", {"filename": "modulation.wav", "seconds": 0.1})
+        with wave.open(str(self.workspace / "modulation.wav")) as wav:
+            self.assertEqual(wav.getnchannels(), 2)
+            samples = struct.unpack("<9600h", wav.readframes(4800))
+        self.assertEqual(samples[::2], samples[1::2])
+        self.assertTrue(any(abs(value) > 100 for value in samples))
+        self.require_tool_success("set_parameter", {"id": "lfo", "parameter": "frequency", "value": 4})
+        self.require_tool_success("undo")
+        self.require_tool_success("render_audio", {"filename": "restored.wav", "seconds": 0.1})
+        self.assertEqual((self.workspace / "modulation.wav").read_bytes(), (self.workspace / "restored.wav").read_bytes())
+
     def test_handshake_catalog_and_tool_listing(self) -> None:
         listed = self.client.request("tools/list")
         self.assertIn("result", listed, f"tools/list failed: {listed}")

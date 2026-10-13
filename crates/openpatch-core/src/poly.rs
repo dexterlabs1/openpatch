@@ -2,6 +2,7 @@
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
+use crate::multi_lfo::{self, MultiLfo};
 use crate::routing::{self, Routing};
 use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
 use serde_json::{json, Value};
@@ -47,7 +48,13 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
     routing::input_names(kind).is_some()
         || matches!(
             kind,
-            "poly_constant" | "poly_split" | "poly_merge" | "poly_sum" | "midi_cv" | "audio_stereo"
+            "poly_constant"
+                | "poly_split"
+                | "poly_merge"
+                | "poly_sum"
+                | "midi_cv"
+                | "audio_stereo"
+                | "multi_lfo"
         )
 }
 fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
@@ -63,6 +70,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         return ports.iter().position(|port| *port == name);
     }
     match kind {
+        "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
@@ -78,7 +86,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if let Some(ports) = routing::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
-    if kind == "midi_cv" {
+    if kind == "multi_lfo" {
+        multi_lfo::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "midi_cv" {
         MIDI_OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "poly_split" {
         numbered_port(name, "out")
@@ -138,6 +148,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
     let outputs = if let Some(names) = routing::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if kind == "multi_lfo" {
+        multi_lfo::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
     } else if kind == "midi_cv" {
         MIDI_OUTPUTS
             .iter()
@@ -198,6 +213,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     }
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
     routing::annotate(module);
+    if kind == "multi_lfo" {
+        multi_lfo::annotate(module);
+    }
 }
 
 #[derive(Debug)]
@@ -215,9 +233,13 @@ enum Model {
     Midi(Box<MidiCv>),
     Stereo(f32),
     Routing(Routing),
+    MultiLfo(Box<MultiLfo>),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if node.kind == "multi_lfo" {
+            return Ok(Self::MultiLfo(Box::new(MultiLfo::build(node, rate)?)));
+        }
         if let Some(model) = Routing::build(node) {
             return model.map(Self::Routing);
         }
@@ -295,6 +317,7 @@ impl Model {
 }
 #[derive(Debug)]
 struct PolyNode {
+    id: String,
     kind: String,
     model: Model,
     inputs: [Option<usize>; MAX_PORTS],
@@ -352,6 +375,7 @@ impl PolyEngine {
                 return Err(format!("duplicate node ID '{}'", node.id));
             }
             nodes.push(PolyNode {
+                id: node.id.clone(),
                 kind: node.kind.clone(),
                 model: Model::build(node, patch.sample_rate)?,
                 inputs: [None; MAX_PORTS],
@@ -363,6 +387,7 @@ impl PolyEngine {
                 match node.kind.as_str() {
                     "poly_split" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
+                    "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     _ => 1,
                 }
             };
@@ -509,6 +534,19 @@ impl PolyEngine {
                     }
                     self.outputs[node.output_start] = frame;
                 }
+                Model::MultiLfo(lfo) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    lfo.process(
+                        &inputs,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + multi_lfo::OUTPUTS.len()],
+                    );
+                }
                 Model::Routing(routing) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -579,6 +617,25 @@ impl PolyEngine {
             .map(|port| self.outputs[port])
             .unwrap_or_default()
     }
+    fn input_unchanged(&self, node: usize, old: &Self, old_node: usize, input: usize) -> bool {
+        match (
+            self.nodes[node].inputs[input],
+            old.nodes[old_node].inputs[input],
+        ) {
+            (None, None) => true,
+            (Some(edge), Some(previous)) => {
+                let edge = &self.edges[edge];
+                let previous = &old.edges[previous];
+                let source = &self.nodes[edge.source_node];
+                let old_source = &old.nodes[previous.source_node];
+                source.id == old_source.id
+                    && source.kind == old_source.kind
+                    && edge.source_port - source.output_start
+                        == previous.source_port - old_source.output_start
+            }
+            _ => false,
+        }
+    }
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
         if self.rate != old.rate {
             return;
@@ -587,10 +644,23 @@ impl PolyEngine {
             let Some(old_index) = old.node_lookup.get(id) else {
                 continue;
             };
+            let (reset_unchanged, clock_unchanged) = if self.nodes[*index].kind == "multi_lfo" {
+                (
+                    self.input_unchanged(*index, old, *old_index, 2),
+                    self.input_unchanged(*index, old, *old_index, 3),
+                )
+            } else {
+                (true, true)
+            };
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
                 continue;
+            }
+            if let (Model::MultiLfo(lfo), Model::MultiLfo(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                lfo.adopt(previous, reset_unchanged, clock_unchanged);
             }
             if let (Model::Midi(midi), Model::Midi(previous)) = (&mut node.model, &previous.model) {
                 midi.adopt(previous);

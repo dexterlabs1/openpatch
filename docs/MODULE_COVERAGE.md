@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **28 built-in kinds**: seven legacy utilities, six reference-voice
+There are **29 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, and four stereo/pitch/routing processors. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, and a four-output clocked LFO. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback and a master-signal visualizer exist; neither supplies the complete Audio or Scope feature set.
 
@@ -63,6 +63,14 @@ controls, voice counts, safety behavior, and the stereo study. `midi_cv` and
 `audio_stereo` contracts are in [MIDI_AUDIO.md](MIDI_AUDIO.md). None of these
 additions imply complete stock-module or host parity.
 
+## Clocked modulation
+
+`multi_lfo` adds four phase-coherent CV outputs, exponential FM, PWM, independent
+clock/reset detectors, voltage-range switching, inversion, and up to 16 voices.
+See [MODULATION.md](MODULATION.md) for its exact timing and state contracts,
+native controls, example voice, validation and remaining parity work. The legacy
+`lfo` is unchanged. This is a functional digital oscillator, not a circuit model.
+
 ## Core inventory
 
 Names follow the Core library; parenthesized aliases match the manual. The Audio family contains three distinct modules. [Official Core inventory](https://library.vcvrack.com/Core)
@@ -92,7 +100,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
 | VCF | Filter | Partial: reference ladder implemented; legacy one-pole is separate | Analytic small-signal response, drive/IMD, resonance and numerical convergence; inventory missing ports/features |
 | VCA | Amplifier | Partial: reference OTA VCA implemented; related legacy gain | Voltage gain law, saturation and CV response; distinguish circuit model from VCV behavior |
-| LFO | Modulation | Related legacy sine only | Waveforms, voltage ranges, clock/reset behavior |
+| LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison, bypass and full native configuration parity remain open |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
 | ADSR EG | Envelope | Partial: reference RC ADSR implemented | Capacitor trajectories, timing convention, sustain, release and retrigger from every stage |

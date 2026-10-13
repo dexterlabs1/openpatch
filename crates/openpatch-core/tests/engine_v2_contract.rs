@@ -525,3 +525,58 @@ fn routing_first_callbacks_and_state_adoption_neither_allocate_nor_free() {
     TRACK_MEMORY.with(|tracking| tracking.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn multi_lfo_first_callbacks_adoption_and_detector_rewiring_neither_allocate_nor_free() {
+    let p = patch(
+        vec![
+            node("fm", "poly_constant", &[("channels", 16.0)]),
+            node("clock", "gate", &[("frequency", 100.0)]),
+            node("reset", "constant", &[("value", 10.0)]),
+            node(
+                "lfo",
+                "multi_lfo",
+                &[("frequency", 4.0), ("fm_amount", 0.5), ("pwm_amount", 0.5)],
+            ),
+        ],
+        vec![
+            cable("fm", "out", "lfo", "fm"),
+            cable("fm", "out", "lfo", "pwm"),
+            cable("clock", "out", "lfo", "clock"),
+            cable("reset", "out", "lfo", "reset"),
+        ],
+        "lfo",
+    );
+    let mut p = p;
+    p.output_port = "sine".into();
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let mut changed = p.clone();
+    changed.nodes[2].kind = "gate".into();
+    changed.nodes[2].params.clear();
+    changed.cables[2].from = "reset".into();
+    changed.cables[3].from = "clock".into();
+    let mut rewired = changed.compile().unwrap();
+    let mut a = [PortFrame::default(); 129];
+    let mut b = [PortFrame::default(); 129];
+    let mut audio = [[0.0; 2]; 129];
+    let mut mono = [0.0; 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            new.adopt_state_from(&old);
+            old.process_poly_block(&mut a[..count]);
+            new.process_poly_block(&mut b[..count]);
+            assert_eq!(&a[..count], &b[..count]);
+            old.process_audio_block(&mut audio[..count]);
+            new.process_audio_block(&mut audio[..count]);
+            old.process_block(&mut mono[..count]);
+            new.process_block(&mut mono[..count]);
+            rewired.adopt_state_from(&old);
+            rewired.process_poly_block(&mut b[..count]);
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

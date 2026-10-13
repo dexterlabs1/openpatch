@@ -680,6 +680,15 @@ impl OpenPatch {
                             self.replace_from_menu(patch, "Clocked random voice");
                             ui.close();
                         }
+                        if ui.button("Clocked modulation").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/clocked-modulation.json"
+                            ))
+                            .expect("valid bundled modulation voice");
+                            self.replace_from_menu(patch, "Clocked modulation");
+                            self.rack.set_zoom(0.75);
+                            ui.close();
+                        }
                         if ui.button("Stereo width study").clicked() {
                             let patch = serde_json::from_str(include_str!(
                                 "../../../examples/stereo-width-study.json"
@@ -1312,7 +1321,17 @@ impl OpenPatch {
             self.rack = Rack::default();
             self.title = "Stereo and routing utilities".into();
         }
-        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108) {
+        if *frame == 112 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/clocked-modulation.json"))
+                    .expect("valid bundled modulation voice");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("modulation voice compiles");
+            self.rack = Rack::default();
+            self.rack.set_zoom(0.75);
+            self.title = "Clocked modulation".into();
+        }
+        if matches!(*frame, 12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
         if let Some(image) = ctx.input(|i| {
@@ -1338,7 +1357,8 @@ impl OpenPatch {
                 5 => path.with_file_name("rack-midi.png"),
                 6 => path.with_file_name("audio-midi-settings.png"),
                 7 => path.with_file_name("rack-stereo-width.png"),
-                _ => path.with_file_name("rack-routing-modules.png"),
+                8 => path.with_file_name("rack-routing-modules.png"),
+                _ => path.with_file_name("rack-modulation.png"),
             };
             image::save_buffer(
                 target,
@@ -1349,7 +1369,7 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 9 {
+            if *captures == 10 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }

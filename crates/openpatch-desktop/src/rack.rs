@@ -35,6 +35,7 @@ struct ParameterEdit {
     min: f32,
     max: f32,
     step: Option<f32>,
+    display_scale: f32,
     focus: bool,
 }
 
@@ -568,6 +569,41 @@ impl Rack {
                     );
                     continue;
                 }
+                if node.kind == "multi_lfo" && matches!(*name, "unipolar" | "invert") {
+                    let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
+                    let rect = Rect::from_min_size(
+                        point(
+                            if *name == "unipolar" {
+                                20.0
+                            } else {
+                                width * 0.5 + 5.0
+                            },
+                            279.0,
+                        ),
+                        vec2(width * 0.5 - 25.0, 25.0) * self.zoom,
+                    );
+                    let label = if *name == "invert" {
+                        "Invert"
+                    } else if enabled {
+                        "0–10 V"
+                    } else {
+                        "±5 V"
+                    };
+                    let button = ui.put(rect, egui::Button::new(label).selected(enabled));
+                    if button.clicked() {
+                        self.selected = Some(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":if enabled { 0.0 } else { 1.0 }}),
+                        ));
+                    }
+                    button.on_hover_text(if *name == "invert" {
+                        "Invert all waveforms within the selected voltage range."
+                    } else {
+                        "Switch all outputs between bipolar ±5 V and unipolar 0–10 V."
+                    });
+                    continue;
+                }
                 if node.kind == "mix6" && matches!(*name, "invert" | "average") {
                     let value = node.params.get(*name).copied().unwrap_or(0.0);
                     let x = if *name == "average" {
@@ -634,6 +670,14 @@ impl Rack {
                 }
                 let (knob_position, radius) = if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
+                } else if node.kind == "multi_lfo" {
+                    (
+                        pos2(
+                            width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
+                            125.0 + (index / 2) as f32 * 100.0,
+                        ),
+                        23.0,
+                    )
                 } else if node.kind == "mid_side" {
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if node.kind == "mix6" {
@@ -654,7 +698,23 @@ impl Rack {
                         .filter(|step| *step > 0.0)
                         .map(|step| step as f32)
                 };
-                let normalized = normalize(value, min, max, logarithmic);
+                let geometric = node.kind == "multi_lfo" && *name == "frequency";
+                let clock_ratio = geometric
+                    && patch
+                        .cables
+                        .iter()
+                        .any(|c| c.to == node.id && c.input == "clock");
+                let display_scale = if clock_ratio { 0.5 } else { 1.0 };
+                let display_value = if clock_ratio {
+                    format!("{:.4}x", value * display_scale)
+                } else {
+                    parameter_value(name, value, spec)
+                };
+                let normalized = if geometric {
+                    normalize_geometric(value, min, max)
+                } else {
+                    normalize(value, min, max, logarithmic)
+                };
                 let knob_rect =
                     Rect::from_center_size(center, Vec2::splat((radius + 10.0) * 2.0 * self.zoom));
                 let knob = ui.interact(
@@ -702,7 +762,11 @@ impl Rack {
                     Some(default)
                 } else if change != 0.0 {
                     Some(quantize(
-                        denormalize(drag_normalized, min, max, logarithmic),
+                        if geometric {
+                            denormalize_geometric(drag_normalized, min, max)
+                        } else {
+                            denormalize(drag_normalized, min, max, logarithmic)
+                        },
                         min,
                         max,
                         step,
@@ -739,7 +803,11 @@ impl Rack {
                 painter.text(
                     center - vec2(0.0, (radius + 13.0) * self.zoom),
                     Align2::CENTER_BOTTOM,
-                    parameter_label(name),
+                    if clock_ratio {
+                        "CLOCK RATIO"
+                    } else {
+                        parameter_label(name)
+                    },
                     FontId::proportional(10.0 * self.zoom),
                     INK,
                 );
@@ -748,7 +816,7 @@ impl Rack {
                 painter.text(
                     value_center,
                     Align2::CENTER_CENTER,
-                    parameter_value(name, value, spec),
+                    &display_value,
                     FontId::monospace(11.0 * self.zoom),
                     INK,
                 );
@@ -771,25 +839,26 @@ impl Rack {
                     egui::WidgetInfo::labeled(
                         egui::WidgetType::Button,
                         true,
-                        format!("Edit {} {} value, {}", node.id, name, value),
+                        format!("Edit {} {} value, {}", node.id, name, display_value),
                     )
                 });
                 if value_response.double_clicked() {
                     self.editing = Some(ParameterEdit {
                         id: node.id.clone(),
                         parameter: name.to_string(),
-                        text: value.to_string(),
-                        min,
-                        max,
-                        step,
+                        text: (value * display_scale).to_string(),
+                        min: min * display_scale,
+                        max: max * display_scale,
+                        step: step.map(|step| step * display_scale),
+                        display_scale,
                         focus: true,
                     });
                 }
                 knob.on_hover_text(format!(
                     "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset.",
                     name,
-                    parameter_value(name, value, spec),
-                    description
+                    display_value,
+                    if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
                 ));
                 value_response.on_hover_text("Double-click to type a value");
             }
@@ -1289,13 +1358,14 @@ impl Rack {
             let input = ui.add(egui::TextEdit::singleline(&mut edit.text).desired_width(220.0));
             if edit.focus { input.request_focus(); edit.focus = false; }
             let parsed = edit.text.parse::<f32>().ok().filter(|value| value.is_finite() && *value >= edit.min && *value <= edit.max && edit.step.is_none_or(|step| ((value - edit.min) / step - ((value - edit.min) / step).round()).abs() < 0.000_01));
+            if edit.display_scale == 0.5 { ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive."); }
             if edit.parameter == "waveform" { ui.label("0 = Saw, 1 = Pulse"); }
             if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") { ui.label("Enter a ratio from 0 to 1."); }
             if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") { ui.label("Enter time in seconds."); }
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
                 if ui.add_enabled(parsed.is_some(), egui::Button::new("Apply")).clicked() || (enter && parsed.is_some()) {
-                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":parsed.unwrap()}))); close = true;
+                    *action = Some(RackAction::Command("set_parameter", json!({"id":edit.id,"parameter":edit.parameter,"value":parsed.unwrap() / edit.display_scale}))); close = true;
                 }
                 if ui.button("Cancel").clicked() { close = true; }
             });
@@ -1781,7 +1851,7 @@ fn panel_width(kind: &str) -> f32 {
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
         "audio_stereo" | "octave" => HP * 12.0,
-        "mid_side" | "mult" => HP * 20.0,
+        "mid_side" | "mult" | "multi_lfo" => HP * 20.0,
         "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
@@ -1823,7 +1893,8 @@ fn title(kind: &str) -> &str {
         "gate" => "GATE",
         "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
-        "lfo" => "LFO",
+        "multi_lfo" => "LFO",
+        "lfo" => "SINE LFO",
         "gain" => "VCA",
         "lowpass" => "LOW-PASS",
         "mixer" => "MIXER",
@@ -1860,6 +1931,8 @@ fn parameter_label(name: &str) -> &str {
         "clock_div" => "CLOCK DIVIDE",
         "encode_width" | "decode_width" => "WIDTH",
         "octaves" => "OCTAVES",
+        "fm_amount" => "FM AMOUNT",
+        "pwm_amount" => "PWM AMOUNT",
         name => name,
     }
 }
@@ -1876,6 +1949,10 @@ fn port_label(name: &str) -> &str {
         "modwheel" => "MOD",
         "clock_div" => "CLK / N",
         "clock" => "CLK",
+        "sine" => "SIN",
+        "triangle" => "TRI",
+        "saw" => "SAW",
+        "square" => "SQR",
         "continue" => "CONT",
         "encode_cv" | "decode_cv" => "WIDTH CV",
         "shift_cv" => "SHIFT CV",
@@ -1900,6 +1977,14 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "adsr" => &["attack", "decay", "sustain", "release"],
         "gate" => &["frequency", "duty"],
         "lfo" => &["frequency", "amplitude", "offset"],
+        "multi_lfo" => &[
+            "frequency",
+            "pulse_width",
+            "fm_amount",
+            "pwm_amount",
+            "unipolar",
+            "invert",
+        ],
         _ => &["frequency", "amplitude", "gain", "cutoff", "value"],
     };
     let mut ordered: Vec<_> = order
@@ -1957,10 +2042,17 @@ fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
             }
         }
         "gain" => format!("{value:.2}x"),
+        "fm_amount" | "pwm_amount" => format!("{:+.0}%", value * 100.0),
         "encode_width" | "decode_width" => format!("{:.0}%", value * 100.0),
         "octaves" => format!("{value:+.0} oct"),
         _ => format_value(value, spec["unit"].as_str().unwrap_or("")),
     }
+}
+fn normalize_geometric(value: f32, min: f32, max: f32) -> f32 {
+    (value.clamp(min, max) / min).log2() / (max / min).log2()
+}
+fn denormalize_geometric(value: f32, min: f32, max: f32) -> f32 {
+    (min * (value.clamp(0.0, 1.0) * (max / min).log2()).exp2()).clamp(min, max)
 }
 fn normalize(value: f32, min: f32, max: f32, logarithmic: bool) -> f32 {
     if max <= min {
@@ -1986,6 +2078,8 @@ fn format_value(value: f32, unit: &str) -> String {
             format!("{:.2} kHz", value / 1000.0)
         } else if value >= 100.0 {
             format!("{value:.1} Hz")
+        } else if value < 0.1 {
+            format!("{value:.4} Hz")
         } else {
             format!("{value:.2} Hz")
         }
@@ -2835,6 +2929,109 @@ mod tests {
             matches!(action, Some(RackAction::Command("set_parameter", args))
             if args["id"] == "mix" && args["parameter"] == "average" && args["value"] == 1.0)
         );
+    }
+
+    #[test]
+    fn lfo_waveform_jacks_and_voltage_switches_are_independently_operable() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"lfo","kind":"multi_lfo"},{"id":"out","kind":"audio_stereo"}]}))
+        .unwrap();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        for (index, port) in ["sine", "triangle", "saw", "square"]
+            .into_iter()
+            .enumerate()
+        {
+            let action = drag(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0 + index as f64,
+                pos2(84.0 + index as f32 * 60.0, 386.0),
+                pos2(384.0, 344.0),
+            );
+            assert!(matches!(action, Some(RackAction::Command("connect", args))
+                if args["from"] == "lfo" && args["output"] == port && args["input"] == "left"));
+        }
+        for (index, name) in ["unipolar", "invert"].into_iter().enumerate() {
+            let position = pos2(106.5 + index as f32 * 135.0, 303.5);
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                6.0 + index as f64,
+                vec![egui::Event::PointerMoved(position), button(position, true)],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                6.1 + index as f64,
+                vec![button(position, false)],
+            );
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", args))
+                if args["parameter"] == name && args["value"] == 1.0)
+            );
+        }
+    }
+
+    #[test]
+    fn lfo_clock_ratio_editor_converts_display_units_back_to_patch_units() {
+        for (clocked, expected_scale, expected_value) in [(false, 1.0, 2.0), (true, 0.5, 4.0)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let mut patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+                "nodes":[{"id":"lfo","kind":"multi_lfo"},{"id":"clock","kind":"gate"}]}))
+            .unwrap();
+            if clocked {
+                patch.cables.push(Cable {
+                    from: "clock".into(),
+                    output: "out".into(),
+                    to: "lfo".into(),
+                    input: "clock".into(),
+                });
+            }
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let value = pos2(99.0, 169.0);
+            for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)] {
+                frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![egui::Event::PointerMoved(value), button(value, pressed)],
+                );
+            }
+            let edit = rack
+                .editing
+                .as_mut()
+                .expect("double-click opens rate editor");
+            assert_eq!(edit.display_scale, expected_scale);
+            assert_eq!(edit.text.parse::<f32>().unwrap(), 2.0 * expected_scale);
+            edit.text = "2".into();
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                matches!(action, Some(RackAction::Command("set_parameter", args))
+                if args["id"] == "lfo" && args["parameter"] == "frequency" && args["value"] == expected_value)
+            );
+        }
+        assert_eq!(normalize_geometric(2.0, 1.0 / 256.0, 1024.0), 0.5);
+        assert_eq!(denormalize_geometric(0.5, 1.0 / 256.0, 1024.0), 2.0);
+        assert_eq!(format_value(1.0 / 256.0, "Hz"), "0.0039 Hz");
     }
 
     #[test]
