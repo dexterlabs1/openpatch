@@ -49,6 +49,34 @@ a modal dialog, a blocked/no-op drop, or a newer graph revision cancels the
 preview without adding history. Pan/zoom remain persisted view settings without
 separate undo entries.
 
+## Cable gestures
+
+Drag an empty output to an input to connect it. At an occupied output, an
+ordinary drag picks up the top cable's output plug; drop it on another output
+to change the source while retaining its destination and ID. Other cables on
+either jack stay connected. The preview remains anchored at the destination,
+and only the picked-up cable fades during the gesture. Click-to-connect uses
+the same rules: click an occupied output to pick up its top plug, then click
+another output to move it.
+
+Hold **Cmd** (or **Ctrl**) when pressing an output to start an additional cable.
+This also applies to click-to-connect. You can release the modifier after
+pressing. This works in both engine versions;
+it does not request input summing. An ordinary drop on an occupied input replaces
+its cables. Hold **Shift** on drop to add to that input's stack in version 2.
+
+A connected input still lets you move its top cable to another input, or change
+its source by selecting an output. Right-click an input to choose a particular
+cable from its stack. Cable moves preserve identity and form one revision-checked
+undo action. Saved projects retain the new routing without moving modules.
+
+**Esc**, focus loss, a modal dialog, an invalid or empty drop, and a newer patch
+revision cancel the gesture and retain the original connection. Moving a picked
+output plug onto an input is invalid. These cancellation rules are OpenPatch's
+current behavior; Rack's drop-to-delete, Shift-click deletion, and Cmd-Shift
+cloning gestures remain separate work. The target for output pickup and Cmd/Ctrl
+creation is the pinned [Rack port interaction implementation](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/PortWidget.cpp#L392).
+
 ## Exact parameter values
 
 Right-click a knob to type a value directly in its parameter menu. Double-clicking

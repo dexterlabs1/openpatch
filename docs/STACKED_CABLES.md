@@ -10,6 +10,8 @@ Choose **File → Stacked pitch voice** for a three-note chord with a shared
 transpose control and gentle vibrato. All three control sources meet at the
 VCO's pitch input. The mono transpose and vibrato signals apply to every voice.
 
+- Hold **Cmd** (Ctrl on Windows/Linux) when pressing an occupied output to
+  start another cable; an ordinary drag moves its top output plug instead.
 - Hold **Shift** when finishing a cable to add it to an occupied input.
 - An ordinary drop replaces the destination's existing cables in one undo step.
 - Dragging a connected input moves its top cable. Right-click the input to
