@@ -38,8 +38,16 @@ Placement and selection change
 only after the revision-checked graph edit succeeds. A stale GUI snapshot or
 invalid candidate leaves the current layout intact. Duplication and group
 deletion are each one graph undo/redo action. Layout snapshots restore the
-observed duplicated positions; arbitrary layout-only movement still lacks
-project-wide undo. Native projects save the resulting graph and placement.
+observed duplicated positions. Native projects save the resulting graph and placement.
+
+Each completed single/group drag creates one revision-checked checkpoint in
+that same history. Undo/redo follows the order of moves, parameter edits and
+cable edits, including commands from MCP. Checkpoints preserve compatible DSP
+state, selection and viewport. Drag previews are excluded from Save/recovery;
+only accepted snapped positions become committed geometry. Escape, focus loss,
+a modal dialog, a blocked/no-op drop, or a newer graph revision cancels the
+preview without adding history. Pan/zoom remain persisted view settings without
+separate undo entries.
 
 ## Shared MCP operation
 
