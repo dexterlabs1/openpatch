@@ -160,6 +160,7 @@ impl ModuleLibrary {
         [
             module["kind"].as_str(),
             module["title"].as_str(),
+            Some(crate::rack::title(kind)),
             module["description"].as_str(),
             module["model"].as_str(),
         ]
@@ -532,7 +533,9 @@ impl ModuleLibrary {
         patch_version: u32,
     ) -> (Option<LibraryAction>, egui::Id, egui::Id) {
         let kind = module["kind"].as_str().unwrap_or("");
-        let title = module["title"].as_str().unwrap_or(kind);
+        let title = module["title"]
+            .as_str()
+            .unwrap_or_else(|| crate::rack::title(kind));
         let supported = available(module, patch_version);
         let (_, rect) = ui.allocate_space(vec2(width, 217.0));
         let id = ui.make_persistent_id(("module-library-tile", kind));
@@ -692,7 +695,9 @@ fn paint_tile(
         egui::StrokeKind::Inside,
     );
     let kind = module["kind"].as_str().unwrap_or("");
-    let title = module["title"].as_str().unwrap_or(kind);
+    let title = module["title"]
+        .as_str()
+        .unwrap_or_else(|| crate::rack::title(kind));
     let mut job = egui::text::LayoutJob::simple(
         title.to_owned(),
         crate::panel_skin::print_font(painter.ctx(), 14.0),
