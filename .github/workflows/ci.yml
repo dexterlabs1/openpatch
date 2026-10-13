@@ -35,6 +35,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -43,6 +46,11 @@ jobs:
         run: cargo test --locked --workspace
       - name: Release binary
         run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: macOS application bundle
+        if: runner.os == 'macOS'
+        run: |
+          python3 scripts/package_macos.py --binary target/${{ matrix.target }}/release/openpatch-desktop
+          ditto -c -k --sequesterRsrc --keepParent dist/OpenPatch.app dist/OpenPatch-macos-arm64.zip
       - name: MCP integration tests
         env:
           OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
@@ -54,6 +62,9 @@ jobs:
           name: openpatch-${{ matrix.artifact }}
           path: |
             target/${{ matrix.target }}/release/${{ matrix.binary }}
+            target/${{ matrix.target }}/release/openpatch-desktop
+            target/${{ matrix.target }}/release/openpatch-desktop.exe
+            dist/OpenPatch-macos-arm64.zip
             Cargo.lock
             LICENSE
             README.md
