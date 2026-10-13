@@ -4,6 +4,10 @@
 
 Choose **File → Delayed gate voice** for a connected stereo example. The clock drives Gates; its timed GATE plays the left envelope and DELAY plays the right. Turn LENGTH to change the interval, or press RESET to clear the timing state. The patch is [delayed-gate-voice.json](../examples/delayed-gate-voice.json).
 
+![Native Gates panel with length control, RESET button, nine named jacks, and a connected stereo timing voice](images/openpatch-gates.png)
+
+*Native Linux/Mesa CI render with offline engine telemetry. This image does not qualify macOS audio-device playback.*
+
 ## Controls and signals
 
 | Control or port | Behavior |
@@ -51,3 +55,16 @@ Six output indicators use separate mono/poly colors. They update every 32 sample
 The validation suite covers thresholds, startup, coincident reset/edges, retriggering, variable duration, channel policies, delayed lookup and capacity eviction, dormant voices, timestamp rebasing, adoption, initialization, allocation-free processing, manual control safety, and all nine native jack targets. Direct differential traces against the VCV executable and macOS hardware playback remain separate qualification work.
 
 `cargo run --release -p openpatch-core --example gates_profile` measures a three-node source/Gates graph at one and sixteen voices, plus compatible adoption. It warms the delay history before measurement. Results include source oscillator and routing costs and do not establish a performance advantage over Rack.
+
+### Initial M1 Max measurement
+
+Measured from [d11b8a6](https://github.com/dexterlabs1/openpatch/commit/d11b8a65ad2275c009595264036bbf31645b7189), optimized Rust build on macOS ARM64 / Apple M1 Max, 48 kHz, 128-frame blocks. Each processing case ran for at least two seconds after warming 48,000 frames; adoption was measured 1,000 times with populated history.
+
+| Active voices | Whole-graph ns/frame | Realtime factor | Adoption mean | Largest observed adoption |
+|---|---:|---:|---:|---:|
+| 1 | 219.07 | 95.10× | 0.673 µs | 7.916 µs |
+| 16 | 2,669.03 | 7.81× | 7.166 µs | 22.500 µs |
+
+Adoption copies only retained history entries, including wrapped buffers; empty lanes require no history copy. Storage is still reserved for all sixteen lanes. These single-module graph measurements are not maximum-rack callback deadlines, hardware-audio qualification, or a comparison with VCV Rack.
+
+The connected stereo render also confirms the delayed right envelope stays zero before the delayed gate. The existing analog VCA can produce a brief startup transient while incoming cables acquire their first samples; that transient is separate from Gates timing.
