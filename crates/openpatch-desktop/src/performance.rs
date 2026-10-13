@@ -2,8 +2,8 @@
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{
-    Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState, ModuleTelemetry,
-    Patch, MAX_NODES,
+    Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
+    ModuleTelemetry, Patch, MAX_CABLES, MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -98,10 +98,36 @@ struct StateEntry {
     born_revision: u64,
     kind: String,
 }
+type RouteSignature = (String, String, String, String, String, String);
+fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
+    let kind = |id: &str| {
+        patch
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .map(|node| node.kind.clone())
+            .unwrap_or_default()
+    };
+    (
+        cable.from.clone(),
+        cable.output.clone(),
+        cable.to.clone(),
+        cable.input.clone(),
+        kind(&cable.from),
+        kind(&cable.to),
+    )
+}
+struct CableEntry {
+    slot: usize,
+    token: u64,
+    born_revision: u64,
+    route: RouteSignature,
+}
 struct Control {
     queue: Producer<Event>,
     entries: BTreeMap<String, Entry>,
     state_entries: BTreeMap<String, StateEntry>,
+    cable_entries: BTreeMap<String, CableEntry>,
     revision: u64,
     next_token: u64,
     next_sequence: u64,
@@ -236,11 +262,19 @@ pub(super) struct StateBinding {
     pub token: u64,
     pub handle: ModuleHandle,
 }
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CableBinding {
+    pub token: u64,
+    pub handle: CableHandle,
+}
 pub(super) struct ModulePlan {
     pub bindings: [Option<Binding>; MAX_NODES],
     pub states: [Option<StateBinding>; MAX_NODES],
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
+    // Compile/control owns these fixed-capacity allocations. Queued graph
+    // moves carry pointers; retired graphs free them back on the control side.
+    pub cables: Box<[Option<CableBinding>; MAX_CABLES]>,
+    pub fresh_cables: Box<[Option<CableHandle>; MAX_CABLES]>,
 }
 impl Default for ModulePlan {
     fn default() -> Self {
@@ -248,6 +282,74 @@ impl Default for ModulePlan {
             bindings: [None; MAX_NODES],
             states: [None; MAX_NODES],
             fresh_states: [None; MAX_NODES],
+            cables: vec![None; MAX_CABLES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed cable binding capacity"),
+            fresh_cables: vec![None; MAX_CABLES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed fresh cable capacity"),
+        }
+    }
+}
+impl ModulePlan {
+    /// Exclusions are fixed stack storage; no control registry reaches audio.
+    pub(super) fn adopt_state(&self, engine: &mut Engine, previous: &Self, old: &Engine) {
+        let first = self
+            .states
+            .iter()
+            .flatten()
+            .map(|binding| binding.handle)
+            .chain(self.fresh_states.iter().flatten().copied())
+            .next();
+        let Some(first) = first else {
+            engine.adopt_state_from_excluding_routes(old, &[], &[]);
+            return;
+        };
+        let mut modules = [first; MAX_NODES];
+        let mut module_count = 0;
+        for (slot, binding) in self.states.iter().enumerate() {
+            if let Some(binding) = binding {
+                if !previous.states[slot].is_some_and(|old| old.token == binding.token) {
+                    modules[module_count] = binding.handle;
+                    module_count += 1;
+                }
+            }
+        }
+        for handle in self.fresh_states.iter().flatten() {
+            modules[module_count] = *handle;
+            module_count += 1;
+        }
+        let first = self
+            .cables
+            .iter()
+            .flatten()
+            .map(|binding| binding.handle)
+            .chain(self.fresh_cables.iter().flatten().copied())
+            .next();
+        if let Some(first) = first {
+            let mut cables = [first; MAX_CABLES];
+            let mut cable_count = 0;
+            for (slot, binding) in self.cables.iter().enumerate() {
+                if let Some(binding) = binding {
+                    if !previous.cables[slot].is_some_and(|old| old.token == binding.token) {
+                        cables[cable_count] = binding.handle;
+                        cable_count += 1;
+                    }
+                }
+            }
+            for handle in self.fresh_cables.iter().flatten() {
+                cables[cable_count] = *handle;
+                cable_count += 1;
+            }
+            engine.adopt_state_from_excluding_routes(
+                old,
+                &modules[..module_count],
+                &cables[..cable_count],
+            );
+        } else {
+            engine.adopt_state_from_excluding_routes(old, &modules[..module_count], &[]);
         }
     }
 }
@@ -291,6 +393,7 @@ impl Performance {
                     queue,
                     entries: BTreeMap::new(),
                     state_entries: BTreeMap::new(),
+                    cable_entries: BTreeMap::new(),
                     revision: 0,
                     next_token: 1,
                     next_sequence: 1,
@@ -325,6 +428,24 @@ impl Performance {
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
+            }
+        }
+        if patch.version == 2 {
+            for (index, cable) in patch.cables.iter().enumerate() {
+                let Some(id) = cable.id.as_ref() else {
+                    continue;
+                };
+                let handle = engine.resolve_cable_state(id)?;
+                if let Some(entry) = control.cable_entries.get(id).filter(|entry| {
+                    revision >= entry.born_revision && route_signature(patch, cable) == entry.route
+                }) {
+                    plan.cables[entry.slot] = Some(CableBinding {
+                        token: entry.token,
+                        handle,
+                    });
+                } else {
+                    plan.fresh_cables[index] = Some(handle);
+                }
             }
         }
         for (id, entry) in &control.entries {
@@ -422,10 +543,51 @@ impl LiveModuleEvents for Performance {
             }
         }
     }
+    fn retire_cables(&self, ids: &[String]) {
+        let mut control = self
+            .control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        for id in ids {
+            control.cable_entries.remove(id);
+        }
+    }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
             return;
+        }
+        control.cable_entries.retain(|id, entry| {
+            patch.cables.iter().any(|cable| {
+                cable.id.as_ref() == Some(id) && route_signature(patch, cable) == entry.route
+            })
+        });
+        let mut cable_used = [false; MAX_CABLES];
+        for entry in control.cable_entries.values() {
+            cable_used[entry.slot] = true;
+        }
+        for cable in &patch.cables {
+            let Some(id) = cable.id.as_ref() else {
+                continue;
+            };
+            if control.cable_entries.contains_key(id) {
+                continue;
+            }
+            let Some(slot) = cable_used.iter().position(|used| !used) else {
+                break;
+            };
+            cable_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.cable_entries.insert(
+                id.clone(),
+                CableEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    route: route_signature(patch, cable),
+                },
+            );
         }
         control.state_entries.retain(|id, entry| {
             patch

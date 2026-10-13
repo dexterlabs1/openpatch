@@ -23,7 +23,8 @@ pub struct Document {
     pub layout: Value,
 }
 impl Document {
-    pub fn new(patch: Patch, layout: Value) -> Result<Self, String> {
+    pub fn new(mut patch: Patch, layout: Value) -> Result<Self, String> {
+        patch.assign_missing_cable_ids()?;
         let document = Self { patch, layout };
         document.encode()?;
         Ok(document)

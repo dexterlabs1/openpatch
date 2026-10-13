@@ -9,6 +9,7 @@ fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
 }
 fn cable(from: &str, port: &str, to: &str, input: &str) -> Cable {
     Cable {
+        id: None,
         from: from.into(),
         output: port.into(),
         to: to.into(),

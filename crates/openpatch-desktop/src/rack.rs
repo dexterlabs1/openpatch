@@ -62,19 +62,32 @@ struct PendingCable {
     origin: CableEnd,
     // The original stays in the patch until the complete replacement validates.
     original: Option<Cable>,
+    revision: u64,
+    stack_requested: bool,
 }
 
 impl PendingCable {
+    #[cfg(test)]
     fn new(origin: CableEnd, patch: &Patch) -> Self {
+        Self::at_revision(origin, patch, 0)
+    }
+
+    fn at_revision(origin: CableEnd, patch: &Patch, revision: u64) -> Self {
         let original = match &origin {
             CableEnd::Input { node, port } => patch
                 .cables
                 .iter()
+                .rev()
                 .find(|cable| cable.to == *node && cable.input == *port)
                 .cloned(),
             CableEnd::Output { .. } => None,
         };
-        Self { origin, original }
+        Self {
+            origin,
+            original,
+            revision,
+            stack_requested: false,
+        }
     }
 }
 
@@ -99,6 +112,7 @@ pub struct Rack {
     pan: Vec2,
     zoom: f32,
     pending: Option<PendingCable>,
+    observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
     suppress_reveal_once: bool,
@@ -122,6 +136,7 @@ impl Default for Rack {
             pan: vec2(24.0, 12.0),
             zoom: 1.0,
             pending: None,
+            observed_revision: 0,
             dragging_cable: false,
             editing: None,
             suppress_reveal_once: false,
@@ -398,10 +413,18 @@ impl Rack {
         patch: &Patch,
         catalog: &Value,
         device_rate: u32,
+        revision: u64,
     ) -> Option<RackAction> {
+        if self.observed_revision != revision {
+            self.pending = None;
+            self.dragging_cable = false;
+            self.observed_revision = revision;
+        }
         let released_manual = self.release_manual_if_needed(ui, patch);
         let interactive = ui.is_enabled();
         if !interactive || !ui.input(|i| i.focused) {
+            self.pending = None;
+            self.dragging_cable = false;
             if let Some(drag) = self.group_drag.take() {
                 self.positions.extend(drag.origins);
                 self.layout_revision = self.layout_revision.wrapping_add(1);
@@ -523,6 +546,17 @@ impl Rack {
         let mut inputs = BTreeMap::<(String, String), Pos2>::new();
         let mut jack_targets = Vec::new();
         let mut pointer_on_module = false;
+        let mut stack_badges = Vec::new();
+        // One ordered grouping pass serves picking, menus, counts and curve fans.
+        let mut input_groups = BTreeMap::<(&str, &str), Vec<&Cable>>::new();
+        let mut cable_ordinals = Vec::with_capacity(patch.cables.len());
+        for cable in &patch.cables {
+            let group = input_groups
+                .entry((cable.to.as_str(), cable.input.as_str()))
+                .or_default();
+            cable_ordinals.push(group.len());
+            group.push(cable);
+        }
         for node in &patch.nodes {
             let position = self.positions[&node.id];
             let width = panel_width(&node.kind);
@@ -1410,10 +1444,11 @@ impl Rack {
             }
             for port in ports.iter().filter_map(Value::as_str) {
                 let location = inputs[&(node.id.clone(), port.to_string())];
-                let connected = patch
-                    .cables
-                    .iter()
-                    .any(|c| c.to == node.id && c.input == port);
+                let cables = input_groups
+                    .get(&(node.id.as_str(), port))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let connected = !cables.is_empty();
                 let jack = jack(
                     ui,
                     &painter,
@@ -1435,14 +1470,43 @@ impl Rack {
                     catalog,
                     &mut action,
                 );
-                if jack.secondary_clicked() && connected {
-                    self.pending = None;
-                    self.dragging_cable = false;
-                    action = Some(RackAction::Command(
-                        "disconnect",
-                        json!({"to":node.id,"input":port}),
+                if cables.len() > 1 {
+                    stack_badges.push((
+                        stack_badge_position(location, &node.kind, self.zoom),
+                        cables.len(),
                     ));
                 }
+                if jack.secondary_clicked() {
+                    self.pending = None;
+                    self.dragging_cable = false;
+                }
+                jack.context_menu(|ui| {
+                    self.input_cable_menu(ui, &node.id, port, cables, patch.version, &mut action)
+                });
+                let mut details = format!(
+                    "{}.{} · {} cable{}\n{}",
+                    node.id,
+                    port,
+                    cables.len(),
+                    if cables.len() == 1 { "" } else { "s" },
+                    if patch.version == 2 {
+                        "Shift-drop adds a stack. Ordinary drop replaces all cables here. Right-click to choose, move, or remove one."
+                    } else {
+                        "Stacking requires engine v2. Ordinary drop replaces the input cable."
+                    }
+                );
+                for cable in cables.iter().take(8) {
+                    details.push_str(&format!(
+                        "\n{}: {}.{}",
+                        cable.id.as_deref().unwrap_or("legacy"),
+                        cable.from,
+                        cable.output
+                    ));
+                }
+                if cables.len() > 8 {
+                    details.push_str("\nMore cables in the right-click list.");
+                }
+                jack.on_hover_text(details);
             }
             for (port_index, port) in output_ports.iter().enumerate() {
                 let output_point = outputs[&(node.id.clone(), port.to_string())];
@@ -1541,8 +1605,18 @@ impl Rack {
                 .as_ref()
                 .zip(nearest)
                 .is_some_and(|(pending, (target, _))| {
-                    cable_plan(pending, target)
-                        .is_some_and(|(cable, old)| connection_allowed(patch, &cable, old, catalog))
+                    let stack = pending.stack_requested || ui.input(|i| i.modifiers.shift);
+                    (!stack || patch.version >= 2)
+                        && cable_plan(pending, target).is_some_and(|(cable, old)| {
+                            connection_allowed_mode(
+                                patch,
+                                &cable,
+                                old,
+                                catalog,
+                                stack
+                                    || (old.is_some() && matches!(target, CableEnd::Output { .. })),
+                            )
+                        })
                 });
         if interactive
             && self.dragging_cable
@@ -1550,14 +1624,20 @@ impl Rack {
         {
             if let Some(pending) = self.pending.take() {
                 if let Some((target, _)) = nearest {
-                    action = cable_action(patch, &pending, target, catalog);
+                    action = cable_action_mode(
+                        patch,
+                        &pending,
+                        target,
+                        catalog,
+                        ui.input(|i| i.modifiers.shift),
+                    );
                 }
             }
             self.dragging_cable = false;
         }
         // Connected plugs remain visible until an atomic edit succeeds. The
         // picked-up cable becomes a ghost so cancellation never loses a route.
-        for cable in &patch.cables {
+        for (cable_index, cable) in patch.cables.iter().enumerate() {
             if let (Some(&from), Some(&to)) = (
                 outputs.get(&(cable.from.clone(), cable.output.clone())),
                 inputs.get(&(cable.to.clone(), cable.input.clone())),
@@ -1571,7 +1651,7 @@ impl Rack {
                     CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
                     CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                 });
-                let color = cable_color(&cable.from, &cable.output).gamma_multiply(if picked_up {
+                let color = cable_instance_color(cable).gamma_multiply(if picked_up {
                     0.24
                 } else if nearest.is_some() && !traced && self.pending.is_none() {
                     0.48
@@ -1586,16 +1666,31 @@ impl Rack {
                     self.zoom,
                     true,
                     configured_bus(patch, catalog, &cable.from),
+                    {
+                        let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
+                        let ordinal = cable_ordinals[cable_index];
+                        if count > 1 {
+                            (ordinal as f32 / (count - 1) as f32 - 0.5) * 40.0
+                        } else {
+                            0.0
+                        }
+                    },
                 );
                 if traced && !picked_up {
-                    paint_jack_light(
-                        &painter,
-                        to,
-                        self.zoom,
-                        cable_color(&cable.from, &cable.output),
-                    );
+                    paint_jack_light(&painter, to, self.zoom, cable_instance_color(cable));
                 }
             }
+        }
+        for (center, count) in stack_badges {
+            painter.circle_filled(center, 8.0 * self.zoom, INK);
+            painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
+            painter.text(
+                center,
+                Align2::CENTER_CENTER,
+                count.to_string(),
+                FontId::monospace(8.0 * self.zoom),
+                PAPER,
+            );
         }
         if let Some(pending) = &self.pending {
             if let Some(pointer) = pointer {
@@ -1624,7 +1719,7 @@ impl Rack {
                     _ => pending
                         .original
                         .as_ref()
-                        .map_or(CABLES[2], |old| cable_color(&old.from, &old.output)),
+                        .map_or(CABLES[2], cable_instance_color),
                 };
                 if let Some(anchor) = anchor {
                     let endpoint = nearest.map_or(pointer, |(_, point)| *point);
@@ -1635,7 +1730,9 @@ impl Rack {
                             .as_ref()
                             .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
                     };
-                    paint_cable(&painter, anchor, endpoint, color, self.zoom, false, bus);
+                    paint_cable(
+                        &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
+                    );
                     paint_jack_light(&painter, anchor, self.zoom, color);
                 }
                 if let Some((_, target)) = nearest {
@@ -1651,14 +1748,18 @@ impl Rack {
                         egui::CursorIcon::NotAllowed
                     });
                 }
-                let message = if nearest.is_some() && !target_valid {
+                let message = if (pending.stack_requested || ui.input(|i| i.modifiers.shift))
+                    && patch.version < 2
+                {
+                    "Stacking requires engine v2. Release Shift for ordinary replacement. Esc cancels."
+                } else if nearest.is_some() && !target_valid {
                     "Cannot connect here. Original cable is kept. Esc cancels."
                 } else if pending.original.is_some() {
-                    "Move to an input, or choose a new OUT. Esc cancels."
+                    "Move this cable to IN or choose a new OUT. Shift-drop stacks; Esc cancels."
                 } else if matches!(pending.origin, CableEnd::Input { .. }) {
                     "Choose an OUT to connect this input. Esc cancels."
                 } else {
-                    "Choose an input. Occupied inputs will be replaced. Esc cancels."
+                    "Choose IN. Ordinary drop replaces its cables; Shift-drop stacks in v2. Esc cancels."
                 };
                 let galley = painter.layout_no_wrap(
                     message.into(),
@@ -2549,6 +2650,109 @@ impl Rack {
         }
     }
 
+    fn input_cable_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &str,
+        port: &str,
+        cables: &[&Cable],
+        version: u32,
+        action: &mut Option<RackAction>,
+    ) {
+        ui.strong(format!("{node}.{port} · {} cables", cables.len()));
+        ui.separator();
+        if version >= 2 {
+            if ui
+                .button(if cables.is_empty() {
+                    "Connect new cable here"
+                } else {
+                    "Stack new cable here"
+                })
+                .clicked()
+            {
+                self.pending = Some(PendingCable {
+                    origin: CableEnd::Input {
+                        node: node.into(),
+                        port: port.into(),
+                    },
+                    original: None,
+                    revision: self.observed_revision,
+                    stack_requested: !cables.is_empty(),
+                });
+                self.dragging_cable = false;
+                ui.close();
+            }
+        } else {
+            ui.label("Stacking requires engine v2.");
+        }
+        egui::ScrollArea::vertical()
+            .max_height(260.0)
+            .show(ui, |ui| {
+                for cable in cables.iter().rev() {
+                    ui.menu_button(
+                        format!(
+                            "{} · {}.{}",
+                            cable.id.as_deref().unwrap_or("legacy"),
+                            cable.from,
+                            cable.output
+                        ),
+                        |ui| {
+                            if ui.button("Move this cable").clicked() {
+                                self.pending = Some(PendingCable {
+                                    origin: CableEnd::Input {
+                                        node: node.into(),
+                                        port: port.into(),
+                                    },
+                                    original: Some((*cable).clone()),
+                                    revision: self.observed_revision,
+                                    stack_requested: false,
+                                });
+                                self.dragging_cable = false;
+                                ui.close();
+                            }
+                            if ui.button("Remove this cable").clicked() {
+                                let mut args = cable.id.as_ref().map_or_else(
+                                    || json!({"to":node,"input":port}),
+                                    |id| json!({"cable_id":id}),
+                                );
+                                args["expected_revision"] = json!(self.observed_revision);
+                                *action = Some(RackAction::Command("disconnect", args));
+                                self.pending = None;
+                                self.dragging_cable = false;
+                                ui.close();
+                            }
+                        },
+                    );
+                }
+            });
+        if !cables.is_empty()
+            && ui
+                .button(format!(
+                    "Remove all {} cable{}",
+                    cables.len(),
+                    if cables.len() == 1 { "" } else { "s" }
+                ))
+                .clicked()
+        {
+            *action = Some(RackAction::Command(
+                "disconnect",
+                json!({"to":node,"input":port,"expected_revision":self.observed_revision}),
+            ));
+            self.pending = None;
+            self.dragging_cable = false;
+            ui.close();
+        }
+    }
+
+    fn begin_cable(&self, end: CableEnd, patch: &Patch, shift: bool) -> PendingCable {
+        let mut pending = PendingCable::at_revision(end, patch, self.observed_revision);
+        if shift && patch.version >= 2 && matches!(pending.origin, CableEnd::Input { .. }) {
+            pending.original = None;
+            pending.stack_requested = true;
+        }
+        pending
+    }
+
     fn cable_jack(
         &mut self,
         response: &egui::Response,
@@ -2561,13 +2765,27 @@ impl Rack {
             if let Some(pending) = self.pending.take() {
                 if pending.origin != end {
                     if cable_plan(&pending, &end).is_some() {
-                        *action = cable_action(patch, &pending, &end, catalog);
+                        *action = cable_action_mode(
+                            patch,
+                            &pending,
+                            &end,
+                            catalog,
+                            response.ctx.input(|i| i.modifiers.shift),
+                        );
                     } else {
-                        self.pending = Some(PendingCable::new(end.clone(), patch));
+                        self.pending = Some(self.begin_cable(
+                            end.clone(),
+                            patch,
+                            response.ctx.input(|i| i.modifiers.shift),
+                        ));
                     }
                 }
             } else {
-                self.pending = Some(PendingCable::new(end.clone(), patch));
+                self.pending = Some(self.begin_cable(
+                    end.clone(),
+                    patch,
+                    response.ctx.input(|i| i.modifiers.shift),
+                ));
             }
             self.dragging_cable = false;
             self.select_primary(match &end {
@@ -2575,7 +2793,17 @@ impl Rack {
             });
         }
         if response.drag_started_by(PointerButton::Primary) {
-            self.pending = Some(PendingCable::new(end.clone(), patch));
+            if self
+                .pending
+                .as_ref()
+                .is_none_or(|pending| pending.origin != end)
+            {
+                self.pending = Some(self.begin_cable(
+                    end.clone(),
+                    patch,
+                    response.ctx.input(|i| i.modifiers.shift),
+                ));
+            }
             self.dragging_cable = true;
             self.select_primary(match end {
                 CableEnd::Output { node, .. } | CableEnd::Input { node, .. } => node,
@@ -2768,8 +2996,15 @@ fn selection_menu(ui: &mut egui::Ui, ids: &[String], action: &mut Option<RackAct
     }
 }
 
-fn same_cable(a: &Cable, b: &Cable) -> bool {
+fn same_route(a: &Cable, b: &Cable) -> bool {
     a.from == b.from && a.output == b.output && a.to == b.to && a.input == b.input
+}
+fn same_cable(a: &Cable, b: &Cable) -> bool {
+    match (&a.id, &b.id) {
+        (Some(a_id), Some(b_id)) => a_id == b_id && same_route(a, b),
+        (None, None) => same_route(a, b),
+        _ => false,
+    }
 }
 
 fn port_exists(patch: &Patch, catalog: &Value, node: &str, port: &str, output: bool) -> bool {
@@ -3137,7 +3372,7 @@ fn cable_plan<'a>(
     if pending.origin == *target {
         return None;
     }
-    let cable = match (&pending.origin, target) {
+    let mut cable = match (&pending.origin, target) {
         (
             CableEnd::Output {
                 node: from,
@@ -3145,6 +3380,7 @@ fn cable_plan<'a>(
             },
             CableEnd::Input { node, port },
         ) => Cable {
+            id: None,
             from: from.clone(),
             output: output.clone(),
             to: node.clone(),
@@ -3157,12 +3393,14 @@ fn cable_plan<'a>(
                 port: output,
             },
         ) => Cable {
+            id: None,
             from: from.clone(),
             output: output.clone(),
             to: node.clone(),
             input: port.clone(),
         },
         (CableEnd::Input { .. }, CableEnd::Input { node, port }) => Cable {
+            id: None,
             from: pending.original.as_ref()?.from.clone(),
             output: pending.original.as_ref()?.output.clone(),
             to: node.clone(),
@@ -3170,10 +3408,21 @@ fn cable_plan<'a>(
         },
         _ => return None,
     };
+    cable.id = pending.original.as_ref().and_then(|old| old.id.clone());
     Some((cable, pending.original.as_ref()))
 }
 
+#[cfg(test)]
 fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>, catalog: &Value) -> bool {
+    connection_allowed_mode(patch, cable, old, catalog, false)
+}
+fn connection_allowed_mode(
+    patch: &Patch,
+    cable: &Cable,
+    old: Option<&Cable>,
+    catalog: &Value,
+    retain_destination: bool,
+) -> bool {
     let module = |id: &str| {
         let node = patch.nodes.iter().find(|node| node.id == id)?;
         catalog["modules"]
@@ -3204,7 +3453,7 @@ fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>, catalog
         return false;
     }
     let retained = |existing: &&Cable| {
-        !(existing.to == cable.to && existing.input == cable.input)
+        (retain_destination || !(existing.to == cable.to && existing.input == cable.input))
             && !old.is_some_and(|old| same_cable(old, existing))
     };
     if patch.cables.iter().filter(retained).count() >= openpatch_core::MAX_CABLES {
@@ -3239,52 +3488,96 @@ fn connection_allowed(patch: &Patch, cable: &Cable, old: Option<&Cable>, catalog
     true
 }
 
+#[cfg(test)]
 fn cable_action(
     patch: &Patch,
     pending: &PendingCable,
     target: &CableEnd,
     catalog: &Value,
 ) -> Option<RackAction> {
+    cable_action_mode(patch, pending, target, catalog, false)
+}
+fn cable_action_mode(
+    patch: &Patch,
+    pending: &PendingCable,
+    target: &CableEnd,
+    catalog: &Value,
+    shift_stack: bool,
+) -> Option<RackAction> {
     let (cable, old) = cable_plan(pending, target)?;
-    if !connection_allowed(patch, &cable, old, catalog) {
+    let stack = shift_stack || pending.stack_requested;
+    if stack && patch.version < 2 {
         return None;
     }
-    if patch
-        .cables
-        .iter()
-        .any(|existing| same_cable(existing, &cable))
-        && old.is_none_or(|old| same_cable(old, &cable))
-    {
+    let changing_source = old.is_some() && matches!(target, CableEnd::Output { .. });
+    let retain_destination = stack || changing_source;
+    if !connection_allowed_mode(patch, &cable, old, catalog, retain_destination) {
         return None;
     }
-    if old.is_none()
-        && !patch
-            .cables
-            .iter()
-            .any(|existing| existing.to == cable.to && existing.input == cable.input)
-    {
-        return Some(RackAction::Command(
-            "connect",
-            json!({"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}),
-        ));
+    if old.is_some_and(|old| same_route(old, &cable)) {
+        return None;
     }
-    // Replugging is a compatible graph edit, not a document replacement. Keep
-    // disconnects and the new named route in one validated undo transaction.
-    let removals: BTreeSet<_> = patch
+    let destination: Vec<_> = patch
         .cables
         .iter()
-        .filter(|existing| {
-            (existing.to == cable.to && existing.input == cable.input)
-                || old.is_some_and(|old| same_cable(old, existing))
-        })
-        .map(|existing| (existing.to.clone(), existing.input.clone()))
+        .filter(|existing| existing.to == cable.to && existing.input == cable.input)
         .collect();
-    let mut edits: Vec<_> = removals
-        .into_iter()
-        .map(|(to, input)| json!({"tool":"disconnect","arguments":{"to":to,"input":input}}))
-        .collect();
-    edits.push(json!({"tool":"connect","arguments":{"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}}));
-    Some(RackAction::Command("apply_edits", json!({"edits":edits})))
+    if !stack && old.is_none() && destination.len() == 1 && same_route(destination[0], &cable) {
+        return None;
+    }
+    let mut connect =
+        json!({"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input});
+    if retain_destination && patch.version >= 2 {
+        connect["mode"] = json!("stack");
+    }
+    if let Some(id) = &cable.id {
+        connect["cable_id"] = json!(id);
+    }
+    if old.is_none() && (retain_destination || destination.is_empty()) {
+        connect["expected_revision"] = json!(pending.revision);
+        return Some(RackAction::Command("connect", connect));
+    }
+    let mut edits = Vec::new();
+    let replace_group = !retain_destination && !destination.is_empty();
+    if replace_group {
+        edits.push(json!({"tool":"disconnect","arguments":{"to":cable.to,"input":cable.input}}));
+    }
+    if let Some(old) = old {
+        // A whole-destination disconnect may already include the picked cable.
+        if !replace_group || old.to != cable.to || old.input != cable.input {
+            let selector = old.id.as_ref().map_or_else(
+                || json!({"to":old.to,"input":old.input}),
+                |id| json!({"cable_id":id}),
+            );
+            edits.push(json!({"tool":"disconnect","arguments":selector}));
+        }
+    }
+    edits.push(json!({"tool":"connect","arguments":connect}));
+    Some(RackAction::Command(
+        "apply_edits",
+        json!({"edits":edits,"expected_revision":pending.revision}),
+    ))
+}
+
+fn stack_badge_position(location: Pos2, kind: &str, zoom: f32) -> Pos2 {
+    // Labels sit above ports and generic output labels often sit just below
+    // inputs. Keep counts beside sockets; switches reserve their left for LEDs.
+    location
+        + vec2(
+            if is_sequential_switch(kind) {
+                18.0
+            } else {
+                -18.0
+            },
+            0.0,
+        ) * zoom
+}
+
+fn cable_instance_color(cable: &Cable) -> Color32 {
+    cable.id.as_deref().map_or_else(
+        || cable_color(&cable.from, &cable.output),
+        |id| cable_color(id, "cable"),
+    )
 }
 
 fn cable_color(source: &str, port: &str) -> Color32 {
@@ -4274,6 +4567,7 @@ fn jack(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cable(
     painter: &egui::Painter,
     from: Pos2,
@@ -4282,9 +4576,15 @@ fn paint_cable(
     zoom: f32,
     plugged: bool,
     bus: bool,
+    fan: f32,
 ) {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
-    let points = [from, from + vec2(0.0, sag), to + vec2(0.0, sag), to];
+    let points = [
+        from,
+        from + vec2(fan * zoom, sag),
+        to + vec2(fan * zoom, sag),
+        to,
+    ];
     let curve = |points, width, color| {
         egui::epaint::CubicBezierShape::from_points_stroke(
             points,
@@ -4363,6 +4663,20 @@ mod tests {
         focused: bool,
         enabled: bool,
     ) -> (Option<RackAction>, egui::FullOutput) {
+        frame_revision_state(ctx, rack, patch, time, events, focused, enabled, 0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn frame_revision_state(
+        ctx: &egui::Context,
+        rack: &mut Rack,
+        patch: &Patch,
+        time: f64,
+        events: Vec<egui::Event>,
+        focused: bool,
+        enabled: bool,
+        revision: u64,
+    ) -> (Option<RackAction>, egui::FullOutput) {
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
             time: Some(time),
@@ -4385,7 +4699,7 @@ mod tests {
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
                     ui.add_enabled_ui(enabled, |ui| {
-                        action = rack.show(ui, patch, &openpatch_core::catalog(), 48000);
+                        action = rack.show(ui, patch, &openpatch_core::catalog(), 48000, revision);
                     });
                 });
         });
@@ -4424,6 +4738,488 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    fn stacked_fixture() -> Patch {
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"src","kind":"constant","params":{"value":1}},{"id":"alt","kind":"constant","params":{"value":2}},{"id":"target","kind":"gain"},{"id":"dest","kind":"gain"}],"cables":[{"id":"one","from":"src","to":"target","input":"signal"},{"id":"two","from":"src","to":"target","input":"signal"}],"output":"target"})).unwrap()
+    }
+
+    fn fixture_jack(rack: &Rack, patch: &Patch, id: &str, port: &str, input: bool) -> Pos2 {
+        let node = patch.nodes.iter().find(|n| n.id == id).unwrap();
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == node.kind)
+            .unwrap();
+        let ports = module[if input { "inputs" } else { "outputs" }]
+            .as_array()
+            .unwrap();
+        let index = ports.iter().position(|p| p == port).unwrap();
+        (rack.pan
+            + (rack.positions[id].to_vec2()
+                + port_position(
+                    &node.kind,
+                    input,
+                    index,
+                    ports.len(),
+                    panel_width(&node.kind),
+                )
+                .to_vec2())
+                * rack.zoom)
+            .to_pos2()
+    }
+
+    fn run_cable_action(session: &mut openpatch::control::Session, action: RackAction) {
+        let RackAction::Command(tool, args) = action else {
+            panic!("expected cable edit")
+        };
+        session.execute(tool, args).unwrap();
+    }
+
+    #[test]
+    fn identical_stacked_cables_move_and_change_source_by_id_without_disturbing_siblings() {
+        for change_source in [false, true] {
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(stacked_fixture(), None).unwrap();
+            let before = session.patch().clone();
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &before,
+                0.0,
+                vec![],
+                true,
+                true,
+                session.revision(),
+            );
+            let layout = rack.layout();
+            let input = fixture_jack(&rack, &before, "target", "signal", true);
+            let target = if change_source {
+                pos2(204.0, 386.0)
+            } else {
+                fixture_jack(&rack, &before, "dest", "signal", true)
+            };
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &before,
+                1.0,
+                vec![egui::Event::PointerMoved(input), button(input, true)],
+                true,
+                true,
+                session.revision(),
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &before,
+                1.1,
+                vec![egui::Event::PointerMoved(target)],
+                true,
+                true,
+                session.revision(),
+            );
+            assert_eq!(
+                rack.pending
+                    .as_ref()
+                    .unwrap()
+                    .original
+                    .as_ref()
+                    .unwrap()
+                    .id
+                    .as_deref(),
+                Some("two")
+            );
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &before,
+                1.2,
+                vec![button(target, false)],
+                true,
+                true,
+                session.revision(),
+            )
+            .0
+            .unwrap();
+            let RackAction::Command("apply_edits", ref args) = action else {
+                panic!("picked move must be atomic")
+            };
+            assert_eq!(args["edits"][0]["arguments"]["cable_id"], "two");
+            assert_eq!(args["edits"][1]["arguments"]["cable_id"], "two");
+            run_cable_action(&mut session, action);
+            assert_eq!(session.patch().cables.len(), 2);
+            assert!(same_cable(
+                session
+                    .patch()
+                    .cables
+                    .iter()
+                    .find(|c| c.id.as_deref() == Some("one"))
+                    .unwrap(),
+                &before.cables[0]
+            ));
+            let moved = session
+                .patch()
+                .cables
+                .iter()
+                .find(|c| c.id.as_deref() == Some("two"))
+                .unwrap();
+            if change_source {
+                assert_eq!(moved.from, "alt");
+                assert_eq!(moved.to, "target");
+            } else {
+                assert_eq!(moved.from, "src");
+                assert_eq!(moved.to, "dest");
+            }
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                session.patch(),
+                2.0,
+                vec![],
+                true,
+                true,
+                session.revision(),
+            );
+            assert_eq!(
+                rack.layout(),
+                layout,
+                "Routing edits must leave rack geometry unchanged"
+            );
+            let encoded = serde_json::to_value(session.patch()).unwrap();
+            let decoded: Patch = serde_json::from_value(encoded).unwrap();
+            let mut restored = Rack::default();
+            restored.restore_layout(&layout).unwrap();
+            frame_revision_state(
+                &egui::Context::default(),
+                &mut restored,
+                &decoded,
+                0.0,
+                vec![],
+                true,
+                true,
+                session.revision(),
+            );
+            assert_eq!(restored.layout(), layout);
+        }
+    }
+
+    #[test]
+    fn shift_drop_adds_identical_routes_and_default_drop_replaces_the_entire_group() {
+        for stack in [false, true] {
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(stacked_fixture(), None).unwrap();
+            let patch = session.patch().clone();
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let revision = session.revision();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, revision);
+            let from = if stack {
+                pos2(84.0, 386.0)
+            } else {
+                pos2(204.0, 386.0)
+            };
+            let to = fixture_jack(&rack, &patch, "target", "signal", true);
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(from), button(from, true)],
+                true,
+                true,
+                revision,
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.1,
+                vec![egui::Event::PointerMoved(to)],
+                true,
+                true,
+                revision,
+            );
+            let release = egui::Event::PointerButton {
+                pos: to,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: if stack {
+                    egui::Modifiers::SHIFT
+                } else {
+                    egui::Modifiers::NONE
+                },
+            };
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.2,
+                vec![release],
+                true,
+                true,
+                revision,
+            )
+            .0
+            .unwrap();
+            run_cable_action(&mut session, action);
+            if stack {
+                assert_eq!(session.patch().cables.len(), 3);
+                assert!(session
+                    .patch()
+                    .cables
+                    .iter()
+                    .all(|c| c.from == "src" && c.to == "target"));
+                let ids: BTreeSet<_> = session
+                    .patch()
+                    .cables
+                    .iter()
+                    .map(|c| c.id.as_ref().unwrap())
+                    .collect();
+                assert_eq!(ids.len(), 3);
+            } else {
+                assert_eq!(session.patch().cables.len(), 1);
+                assert_eq!(session.patch().cables[0].from, "alt");
+                assert!(!matches!(
+                    session.patch().cables[0].id.as_deref(),
+                    Some("one" | "two")
+                ));
+            }
+            session.execute("undo", json!({})).unwrap();
+            assert_eq!(
+                serde_json::to_value(session.patch()).unwrap(),
+                serde_json::to_value(&patch).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn stacked_input_menu_lists_duplicate_ids_and_removes_only_the_chosen_cable() {
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(stacked_fixture(), None).unwrap();
+        let patch = session.patch().clone();
+        let revision = session.revision();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, revision);
+        let input = fixture_jack(&rack, &patch, "target", "signal", true);
+        for (time, pressed) in [(1.0, true), (1.1, false)] {
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![
+                    egui::Event::PointerMoved(input),
+                    egui::Event::PointerButton {
+                        pos: input,
+                        button: PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                true,
+                true,
+                revision,
+            );
+        }
+        let (_, output) =
+            frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, revision);
+        let text_position = |output: &egui::FullOutput, label: &str| {
+            output
+                .shapes
+                .iter()
+                .find_map(|s| {
+                    if let egui::epaint::Shape::Text(t) = &s.shape {
+                        (t.galley.text() == label).then_some(t.pos + t.galley.size() * 0.5)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| panic!("Missing menu text {label}"))
+        };
+        text_position(&output, "one · src.out");
+        let entry = text_position(&output, "two · src.out");
+        for (time, pressed) in [(1.3, true), (1.4, false)] {
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(entry), button(entry, pressed)],
+                true,
+                true,
+                revision,
+            );
+        }
+        let (_, output) =
+            frame_revision_state(&ctx, &mut rack, &patch, 1.5, vec![], true, true, revision);
+        let remove = text_position(&output, "Remove this cable");
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.6,
+            vec![egui::Event::PointerMoved(remove), button(remove, true)],
+            true,
+            true,
+            revision,
+        );
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.7,
+            vec![button(remove, false)],
+            true,
+            true,
+            revision,
+        )
+        .0
+        .unwrap();
+        assert!(
+            matches!(&action,RackAction::Command("disconnect",args) if args["cable_id"]=="two"&&args.get("to").is_none())
+        );
+        run_cable_action(&mut session, action);
+        assert_eq!(session.patch().cables.len(), 1);
+        assert_eq!(session.patch().cables[0].id.as_deref(), Some("one"));
+    }
+
+    #[test]
+    fn pending_stack_cancel_and_graph_revision_change_leave_every_original_route_intact() {
+        let patch = stacked_fixture();
+        let original = serde_json::to_value(&patch).unwrap();
+        for stale in [false, true] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+            let layout = rack.layout();
+            let input = fixture_jack(&rack, &patch, "target", "signal", true);
+            let target = fixture_jack(&rack, &patch, "dest", "signal", true);
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(input), button(input, true)],
+                true,
+                true,
+                7,
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.1,
+                vec![egui::Event::PointerMoved(target)],
+                true,
+                true,
+                7,
+            );
+            assert!(rack.pending.is_some());
+            let events = if stale {
+                vec![button(target, false)]
+            } else {
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }]
+            };
+            assert!(frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.2,
+                events,
+                true,
+                true,
+                if stale { 8 } else { 7 }
+            )
+            .0
+            .is_none());
+            assert!(rack.pending.is_none());
+            assert!(!rack.dragging_cable);
+            assert_eq!(rack.layout(), layout);
+            assert_eq!(serde_json::to_value(&patch).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn legacy_shift_drop_is_unavailable_and_keeps_ordinary_replacement_supported() {
+        let mut patch = stacked_fixture();
+        patch.version = 1;
+        patch.cables.pop();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let from = pos2(204.0, 386.0);
+        let to = fixture_jack(&rack, &patch, "target", "signal", true);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(from), button(from, true)],
+        );
+        let (_, output) = frame_output(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![
+                egui::Event::PointerMoved(to),
+                egui::Event::Key {
+                    key: egui::Key::ArrowUp,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::SHIFT,
+                },
+            ],
+        );
+        assert!(output.shapes.iter().any(|s|matches!(&s.shape,egui::epaint::Shape::Text(t) if t.galley.text().contains("Stacking requires engine v2"))));
+        assert!(frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![egui::Event::PointerButton {
+                pos: to,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::SHIFT
+            }]
+        )
+        .is_none());
+        let pending = PendingCable::new(
+            CableEnd::Output {
+                node: "alt".into(),
+                port: "out".into(),
+            },
+            &patch,
+        );
+        assert!(matches!(
+            cable_action(
+                &patch,
+                &pending,
+                &CableEnd::Input {
+                    node: "target".into(),
+                    port: "signal".into()
+                },
+                &openpatch_core::catalog()
+            ),
+            Some(RackAction::Command("apply_edits", _))
+        ));
     }
 
     fn selection_click(
@@ -5361,6 +6157,7 @@ mod tests {
         let node = patch.nodes[0].clone();
         assert_eq!(utility_source_row(&patch, &node, 7), None);
         patch.cables.push(Cable {
+            id: None,
             from: "zero".into(),
             output: "out".into(),
             to: "utility".into(),
@@ -5574,10 +6371,11 @@ mod tests {
         }
     }
 
-    fn apply_replug(patch: &Patch, args: Value) -> Patch {
+    fn apply_replug(patch: &Patch, mut args: Value) -> Patch {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), None).unwrap();
+        args["expected_revision"] = json!(session.revision());
         session.execute("apply_edits", args).unwrap();
         session.patch().clone()
     }
@@ -5588,6 +6386,7 @@ mod tests {
         let patch = openpatch_core::demo_patch();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), None).unwrap();
+        let patch = session.patch().clone();
         let incarnation_tokens = crate::audio::test_module_incarnation_tokens(&mut session);
         let before_tokens = incarnation_tokens(&patch, session.revision());
         assert_eq!(before_tokens.len(), patch.nodes.len());
@@ -5821,7 +6620,7 @@ mod tests {
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.add_enabled_ui(false, |ui| {
-                        action = rack.show(ui, &patch, &openpatch_core::catalog(), 48000);
+                        action = rack.show(ui, &patch, &openpatch_core::catalog(), 48000, 0);
                     });
                 });
             },
@@ -5962,6 +6761,7 @@ mod tests {
             matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "split" && args["output"] == "out16" && args["to"] == "a")
         );
         patch.cables.push(Cable {
+            id: None,
             from: "split".into(),
             output: "out16".into(),
             to: "a".into(),
@@ -6147,6 +6947,7 @@ mod tests {
             .unwrap();
             if clocked {
                 patch.cables.push(Cable {
+                    id: None,
                     from: "clock".into(),
                     output: "out".into(),
                     to: "lfo".into(),

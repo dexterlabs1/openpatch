@@ -394,7 +394,6 @@ impl Model {
 }
 #[derive(Debug)]
 struct PolyNode {
-    id: String,
     kind: String,
     model: Model,
     inputs: [Option<usize>; MAX_PORTS],
@@ -408,8 +407,21 @@ struct Edge {
     source_port: usize,
     source_node: usize,
     destination_node: usize,
+    route: EdgeKey,
+    identity: EdgeIdentity,
 }
 type EdgeKey = (String, String, String, String);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum EdgeIdentity {
+    Explicit(String),
+    LegacyRoute(EdgeKey, usize),
+}
+
+#[derive(Debug)]
+struct InputGroup {
+    start: usize,
+    len: usize,
+}
 
 #[derive(Debug)]
 pub(crate) struct PolyEngine {
@@ -417,13 +429,25 @@ pub(crate) struct PolyEngine {
     nodes: Vec<PolyNode>,
     node_lookup: BTreeMap<String, usize>,
     edges: Vec<Edge>,
-    edge_lookup: BTreeMap<EdgeKey, usize>,
+    edge_lookup: BTreeMap<EdgeIdentity, usize>,
+    route_counts: BTreeMap<EdgeKey, usize>,
+    unique_legacy_routes: BTreeMap<EdgeKey, Option<usize>>,
+    cable_lookup: BTreeMap<String, usize>,
     edge_frames: Vec<PortFrame>,
+    input_groups: Vec<InputGroup>,
+    input_edges: Vec<usize>,
+    input_frames: Vec<PortFrame>,
     outputs: Vec<PortFrame>,
     selected: Option<usize>,
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_cable_state(&self, id: &str) -> Result<usize, String> {
+        self.cable_lookup
+            .get(id)
+            .copied()
+            .ok_or_else(|| format!("cable '{id}' does not exist"))
+    }
     pub(crate) fn resolve_module_state(&self, id: &str) -> Result<usize, String> {
         self.node_lookup
             .get(id)
@@ -619,7 +643,6 @@ impl PolyEngine {
                 return Err(format!("duplicate node ID '{}'", node.id));
             }
             nodes.push(PolyNode {
-                id: node.id.clone(),
                 kind: node.kind.clone(),
                 model: Model::build(node, patch.sample_rate)?,
                 inputs: [None; MAX_PORTS],
@@ -657,6 +680,12 @@ impl PolyEngine {
         }
         let mut edges = Vec::with_capacity(patch.cables.len());
         let mut edge_lookup = BTreeMap::new();
+        let mut route_counts = BTreeMap::<EdgeKey, usize>::new();
+        let mut unique_legacy_routes = BTreeMap::<EdgeKey, Option<usize>>::new();
+        let mut cable_lookup = BTreeMap::new();
+        let mut group_lookup = BTreeMap::<(usize, usize), usize>::new();
+        let mut group_edges = Vec::<Vec<usize>>::new();
+        let mut legacy_occurrences = BTreeMap::<EdgeKey, usize>::new();
         for (index, cable) in patch.cables.iter().enumerate() {
             let source = *node_lookup
                 .get(&cable.from)
@@ -673,26 +702,50 @@ impl PolyEngine {
                 &cable.input,
             )
             .ok_or_else(|| format!("node '{}': unknown input '{}'", cable.to, cable.input))?;
-            if nodes[destination].inputs[input].replace(index).is_some() {
-                return Err(format!(
-                    "node '{}': input '{}' already has a cable",
-                    cable.to, cable.input
-                ));
-            }
+            let group = *group_lookup.entry((destination, input)).or_insert_with(|| {
+                let index = group_edges.len();
+                group_edges.push(Vec::new());
+                index
+            });
+            nodes[destination].inputs[input] = Some(group);
+            group_edges[group].push(index);
+            let route = (
+                cable.from.clone(),
+                cable.output.clone(),
+                cable.to.clone(),
+                cable.input.clone(),
+            );
+            *route_counts.entry(route.clone()).or_default() += 1;
+            let identity = if let Some(id) = &cable.id {
+                cable_lookup.insert(id.clone(), index);
+                EdgeIdentity::Explicit(id.clone())
+            } else {
+                unique_legacy_routes
+                    .entry(route.clone())
+                    .and_modify(|unique| *unique = None)
+                    .or_insert(Some(index));
+                let occurrence = legacy_occurrences.entry(route.clone()).or_default();
+                let identity = EdgeIdentity::LegacyRoute(route.clone(), *occurrence);
+                *occurrence += 1;
+                identity
+            };
             edges.push(Edge {
                 source_port: nodes[source].output_start + port,
                 source_node: source,
                 destination_node: destination,
+                route,
+                identity: identity.clone(),
             });
-            edge_lookup.insert(
-                (
-                    cable.from.clone(),
-                    cable.output.clone(),
-                    cable.to.clone(),
-                    cable.input.clone(),
-                ),
-                index,
-            );
+            edge_lookup.insert(identity, index);
+        }
+        let mut input_groups = Vec::with_capacity(group_edges.len());
+        let mut input_edges = Vec::with_capacity(edges.len());
+        for members in group_edges {
+            input_groups.push(InputGroup {
+                start: input_edges.len(),
+                len: members.len(),
+            });
+            input_edges.extend(members);
         }
         let selected = patch
             .output
@@ -716,7 +769,13 @@ impl PolyEngine {
             node_lookup,
             edges,
             edge_lookup,
+            route_counts,
+            unique_legacy_routes,
+            cable_lookup,
             edge_frames: vec![PortFrame::default(); patch.cables.len()],
+            input_frames: vec![PortFrame::default(); input_groups.len()],
+            input_groups,
+            input_edges,
             outputs: vec![PortFrame::default(); output_count],
             selected,
             stereo: patch.output.as_ref().is_some_and(|id| {
@@ -742,6 +801,43 @@ impl PolyEngine {
         }
     }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
+        // Cable frames are from the previous sample. Groups and membership are
+        // compiled in patch cable order, so this loop only reads fixed storage.
+        for (index, group) in self.input_groups.iter().enumerate() {
+            let members = &self.input_edges[group.start..group.start + group.len];
+            if members.len() == 1 {
+                // Keep the one-cable fast path and exact finite samples, while
+                // matching Rack's per-source nonfinite sanitization.
+                let mut frame = self.edge_frames[members[0]];
+                for sample in &mut frame.values[..usize::from(frame.channels).min(MAX_CHANNELS)] {
+                    if !sample.is_finite() {
+                        *sample = 0.0;
+                    }
+                }
+                self.input_frames[index] = frame;
+                continue;
+            }
+            let mut sum = PortFrame::default();
+            for &edge in members {
+                sum.channels = sum.channels.max(self.edge_frames[edge].channels);
+            }
+            let width = usize::from(sum.channels).min(MAX_CHANNELS);
+            for &edge in members {
+                let source = self.edge_frames[edge];
+                for channel in 0..width {
+                    let sample = match source.channels {
+                        0 => continue,
+                        1 => source.values[0],
+                        count if channel < usize::from(count) => source.values[channel],
+                        _ => continue,
+                    };
+                    // Rack sanitizes each source sample before f32 addition.
+                    // The completed sum is intentionally not clipped/sanitized.
+                    sum.values[channel] += if sample.is_finite() { sample } else { 0.0 };
+                }
+            }
+            self.input_frames[index] = sum;
+        }
         for node in &mut self.nodes {
             if node.bypassed {
                 if let Model::Midi(midi) = &mut node.model {
@@ -755,24 +851,24 @@ impl PolyEngine {
                 {
                     *output = node.bypass_inputs[index]
                         .and_then(|input| node.inputs[input])
-                        .map(|edge| self.edge_frames[edge])
+                        .map(|edge| self.input_frames[edge])
                         .filter(|frame| frame.channels > 0)
                         .unwrap_or_else(|| PortFrame::mono(0.0));
                 }
                 continue;
             }
             let a = node.inputs[0]
-                .map(|edge| self.edge_frames[edge])
+                .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             let b = node.inputs[1]
-                .map(|edge| self.edge_frames[edge])
+                .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
                 Model::Mixing(mixing) => {
                     let mut inputs = [PortFrame::default(); 9];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     mixing.process(
@@ -784,7 +880,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); 3];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     signal.process(
@@ -796,7 +892,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); 10];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     bank.process(
@@ -855,7 +951,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); 6];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     let count = switch.output_count();
@@ -868,7 +964,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); 5];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     seq.process(
@@ -881,7 +977,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     lfo.process(
@@ -894,7 +990,7 @@ impl PolyEngine {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
-                            *input = self.edge_frames[*edge];
+                            *input = self.input_frames[*edge];
                         }
                     }
                     let count = routing::output_names(&node.kind).unwrap().len();
@@ -932,7 +1028,7 @@ impl PolyEngine {
                     let mut frame = PortFrame::default();
                     for input in 0..16 {
                         if let Some(edge) = node.inputs[input] {
-                            let source = self.edge_frames[edge];
+                            let source = self.input_frames[edge];
                             if source.channels > 0 {
                                 frame.channels = (input + 1) as u8;
                                 frame.values[input] = source.values[0];
@@ -961,29 +1057,48 @@ impl PolyEngine {
             .unwrap_or_default()
     }
     fn input_unchanged(&self, node: usize, old: &Self, old_node: usize, input: usize) -> bool {
-        match (
+        let (Some(group), Some(old_group)) = (
             self.nodes[node].inputs[input],
             old.nodes[old_node].inputs[input],
-        ) {
-            (None, None) => true,
-            (Some(edge), Some(previous)) => {
-                let edge = &self.edges[edge];
-                let previous = &old.edges[previous];
-                let source = &self.nodes[edge.source_node];
-                let old_source = &old.nodes[previous.source_node];
-                source.id == old_source.id
-                    && source.kind == old_source.kind
-                    && edge.source_port - source.output_start
-                        == previous.source_port - old_source.output_start
-            }
-            _ => false,
+        ) else {
+            return self.nodes[node].inputs[input].is_none()
+                && old.nodes[old_node].inputs[input].is_none();
+        };
+        let group = &self.input_groups[group];
+        let old_group = &old.input_groups[old_group];
+        if group.len != old_group.len {
+            return false;
         }
+        let current = &self.input_edges[group.start..group.start + group.len];
+        let previous = &old.input_edges[old_group.start..old_group.start + old_group.len];
+        current.iter().zip(previous).all(|(&index, &old_index)| {
+            let edge = &self.edges[index];
+            let old_edge = &old.edges[old_index];
+            let source = &self.nodes[edge.source_node];
+            let old_source = &old.nodes[old_edge.source_node];
+            let same_identity = edge.identity == old_edge.identity
+                || (matches!(edge.identity, EdgeIdentity::Explicit(_))
+                    && matches!(old_edge.identity, EdgeIdentity::LegacyRoute(_, _))
+                    && self.route_counts.get(&edge.route) == Some(&1)
+                    && old.route_counts.get(&edge.route) == Some(&1)
+                    && old.unique_legacy_routes.get(&edge.route) == Some(&Some(old_index)));
+            edge.route == old_edge.route
+                && source.kind == old_source.kind
+                && edge.source_port - source.output_start
+                    == old_edge.source_port - old_source.output_start
+                && same_identity
+        })
     }
     #[cfg(test)]
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
-        self.adopt_state_from_excluding(old, &[false; MAX_NODES]);
+        self.adopt_state_from_excluding(old, &[false; MAX_NODES], &[false; MAX_CABLES]);
     }
-    pub(crate) fn adopt_state_from_excluding(&mut self, old: &Self, excluded: &[bool; MAX_NODES]) {
+    pub(crate) fn adopt_state_from_excluding(
+        &mut self,
+        old: &Self,
+        excluded: &[bool; MAX_NODES],
+        excluded_cables: &[bool; MAX_CABLES],
+    ) {
         if self.rate != old.rate {
             return;
         }
@@ -1077,17 +1192,33 @@ impl PolyEngine {
             }
         }
         self.edge_frames.fill(PortFrame::default());
-        for (key, index) in &self.edge_lookup {
-            let Some(old_index) = old.edge_lookup.get(key) else {
+        for (index, edge) in self.edges.iter().enumerate() {
+            if excluded_cables[index] {
+                continue;
+            }
+            let previous_index = old.edge_lookup.get(&edge.identity).copied().or_else(|| {
+                // A direct caller may add persistent IDs to an old idless
+                // patch. Promote history only for an unambiguous unique route.
+                if !matches!(edge.identity, EdgeIdentity::Explicit(_))
+                    || self.route_counts.get(&edge.route) != Some(&1)
+                    || old.route_counts.get(&edge.route) != Some(&1)
+                {
+                    return None;
+                }
+                old.unique_legacy_routes.get(&edge.route).copied().flatten()
+            });
+            let Some(old_index) = previous_index else {
                 continue;
             };
-            let edge = &self.edges[*index];
+            let previous = &old.edges[old_index];
+            if edge.route != previous.route {
+                continue;
+            }
             if excluded[edge.source_node] || excluded[edge.destination_node] {
                 continue;
             }
-            let previous = &old.edges[*old_index];
             if self.nodes[edge.source_node].bypassed != old.nodes[previous.source_node].bypassed {
-                self.edge_frames[*index] = PortFrame::mono(0.0);
+                self.edge_frames[index] = PortFrame::mono(0.0);
                 continue;
             }
             let midi_compatible = match (
@@ -1102,7 +1233,7 @@ impl PolyEngine {
                 && self.nodes[edge.destination_node].kind
                     == old.nodes[previous.destination_node].kind
             {
-                self.edge_frames[*index] = old.edge_frames[*old_index];
+                self.edge_frames[index] = old.edge_frames[old_index];
             }
         }
     }
@@ -1122,6 +1253,125 @@ impl PolyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn input_route_comparison_respects_stack_order_and_identity() {
+        let mut patch = Patch {
+            nodes: vec![
+                Node {
+                    id: "a".into(),
+                    kind: "constant".into(),
+                    bypassed: false,
+                    params: BTreeMap::new(),
+                },
+                Node {
+                    id: "b".into(),
+                    kind: "constant".into(),
+                    bypassed: false,
+                    params: BTreeMap::new(),
+                },
+                Node {
+                    id: "target".into(),
+                    kind: "gain".into(),
+                    bypassed: false,
+                    params: BTreeMap::new(),
+                },
+            ],
+            cables: vec![
+                crate::Cable {
+                    id: Some("a_route".into()),
+                    from: "a".into(),
+                    output: "out".into(),
+                    to: "target".into(),
+                    input: "signal".into(),
+                },
+                crate::Cable {
+                    id: Some("b_route".into()),
+                    from: "b".into(),
+                    output: "out".into(),
+                    to: "target".into(),
+                    input: "signal".into(),
+                },
+            ],
+            ..Patch::new_v2()
+        };
+        let old = PolyEngine::compile(&patch).unwrap();
+        patch.cables.reverse();
+        let reordered = PolyEngine::compile(&patch).unwrap();
+        assert!(!reordered.input_unchanged(2, &old, 2, 0));
+        patch.cables.reverse();
+        patch.cables[0].id = Some("fresh".into());
+        let reincarnated = PolyEngine::compile(&patch).unwrap();
+        assert!(!reincarnated.input_unchanged(2, &old, 2, 0));
+    }
+    #[test]
+    fn stacked_frames_sanitize_each_source_but_leave_completed_f32_sum_unbounded() {
+        let mut patch = Patch {
+            nodes: vec![
+                Node {
+                    id: "source".into(),
+                    kind: "constant".into(),
+                    bypassed: false,
+                    params: BTreeMap::new(),
+                },
+                Node {
+                    id: "target".into(),
+                    kind: "gain".into(),
+                    bypassed: false,
+                    params: BTreeMap::new(),
+                },
+            ],
+            cables: vec![
+                crate::Cable {
+                    id: Some("a".into()),
+                    from: "source".into(),
+                    output: "out".into(),
+                    to: "target".into(),
+                    input: "signal".into(),
+                },
+                crate::Cable {
+                    id: Some("b".into()),
+                    from: "source".into(),
+                    output: "out".into(),
+                    to: "target".into(),
+                    input: "signal".into(),
+                },
+            ],
+            output: Some("target".into()),
+            ..Patch::new_v2()
+        };
+        let mut engine = PolyEngine::compile(&patch).unwrap();
+        engine.edge_frames[0] = PortFrame::mono(f32::NAN);
+        engine.edge_frames[1] = PortFrame::mono(2.0);
+        engine.process_sample();
+        assert_eq!(engine.input_frames[0], PortFrame::mono(2.0));
+        engine.edge_frames[0] = PortFrame::mono(f32::MAX);
+        engine.edge_frames[1] = PortFrame::mono(f32::MAX);
+        engine.process_sample();
+        assert!(engine.input_frames[0].values[0].is_infinite());
+        engine.edge_frames.fill(PortFrame::default());
+        engine.process_sample();
+        assert_eq!(engine.input_frames[0].channels, 0);
+        patch.cables.pop();
+        let mut single = PolyEngine::compile(&patch).unwrap();
+        single.edge_frames[0] = PortFrame::mono(f32::NAN);
+        single.process_sample();
+        assert_eq!(single.input_frames[0], PortFrame::mono(0.0));
+        let mut with_padding = PortFrame {
+            channels: 2,
+            ..PortFrame::default()
+        };
+        with_padding.values[0] = -0.0;
+        with_padding.values[1] = f32::INFINITY;
+        with_padding.values[2] = f32::NAN;
+        single.edge_frames[0] = with_padding;
+        single.process_sample();
+        assert_eq!(
+            single.input_frames[0].values[0].to_bits(),
+            (-0.0_f32).to_bits()
+        );
+        assert_eq!(single.input_frames[0].values[1], 0.0);
+        assert!(single.input_frames[0].values[2].is_nan());
+    }
     fn patch(channels: f32, kind: &str) -> Patch {
         Patch {
             nodes: vec![
@@ -1145,6 +1395,7 @@ mod tests {
                 },
             ],
             cables: vec![crate::Cable {
+                id: None,
                 from: "source".into(),
                 output: "out".into(),
                 to: "voice".into(),

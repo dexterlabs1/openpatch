@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--binary", type=Path, default=root / "target/release" / ("openpatch.exe" if os.name == "nt" else "openpatch"))
     parser.add_argument("--seconds", type=float, default=1.0)
     parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--stacked", action="store_true", help="also measure stacked routing at 1/16 voices and 1/16/1024 cables")
     args = parser.parse_args()
     if not 0.01 <= args.seconds <= 5 or not 1 <= args.runs <= 20:
         parser.error("seconds must be 0.01..5 and runs 1..20")
@@ -31,6 +32,15 @@ def main():
     sixteen = copy.deepcopy(chord)
     sixteen["nodes"][0]["params"] = {"channels": 16, **{f"v{i + 1}": i / 12 for i in range(16)}}
     scenarios = [("legacy_reference_1_voice", legacy), ("v2_reference_1_voice", v2), ("v2_chord_3_voices", chord), ("v2_chord_16_voices", sixteen)]
+    if args.stacked:
+        for width in [1, 16]:
+            for count in [1, 16, 1024]:
+                routing = {"version": 2, "sample_rate": 48000, "nodes": [
+                    {"id": "source", "kind": "poly_constant", "params": {"channels": width, **{f"v{i + 1}": 0.125 for i in range(width)}}},
+                    {"id": "out", "kind": "poly_sum"},
+                ], "cables": [{"id": f"route_{i + 1}", "from": "source", "to": "out", "input": "signal"} for i in range(count)], "output": "out"}
+                scenarios.append((f"v2_routing_{count}_cables_{width}_voices", routing))
+        scenarios.append(("v2_stacked_pitch_voice", json.loads((root / "examples/stacked-pitch-voice.json").read_text())))
     with tempfile.TemporaryDirectory(prefix="openpatch-benchmark-") as workspace:
         with subprocess.Popen([str(args.binary), "mcp", "--workspace", workspace], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as process:
             request_id = 0

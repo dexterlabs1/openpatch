@@ -115,12 +115,14 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             ]);
             original_patch.cables.extend([
                 Cable {
+                    id: None,
                     from: "dc".into(),
                     output: "out".into(),
                     to: "a".into(),
                     input: "signal".into(),
                 },
                 Cable {
+                    id: None,
                     from: "a".into(),
                     output: "out8".into(),
                     to: "b".into(),
@@ -143,6 +145,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
         assert!(loaded.imported);
         assert!(loaded.token.is_none());
         assert_eq!(loaded.document.patch.version, version);
+        original_patch.assign_missing_cable_ids().unwrap();
         assert_eq!(
             serde_json::to_value(&loaded.document.patch).unwrap(),
             serde_json::to_value(&original_patch).unwrap()
@@ -563,4 +566,131 @@ fn duplicated_group_native_roundtrip_preserves_fresh_ids_bypass_named_cables_and
         .iter()
         .any(|c| c.from == "split-copy" && c.to == "out"));
     assert_eq!(loaded.layout["positions"]["split-copy"], json!([1020, 0]));
+}
+
+#[test]
+fn idless_project_migration_is_clean_and_preserves_original_disk_tokens() {
+    use crate::document_state::{apply_document, DocumentState};
+    use crate::rack::Rack;
+    use openpatch::control::Session;
+
+    for version in [1, 2] {
+        let (directory, store) = store();
+        let mut original = openpatch_core::demo_patch();
+        original.version = version;
+        assert!(original.cables.iter().all(|c| c.id.is_none()));
+        let mut rack = Rack::default();
+        rack.reconcile(&original, &openpatch_core::catalog());
+        let layout = rack.layout();
+        // Deliberately bypass Document::new to represent an actual older file.
+        let old_native = Document {
+            patch: original.clone(),
+            layout: layout.clone(),
+        }
+        .encode()
+        .unwrap();
+        let old_json = serde_json::to_vec_pretty(&original).unwrap();
+        fs::write(directory.path().join("old.openpatch"), &old_native).unwrap();
+        fs::write(directory.path().join("old.json"), &old_json).unwrap();
+        let sidecar = serde_json::to_vec_pretty(&layout).unwrap();
+        fs::write(directory.path().join("old.json.layout.json"), &sidecar).unwrap();
+
+        for name in ["old.openpatch", "old.json"] {
+            let loaded = store.load(name).unwrap();
+            assert_eq!(loaded.document.layout, layout);
+            assert_eq!(loaded.imported, name.ends_with(".json"));
+            assert_eq!(loaded.token.is_some(), name.ends_with(".openpatch"));
+            assert!(loaded.document.patch.cables.iter().all(|c| c.id.is_some()));
+            let shared = Session::new(directory.path()).unwrap().into_shared();
+            let applied = apply_document(&shared, 0, &loaded.document).unwrap();
+            assert_eq!(
+                applied.revision, 1,
+                "migration is part of the load, not another edit"
+            );
+            assert_eq!(
+                serde_json::to_value(&applied.patch).unwrap(),
+                serde_json::to_value(&loaded.document.patch).unwrap()
+            );
+            assert_eq!(applied.rack.layout(), layout);
+            let mut state = DocumentState::new(&applied.patch, applied.revision, &applied.rack);
+            state.mark_saved(&loaded.document);
+            assert!(
+                !state.dirty(),
+                "normalization must not dirty a loaded project"
+            );
+            let mut live = shared.lock().unwrap();
+            live.execute(
+                "set_parameter",
+                json!({"id":"tone","parameter":"frequency","value":111}),
+            )
+            .unwrap();
+            state.observe(live.patch(), live.revision(), &applied.rack);
+            assert!(state.dirty());
+            live.execute("undo", json!({})).unwrap();
+            state.observe(live.patch(), live.revision(), &applied.rack);
+            assert!(
+                !state.dirty(),
+                "undo returns to the canonical saved baseline"
+            );
+        }
+        assert_eq!(read(&directory, "old.openpatch"), old_native);
+        assert_eq!(read(&directory, "old.json"), old_json);
+        assert_eq!(read(&directory, "old.json.layout.json"), sidecar);
+
+        let loaded = store.load("old.openpatch").unwrap();
+        let token = store
+            .save_existing(
+                "old.openpatch",
+                &loaded.document,
+                loaded.token.as_ref().unwrap(),
+            )
+            .unwrap();
+        assert_ne!(
+            read(&directory, "old.openpatch"),
+            old_native,
+            "the first save persists assigned IDs"
+        );
+        assert!(loaded
+            .document
+            .equivalent(&store.load("old.openpatch").unwrap().document));
+        // A subsequent external edit must still invalidate the newly published token.
+        fs::write(directory.path().join("old.openpatch"), &old_native).unwrap();
+        assert!(store
+            .save_existing("old.openpatch", &loaded.document, &token)
+            .unwrap_err()
+            .contains("changed on disk"));
+        assert_eq!(read(&directory, "old.openpatch"), old_native);
+    }
+}
+
+#[test]
+fn stacked_cable_ids_order_and_multiplicity_survive_native_save_and_recovery() {
+    let (directory, store) = store();
+    let patch: Patch = serde_json::from_value(json!({"version":2,
+        "nodes":[{"id":"dc","kind":"poly_constant","params":{"channels":2,"v1":1,"v2":2}}, {"id":"sum","kind":"poly_sum"}],
+        "cables":[{"id":"second","from":"dc","to":"sum","input":"signal"},{"id":"first","from":"dc","to":"sum","input":"signal"}],"output":"sum"})).unwrap();
+    let original = Document::new(patch, layout()).unwrap();
+    store.save_new("stack.openpatch", &original).unwrap();
+    assert!(original.equivalent(&store.load("stack.openpatch").unwrap().document));
+    let mut engine = original.patch.compile().unwrap();
+    let mut signal = [0.0; 8];
+    engine.process_block(&mut signal);
+    assert_eq!(signal[0], 0.0, "cables retain the one-sample delay");
+    assert!(signal[1..].iter().all(|&v| v == 6.0));
+    store.save_recovery(&original).unwrap();
+    drop(store);
+    let claimant = Store::new(directory.path()).unwrap();
+    let names = claimant.recoveries();
+    assert_eq!(names.len(), 1);
+    let recovered = claimant.load_recovery(&names[0]).unwrap().document;
+    assert!(original.equivalent(&recovered));
+    assert_eq!(
+        recovered
+            .patch
+            .cables
+            .iter()
+            .map(|c| c.id.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        ["second", "first"]
+    );
 }

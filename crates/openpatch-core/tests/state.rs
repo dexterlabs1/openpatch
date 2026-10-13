@@ -37,6 +37,7 @@ fn frequency_and_wiring_edits_keep_phase_by_id_and_leave_old_branch_unchanged() 
         .nodes
         .insert(0, node("mod", "constant", &[("value", 16.0)]));
     patch.cables.push(Cable {
+        id: None,
         from: "mod".into(),
         to: "osc".into(),
         input: "fm".into(),
@@ -71,6 +72,7 @@ fn cutoff_edit_preserves_filter_memory_and_uses_new_coefficient() {
             node("filter", "lowpass", &[("cutoff", 100.0)]),
         ],
         cables: vec![Cable {
+            id: None,
             from: "dc".into(),
             to: "filter".into(),
             input: "signal".into(),

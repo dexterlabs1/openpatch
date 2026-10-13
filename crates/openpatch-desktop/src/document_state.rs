@@ -70,7 +70,7 @@ pub fn apply_document(
     let mut live = shared.lock().map_err(|_| "Session lock poisoned")?;
     let revision = live.replace_patch(validated.patch.clone(), Some(expected_revision))?;
     Ok(AppliedDocument {
-        patch: validated.patch,
+        patch: live.patch().clone(),
         rack,
         revision,
         state_id: live.state_id(),
@@ -166,7 +166,8 @@ mod loading_tests {
         assert!(apply_document(&shared, 0, &malformed).is_err());
         assert_eq!(shared.lock().unwrap().snapshot(), initial);
         let mut rack = Rack::default();
-        let patch = openpatch_core::demo_patch();
+        let mut patch = openpatch_core::demo_patch();
+        patch.assign_missing_cable_ids().unwrap();
         rack.reconcile(&patch, &openpatch_core::catalog());
         let candidate = Document {
             patch,

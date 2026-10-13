@@ -47,6 +47,7 @@ fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
 
 fn cable(from: &str, output: &str, to: &str, input: &str) -> Cable {
     Cable {
+        id: None,
         from: from.into(),
         output: output.into(),
         to: to.into(),
@@ -381,7 +382,7 @@ fn poly_processing_and_state_adoption_neither_allocate_nor_deallocate() {
 }
 
 #[test]
-fn invalid_channels_ports_and_duplicate_destinations_reject_before_rendering() {
+fn invalid_channels_and_ports_reject_while_duplicate_destinations_stack() {
     for kind in ["poly_constant", "poly_merge"] {
         for count in [-1.0, 0.5, 17.0, f32::NAN] {
             let p = patch(
@@ -405,7 +406,39 @@ fn invalid_channels_ports_and_duplicate_destinations_reject_before_rendering() {
     assert!(bad.compile().is_err());
     bad = p;
     bad.cables.push(bad.cables[0].clone());
-    assert!(bad.compile().is_err());
+    assert!(bad.compile().is_ok());
+}
+
+#[test]
+fn max_capacity_stacks_and_bound_route_exclusions_use_no_callback_heap() {
+    let mut nodes = vec![
+        node("source", "constant", &[("value", 1.0)]),
+        node("out", "gain", &[]),
+    ];
+    for index in 0..openpatch_core::MAX_NODES - nodes.len() {
+        nodes.push(node(&format!("idle_{index}"), "constant", &[]));
+    }
+    let mut p = patch(
+        nodes,
+        (0..openpatch_core::MAX_CABLES)
+            .map(|_| cable("source", "out", "out", "signal"))
+            .collect(),
+        "out",
+    );
+    p.assign_missing_cable_ids().unwrap();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let valid = replacement.resolve_cable_state("cable_1").unwrap();
+    let foreign = old.resolve_cable_state("cable_2").unwrap();
+    let mut frames = [PortFrame::default(); 3];
+    old.process_poly_block(&mut frames[..1]);
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    replacement.adopt_state_from_excluding_routes(&old, &[], &[foreign, valid]);
+    replacement.process_poly_block(&mut frames);
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(frames[0].values[0], (openpatch_core::MAX_CABLES - 1) as f32);
 }
 
 #[test]

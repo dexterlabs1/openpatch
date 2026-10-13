@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.15
+      }
+    },
+    {
+      "id": "notes",
+      "kind": "poly_constant",
+      "params": {
+        "channels": 3,
+        "v1": 0,
+        "v2": 0.3333333333333333,
+        "v3": 0.5833333333333334
+      }
+    },
+    {
+      "id": "transpose",
+      "kind": "constant",
+      "params": {
+        "value": 0
+      }
+    },
+    {
+      "id": "vibrato",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 4.5
+      }
+    },
+    {
+      "id": "depth",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.002,
+        "offset": 0
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "notes-pitch",
+      "from": "notes",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "id": "transpose-pitch",
+      "from": "transpose",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "id": "vibrato-depth",
+      "from": "vibrato",
+      "output": "sine",
+      "to": "depth",
+      "input": "signal"
+    },
+    {
+      "id": "depth-pitch",
+      "from": "depth",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "id": "voice-left",
+      "from": "vco",
+      "to": "out",
+      "input": "left"
+    }
+  ],
+  "output": "out",
+  "output_port": "out"
+}

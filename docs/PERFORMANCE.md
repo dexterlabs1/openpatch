@@ -111,6 +111,13 @@ measurements do not establish live device deadlines or a VCV Rack speedup.
 
 ## Fair comparison protocol
 
+To include stacked-input routing workloads, run
+`python3 scripts/benchmark_engines.py --stacked --seconds 1 --runs 3` after
+building the release CLI. This adds fixed two-module graphs with 1, 16, and
+1,024 cables at both one and sixteen voices, plus the stacked pitch example.
+The fixed module count helps isolate routing cost. These remain offline
+throughput measurements; they do not measure live callback deadlines or Rack.
+
 - Same machine, audio rate, channel/voice count, oscillator/filter algorithms,
   modulation and feedback semantics, output quality, and active signal paths.
 - Release builds, documented compiler and application versions, power mode,

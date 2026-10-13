@@ -33,7 +33,7 @@ This plan starts from the code inspected on the baseline date:
 |---|---|---|
 | Named ports and multiple outputs | Foundation implemented in v2; Split provides 16 named outputs | Extend native interaction and persistence coverage across every multi-output module; retain invalid-port/direction and legacy-file tests as the catalog grows. |
 | Polyphonic engine | Foundation implemented; 0–16-channel frames, voice policies and retirement tested | Broaden cross-talk and shrink/regrowth tests across every stateful model; measure 16-voice callback deadlines and memory; qualify actual multichannel device sinks separately. |
-| Stacked input cables | Missing; one cable per input is enforced | Sum multiple delayed frames with mono broadcast/max width; preserve individual edge history, deterministic feedback, scoped unplug/reconnect, and allocation-free callbacks. |
+| Stacked input cables | Foundation implemented in v2: summed delayed frames, stable IDs, per-cable editing and incarnation-aware history | Qualify native device workflows and broader large-rack performance; complete Rack plug-order behavior and hovered-module outgoing duplication. [Contract and controls](STACKED_CABLES.md). |
 | Cable timing and feedback | Foundation implemented; per-cable value/count delay and deterministic loops tested | Retain node-order/callback invariance; add clock/reset and longer modulated feedback fixtures as those modules arrive; test feedback during live graph replacement. |
 | Voltage and event contracts | Partial; reference modules use volts | Catalog every port's units, normaling, thresholds and channel policy; test gate/trigger edges, clock/reset ordering, pitch calibration and legacy conversions. |
 | DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
@@ -82,13 +82,11 @@ tested contracts, not a 16-voice live performance guarantee.
 
 The next gates are:
 
-1. **Complete stacked-input routing.** The source audit found that Rack sums
-   multiple cables at a single input, including mono broadcast into the widest
-   contributing polyphonic frame. OpenPatch currently rejects those graphs.
-   Extend the compiled input routing and edge-history model, then qualify
-   per-cable unplug/reconnect, polyphony changes, feedback, bypass, adoption,
-   and callback bounds. This also enables Rack's hovered-single-module
-   duplication of outgoing connections.
+1. **Complete rack construction workflows.** With stacked inputs available,
+   add Rack's hovered-single-module duplication of outgoing connections while
+   retaining selected-group semantics. Add module presets, initialization and
+   randomization, then complete layout-movement history. These actions must
+   share the UI/MCP transaction path and preserve unrelated live state.
 2. **Profile representative polyphonic workloads.** Measure callback deadlines,
    graph-compilation cost and memory at one and sixteen voices on supported
    hardware. Preserve the reference timing when introducing SIMD or scheduling

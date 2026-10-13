@@ -75,10 +75,10 @@ control mutex, allocation, deallocation, or JSON operation runs in the callback.
 
 The two duplication shortcuts follow the pinned Rack **selected-group**
 behavior. Rack's hovered-single-module duplication with cables also copies
-outgoing cables, relying on stacked inputs. OpenPatch currently permits only
-one cable per input, so it consistently uses selected-group semantics for
-single and multiple selections. Stacked-input summing and that hovered-module
-shortcut behavior remain explicit parity work, as do module presets and
+outgoing cables, relying on stacked inputs. OpenPatch supports
+[stacked inputs](STACKED_CABLES.md), but continues to use selected-group
+duplication semantics for single and multiple selections. That hovered-module
+shortcut behavior remains explicit parity work, as do module presets and
 complete project-layout history.
 
 References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/app/RackWidget.cpp),

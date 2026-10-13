@@ -55,9 +55,11 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Play / pause | **Space** |
 | Add a module | **Enter**, **+ Add module**, or right-click empty rack space |
 | Patch / unplug | Drag or click between input and output in either direction; drag a connected input to move its cable; right-click an input to unplug |
+| Stack signals at an input | Hold **Shift** when finishing a cable; right-click the input to move or remove a particular cable |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value | Double-click the displayed value |
 | Layer voices with CV-controlled mixing | **File → Layered stereo morph** |
+| Add transpose and vibrato to a chord | **File → Stacked pitch voice** |
 | Shape gates and sample pitch | **File → Gate shaping voice** |
 | Explore voltage and mute banks | **File → Voltage utilities** |
 | Bypass a module | Right-click its panel → **Bypass module** |
@@ -71,7 +73,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
-Compatible jacks glow and snap during patching. Dropping onto an occupied input replaces its cable atomically; **Esc** or an invalid drop keeps the existing connection. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
+Compatible jacks glow and snap during patching. An ordinary drop onto an occupied input replaces its cables atomically; hold **Shift** to add a signal to the stack. **Esc** or an invalid drop keeps the existing connections. The quantizer’s piano keys toggle scale notes. One knob drag is one undo step. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
@@ -305,6 +307,7 @@ New patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 
 | Guide | What it covers |
 |---|---|
 | [Rack editing](docs/RACK_EDITING.md) | Group selection, duplication, placement, cable-copy policies, and runtime identity |
+| [Stacked cables](docs/STACKED_CABLES.md) | Input summing, polyphonic modulation, individual cable editing, and MCP routing |
 | [Projects and recovery](docs/PROJECTS.md) | Save, Save As, legacy imports, concurrent edits, and recovery copies |
 | [Stereo and routing](docs/ROUTING_MODULES.md) | Mid/Side width, six-input mixing, octave shifts, and signal distribution |
 | [Voltage-controlled mixing](docs/VOLTAGE_MIXING.md) | Four-channel VCA mixing, live strip meters, CV response, and complementary fades |

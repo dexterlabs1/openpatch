@@ -490,7 +490,8 @@ impl OpenPatch {
         self.files.sort();
     }
     fn command(&mut self, name: &str, mut args: Value) -> bool {
-        if !matches!(name, "save_patch" | "render_audio") {
+        if !matches!(name, "save_patch" | "render_audio") && args.get("expected_revision").is_none()
+        {
             args["expected_revision"] = json!(self.revision);
         }
         match execute_shared(&self.shared, name, args) {
@@ -660,6 +661,10 @@ impl OpenPatch {
                 self.sequence_layout();
             } else if title == "Switched stereo voice" {
                 self.switched_stereo_layout();
+            } else if title == "Stacked pitch voice" {
+                self.rack
+                    .restore_layout(&Self::stacked_layout())
+                    .expect("bundled stacked layout");
             } else if title == "Layered stereo morph" {
                 self.rack
                     .restore_layout(&Self::mixing_layout())
@@ -678,6 +683,13 @@ impl OpenPatch {
             }}),
         );
     }
+    fn stacked_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "notes":[0,0],"vco":[360,0],"out":[570,0],
+            "vibrato":[0,420],"depth":[300,420],"transpose":[480,420]
+        }})
+    }
+
     fn mixing_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
             "mix":[0,0],"morph":[390,0],"motion":[630,0],"out":[930,0],
@@ -1100,6 +1112,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Stacked pitch voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/stacked-pitch-voice.json"
+                            ))
+                            .expect("valid bundled stacked pitch voice");
+                            self.replace_from_menu(patch, "Stacked pitch voice");
                             ui.close();
                         }
                         if ui.button("Layered stereo morph").clicked() {
@@ -2045,6 +2065,18 @@ impl OpenPatch {
             self.rack.apply_duplicate_placement(placement);
             self.title = "Duplicated voice pair · two selected".into();
         }
+        if *frame == 332 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/stacked-pitch-voice.json"))
+                    .expect("valid stacked pitch fixture");
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("stacked pitch fixture compiles");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&Self::stacked_layout())
+                .expect("stacked fixture layout");
+            self.title = "Stacked pitch voice · three cables at V/OCT".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2071,6 +2103,7 @@ impl OpenPatch {
                 | 272
                 | 296
                 | 320
+                | 344
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2110,7 +2143,8 @@ impl OpenPatch {
                 18 => path.with_file_name("rack-gate-shaping.png"),
                 19 => path.with_file_name("rack-manual-gates.png"),
                 20 => path.with_file_name("rack-vca-mix-fade.png"),
-                _ => path.with_file_name("rack-duplication.png"),
+                21 => path.with_file_name("rack-duplication.png"),
+                _ => path.with_file_name("rack-stacked-routing.png"),
             };
             image::save_buffer(
                 target,
@@ -2121,12 +2155,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 22 {
+            if *captures == 23 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 346, "Native screenshot timeout");
+        assert!(*frame < 370, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -2224,7 +2258,9 @@ impl eframe::App for OpenPatch {
                     && !self.confirm_engine_upgrade
                     && !self.allow_close;
                 ui.add_enabled_ui(interactive, |ui| {
-                    action = self.rack.show(ui, &self.patch, &self.catalog, rate);
+                    action = self
+                        .rack
+                        .show(ui, &self.patch, &self.catalog, rate, self.revision);
                 });
             });
         match action {
@@ -2441,6 +2477,62 @@ mod project_workflow_tests {
                     && p.extension().is_some_and(|ext| ext == "openpatch")
             })
             .collect()
+    }
+
+    #[test]
+    fn explicit_cable_gesture_revision_is_preserved_after_app_syncs_a_newer_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stacked-pitch-voice.json"))
+                .unwrap();
+        app.replace_now(patch, "Stacked pitch voice");
+        let gesture_revision = app.revision;
+        execute_shared(
+            &app.shared,
+            "set_parameter",
+            json!({"id":"transpose","parameter":"value","value":0.5}),
+        )
+        .unwrap();
+        app.sync();
+        assert!(app.revision > gesture_revision);
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        assert!(!app.command(
+            "disconnect",
+            json!({"cable_id":"depth-pitch","expected_revision":gesture_revision})
+        ));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert_eq!(app.rack.layout(), layout);
+    }
+
+    #[test]
+    fn stacked_demo_applies_visible_layout_and_saves_every_named_pitch_cable() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stacked-pitch-voice.json"))
+                .unwrap();
+        app.replace_now(patch, "Stacked pitch voice");
+        assert_eq!(app.rack.zoom(), 0.85);
+        assert_eq!(app.rack.layout()["positions"]["vco"], json!([360.0, 0.0]));
+        assert_eq!(
+            app.patch
+                .cables
+                .iter()
+                .filter(|c| c.to == "vco" && c.input == "pitch")
+                .count(),
+            3
+        );
+        app.save_document("stacked.openpatch", true);
+        let loaded = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("stacked.openpatch")
+            .unwrap();
+        assert!(loaded.document.equivalent(&app.capture_document()));
+        assert!(!app.dirty());
     }
 
     fn duplication_patch() -> Patch {

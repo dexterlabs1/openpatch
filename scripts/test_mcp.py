@@ -332,6 +332,98 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "duplicated.json"})
         self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
 
+    def test_stacked_cables_sum_polyphony_and_edit_by_identity_atomically(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "mono", "kind": "constant", "params": {"value": 1}},
+            {"id": "poly", "kind": "poly_constant", "params": {"channels": 3, "v1": 2, "v2": -2, "v3": 4}},
+            {"id": "bus", "kind": "mult"}, {"id": "other", "kind": "mult"},
+        ], "cables": [{"from": "poly", "to": "bus", "input": "signal"}]}})
+        before = self.patch_snapshot()
+        original_id = before["patch"]["cables"][0]["id"]
+        self.require_tool_error("connect", {"from": "mono", "to": "bus", "input": "signal"})
+        self.assertEqual(self.patch_snapshot(), before)
+        edits = [{"tool": "connect", "arguments": {
+            "from": source, "to": "bus", "input": "signal", "mode": "stack", "cable_id": cable_id,
+        }} for source, cable_id in [("mono", "mono_route"), ("poly", "duplicate_route")]]
+        request = {"edits": edits, "expected_revision": before["revision"]}
+        preview = self.payload(self.require_tool_success("preview_edits", request))
+        self.assertEqual(self.patch_snapshot(), before)
+        stacked = self.payload(self.require_tool_success("apply_edits", request))
+        self.assertEqual(stacked["patch"], preview["patch"])
+        self.assertEqual([c["id"] for c in stacked["patch"]["cables"]],
+                         [original_id, "mono_route", "duplicate_route"])
+        self.assertEqual(stacked["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+
+        def voltages(module: str = "bus") -> list[float]:
+            return [self.payload(self.require_tool_success("capture_signal", {
+                "id": module, "port": "out8", "channel": channel, "seconds": 0.002, "points": 64,
+            }))["bins"][-1]["mean"] for channel in [1, 2, 3]]
+
+        self.assertEqual(voltages(), [5, -3, 9], "mono broadcasts, and duplicate routes contribute twice")
+        copied = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "bus", "new_id": "bus_copy"}], "cable_mode": "inputs",
+        }))
+        cable_ids = [c["id"] for c in copied["patch"]["cables"]]
+        self.assertEqual(len(cable_ids), 6)
+        self.assertEqual(len(set(cable_ids)), 6)
+        self.assertEqual(voltages("bus_copy"), [5, -3, 9])
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], stacked["patch"])
+        self.require_tool_success("disconnect", {"cable_id": "mono_route"})
+        remaining = self.patch_snapshot()
+        self.assertEqual([c["id"] for c in remaining["patch"]["cables"]], [original_id, "duplicate_route"])
+        self.assertEqual(voltages(), [4, -4, 8])
+        moved = self.payload(self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "disconnect", "arguments": {"cable_id": "duplicate_route"}},
+            {"tool": "connect", "arguments": {"cable_id": "duplicate_route", "from": "poly", "to": "other", "input": "signal"}},
+        ]}))
+        self.assertEqual(voltages(), [2, -2, 4])
+        self.assertEqual(voltages("other"), [2, -2, 4])
+        self.assertEqual(moved["patch"]["cables"][-1]["id"], "duplicate_route")
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], remaining["patch"])
+        stable = self.patch_snapshot()
+        reordered = self.payload(self.require_tool_success("preview_edits", {"edits": [
+            {"tool": "disconnect", "arguments": {"cable_id": original_id}},
+            {"tool": "connect", "arguments": {"cable_id": original_id, "from": "poly", "to": "bus", "input": "signal", "mode": "stack"}},
+        ]}))
+        self.assertTrue(reordered["changes"]["cable_order_changed"])
+        self.assertEqual([c["id"] for c in reordered["patch"]["cables"]], ["duplicate_route", original_id])
+        self.assertEqual(self.patch_snapshot(), stable)
+        for arguments in [{"cable_id": original_id, "to": "bus", "input": "signal"},
+                          {"cable_id": "missing"}, {"to": "bus"}, {}]:
+            self.require_tool_error("disconnect", arguments)
+            self.assertEqual(self.patch_snapshot(), stable)
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "disconnect", "arguments": {"cable_id": original_id}},
+            {"tool": "connect", "arguments": {"cable_id": "duplicate_route", "from": "mono", "to": "bus", "input": "signal", "mode": "stack"}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), stable)
+        self.require_tool_success("save_patch", {"filename": "stack.json"})
+        self.require_tool_success("disconnect", {"to": "bus", "input": "signal"})
+        self.assertEqual(self.patch_snapshot()["patch"]["cables"], [])
+        self.require_tool_success("load_patch", {"filename": "stack.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], stable["patch"])
+        self.assertEqual(voltages(), [4, -4, 8])
+
+    def test_legacy_cable_ids_migrate_without_rewriting_source_or_changing_v1_routing(self) -> None:
+        legacy = {"nodes": [{"id": "dc", "kind": "constant", "params": {"value": 0.25}},
+                            {"id": "out", "kind": "gain", "params": {"gain": 1}}],
+                  "cables": [{"from": "dc", "to": "out", "input": "signal"}], "output": "out"}
+        raw = json.dumps(legacy).encode()
+        (self.workspace / "legacy-cables.json").write_bytes(raw)
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "legacy-cables.json"}))
+        self.assertEqual(loaded["patch"]["version"], 1)
+        self.assertEqual(loaded["patch"]["cables"][0]["id"], "cable_1")
+        self.assertEqual((self.workspace / "legacy-cables.json").read_bytes(), raw)
+        result = self.payload(self.require_tool_success("capture_signal", {"id": "out", "seconds": 0.001, "points": 64}))
+        self.assertEqual(result["summary"]["dc"], 0.25)
+        self.assertEqual(result["summary"]["active_frames"], 48)
+        self.require_tool_error("connect", {"from": "dc", "to": "out", "input": "signal", "mode": "stack"})
+        self.assertEqual(self.patch_snapshot(), loaded)
+        self.require_tool_success("save_patch", {"filename": "migrated-cables.json"})
+        self.assertEqual(json.loads((self.workspace / "migrated-cables.json").read_text()), loaded["patch"])
+
     def test_v2_named_ports_polyphony_analysis_and_legacy_loading(self) -> None:
         initial = self.patch_snapshot()
         self.assertEqual(initial["patch"]["version"], 2)

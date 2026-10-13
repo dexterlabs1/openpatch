@@ -4,6 +4,8 @@ mod capture;
 mod duplicate_tests;
 #[cfg(test)]
 mod sequence_tests;
+#[cfg(test)]
+mod stack_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
     write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, Node, Patch, PortFrame,
@@ -27,6 +29,8 @@ pub trait LiveModuleEvents: Send + Sync {
     fn sync_patch(&self, _patch: &Patch, _revision: u64) {}
     /// Retire explicit removals, including remove-and-readd in one transaction.
     fn retire_modules(&self, _ids: &[String]) {}
+    /// Retire explicit cable removals, including reuse of an ID in one batch.
+    fn retire_cables(&self, _ids: &[String]) {}
 }
 
 #[derive(Clone)]
@@ -46,6 +50,10 @@ pub struct Session {
 struct HistoryEntry {
     patch: Patch,
     state_id: u64,
+    // Reset metadata belongs to the transition, even if both patches serialize
+    // identically. Replay it whenever undo/redo crosses this boundary.
+    retired_modules: Vec<String>,
+    retired_cables: Vec<String>,
 }
 
 const HISTORY_LIMIT: usize = 128;
@@ -195,7 +203,14 @@ impl Session {
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
         let retired = self.module_ids();
-        self.commit(candidate, expected_revision, None, &retired)
+        let retired_cables = self.cable_ids();
+        self.commit(
+            candidate,
+            expected_revision,
+            None,
+            &retired,
+            &retired_cables,
+        )
     }
 
     fn module_ids(&self) -> Vec<String> {
@@ -206,15 +221,25 @@ impl Session {
             .collect()
     }
 
+    fn cable_ids(&self) -> Vec<String> {
+        self.patch
+            .cables
+            .iter()
+            .filter_map(|cable| cable.id.clone())
+            .collect()
+    }
+
     fn commit(
         &mut self,
-        candidate: Patch,
+        mut candidate: Patch,
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
         retired: &[String],
+        retired_cables: &[String],
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
+        candidate.assign_missing_cable_ids()?;
         candidate.compile()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
         if group.is_some() && group == self.history_group {
@@ -226,6 +251,8 @@ impl Session {
             self.undo.push_back(HistoryEntry {
                 patch: std::mem::replace(&mut self.patch, candidate),
                 state_id: self.state_id,
+                retired_modules: retired.to_vec(),
+                retired_cables: retired_cables.to_vec(),
             });
             self.state_id = revision;
         }
@@ -235,6 +262,11 @@ impl Session {
         if !retired.is_empty() {
             if let Some(backend) = &self.live_module_events {
                 backend.retire_modules(retired);
+            }
+        }
+        if !retired_cables.is_empty() {
+            if let Some(backend) = &self.live_module_events {
+                backend.retire_cables(retired_cables);
             }
         }
         self.sync_live_module_events();
@@ -256,21 +288,32 @@ impl Session {
     fn restore_history(&mut self, redo: bool) -> Result<Value, String> {
         self.check_open()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
-        if redo {
-            let entry = self.redo.pop().ok_or("nothing to redo")?;
-            self.undo.push_back(HistoryEntry {
-                patch: std::mem::replace(&mut self.patch, entry.patch),
-                state_id: std::mem::replace(&mut self.state_id, entry.state_id),
-            });
+        let entry = if redo {
+            self.redo.pop().ok_or("nothing to redo")?
         } else {
-            let entry = self.undo.pop_back().ok_or("nothing to undo")?;
-            self.redo.push(HistoryEntry {
-                patch: std::mem::replace(&mut self.patch, entry.patch),
-                state_id: std::mem::replace(&mut self.state_id, entry.state_id),
-            });
+            self.undo.pop_back().ok_or("nothing to undo")?
+        };
+        let opposite = HistoryEntry {
+            patch: std::mem::replace(&mut self.patch, entry.patch),
+            state_id: std::mem::replace(&mut self.state_id, entry.state_id),
+            retired_modules: entry.retired_modules.clone(),
+            retired_cables: entry.retired_cables.clone(),
+        };
+        if redo {
+            self.undo.push_back(opposite);
+        } else {
+            self.redo.push(opposite);
         }
         self.revision = revision;
         self.history_group = None;
+        if let Some(backend) = &self.live_module_events {
+            if !entry.retired_modules.is_empty() {
+                backend.retire_modules(&entry.retired_modules);
+            }
+            if !entry.retired_cables.is_empty() {
+                backend.retire_cables(&entry.retired_cables);
+            }
+        }
         self.sync_live_module_events();
         Ok(self.snapshot())
     }
@@ -549,6 +592,11 @@ impl Session {
         } else {
             Vec::new()
         };
+        let mut retired_cables = if matches!(name, "replace_patch" | "load_patch") {
+            self.cable_ids()
+        } else {
+            Vec::new()
+        };
         match name {
             "rotate_sequence" => rotate_sequence(&mut candidate, &args)?,
             "replace_patch" => {
@@ -595,7 +643,7 @@ impl Session {
                                 "revision and history grouping belong to the transaction, not an edit".into(),
                             );
                         }
-                        apply_edit(&mut candidate, tool, arguments)?;
+                        apply_edit(&mut candidate, tool, arguments, &mut retired_cables)?;
                         if tool == "remove_module" {
                             retired.push(string(arguments, "id")?.to_owned());
                         }
@@ -604,6 +652,7 @@ impl Session {
                     result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
                 }
                 if name == "preview_edits" {
+                    candidate.assign_missing_cable_ids()?;
                     candidate.compile()?;
                     return Ok(
                         json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate,"committed":false,"edit_count":edits.len()}),
@@ -612,7 +661,9 @@ impl Session {
             }
             "undo" => return self.restore_history(false),
             "redo" => return self.restore_history(true),
-            name if EDIT_TOOLS.contains(&name) => apply_edit(&mut candidate, name, &args)?,
+            name if EDIT_TOOLS.contains(&name) => {
+                apply_edit(&mut candidate, name, &args, &mut retired_cables)?
+            }
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
@@ -632,7 +683,13 @@ impl Session {
         if name == "remove_module" {
             retired.push(string(&args, "id")?.to_owned());
         }
-        self.commit(candidate, expected_revision, group, &retired)?;
+        self.commit(
+            candidate,
+            expected_revision,
+            group,
+            &retired,
+            &retired_cables,
+        )?;
         Ok(self.snapshot())
     }
 }
@@ -842,28 +899,44 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
                 .then(|| json!({"id":id,"before":previous,"after":node}))
         })
         .collect();
-    let endpoints = |cable: &Cable| {
+    let signature = |cable: &Cable| {
         (
+            cable.id.clone(),
             cable.from.clone(),
             cable.output.clone(),
             cable.to.clone(),
             cable.input.clone(),
         )
     };
-    let old_cables: BTreeSet<_> = before.cables.iter().map(endpoints).collect();
-    let new_cables: BTreeSet<_> = after.cables.iter().map(endpoints).collect();
-    let added_cables: Vec<_> = after
-        .cables
-        .iter()
-        .filter(|cable| !old_cables.contains(&endpoints(cable)))
-        .collect();
-    let removed_cables: Vec<_> = before
-        .cables
-        .iter()
-        .filter(|cable| !new_cables.contains(&endpoints(cable)))
-        .collect();
+    let difference = |left: &'_ [Cable], right: &[Cable]| {
+        let mut counts = BTreeMap::new();
+        for cable in right {
+            *counts.entry(signature(cable)).or_insert(0_usize) += 1;
+        }
+        let mut changed = Vec::new();
+        for cable in left {
+            let count = counts.entry(signature(cable)).or_default();
+            if *count > 0 {
+                *count -= 1;
+            } else {
+                changed.push(cable.clone());
+            }
+        }
+        changed
+    };
+    let added_cables = difference(&after.cables, &before.cables);
+    let removed_cables = difference(&before.cables, &after.cables);
+    // Add/remove/endpoint changes already appear above. This flag specifically
+    // identifies a pure routing-order change of the same cable multiset.
+    let cable_order_changed = added_cables.is_empty()
+        && removed_cables.is_empty()
+        && !before
+            .cables
+            .iter()
+            .map(&signature)
+            .eq(after.cables.iter().map(&signature));
     json!({"added_modules":added,"removed_modules":removed,"changed_modules":changed,
-        "added_cables":added_cables,"removed_cables":removed_cables,
+        "added_cables":added_cables,"removed_cables":removed_cables,"cable_order_changed":cable_order_changed,
         "output":{"before":{"node":before.output,"port":before.output_port},"after":{"node":after.output,"port":after.output_port}}})
 }
 
@@ -892,7 +965,12 @@ fn validate_arguments(schemas: &Value, name: &str, args: &Value) -> Result<(), S
     Ok(())
 }
 
-fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), String> {
+fn apply_edit(
+    candidate: &mut Patch,
+    name: &str,
+    args: &Value,
+    retired_cables: &mut Vec<String>,
+) -> Result<(), String> {
     match name {
         "add_module" => {
             let params: BTreeMap<String, f32> =
@@ -912,27 +990,83 @@ fn apply_edit(candidate: &mut Patch, name: &str, args: &Value) -> Result<(), Str
                 return Err("module not found".into());
             }
             candidate.nodes.retain(|n| n.id != id);
-            candidate.cables.retain(|c| c.from != id && c.to != id);
+            candidate.cables.retain(|c| {
+                let retained = c.from != id && c.to != id;
+                if !retained {
+                    retired_cables.extend(c.id.clone());
+                }
+                retained
+            });
             if candidate.output.as_deref() == Some(id) {
                 candidate.output = None;
                 candidate.output_port = "out".into();
             }
         }
         "connect" => {
-            candidate.cables.push(Cable {
-                from: string(args, "from")?.into(),
-                output: optional_string(args, "output", "out")?.into(),
-                to: string(args, "to")?.into(),
-                input: string(args, "input")?.into(),
-            });
-        }
-        "disconnect" => {
+            let mode = optional_string(args, "mode", "reject")?;
+            if !matches!(mode, "reject" | "stack") {
+                return Err("mode must be reject or stack".into());
+            }
+            if mode == "stack" && candidate.version != 2 {
+                return Err("stack mode requires patch version 2".into());
+            }
             let to = string(args, "to")?;
             let input = string(args, "input")?;
+            if mode == "reject"
+                && candidate
+                    .cables
+                    .iter()
+                    .any(|cable| cable.to == to && cable.input == input)
+            {
+                return Err("input is already connected; use mode stack to add a cable".into());
+            }
+            let id = args
+                .get("cable_id")
+                .map(|_| string(args, "cable_id").map(str::to_owned))
+                .transpose()?;
+            if id.as_ref().is_some_and(|id| {
+                candidate
+                    .cables
+                    .iter()
+                    .any(|cable| cable.id.as_ref() == Some(id))
+            }) {
+                return Err("cable_id already exists".into());
+            }
+            candidate.cables.push(Cable {
+                id,
+                from: string(args, "from")?.into(),
+                output: optional_string(args, "output", "out")?.into(),
+                to: to.into(),
+                input: input.into(),
+            });
+            candidate.assign_missing_cable_ids()?;
+        }
+        "disconnect" => {
+            let specific = args.get("cable_id").is_some();
+            let destination = args.get("to").is_some() || args.get("input").is_some();
+            if specific == destination {
+                return Err("disconnect requires either cable_id or both to and input".into());
+            }
+            let (id, to, input) = if specific {
+                (Some(string(args, "cable_id")?), None, None)
+            } else {
+                (
+                    None,
+                    Some(string(args, "to")?),
+                    Some(string(args, "input")?),
+                )
+            };
             let before = candidate.cables.len();
-            candidate
-                .cables
-                .retain(|c| !(c.to == to && c.input == input));
+            candidate.cables.retain(|cable| {
+                let remove = id.map_or_else(
+                    || cable.to == to.unwrap() && cable.input == input.unwrap(),
+                    |id| cable.id.as_deref() == Some(id),
+                );
+                if remove {
+                    retired_cables.extend(cable.id.clone());
+                }
+                !remove
+            });
             if before == candidate.cables.len() {
                 return Err("cable not found".into());
             }
@@ -1055,6 +1189,7 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
                 return None;
             }
             let mut cable = original.clone();
+            cable.id = None;
             cable.to = (*destination).to_owned();
             if let Some(source) = source {
                 cable.from = (*source).to_owned();
@@ -1064,6 +1199,7 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
         .collect();
     candidate.nodes.extend(clones);
     candidate.cables.extend(cables);
+    candidate.assign_missing_cable_ids()?;
     Ok(())
 }
 
@@ -1075,6 +1211,16 @@ fn tool(
     read_only: bool,
 ) -> Value {
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false},"annotations":{"readOnlyHint":read_only,"destructiveHint":false,"idempotentHint":read_only,"openWorldHint":false}})
+}
+
+fn disconnect_tool(string_schema: &Value, id_schema: &Value, revision_schema: &Value) -> Value {
+    let mut schema = tool("disconnect", "Disconnect exactly one cable_id, or every cable on a legacy to/input pair. Selectors are mutually exclusive; surviving cables keep IDs and order.",
+        json!({"cable_id":id_schema,"to":string_schema,"input":string_schema,"expected_revision":revision_schema}), &[], false);
+    schema["inputSchema"]["oneOf"] = json!([
+        {"required":["cable_id"],"not":{"anyOf":[{"required":["to"]},{"required":["input"]}]}},
+        {"required":["to","input"],"not":{"required":["cable_id"]}}
+    ]);
+    schema
 }
 
 pub fn tools() -> Value {
@@ -1108,8 +1254,8 @@ pub fn tools() -> Value {
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, and inputs also copies external incoming cables. Does not copy external outgoing cables or change the selected output. Runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
-        tool("disconnect","Disconnect a named destination input.",json!({"to":s,"input":s,"expected_revision":rev}),&["to","input"],false),
+        tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"expected_revision":rev}),&["from","to","input"],false),
+        disconnect_tool(&s, &module_id, &rev),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),

@@ -28,12 +28,14 @@ fn voice_patch(voices: usize) -> Patch {
         let id = format!("mix{i}");
         patch.nodes.push(node(id.clone(), "mixer", BTreeMap::new()));
         patch.cables.push(Cable {
+            id: None,
             from: sum,
             to: id.clone(),
             input: "a".into(),
             output: "out".into(),
         });
         patch.cables.push(Cable {
+            id: None,
             from: format!("osc{i}"),
             to: id.clone(),
             input: "b".into(),
@@ -47,6 +49,7 @@ fn voice_patch(voices: usize) -> Patch {
         BTreeMap::from([("gain".into(), 1.0 / voices as f32)]),
     ));
     patch.cables.push(Cable {
+        id: None,
         from: sum,
         to: "master".into(),
         input: "signal".into(),

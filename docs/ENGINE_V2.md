@@ -16,20 +16,16 @@ still contains a stable ID, kind and numeric parameter map. The additions are:
 | `Patch.output_port` | Selected source port | `"out"` |
 | `Cable.from` / `Cable.output` | Source node and port | Output defaults to `"out"` |
 | `Cable.to` / `Cable.input` | Destination node and port | No implicit input |
+| `Cable.id` | Persistent identity, unique within the patch's cables | Absent in older files; assigned on session/project load |
 
 `Patch::default()` creates version 1. `Patch::new_v2()` creates version 2.
 Loading or saving a version-1 file must not silently upgrade its timing.
 Changing a patch to version 2 is a behavioral migration: every cable gains one
 sample of delay. Port names and directions are validated before compilation;
-unknown versions, ports and parameters are errors. Each input accepts one cable;
-an output may fan out to multiple inputs.
-
-The one-cable input rule is an explicit parity gap. The pinned Rack engine
-supports stacked input cables, summing their voltages with mono broadcast and
-the maximum contributing polyphonic width. OpenPatch still rejects these
-graphs. Supporting them requires input aggregation, per-edge history/adoption,
-and unambiguous native cable selection/removal tests; it is not implemented by
-adding a mixer module. [Rack engine reference](https://github.com/VCVRack/Rack/blob/061ccf63c1758599396ac1bb10d47345d9d34076/src/engine/Engine.cpp).
+unknown versions, ports and parameters are errors. Version 2 accepts multiple
+cables at one input, including identical routes with separate cable identities;
+an output may fan out to multiple inputs. Version 1 retains one cable per input.
+See [stacked cables](STACKED_CABLES.md) for native gestures and MCP operations.
 
 Version 1 accepts only the existing mono kinds and their implicit `out` source
 port. It rejects the version-2-only polyphonic utilities, non-`out` source
@@ -55,8 +51,17 @@ traces are described in [MIDI and audio](MIDI_AUDIO.md).
 In version 2, a cable delivers the source's completed previous-sample frame,
 including its channel count. All modules read the old cable bank; after all
 modules run, current outputs are published for the next sample. Evaluation
-order cannot change the result. A cable through a utility adds another sample
+order of modules cannot change the result. A cable through a utility adds another sample
 of delay even if the utility is mathematically an identity.
+
+Stacked inputs sum those delayed frames in saved cable order, without averaging.
+Their channel count is the maximum contributing width. A mono source broadcasts
+to that width; shorter polyphonic sources contribute zero above their active
+range. An all-zero-channel stack remains unpatched for normaling. Source NaN/Inf
+values become zero before addition, including the single-cable case. Addition
+uses `f32`; the completed input sum is not clipped or sanitized, although a
+downstream module may apply its documented arithmetic bound. Cable order can
+affect floating-point rounding; node order and callback partitioning cannot.
 
 Initial and newly connected cables contain a zero-channel frame, so downstream
 inputs initially use their unpatched behavior. They do not start as one-channel
@@ -101,15 +106,19 @@ module's configured initial state. This prevents a removed envelope, held
 voltage or oscillator voice from unexpectedly resuming old memory. Graph
 replacement preserves active compatible voice state by stable node ID and
 kind, without overwriting the new graph's parameters. New kinds/IDs start
-fresh. Cable history survives only unchanged source/destination node-and-port
-endpoints with compatible kinds, port contracts and sample rate. Copy both
+fresh. Cable history survives only matching cable identity and unchanged
+source/destination node-and-port endpoints with compatible kinds, port contracts
+and sample rate. Copy both
 values and channel count; rewired/new edges start empty. State adoption does
 not modify the old engine used by the host's transition crossfade.
 
-The desktop additionally tracks node incarnations across control revisions.
-Its filtered adoption path leaves recreated nodes and their incident edge
-history fresh, even when remove/readd or undo/redo revisions coalesce before
-the callback. Same-ID compatible edits continue normally. See
+The desktop additionally tracks node and cable incarnations across control
+revisions. Its filtered adoption path leaves recreated nodes and their incident
+edge history fresh, and resets recreated cables independently of their source
+modules, even when remove/readd or undo/redo revisions coalesce before the
+callback. Same-ID compatible edits continue normally. Direct core callers can
+still compile idless older patches without mutation; unique idless routes retain
+endpoint-based adoption across node/cable reorder. See
 [rack editing and runtime identity](RACK_EDITING.md).
 
 ## Foundation utilities

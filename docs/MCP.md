@@ -111,6 +111,13 @@ action explicitly converts a legacy patch and can be undone. An MCP client can
 make the same explicit conversion by replacing a patch with `version: 2`.
 Conversion changes timing. See [engine contracts](ENGINE_V2.md).
 
+Version-2 inputs also support stacked cables. `connect` defaults to rejecting
+occupied inputs; set `mode: "stack"` to add another signal and optionally
+`cable_id` to name the new cable. Every live cable has a persistent `id` in
+`inspect_patch`. `disconnect` accepts either `cable_id` for one route or
+`to` plus `input` for all routes on that input. Preview and commit moves as one
+disconnect/connect transaction. See [stacked cable examples and timing](STACKED_CABLES.md).
+
 Select `audio_stereo.out` for explicit L/R playback and stereo WAV export. Each
 input sums its voices and converts 10 V to digital full scale; unpatched Right
 follows Left. All other selected outputs retain channel-0 mono monitoring.

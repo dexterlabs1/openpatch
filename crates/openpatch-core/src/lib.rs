@@ -109,6 +109,9 @@ fn is_false(value: &bool) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
+    /// Stable identity in the cable namespace; older patches may omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub from: String,
     pub to: String,
     pub input: String,
@@ -118,6 +121,31 @@ pub struct Cable {
         skip_serializing_if = "is_default_output_port"
     )]
     pub output: String,
+}
+
+fn validate_cable_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'))
+    {
+        return Err("cable IDs must contain 1..=64 ASCII letters, digits, '_', '-', or '.'".into());
+    }
+    Ok(())
+}
+
+fn validate_cable_ids(cables: &[Cable]) -> Result<(), String> {
+    let mut seen = BTreeSet::new();
+    for cable in cables {
+        if let Some(id) = &cable.id {
+            validate_cable_id(id)?;
+            if !seen.insert(id) {
+                return Err(format!("duplicate cable ID '{id}'"));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Machine-readable module descriptions. Bounds depending on the sample rate
@@ -490,6 +518,34 @@ fn build_dsp(node: &Node, rate: u32) -> Result<Dsp, String> {
 }
 
 impl Patch {
+    /// Assign stable IDs without changing cable order or any existing identity.
+    /// Explicit IDs are reserved first, so allocation is deterministic for a
+    /// candidate patch and cannot collide with IDs later in the array.
+    pub fn assign_missing_cable_ids(&mut self) -> Result<(), String> {
+        let mut used = BTreeSet::new();
+        for cable in &self.cables {
+            if let Some(id) = &cable.id {
+                validate_cable_id(id)?;
+                if !used.insert(id.clone()) {
+                    return Err(format!("duplicate cable ID '{id}'"));
+                }
+            }
+        }
+        let mut next = 1usize;
+        for cable in &mut self.cables {
+            if cable.id.is_none() {
+                while used.contains(&format!("cable_{next}")) {
+                    next += 1;
+                }
+                let id = format!("cable_{next}");
+                used.insert(id.clone());
+                cable.id = Some(id);
+                next += 1;
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         self.compile().map(|_| ())
     }
@@ -503,9 +559,10 @@ impl Patch {
     }
 
     pub fn compile(&self) -> Result<Engine, String> {
+        validate_cable_ids(&self.cables)?;
         let inner = match self.version {
             1 => EngineKind::Legacy(self.compile_legacy()?),
-            2 => EngineKind::Poly(poly::PolyEngine::compile(self)?),
+            2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile(self)?)),
             version => {
                 return Err(format!(
                     "unsupported patch version {version} (expected 1 or 2)"
@@ -838,6 +895,14 @@ pub struct Engine {
 }
 static NEXT_ENGINE_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Opaque cable history target bound to one compiled engine. Resolve again
+/// after graph replacement; stale or foreign exclusions are ignored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CableHandle {
+    generation: u64,
+    cable: usize,
+}
+
 /// Opaque, allocation-free direct-lane tap bound to one compiled engine.
 /// Re-resolve after compiling a replacement; a stale handle reads inactive.
 #[derive(Clone, Copy, Debug)]
@@ -856,9 +921,19 @@ pub struct TapSample {
 #[derive(Debug)]
 enum EngineKind {
     Legacy(LegacyEngine),
-    Poly(poly::PolyEngine),
+    Poly(Box<poly::PolyEngine>),
 }
 impl Engine {
+    /// Resolve an explicit version-2 cable ID for state adoption exclusions.
+    pub fn resolve_cable_state(&self, id: &str) -> Result<CableHandle, String> {
+        let EngineKind::Poly(engine) = &self.inner else {
+            return Err("version 1 has no delayed cable state".into());
+        };
+        Ok(CableHandle {
+            generation: self.identity,
+            cable: engine.resolve_cable_state(id)?,
+        })
+    }
     /// Resolve any module's state on the control thread, in either patch version.
     /// This handle is bound to this receiving engine; action support still
     /// depends on the resolved model and action kind.
@@ -1121,7 +1196,7 @@ impl Engine {
     /// Copy compatible state without allocation. Version and sample rate must
     /// match. Version 2 also retains only edges with unchanged compatible endpoints.
     pub fn adopt_state_from(&mut self, previous: &Self) {
-        self.adopt_state_from_excluding(previous, &[]);
+        self.adopt_state_from_excluding_routes(previous, &[], &[]);
     }
     /// Copy compatible state except modules identified as fresh incarnations.
     /// Resolve exclusions against self; stale/foreign handles are ignored.
@@ -1129,10 +1204,29 @@ impl Engine {
     /// version-2 cable histories stay empty. Other nodes/edges adopt normally.
     /// Fixed stack storage; no allocation, deallocation, locks or recompilation.
     pub fn adopt_state_from_excluding(&mut self, previous: &Self, excluded: &[ModuleHandle]) {
+        self.adopt_state_from_excluding_routes(previous, excluded, &[]);
+    }
+    /// Adopt compatible state while starting selected modules and cable
+    /// histories fresh. Resolve both handle kinds against this engine.
+    /// Uses fixed stack masks and performs no allocation or locking.
+    pub fn adopt_state_from_excluding_routes(
+        &mut self,
+        previous: &Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+    ) {
         let mut mask = [false; MAX_NODES];
         for handle in excluded {
             if handle.generation == self.identity {
                 if let Some(slot) = mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
+        let mut cable_mask = [false; MAX_CABLES];
+        for handle in excluded_cables {
+            if handle.generation == self.identity {
+                if let Some(slot) = cable_mask.get_mut(handle.cable) {
                     *slot = true;
                 }
             }
@@ -1144,7 +1238,7 @@ impl Engine {
                 current.adopt_state_from_excluding(old, &mask)
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
-                current.adopt_state_from_excluding(old, &mask)
+                current.adopt_state_from_excluding(old, &mask, &cable_mask)
             }
             _ => {}
         }
@@ -1194,6 +1288,7 @@ pub fn demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        id: None,
         from: from.into(),
         to: to.into(),
         input: input.into(),
@@ -1238,6 +1333,7 @@ pub fn analog_demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        id: None,
         from: from.into(),
         to: to.into(),
         input: input.into(),

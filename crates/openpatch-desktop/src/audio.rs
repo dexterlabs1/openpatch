@@ -845,37 +845,9 @@ impl Callback {
         if self.graphs.poll() {
             if let Some(previous) = self.graphs.previous.as_ref() {
                 let active = &mut self.graphs.active;
-                let first = active
+                active
                     .modules
-                    .states
-                    .iter()
-                    .flatten()
-                    .map(|binding| binding.handle)
-                    .chain(active.modules.fresh_states.iter().flatten().copied())
-                    .next();
-                if let Some(first) = first {
-                    let mut excluded = [first; openpatch_core::MAX_NODES];
-                    let mut count = 0;
-                    for (slot, binding) in active.modules.states.iter().enumerate() {
-                        if let Some(binding) = binding {
-                            let same_instance = previous.modules.states[slot]
-                                .is_some_and(|old| old.token == binding.token);
-                            if !same_instance {
-                                excluded[count] = binding.handle;
-                                count += 1;
-                            }
-                        }
-                    }
-                    for handle in active.modules.fresh_states.iter().flatten() {
-                        excluded[count] = *handle;
-                        count += 1;
-                    }
-                    active
-                        .engine
-                        .adopt_state_from_excluding(&previous.engine, &excluded[..count]);
-                } else {
-                    active.engine.adopt_state_from(&previous.engine);
-                }
+                    .adopt_state(&mut active.engine, &previous.modules, &previous.engine);
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]
@@ -1812,10 +1784,12 @@ mod tests {
         }
     }
     fn sequence_patch() -> Patch {
-        serde_json::from_value(serde_json::json!({"version":2,
+        let mut patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
             "nodes":[{"id":"seq","kind":"seq3","params":{"tempo":15,"running":1,"steps":8,"row1_1":1,"row1_2":2,"row1_3":3}},
                 {"id":"zero","kind":"constant","params":{"value":0}}],
-            "cables":[{"from":"zero","to":"seq","input":"clock"}],"output":"seq","output_port":"cv1"})).unwrap()
+            "cables":[{"from":"zero","to":"seq","input":"clock"}],"output":"seq","output_port":"cv1"})).unwrap();
+        patch.assign_missing_cable_ids().unwrap();
+        patch
     }
     fn sequence_callback(
         patch: &Patch,
@@ -2902,6 +2876,362 @@ mod tests {
             ),
             [0.0, 0.0]
         );
+    }
+
+    fn stacked_history_patch() -> Patch {
+        serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"osc","kind":"oscillator","params":{"frequency":123}},
+                {"id":"b","kind":"constant","params":{"value":3}}, {"id":"sum","kind":"gain"}],
+            "cables":[{"id":"route_a","from":"osc","to":"sum","input":"signal"},
+                {"id":"route_b","from":"b","to":"sum","input":"signal"}],"output":"sum"}))
+        .unwrap()
+    }
+    fn scoped_route_graph(
+        callback: &Callback,
+        patch: &Patch,
+        revision: u64,
+        generation: u64,
+    ) -> PreparedGraph {
+        let mut graph = sequence_graph(callback, patch, revision);
+        graph.scope = ScopeSetup {
+            generation,
+            enabled: true,
+            taps: [
+                Some(graph.engine.resolve_tap("sum", "out", 0).unwrap()),
+                Some(graph.engine.resolve_tap("osc", "out", 0).unwrap()),
+            ],
+        };
+        graph
+    }
+    fn oscillator_reference() -> Engine {
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"osc","kind":"oscillator","params":{"frequency":123}}],"output":"osc"}))
+        .unwrap();
+        patch.compile().unwrap()
+    }
+
+    #[test]
+    fn cable_recreation_clears_only_its_delay_and_retains_source_state_and_sibling_history() {
+        for through_history in [false, true] {
+            let patch = stacked_history_patch();
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            let mut packets = callback.scope_packets.take().unwrap();
+            let workspace = tempfile::tempdir().unwrap();
+            let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+            session.replace_patch(patch, Some(0)).unwrap();
+            session.set_live_module_events(Some(callback.performance.clone()));
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+            let mut reference = oscillator_reference();
+            let mut expected = [[0.0; 2]; 80];
+            reference.process_audio_block(&mut expected);
+            let nodes = callback
+                .graphs
+                .active
+                .modules
+                .states
+                .map(|binding| binding.map(|binding| binding.token));
+            let old_a = callback.graphs.active.modules.cables[0].unwrap().token;
+            let old_b = callback.graphs.active.modules.cables[1].unwrap().token;
+            if through_history {
+                session
+                    .execute("disconnect", serde_json::json!({"cable_id":"route_a"}))
+                    .unwrap();
+                session.execute("undo", serde_json::json!({})).unwrap();
+            } else {
+                session.execute("apply_edits", serde_json::json!({"edits":[
+                    {"tool":"disconnect","arguments":{"cable_id":"route_a"}},
+                    {"tool":"connect","arguments":{"from":"osc","to":"sum","input":"signal","mode":"stack","cable_id":"route_a"}}
+                ]})).unwrap();
+            }
+            let graph = scoped_route_graph(&callback, session.patch(), session.revision(), 2);
+            assert_eq!(
+                graph
+                    .modules
+                    .states
+                    .map(|binding| binding.map(|binding| binding.token)),
+                nodes
+            );
+            assert_ne!(graph.modules.cables[0].unwrap().token, old_a);
+            assert_eq!(graph.modules.cables[1].unwrap().token, old_b);
+            assert!(updates.push(graph).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+            let packet = packets.pop().unwrap();
+            assert_eq!(packet.x[0], 3.0);
+            reference.process_audio_block(&mut expected[..SCOPE_PACKET_SIZE]);
+            for (index, expected_frame) in expected.iter().take(SCOPE_PACKET_SIZE).enumerate() {
+                assert!(packet.x_active[index] && packet.y_active[index]);
+                assert_eq!(packet.y[index], expected_frame[0]);
+                if index > 0 {
+                    assert_eq!(packet.x[index], 3.0 + packet.y[index - 1]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stale_cable_plan_and_latest_plan_each_start_recreated_route_fresh_without_resetting_nodes() {
+        let patch = stacked_history_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        session
+            .execute("disconnect", serde_json::json!({"cable_id":"route_a"}))
+            .unwrap();
+        session.execute("undo", serde_json::json!({})).unwrap();
+        let stale = scoped_route_graph(&callback, session.patch(), 1, 2);
+        assert!(stale.modules.cables[0].is_none());
+        assert_eq!(stale.modules.fresh_cables.iter().flatten().count(), 1);
+        assert!(updates.push(stale).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let first = packets.pop().unwrap();
+        assert_eq!(first.x[0], 3.0);
+        while packets.pop().is_ok() {}
+        let current = scoped_route_graph(&callback, session.patch(), session.revision(), 3);
+        assert!(updates.push(current).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+        let current = packets.pop().unwrap();
+        assert_eq!(current.x[0], 3.0);
+        let mut reference = oscillator_reference();
+        let mut prior = [[0.0; 2]; 336];
+        reference.process_audio_block(&mut prior);
+        let mut expected = [[0.0; 2]; SCOPE_PACKET_SIZE];
+        reference.process_audio_block(&mut expected);
+        for (index, expected_frame) in expected.iter().enumerate() {
+            assert_eq!(current.y[index], expected_frame[0]);
+        }
+    }
+
+    #[test]
+    fn cable_reordering_preserves_histories_and_endpoint_changes_reset_just_that_cable() {
+        let patch = stacked_history_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        let old_a = callback.graphs.active.modules.cables[0].unwrap().token;
+        let old_b = callback.graphs.active.modules.cables[1].unwrap().token;
+        let mut reordered = patch.clone();
+        reordered.cables.reverse();
+        callback.performance.sync_patch(&reordered, 2);
+        let graph = scoped_route_graph(&callback, &reordered, 2, 2);
+        assert_eq!(graph.modules.cables[0].unwrap().token, old_a);
+        assert_eq!(graph.modules.cables[1].unwrap().token, old_b);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        let first = packets.pop().unwrap();
+        let mut reference = oscillator_reference();
+        let mut expected = [[0.0; 2]; 80];
+        reference.process_audio_block(&mut expected);
+        assert_eq!(first.x[0], 3.0 + expected[79][0]);
+        while packets.pop().is_ok() {}
+        reordered.cables[1].from = "b".into();
+        callback.performance.sync_patch(&reordered, 3);
+        let graph = scoped_route_graph(&callback, &reordered, 3, 3);
+        assert_ne!(graph.modules.cables[0].unwrap().token, old_a);
+        assert_eq!(graph.modules.cables[1].unwrap().token, old_b);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+        let changed = packets.pop().unwrap();
+        assert_eq!(changed.x[0], 3.0);
+        assert_eq!(changed.x[1..], [6.0; SCOPE_PACKET_SIZE - 1]);
+    }
+
+    #[test]
+    fn maximum_stacked_cables_adopt_mixed_bound_and_stale_histories_without_heap() {
+        let cables: Vec<_> = (0..openpatch_core::MAX_CABLES)
+            .map(|index| {
+                serde_json::json!({
+            "id":format!("route_{index}"),"from":"one","to":"sum","input":"signal"})
+            })
+            .collect();
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"one","kind":"constant","params":{"value":1}}, {"id":"sum","kind":"gain"}],
+            "cables":cables,"output":"sum"})).unwrap();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
+        let mut removed = patch.clone();
+        removed.cables.truncate(openpatch_core::MAX_CABLES / 2);
+        callback.performance.sync_patch(&removed, 2);
+        callback.performance.sync_patch(&patch, 3);
+        for (revision, frames) in [(1, 256), (3, SCOPE_PACKET_SIZE)] {
+            let mut graph = sequence_graph(&callback, &patch, revision);
+            if revision == 1 {
+                assert_eq!(graph.modules.cables.iter().flatten().count(), 512);
+                assert_eq!(graph.modules.fresh_cables.iter().flatten().count(), 512);
+            }
+            graph.scope = ScopeSetup {
+                generation: revision,
+                enabled: true,
+                taps: [
+                    Some(graph.engine.resolve_tap("sum", "out", 0).unwrap()),
+                    None,
+                ],
+            };
+            assert!(updates.push(graph).is_ok());
+            let mut output = [0.0_f32; 256];
+            without_heap_activity(|| callback.render(&mut output[..frames], 1));
+            let first = packets.pop().unwrap();
+            assert_eq!(first.x[0], 512.0);
+            assert_eq!(first.x[1..], [1024.0; SCOPE_PACKET_SIZE - 1]);
+            assert_eq!(first.x_active, [true; SCOPE_PACKET_SIZE]);
+            while packets.pop().is_ok() {}
+        }
+    }
+
+    #[test]
+    fn full_document_replacement_clears_all_route_histories_and_source_state() {
+        let patch = stacked_history_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        session.replace_patch(patch, Some(1)).unwrap();
+        assert!(updates
+            .push(scoped_route_graph(
+                &callback,
+                session.patch(),
+                session.revision(),
+                2
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+        let packet = packets.pop().unwrap();
+        assert_eq!(packet.x[0], 0.0);
+        assert_eq!(packet.y[0], 0.0);
+        let mut reference = oscillator_reference();
+        let mut expected = [[0.0; 2]; SCOPE_PACKET_SIZE];
+        reference.process_audio_block(&mut expected);
+        for (index, expected_frame) in expected.iter().take(SCOPE_PACKET_SIZE).enumerate() {
+            assert_eq!(packet.y[index], expected_frame[0]);
+            if index > 0 {
+                assert_eq!(packet.x[index], 3.0 + packet.y[index - 1]);
+            }
+        }
+    }
+
+    #[test]
+    fn undo_redo_of_already_rendered_same_shape_cable_replacement_replays_delay_reset() {
+        let patch = stacked_history_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        let mut reference = oscillator_reference();
+        let mut expected = [[0.0; 2]; 256];
+        reference.process_audio_block(&mut expected[..80]);
+        let preceding_source = expected[79][0];
+        session.execute("apply_edits",serde_json::json!({"edits":[
+            {"tool":"disconnect","arguments":{"cable_id":"route_b"}},
+            {"tool":"connect","arguments":{"from":"b","to":"sum","input":"signal","mode":"stack","cable_id":"route_b"}}
+        ]})).unwrap();
+        assert_eq!(
+            serde_json::to_value(session.patch()).unwrap(),
+            serde_json::to_value(&patch).unwrap()
+        );
+        assert!(updates
+            .push(scoped_route_graph(
+                &callback,
+                session.patch(),
+                session.revision(),
+                2
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(packets.pop().unwrap().x[0], preceding_source);
+        while packets.pop().is_ok() {}
+        reference.process_audio_block(&mut expected);
+        let preceding_source = expected[255][0];
+        let nodes = callback
+            .graphs
+            .active
+            .modules
+            .states
+            .map(|binding| binding.map(|binding| binding.token));
+        let surviving = callback.graphs.active.modules.cables[0].unwrap().token;
+        let replaced = callback.graphs.active.modules.cables[1].unwrap().token;
+        session.execute("undo", serde_json::json!({})).unwrap();
+        session.execute("redo", serde_json::json!({})).unwrap();
+        let graph = scoped_route_graph(&callback, session.patch(), session.revision(), 3);
+        assert_eq!(
+            graph
+                .modules
+                .states
+                .map(|binding| binding.map(|binding| binding.token)),
+            nodes
+        );
+        assert_eq!(graph.modules.cables[0].unwrap().token, surviving);
+        assert_ne!(graph.modules.cables[1].unwrap().token, replaced);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
+        let packet = packets.pop().unwrap();
+        assert_eq!(packet.x[0], preceding_source);
+        reference.process_audio_block(&mut expected[..SCOPE_PACKET_SIZE]);
+        for (index, expected_frame) in expected.iter().take(SCOPE_PACKET_SIZE).enumerate() {
+            assert_eq!(packet.y[index], expected_frame[0]);
+            if index > 0 {
+                assert_eq!(packet.x[index], 3.0 + packet.y[index - 1]);
+            }
+        }
+    }
+
+    #[test]
+    fn undo_redo_of_already_rendered_same_shape_module_replacement_replays_dsp_reset() {
+        let mut patch = sequence_patch();
+        patch.nodes.swap(0, 1);
+        let parameters = patch.nodes[1].params.clone();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        session.execute("apply_edits",serde_json::json!({"edits":[
+            {"tool":"remove_module","arguments":{"id":"seq"}},
+            {"tool":"add_module","arguments":{"id":"seq","kind":"seq3","params":parameters}},
+            {"tool":"connect","arguments":{"from":"zero","to":"seq","input":"clock","cable_id":"cable_1"}},
+            {"tool":"set_output","arguments":{"id":"seq","port":"cv1"}}
+        ]})).unwrap();
+        assert_eq!(
+            serde_json::to_value(session.patch()).unwrap(),
+            serde_json::to_value(&patch).unwrap()
+        );
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        let original_zero = callback.graphs.active.modules.states[0].unwrap().token;
+        let replaced_seq = callback.graphs.active.modules.states[1].unwrap().token;
+        session.execute("undo", serde_json::json!({})).unwrap();
+        session.execute("redo", serde_json::json!({})).unwrap();
+        let graph = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(graph.modules.states[0].unwrap().token, original_zero);
+        assert_ne!(graph.modules.states[1].unwrap().token, replaced_seq);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 1);
     }
 
     #[test]
