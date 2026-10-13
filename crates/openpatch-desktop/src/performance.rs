@@ -1,0 +1,420 @@
+//! Control-thread registry and bounded sequencer performance events. The only
+//! producer is behind a control-only mutex; the audio consumer never locks.
+use openpatch::control::LiveModuleEvents;
+use openpatch_core::{Engine, ModuleAction, ModuleHandle, ModuleTelemetry, Patch, MAX_NODES};
+use rtrb::{Consumer, Producer, RingBuffer};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+    Arc, Mutex,
+};
+
+pub(super) const EVENT_CAPACITY: usize = 512;
+const FUTURE_SECONDS: u64 = 2;
+#[derive(Clone, Copy)]
+struct Event {
+    slot: usize,
+    token: u64,
+    action: ModuleAction,
+    sequence: u64,
+    revision: u64,
+    deadline: u64,
+}
+#[derive(Clone, Copy)]
+struct Entry {
+    slot: usize,
+    token: u64,
+    born_revision: u64,
+}
+struct Control {
+    queue: Producer<Event>,
+    entries: BTreeMap<String, Entry>,
+    revision: u64,
+    next_token: u64,
+    next_sequence: u64,
+}
+struct Meter {
+    serial: AtomicU64,
+    token: AtomicU64,
+    revision: AtomicU64,
+    value: AtomicU32,
+}
+impl Meter {
+    fn new() -> Self {
+        Self {
+            serial: AtomicU64::new(0),
+            token: AtomicU64::new(0),
+            revision: AtomicU64::new(0),
+            value: AtomicU32::new(0),
+        }
+    }
+    fn write(&self, token: u64, revision: u64, state: ModuleTelemetry) {
+        self.serial.fetch_add(1, Ordering::SeqCst);
+        self.token.store(token, Ordering::SeqCst);
+        self.revision.store(revision, Ordering::SeqCst);
+        self.value.store(
+            u32::from(state.step)
+                | (u32::from(state.length) << 8)
+                | (u32::from(state.running) << 16),
+            Ordering::SeqCst,
+        );
+        self.serial.fetch_add(1, Ordering::SeqCst);
+    }
+    fn read(&self, entry: Entry, revision: u64) -> Option<ModuleTelemetry> {
+        for _ in 0..4 {
+            let before = self.serial.load(Ordering::SeqCst);
+            if before & 1 != 0 {
+                continue;
+            }
+            let token = self.token.load(Ordering::SeqCst);
+            let actual_revision = self.revision.load(Ordering::SeqCst);
+            let value = self.value.load(Ordering::SeqCst);
+            let after = self.serial.load(Ordering::SeqCst);
+            if before != after {
+                continue;
+            }
+            return (token == entry.token && actual_revision >= revision).then_some(
+                ModuleTelemetry {
+                    step: value as u8,
+                    length: (value >> 8) as u8,
+                    running: value & (1 << 16) != 0,
+                },
+            );
+        }
+        None
+    }
+}
+struct Shared {
+    desired: [AtomicU64; MAX_NODES],
+    meters: [Meter; MAX_NODES],
+    closed: AtomicBool,
+    frame: AtomicU64,
+    queued: AtomicU64,
+    applied: AtomicU64,
+    dropped: AtomicU64,
+    backpressure: AtomicU64,
+    rejected: AtomicU64,
+    expired: AtomicU64,
+    obsolete: AtomicU64,
+    closed_dropped: AtomicU64,
+    crossfade_rejected: AtomicU64,
+    last_applied_sequence: AtomicU64,
+}
+pub(super) struct Performance {
+    control: Mutex<Control>,
+    shared: Arc<Shared>,
+    rate: u32,
+}
+#[derive(Clone, Copy)]
+pub(super) struct Binding {
+    pub token: u64,
+    pub handle: ModuleHandle,
+}
+#[derive(Clone)]
+pub(super) struct ModulePlan {
+    pub bindings: [Option<Binding>; MAX_NODES],
+}
+impl Default for ModulePlan {
+    fn default() -> Self {
+        Self {
+            bindings: [None; MAX_NODES],
+        }
+    }
+}
+pub(super) struct EventReader {
+    queue: Consumer<Event>,
+    head: Option<Event>,
+    shared: Arc<Shared>,
+}
+
+impl Performance {
+    pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader) {
+        let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
+        let shared = Arc::new(Shared {
+            desired: std::array::from_fn(|_| AtomicU64::new(0)),
+            meters: std::array::from_fn(|_| Meter::new()),
+            closed: AtomicBool::new(false),
+            frame: AtomicU64::new(0),
+            queued: AtomicU64::new(0),
+            applied: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+            backpressure: AtomicU64::new(0),
+            rejected: AtomicU64::new(0),
+            expired: AtomicU64::new(0),
+            obsolete: AtomicU64::new(0),
+            closed_dropped: AtomicU64::new(0),
+            crossfade_rejected: AtomicU64::new(0),
+            last_applied_sequence: AtomicU64::new(0),
+        });
+        let reader = EventReader {
+            queue: input,
+            head: None,
+            shared: shared.clone(),
+        };
+        (
+            Arc::new(Self {
+                control: Mutex::new(Control {
+                    queue,
+                    entries: BTreeMap::new(),
+                    revision: 0,
+                    next_token: 1,
+                    next_sequence: 1,
+                }),
+                shared,
+                rate,
+            }),
+            reader,
+        )
+    }
+    pub(super) fn plan(
+        &self,
+        patch: &Patch,
+        engine: &Engine,
+        revision: u64,
+    ) -> Result<ModulePlan, String> {
+        let control = self
+            .control
+            .lock()
+            .map_err(|_| "Module event registry poisoned")?;
+        let mut plan = ModulePlan::default();
+        for (id, entry) in &control.entries {
+            // A stale UI snapshot must not bind a newly reincarnated instance.
+            if revision < entry.born_revision
+                || !patch.nodes.iter().any(|n| n.id == *id && n.kind == "seq3")
+            {
+                continue;
+            }
+            plan.bindings[entry.slot] = Some(Binding {
+                token: entry.token,
+                handle: engine.resolve_module_event(id)?,
+            });
+        }
+        Ok(plan)
+    }
+    pub(super) fn sequence_state(&self, id: &str) -> Option<ModuleTelemetry> {
+        let control = self.control.lock().ok()?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        let entry = *control.entries.get(id)?;
+        self.shared.meters[entry.slot].read(entry, control.revision)
+    }
+    pub(super) fn close(&self) {
+        // Serialize against producer acceptance. This mutex never reaches audio.
+        let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        self.shared.closed.store(true, Ordering::Release);
+    }
+    /// Call only after the stream has stopped and its consumer has been dropped.
+    pub(super) fn finish_close(&self) {
+        let pending = self
+            .shared
+            .queued
+            .load(Ordering::Acquire)
+            .saturating_sub(self.shared.applied.load(Ordering::Acquire))
+            .saturating_sub(self.shared.dropped.load(Ordering::Acquire));
+        self.shared.dropped.fetch_add(pending, Ordering::Relaxed);
+        self.shared
+            .closed_dropped
+            .fetch_add(pending, Ordering::Relaxed);
+    }
+}
+impl LiveModuleEvents for Performance {
+    fn retire_modules(&self, ids: &[String]) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        for id in ids {
+            if let Some(entry) = control.entries.remove(id) {
+                // The following sync assigns a fresh token even when the final
+                // patch recreates an identical module in the same transaction.
+                // The consumer rejects queued actions carrying the old token.
+                self.shared.desired[entry.slot].store(0, Ordering::Release);
+            }
+        }
+    }
+    fn sync_patch(&self, patch: &Patch, revision: u64) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        control.entries.retain(|id, entry| {
+            let retained = patch.version == 2
+                && patch
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == *id && node.kind == "seq3");
+            if !retained {
+                self.shared.desired[entry.slot].store(0, Ordering::Release);
+            }
+            retained
+        });
+        let mut used = [false; MAX_NODES];
+        for entry in control.entries.values() {
+            used[entry.slot] = true;
+        }
+        if patch.version == 2 {
+            for node in patch.nodes.iter().filter(|node| node.kind == "seq3") {
+                if control.entries.contains_key(&node.id) {
+                    continue;
+                }
+                let Some(slot) = used.iter().position(|used| !used) else {
+                    break;
+                };
+                used[slot] = true;
+                let token = control.next_token;
+                control.next_token = control.next_token.wrapping_add(1).max(1);
+                control.entries.insert(
+                    node.id.clone(),
+                    Entry {
+                        slot,
+                        token,
+                        born_revision: revision,
+                    },
+                );
+                self.shared.desired[slot].store(token, Ordering::Release);
+            }
+        }
+        control.revision = revision;
+    }
+    fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
+        let mut control = self
+            .control
+            .lock()
+            .map_err(|_| "Module event registry poisoned")?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err("Audio device closed; module action was not queued".into());
+        }
+        let Some(entry) = control.entries.get(id).copied() else {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!("Module '{id}' has no live sequencer instance"));
+        };
+        let sequence = control.next_sequence;
+        control.next_sequence = control.next_sequence.wrapping_add(1).max(1);
+        let revision = control.revision;
+        let event = Event {
+            slot: entry.slot,
+            token: entry.token,
+            action,
+            sequence,
+            revision,
+            deadline: self
+                .shared
+                .frame
+                .load(Ordering::Acquire)
+                .saturating_add(u64::from(self.rate) * FUTURE_SECONDS),
+        };
+        // Count acceptance before publishing so the consumer cannot report an
+        // applied event before its queued counter. A rejected push rolls back.
+        self.shared.queued.fetch_add(1, Ordering::Release);
+        if control.queue.push(event).is_err() {
+            self.shared.queued.fetch_sub(1, Ordering::Release);
+            self.shared.backpressure.fetch_add(1, Ordering::Relaxed);
+            return Err("Module action queue is full; action was not queued".into());
+        }
+        Ok(
+            json!({"queued":true,"applied":false,"sequence":sequence,"id":id,"action":action,"minimum_revision":revision,"future_timeout_seconds":FUTURE_SECONDS}),
+        )
+    }
+    fn snapshot(&self) -> Value {
+        let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        let shared = &self.shared;
+        let queued = shared.queued.load(Ordering::Acquire);
+        let applied = shared.applied.load(Ordering::Acquire);
+        let dropped = shared.dropped.load(Ordering::Acquire);
+        json!({"available":!shared.closed.load(Ordering::Acquire),"queued":queued,"applied":applied,"dropped":dropped,
+            "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
+            "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
+            "closed_dropped":shared.closed_dropped.load(Ordering::Relaxed),"crossfade_rejected":shared.crossfade_rejected.load(Ordering::Relaxed),
+            "last_applied_sequence":shared.last_applied_sequence.load(Ordering::Acquire),"future_timeout_seconds":FUTURE_SECONDS})
+    }
+}
+impl EventReader {
+    /// Return true when the next ordered event needs a new sample because the
+    /// current target already has 64 core actions. Total budget spans callback.
+    pub(super) fn apply(
+        &mut self,
+        active: (&mut Engine, &ModulePlan, u64),
+        mut previous: Option<(&mut Engine, &ModulePlan)>,
+        frame: u64,
+        budget: &mut usize,
+    ) -> bool {
+        let (active, plan, revision) = active;
+        let mut per_node = [0_u8; MAX_NODES];
+        while *budget > 0 {
+            if self.head.is_none() {
+                self.head = self.queue.pop().ok();
+            }
+            let Some(event) = self.head else { break };
+            if self.shared.closed.load(Ordering::Acquire) {
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.closed_dropped.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
+            if self.shared.desired[event.slot].load(Ordering::Acquire) != event.token {
+                let shared = &self.shared;
+                self.head = None;
+                shared.dropped.fetch_add(1, Ordering::Relaxed);
+                shared.obsolete.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
+            if frame > event.deadline {
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.expired.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
+            if revision < event.revision {
+                break;
+            }
+            let binding = plan.bindings[event.slot].filter(|binding| binding.token == event.token);
+            let Some(binding) = binding else {
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            };
+            if per_node[event.slot] == 64 {
+                return true;
+            }
+            per_node[event.slot] += 1;
+            self.head = None;
+            *budget -= 1;
+            if active.handle_module_event(binding.handle, event.action) {
+                if let Some((engine, plan)) = previous.as_mut() {
+                    if let Some(old) =
+                        plan.bindings[event.slot].filter(|old| old.token == event.token)
+                    {
+                        if !engine.handle_module_event(old.handle, event.action) {
+                            self.shared
+                                .crossfade_rejected
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+                self.shared.applied.fetch_add(1, Ordering::Relaxed);
+                self.shared
+                    .last_applied_sequence
+                    .store(event.sequence, Ordering::Release);
+            } else {
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        false
+    }
+    pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
+        self.shared.frame.store(frame, Ordering::Release);
+        for (slot, binding) in plan.bindings.iter().enumerate() {
+            if let Some(binding) = binding {
+                if let Some(state) = engine.module_telemetry(binding.handle) {
+                    self.shared.meters[slot].write(binding.token, revision, state);
+                }
+            }
+        }
+    }
+}

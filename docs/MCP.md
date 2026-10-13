@@ -95,7 +95,7 @@ graph-only MCP commands retain their existing new-name-only behavior. Native
 File → Save uses `.openpatch` projects containing graph and layout; MCP does not
 yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
 A window that has committed its final close decision rejects subsequent graph
-mutations with `session is closing`; inspection and exports remain available.
+mutations and live module actions with `session is closing`; inspection and exports remain available.
 
 ## Named outputs, polyphony, and feedback
 
@@ -118,8 +118,8 @@ follows Left. All other selected outputs retain channel-0 mono monitoring.
 provide individual channel routing. See [MIDI and audio](MIDI_AUDIO.md).
 
 `render_audio`, `analyze_signal`, and `capture_signal` accept optional sample-timed
-`midi_events`, allowing reproducible MIDI performances from reset without
-changing live notes or patch history. The trace contract and CLI example are
+`midi_events` and `module_events`, allowing reproducible performances from reset
+without changing live notes, sequencer state, or patch history. The trace contract and CLI example are
 in the [performance guide](MIDI_AUDIO.md#reproducible-agent-performances).
 
 `analyze_signal` measures any named output offline from reset. It returns the
@@ -136,6 +136,77 @@ With the bundled polyphonic voice this reports three constant pitch channels.
 Analyze `vco` or `vca` to measure the three processed voices; analyze `sum` to
 inspect their mono sum. Values retain each output's catalog units; they are not
 automatically normalized, calibrated hardware measurements, or a live probe.
+
+## Sequencer actions and rotation
+
+`seq3` has three eight-step voltage rows (`row1_1` through `row3_8`), eight
+`gate1` through `gate8` flags, and named outputs `cv1`, `cv2`, `cv3`, `trigger`,
+`step1` through `step8`, `steps`, `clock`, `run`, and `reset`. Discover defaults,
+CV controls, voltage units, and timing in `catalog`. `tempo` is BPM (15–960,
+default 120); `steps` selects 1–8 columns. `running` sets the initial run state
+for a fresh engine. Live run toggles belong to performance state and do not
+rewrite that parameter. Loading or fully replacing a patch starts sequencers
+from fresh runtime state and invalidates their old queued actions, even when
+module IDs match. Ordinary parameter/routing edits preserve compatible state.
+
+`rotate_sequence` takes `id`, `direction` (`left` or `right`), and optional
+`expected_revision`. It moves all eight columns, including all three voltage
+rows and gate flags, together. Omitted cells use their catalog defaults (0 V;
+gates enabled). The rotation commits one revision and one undo step through the
+same validation boundary as ordinary parameter edits.
+
+```json
+{"id":"seq","direction":"left","expected_revision":7}
+```
+
+In desktop mode with a live audio backend attached, `trigger_module` queues a
+`clock`, `run`, or `reset` action for a `seq3` module. `run` toggles running;
+`clock` advances only while running. `reset` selects the first column and
+suppresses clocks for one millisecond, including its own sample. Use optional
+`expected_revision` to reject a request against an edited graph.
+
+```json
+{"id":"seq","action":"clock","expected_revision":7}
+```
+
+The result contains the observed `revision` and a backend `receipt`. A queued
+receipt confirms queue acceptance; the audio callback may apply or drop the
+action later. `inspect_performance` returns `supported` and a backend
+`performance` snapshot with queue/application/drop/backpressure counters. These
+counters distinguish accepted requests from actions that reached the engine.
+It accepts optional `expected_revision`. Live actions do not create undo entries
+or change patch revisions. Headless sessions and desktop sessions without an
+audio backend report `supported: false`, `performance: null`, and reject
+`trigger_module` as unsupported.
+
+For reproducible offline actions, supply `module_events` to `render_audio`,
+`analyze_signal`, or `capture_signal`:
+
+```json
+{
+  "id":"seq","port":"cv1","seconds":0.25,
+  "module_events":[
+    {"frame":1200,"id":"seq","action":"clock"},
+    {"frame":2400,"id":"seq","action":"reset"}
+  ]
+}
+```
+
+Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
+module), and `action` (`clock`, `run`, or `reset`). Frames index the stored patch
+sample rate, must be less than the rounded render frame count, and must be
+nondecreasing. The list is capped at 65,536 events and at 64 actions for one
+module at one frame. Equal-frame actions preserve array order. MIDI events run
+before module actions at a tie; module actions run before that sample's CV
+run/reset/clock inputs. Both traces are fully validated, including target IDs,
+before processing or creating a WAV. Results include `module_event_count` and
+`midi_event_count`.
+
+Offline operations start a separate engine from reset and never change live
+performance state or graph history. `analyze_signal` and `capture_signal` accept
+optional `expected_revision` to guard their coherent snapshot. Analysis and
+capture retain raw signal units; WAV export applies the usual selected-output
+channel and clipping policy.
 
 ## Offline waveform capture
 
@@ -179,8 +250,9 @@ audio peak above 1 remains above 1. These are software signal units, not calibra
 measurements of external hardware.
 
 This tool always starts a separate engine **offline from reset**. Optional
-`midi_events` reproduce a performance using the same sample-frame rules as
-`render_audio`; the response includes `midi_event_count`. It never selects a new
+`midi_events` and `module_events` reproduce a performance using the same
+sample-frame rules as `render_audio`; the response includes `midi_event_count`
+and `module_event_count`. It never selects a new
 live output, changes history, or changes running notes. The native Scope's live
 tap observes the running engine instead; `capture_signal` does not fetch that
 live tap. A concurrent edit may advance the session while capture runs, but the

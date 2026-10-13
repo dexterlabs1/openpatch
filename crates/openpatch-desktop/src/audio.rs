@@ -2,7 +2,12 @@
 //! The running callback never allocates, locks, formats errors, or drops engines.
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use openpatch::control::LiveModuleEvents;
+pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
 use openpatch_core::{Engine, MidiEvent, Patch, ResolvedTap, TapSample, BLOCK_SIZE};
+#[path = "performance.rs"]
+mod performance;
+use performance::{EventReader, ModulePlan, Performance, EVENT_CAPACITY};
 #[path = "scope_stream.rs"]
 mod scope_stream;
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -353,12 +358,16 @@ struct ScopeSetup {
 struct PreparedGraph {
     engine: Engine,
     scope: ScopeSetup,
+    modules: ModulePlan,
+    revision: u64,
 }
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
         Self {
             engine,
             scope: ScopeSetup::default(),
+            modules: ModulePlan::default(),
+            revision: 0,
         }
     }
 }
@@ -389,6 +398,8 @@ fn prepare_graph(
         .unwrap_or([None; 2]);
     Ok(PreparedGraph {
         engine,
+        modules: ModulePlan::default(),
+        revision: 0,
         scope: ScopeSetup {
             generation,
             enabled: binding.is_some(),
@@ -402,7 +413,7 @@ fn prepare_graph(
 pub struct Audio {
     // Drop the stream before its control-side queue endpoints. CPAL shuts down the
     // callback before returning from Stream::drop; graph teardown is not rendering.
-    _stream: cpal::Stream,
+    _stream: Option<cpal::Stream>,
     incoming: Producer<PreparedGraph>,
     retired: Consumer<PreparedGraph>,
     pending: Option<PreparedGraph>,
@@ -415,6 +426,8 @@ pub struct Audio {
     scope_binding: Option<ScopeBinding>,
     scope_generation: u64,
     scope_packets: Consumer<ScopePacket>,
+    performance: Arc<Performance>,
+    submitted_revision: u64,
 }
 
 impl Audio {
@@ -459,6 +472,12 @@ impl Audio {
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
         let mut callback = Callback::new(engine, updates, recycle, shared.clone(), sample_rate);
+        callback.performance.sync_patch(patch, 0);
+        callback.graphs.active.modules =
+            callback
+                .performance
+                .plan(patch, &callback.graphs.active.engine, 0)?;
+        let performance = callback.performance.clone();
         let scope_packets = callback.scope_packets.take().unwrap();
         let midi_ui = callback.midi.take_ui().unwrap();
         let midi_hardware = Some(HardwareMidiSender {
@@ -477,7 +496,7 @@ impl Audio {
             .play()
             .map_err(|error| format!("Could not start audio stream: {error}"))?;
         Ok(Self {
-            _stream: stream,
+            _stream: Some(stream),
             incoming,
             retired,
             pending: None,
@@ -490,27 +509,44 @@ impl Audio {
             scope_binding: None,
             scope_generation: 0,
             scope_packets,
+            performance,
+            submitted_revision: 0,
         })
     }
 
     /// Compilation and superseded-edit disposal happen here, on the UI thread.
     /// If the callback is busy, the latest successfully compiled edit is retained.
-    pub fn submit_patch(&mut self, patch: &Patch) -> Result<(), String> {
+    pub fn submit_patch_at_revision(&mut self, patch: &Patch, revision: u64) -> Result<(), String> {
+        if revision < self.submitted_revision {
+            return Err("Stale audio patch revision".into());
+        }
         let generation = self
             .scope_generation
             .checked_add(1)
             .ok_or("Scope generation exhausted")?;
-        let graph = prepare_graph(
+        let mut graph = prepare_graph(
             patch,
             self.sample_rate,
             self.scope_binding.as_ref(),
             generation,
             false,
         )?;
+        graph.modules = self.performance.plan(patch, &graph.engine, revision)?;
+        graph.revision = revision;
         self.pending = Some(graph);
+        self.submitted_revision = revision;
         self.scope_generation = generation;
         self.service();
         Ok(())
+    }
+
+    pub fn module_event_sender(&self) -> Arc<dyn LiveModuleEvents> {
+        self.performance.clone()
+    }
+    /// Actual DSP telemetry; step is ONE-based and length is the active count.
+    /// Unavailable while a newer registry revision awaits audio publication.
+    pub fn sequence_state(&self, id: &str) -> Option<SequenceTelemetry> {
+        self.performance.sequence_state(id)
     }
 
     /// Resolve two raw module taps on the UI thread. A failed selection leaves
@@ -527,7 +563,11 @@ impl Audio {
             .scope_generation
             .checked_add(1)
             .ok_or("Scope generation exhausted")?;
-        let graph = prepare_graph(patch, self.sample_rate, binding.as_ref(), generation, true)?;
+        let mut graph = prepare_graph(patch, self.sample_rate, binding.as_ref(), generation, true)?;
+        graph.modules = self
+            .performance
+            .plan(patch, &graph.engine, self.submitted_revision)?;
+        graph.revision = self.submitted_revision;
         self.pending = Some(graph);
         self.scope_binding = binding;
         self.scope_generation = generation;
@@ -620,6 +660,16 @@ impl Audio {
 
     pub fn solver_failures(&self) -> usize {
         self.shared.solver_failures.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for Audio {
+    fn drop(&mut self) {
+        self.performance.close();
+        // Joining the callback is control-thread teardown. Only then finalize
+        // queued-but-unapplied counters; retained MCP senders remain closed.
+        drop(self._stream.take());
+        self.performance.finish_close();
     }
 }
 
@@ -745,6 +795,8 @@ struct Callback {
     frame_clock: u64,
     scope: ScopeCapture,
     scope_packets: Option<Consumer<ScopePacket>>,
+    performance: Arc<Performance>,
+    module_events: EventReader,
 }
 
 impl Callback {
@@ -757,7 +809,10 @@ impl Callback {
     ) -> Self {
         let midi = MidiQueues::new(shared.clone());
         let (scope, scope_packets) = ScopeCapture::new(rate);
+        let (performance, module_events) = Performance::new(rate);
         Self {
+            performance,
+            module_events,
             scope,
             scope_packets: Some(scope_packets),
             midi,
@@ -781,7 +836,17 @@ impl Callback {
     fn render<T: OutputSample>(&mut self, output: &mut [T], channels: usize) {
         if self.graphs.poll() {
             if let Some(previous) = self.graphs.previous.as_ref() {
-                self.graphs.active.adopt_state_from(previous);
+                let active = &mut self.graphs.active;
+                active.engine.adopt_state_from(&previous.engine);
+                for (slot, binding) in active.modules.bindings.iter().enumerate() {
+                    if let Some(binding) = binding {
+                        let same_instance = previous.modules.bindings[slot]
+                            .is_some_and(|old| old.token == binding.token);
+                        if !same_instance {
+                            active.engine.reset_module_state(binding.handle);
+                        }
+                    }
+                }
             }
             self.fade_position = 0;
             self.scope.reset(self.graphs.active.scope.generation);
@@ -792,6 +857,7 @@ impl Callback {
             0.0
         };
         let mut peak = 0.0_f32;
+        let mut module_budget = EVENT_CAPACITY;
         let mut midi_budget = MIDI_QUEUE_SIZE * 2;
         self.midi.refill_budget = MIDI_QUEUE_SIZE * 4;
         let mut midi_flooded = false;
@@ -806,6 +872,17 @@ impl Callback {
             let frames = chunk.len() / channels;
             let mut offset = 0;
             while offset < frames {
+                let one_frame = {
+                    let Exchange {
+                        active, previous, ..
+                    } = &mut self.graphs;
+                    self.module_events.apply(
+                        (&mut active.engine, &active.modules, active.revision),
+                        previous.as_mut().map(|old| (&mut old.engine, &old.modules)),
+                        self.frame_clock,
+                        &mut module_budget,
+                    )
+                };
                 self.sync_midi_reset();
                 let playing = self.shared.playing.load(Ordering::SeqCst);
                 // Each producer is FIFO; equal-time hardware precedes UI events.
@@ -840,6 +917,7 @@ impl Callback {
                 let count = next_frame.map_or(remaining, |at| {
                     (at.saturating_sub(self.frame_clock) as usize).clamp(1, remaining)
                 });
+                let count = if one_frame { 1 } else { count };
                 let active = &mut self.graphs.active;
                 if active.scope.enabled {
                     active.engine.process_audio_block_with_taps(
@@ -912,6 +990,12 @@ impl Callback {
             // CPAL normally supplies complete frames; incomplete tails are silence.
             chunk[frames * channels..].fill(T::from_mono(0.0));
         }
+        self.module_events.publish(
+            &self.graphs.active.engine,
+            &self.graphs.active.modules,
+            self.graphs.active.revision,
+            self.frame_clock,
+        );
         self.shared
             .waveform_cursor
             .store(self.scope_cursor, Ordering::Release);
@@ -1000,6 +1084,7 @@ fn build_stream<T: OutputSample>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openpatch_core::ModuleAction;
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::cell::Cell;
 
@@ -1661,5 +1746,308 @@ mod tests {
         for (frame, value) in packet.x.iter().enumerate() {
             assert_eq!(*value, if (3..7).contains(&frame) { 10.0 } else { 0.0 });
         }
+    }
+    fn sequence_patch() -> Patch {
+        serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"seq","kind":"seq3","params":{"tempo":15,"running":1,"steps":8,"row1_1":1,"row1_2":2,"row1_3":3}},
+                {"id":"zero","kind":"constant","params":{"value":0}}],
+            "cables":[{"from":"zero","to":"seq","input":"clock"}],"output":"seq","output_port":"cv1"})).unwrap()
+    }
+    fn sequence_callback(
+        patch: &Patch,
+    ) -> (Callback, Producer<PreparedGraph>, Consumer<PreparedGraph>) {
+        let (mut callback, updates, disposal) = callback_for(patch);
+        callback.performance.sync_patch(patch, 1);
+        callback.graphs.active.modules = callback
+            .performance
+            .plan(patch, &callback.graphs.active.engine, 1)
+            .unwrap();
+        callback.graphs.active.revision = 1;
+        (callback, updates, disposal)
+    }
+    fn sequence_graph(callback: &Callback, patch: &Patch, revision: u64) -> PreparedGraph {
+        let mut graph = prepare_graph(patch, 48000, None, revision, true).unwrap();
+        graph.modules = callback
+            .performance
+            .plan(patch, &graph.engine, revision)
+            .unwrap();
+        graph.revision = revision;
+        graph
+    }
+
+    #[test]
+    fn sequencer_buttons_are_ordered_runtime_actions_and_publish_actual_dsp_telemetry() {
+        let patch = sequence_patch();
+        let (mut callback, _, _) = sequence_callback(&patch);
+        let receipt = callback
+            .performance
+            .trigger("seq", ModuleAction::Run)
+            .unwrap();
+        assert_eq!(receipt["queued"], true);
+        assert_eq!(receipt["applied"], false);
+        assert_eq!(receipt["minimum_revision"], 1);
+        for action in [ModuleAction::Clock, ModuleAction::Run, ModuleAction::Clock] {
+            callback.performance.trigger("seq", action).unwrap();
+        }
+        assert!(callback.performance.sequence_state("seq").is_none());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running, state.length), (2, true, 8));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["applied"], 4);
+        assert_eq!(status["last_applied_sequence"], 4);
+        assert_eq!(status["pending"], 0);
+        assert_eq!(patch.nodes[0].params["running"], 1.0);
+    }
+
+    #[test]
+    fn queued_buttons_survive_compatible_graph_edits_and_fan_to_both_crossfade_engines() {
+        let mut patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        callback.render(&mut [0.0_f32; 1], 1);
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+        patch.nodes[0].params.insert("row1_2".into(), 4.0);
+        callback.performance.sync_patch(&patch, 2);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        assert!(callback.performance.sequence_state("seq").is_none());
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 3);
+        let old = callback.graphs.previous.as_ref().unwrap();
+        let handle = old.modules.bindings.iter().flatten().next().unwrap().handle;
+        assert_eq!(old.engine.module_telemetry(handle).unwrap().step, 3);
+        assert_eq!(callback.performance.snapshot()["applied"], 2);
+    }
+
+    #[test]
+    fn skipped_remove_readd_invalidates_old_actions_and_resets_reincarnated_runtime() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Run)
+            .unwrap();
+        callback.render(&mut [0.0_f32; 1], 1);
+        assert!(!callback.performance.sequence_state("seq").unwrap().running);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        callback.performance.sync_patch(&Patch::new_v2(), 2);
+        callback.performance.sync_patch(&patch, 3);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        let stale = sequence_graph(&callback, &patch, 1);
+        assert!(stale.modules.bindings.iter().all(Option::is_none));
+        assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running), (2, true));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["applied"], 2);
+        assert_eq!(status["obsolete"], 1);
+        assert_eq!(status["dropped"], 1);
+    }
+
+    #[test]
+    fn same_batch_identical_replacement_retires_actions_and_clears_incoming_high_clock() {
+        let mut patch = sequence_patch();
+        patch.nodes[1].params.insert("value".into(), 10.0);
+        // Keep the replacement at its original position so the committed graph
+        // is byte-equivalent even though its sequencer identity has changed.
+        patch.nodes.swap(0, 1);
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        callback.render(&mut [0.0_f32; 2], 1);
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        let node = &patch.nodes[1];
+        session
+            .execute(
+                "apply_edits",
+                serde_json::json!({"expected_revision":1,"edits":[
+                    {"tool":"remove_module","arguments":{"id":"seq"}},
+                    {"tool":"add_module","arguments":{"id":"seq","kind":"seq3","params":node.params}},
+                    {"tool":"connect","arguments":{"from":"zero","to":"seq","input":"clock"}},
+                    {"tool":"set_output","arguments":{"id":"seq","port":"cv1"}}
+                ]}),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(session.patch()).unwrap(),
+            serde_json::to_value(&patch).unwrap()
+        );
+        assert!(callback.performance.sequence_state("seq").is_none());
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let state = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((state.step, state.running), (1, true));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["obsolete"], 1);
+        assert_eq!(status["applied"], 0);
+        assert_eq!(status["pending"], 0);
+        // Only a freshly delivered cable frame can clock the new instance.
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 2);
+    }
+
+    #[test]
+    fn identical_document_reload_starts_fresh_but_rejected_replacement_preserves_instance() {
+        let patch = sequence_patch();
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Run)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let paused = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((paused.step, paused.running), (2, false));
+        let old_token = callback.graphs.active.modules.bindings[0].unwrap().token;
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+
+        let before = session.snapshot();
+        let mut invalid = patch.clone();
+        invalid.nodes[0].params.insert("steps".into(), 9.0);
+        assert!(session.replace_patch(invalid, Some(1)).is_err());
+        assert!(session.replace_patch(patch.clone(), Some(0)).is_err());
+        assert_eq!(session.snapshot(), before);
+        assert_eq!(callback.performance.sequence_state("seq"), Some(paused));
+        let unchanged = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(unchanged.modules.bindings[0].unwrap().token, old_token);
+        let status = callback.performance.snapshot();
+        assert_eq!(status["pending"], 1);
+        assert_eq!(status["obsolete"], 0);
+
+        session.replace_patch(patch.clone(), Some(1)).unwrap();
+        assert!(callback.performance.sequence_state("seq").is_none());
+        let reloaded = sequence_graph(&callback, session.patch(), session.revision());
+        assert_ne!(reloaded.modules.bindings[0].unwrap().token, old_token);
+        assert!(updates.push(reloaded).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let fresh = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((fresh.step, fresh.running), (1, true));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["obsolete"], 1);
+        assert_eq!(status["applied"], 2);
+        assert_eq!(status["pending"], 0);
+    }
+
+    #[test]
+    fn future_graph_actions_wait_then_expire_with_visible_diagnostics() {
+        let mut patch = sequence_patch();
+        let (mut callback, _, _) = sequence_callback(&patch);
+        patch.nodes[0].params.insert("row1_2".into(), 2.5);
+        callback.performance.sync_patch(&patch, 2);
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 128], 1));
+        assert_eq!(callback.performance.snapshot()["applied"], 0);
+        callback.frame_clock = 96_001;
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(callback.performance.snapshot()["expired"], 1);
+        assert_eq!(callback.performance.snapshot()["pending"], 0);
+        assert_eq!(callback.performance.snapshot()["dropped"], 1);
+    }
+
+    #[test]
+    fn module_queue_flood_has_backpressure_and_spreads_actions_over_core_sample_budgets() {
+        let (mut callback, _, _) = sequence_callback(&sequence_patch());
+        for _ in 0..EVENT_CAPACITY {
+            callback
+                .performance
+                .trigger("seq", ModuleAction::Clock)
+                .unwrap();
+        }
+        assert!(callback
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .is_err());
+        assert!(callback
+            .performance
+            .trigger("missing", ModuleAction::Run)
+            .is_err());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 16], 1));
+        let status = callback.performance.snapshot();
+        assert_eq!(status["queued"], EVENT_CAPACITY);
+        assert_eq!(status["applied"], EVENT_CAPACITY);
+        assert_eq!(status["backpressure"], 1);
+        assert_eq!(status["rejected"], 1);
+        assert_eq!(status["pending"], 0);
+        assert_eq!(status["dropped"], 0);
+        assert_eq!(callback.performance.sequence_state("seq").unwrap().step, 1);
+    }
+
+    #[test]
+    fn multiple_control_producers_are_ordered_and_device_close_rejects_retained_senders() {
+        let (mut callback, _, _) = sequence_callback(&sequence_patch());
+        let sender = callback.performance.clone();
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let sender = sender.clone();
+                scope.spawn(move || {
+                    for _ in 0..64 {
+                        sender.trigger("seq", ModuleAction::Run).unwrap();
+                    }
+                });
+            }
+        });
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 16], 1));
+        assert_eq!(sender.snapshot()["applied"], 256);
+        assert_eq!(sender.snapshot()["last_applied_sequence"], 256);
+        assert!(sender.sequence_state("seq").unwrap().running);
+        sender.trigger("seq", ModuleAction::Clock).unwrap();
+        sender.close();
+        drop(callback);
+        sender.finish_close();
+        assert!(sender.trigger("seq", ModuleAction::Run).is_err());
+        assert!(sender.sequence_state("seq").is_none());
+        let status = sender.snapshot();
+        assert_eq!(status["available"], false);
+        assert_eq!(status["closed_dropped"], 1);
+        assert_eq!(status["pending"], 0);
+        let (mut reopened, _, _) = sequence_callback(&sequence_patch());
+        reopened
+            .performance
+            .trigger("seq", ModuleAction::Clock)
+            .unwrap();
+        without_heap_activity(|| reopened.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(reopened.performance.sequence_state("seq").unwrap().step, 2);
+        assert_eq!(sender.snapshot()["applied"], 256);
     }
 }

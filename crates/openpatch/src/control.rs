@@ -1,8 +1,11 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod capture;
+#[cfg(test)]
+mod sequence_tests;
 use openpatch_core::{
-    catalog, render_audio_with_events, validate_midi_events, write_wav_interleaved, Cable, Node,
-    Patch, PortFrame, TimedMidiEvent, BLOCK_SIZE, MAX_CHANNELS,
+    catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
+    write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, Node, Patch, PortFrame,
+    TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
 };
 use serde_json::{json, Value};
 use std::{
@@ -14,6 +17,16 @@ use std::{
     time::Instant,
 };
 
+/// Control-thread bridge to the bounded live audio event queue. A successful
+/// trigger returns a queue receipt; callback application is reported separately.
+pub trait LiveModuleEvents: Send + Sync {
+    fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
+    fn snapshot(&self) -> Value;
+    fn sync_patch(&self, _patch: &Patch, _revision: u64) {}
+    /// Retire explicit removals, including remove-and-readd in one transaction.
+    fn retire_modules(&self, _ids: &[String]) {}
+}
+
 #[derive(Clone)]
 pub struct Session {
     patch: Patch,
@@ -24,6 +37,7 @@ pub struct Session {
     redo: Vec<HistoryEntry>,
     history_group: Option<(String, String, String)>,
     closing: bool,
+    live_module_events: Option<Arc<dyn LiveModuleEvents>>,
 }
 
 #[derive(Clone)]
@@ -66,6 +80,7 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
                 redo: Vec::new(),
                 history_group: None,
                 closing: live.closing,
+                live_module_events: None,
             };
             drop(live);
             snapshot.execute(name, args)
@@ -98,8 +113,22 @@ impl Session {
             redo: Vec::new(),
             history_group: None,
             closing: false,
+            live_module_events: None,
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
+    }
+
+    pub fn set_live_module_events(&mut self, backend: Option<Arc<dyn LiveModuleEvents>>) {
+        if let Some(backend) = &backend {
+            backend.sync_patch(&self.patch, self.revision);
+        }
+        self.live_module_events = backend;
+    }
+
+    fn sync_live_module_events(&self) {
+        if let Some(backend) = &self.live_module_events {
+            backend.sync_patch(&self.patch, self.revision);
+        }
     }
 
     pub fn patch(&self) -> &Patch {
@@ -152,14 +181,25 @@ impl Session {
         json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch,"history":self.history()})
     }
 
-    /// Commit a GUI or agent edit through the same validation and revision boundary.
+    /// Replace the document through the same validation and revision boundary.
+    /// Sequencers start fresh even when IDs match the previous document.
     /// Failed validation or a stale revision leaves the live patch unchanged.
     pub fn replace_patch(
         &mut self,
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        self.commit(candidate, expected_revision, None)
+        let retired = self.sequence_ids();
+        self.commit(candidate, expected_revision, None, &retired)
+    }
+
+    fn sequence_ids(&self) -> Vec<String> {
+        self.patch
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "seq3")
+            .map(|node| node.id.clone())
+            .collect()
     }
 
     fn commit(
@@ -167,6 +207,7 @@ impl Session {
         candidate: Patch,
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
+        retired: &[String],
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
@@ -187,6 +228,12 @@ impl Session {
         self.history_group = group;
         self.redo.clear();
         self.revision = revision;
+        if !retired.is_empty() {
+            if let Some(backend) = &self.live_module_events {
+                backend.retire_modules(retired);
+            }
+        }
+        self.sync_live_module_events();
         Ok(revision)
     }
 
@@ -220,6 +267,7 @@ impl Session {
         }
         self.revision = revision;
         self.history_group = None;
+        self.sync_live_module_events();
         Ok(self.snapshot())
     }
 
@@ -259,6 +307,7 @@ impl Session {
     }
 
     fn analyze_signal(&self, args: &Value) -> Result<Value, String> {
+        self.check_revision(expected_revision(args)?)?;
         let seconds = args
             .get("seconds")
             .and_then(Value::as_f64)
@@ -271,8 +320,7 @@ impl Session {
         patch.output_port = optional_string(args, "port", "out")?.into();
         let mut engine = patch.compile()?;
         let frames = (seconds * patch.sample_rate as f64).round() as usize;
-        let events = midi_events(args, frames)?;
-        let mut event_index = 0;
+        let mut events = PerformanceEvents::new(args, frames, &engine)?;
         let mut block = [PortFrame::default(); BLOCK_SIZE];
         let mut counts = [0_usize; MAX_CHANNELS];
         let mut sums = [0.0_f64; MAX_CHANNELS];
@@ -285,13 +333,8 @@ impl Session {
         let mut min_channels = MAX_CHANNELS;
         while remaining > 0 {
             let cursor = frames - remaining;
-            while event_index < events.len() && events[event_index].frame == cursor as u64 {
-                engine.handle_midi(events[event_index].event);
-                event_index += 1;
-            }
-            let until_event = events
-                .get(event_index)
-                .map_or(remaining, |event| event.frame as usize - cursor);
+            events.apply(&mut engine, cursor);
+            let until_event = events.next_frame(frames) - cursor;
             let count = remaining.min(BLOCK_SIZE).min(until_event);
             engine.process_poly_block(&mut block[..count]);
             for frame in &block[..count] {
@@ -326,7 +369,7 @@ impl Session {
             json!({"revision":self.revision,"id":patch.output,"port":patch.output_port,
             "sample_rate":patch.sample_rate,"frames":frames,"min_channels":min_channels,
             "max_channels":max_channels,"channels":channels,"solver_failures":engine.solver_failures(),
-            "midi_event_count":events.len(),
+            "midi_event_count":events.midi.len(),"module_event_count":events.modules.len(),
             "state":"analyzed offline from reset","statistics":"active frames only; inactive channels excluded",
             "units":"raw module output units; consult catalog"}),
         )
@@ -336,7 +379,13 @@ impl Session {
         if EDIT_TOOLS.contains(&name)
             || matches!(
                 name,
-                "replace_patch" | "load_patch" | "apply_edits" | "undo" | "redo"
+                "replace_patch"
+                    | "load_patch"
+                    | "apply_edits"
+                    | "undo"
+                    | "redo"
+                    | "rotate_sequence"
+                    | "trigger_module"
             )
         {
             self.check_open()?;
@@ -348,6 +397,26 @@ impl Session {
             "inspect_patch" => return Ok(self.snapshot()),
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
+            }
+            "trigger_module" => {
+                self.check_revision(expected_revision(&args)?)?;
+                let id = string(&args, "id")?;
+                sequence_node(&self.patch, id)?;
+                let action: ModuleAction = serde_json::from_value(args["action"].clone())
+                    .map_err(|error| format!("invalid action: {error}"))?;
+                let backend = self
+                    .live_module_events
+                    .as_ref()
+                    .ok_or("live module events unsupported: no live audio backend attached")?;
+                let receipt = backend.trigger(id, action)?;
+                return Ok(json!({"revision":self.revision,"receipt":receipt}));
+            }
+            "inspect_performance" => {
+                self.check_revision(expected_revision(&args)?)?;
+                return Ok(
+                    json!({"revision":self.revision,"supported":self.live_module_events.is_some(),
+                    "performance":self.live_module_events.as_ref().map(|backend| backend.snapshot())}),
+                );
             }
             "analyze_signal" => return self.analyze_signal(&args),
             "capture_signal" => return self.capture_signal(&args),
@@ -383,7 +452,13 @@ impl Session {
                 }
                 let frames = (seconds * self.patch.sample_rate as f64).round() as usize;
                 let events = midi_events(&args, frames)?;
-                let rendered = render_audio_with_events(&self.patch, seconds, &events)?;
+                let module_events = module_events(&args, frames)?;
+                let rendered = render_audio_with_performance_events(
+                    &self.patch,
+                    seconds,
+                    &events,
+                    &module_events,
+                )?;
                 let samples = &rendered.samples;
                 let peak = samples.iter().fold(0.0_f32, |p, s| p.max(s.abs()));
                 let rms = (samples.iter().map(|s| (*s as f64).powi(2)).sum::<f64>()
@@ -394,7 +469,7 @@ impl Session {
                 return Ok(
                     json!({"filename":args["filename"],"frames":frames,"channels":rendered.channels,
                     "sample_rate":rendered.sample_rate,"peak":peak,"rms":rms,"revision":self.revision,
-                    "state":"rendered from reset","midi_event_count":events.len(),
+                    "state":"rendered from reset","midi_event_count":events.len(),"module_event_count":module_events.len(),
                     "channel_policy":if rendered.channels == 2 { "explicit stereo L/R from audio_stereo" } else { "first channel only; use poly_sum to mix all voices" }}),
                 );
             }
@@ -441,7 +516,13 @@ impl Session {
             .transpose()?;
         self.check_revision(expected_revision)?;
         let mut candidate = self.patch.clone();
+        let mut retired = if matches!(name, "replace_patch" | "load_patch") {
+            self.sequence_ids()
+        } else {
+            Vec::new()
+        };
         match name {
+            "rotate_sequence" => rotate_sequence(&mut candidate, &args)?,
             "replace_patch" => {
                 candidate =
                     serde_json::from_value(args.get("patch").ok_or("patch required")?.clone())
@@ -486,7 +567,11 @@ impl Session {
                                 "revision and history grouping belong to the transaction, not an edit".into(),
                             );
                         }
-                        apply_edit(&mut candidate, tool, arguments)
+                        apply_edit(&mut candidate, tool, arguments)?;
+                        if tool == "remove_module" {
+                            retired.push(string(arguments, "id")?.to_owned());
+                        }
+                        Ok(())
                     })();
                     result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
                 }
@@ -516,9 +601,140 @@ impl Session {
         } else {
             None
         };
-        self.commit(candidate, expected_revision, group)?;
+        if name == "remove_module" {
+            retired.push(string(&args, "id")?.to_owned());
+        }
+        self.commit(candidate, expected_revision, group, &retired)?;
         Ok(self.snapshot())
     }
+}
+
+fn expected_revision(args: &Value) -> Result<Option<u64>, String> {
+    args.get("expected_revision")
+        .map(|value| {
+            value
+                .as_u64()
+                .ok_or_else(|| "expected_revision must be a nonnegative integer".to_owned())
+        })
+        .transpose()
+}
+
+fn sequence_node<'a>(patch: &'a Patch, id: &str) -> Result<&'a Node, String> {
+    let node = patch
+        .nodes
+        .iter()
+        .find(|node| node.id == id)
+        .ok_or("module not found")?;
+    if node.kind != "seq3" {
+        return Err("module action requires a seq3 module".into());
+    }
+    Ok(node)
+}
+
+fn rotate_sequence(patch: &mut Patch, args: &Value) -> Result<(), String> {
+    let id = string(args, "id")?;
+    sequence_node(patch, id)?;
+    let offset = match string(args, "direction")? {
+        "left" => 1,
+        "right" => 7,
+        _ => return Err("direction must be left or right".into()),
+    };
+    let node = patch.nodes.iter_mut().find(|node| node.id == id).unwrap();
+    for row in 0..4 {
+        let keys: Vec<_> = (1..=8)
+            .map(|step| {
+                if row == 0 {
+                    format!("gate{step}")
+                } else {
+                    format!("row{row}_{step}")
+                }
+            })
+            .collect();
+        let default = if row == 0 { 1.0 } else { 0.0 };
+        let values: Vec<_> = keys
+            .iter()
+            .map(|key| node.params.get(key).copied().unwrap_or(default))
+            .collect();
+        for (step, key) in keys.into_iter().enumerate() {
+            node.params.insert(key, values[(step + offset) % 8]);
+        }
+    }
+    Ok(())
+}
+
+fn module_events(args: &Value, frames: usize) -> Result<Vec<TimedModuleEvent>, String> {
+    let events = match args.get("module_events") {
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|error| format!("invalid module_events: {error}"))?,
+        None => Vec::new(),
+    };
+    validate_module_events(&events, frames)?;
+    Ok(events)
+}
+
+/// Apply both traces before their sample, preserving each array's equal-frame
+/// order and applying MIDI before module actions when the two traces tie.
+struct PerformanceEvents {
+    midi: Vec<TimedMidiEvent>,
+    modules: Vec<TimedModuleEvent>,
+    handles: Vec<ModuleHandle>,
+    midi_index: usize,
+    module_index: usize,
+}
+impl PerformanceEvents {
+    fn new(args: &Value, frames: usize, engine: &Engine) -> Result<Self, String> {
+        let midi = midi_events(args, frames)?;
+        let modules = module_events(args, frames)?;
+        let handles = modules
+            .iter()
+            .map(|event| engine.resolve_module_event(&event.id))
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
+            midi,
+            modules,
+            handles,
+            midi_index: 0,
+            module_index: 0,
+        })
+    }
+    fn apply(&mut self, engine: &mut Engine, frame: usize) {
+        while self
+            .midi
+            .get(self.midi_index)
+            .is_some_and(|event| event.frame == frame as u64)
+        {
+            engine.handle_midi(self.midi[self.midi_index].event);
+            self.midi_index += 1;
+        }
+        while self
+            .modules
+            .get(self.module_index)
+            .is_some_and(|event| event.frame == frame as u64)
+        {
+            let applied = engine.handle_module_event(
+                self.handles[self.module_index],
+                self.modules[self.module_index].action,
+            );
+            debug_assert!(applied, "validated offline module event was rejected");
+            self.module_index += 1;
+        }
+    }
+    fn next_frame(&self, frames: usize) -> usize {
+        self.midi
+            .get(self.midi_index)
+            .map_or(frames, |event| event.frame as usize)
+            .min(
+                self.modules
+                    .get(self.module_index)
+                    .map_or(frames, |event| event.frame as usize),
+            )
+    }
+}
+
+fn module_events_schema() -> Value {
+    json!({"type":"array","maxItems":65536,
+        "description":"Offline seq3 actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
+        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":["clock","run","reset"]}},"required":["frame","id","action"],"additionalProperties":false}})
 }
 
 fn midi_events(args: &Value, frames: usize) -> Result<Vec<TimedMidiEvent>, String> {
@@ -725,11 +941,15 @@ pub fn tools() -> Value {
     let s = json!({"type":"string"});
     let rev = json!({"type":"integer","minimum":0});
     let midi_events = midi_events_schema();
+    let module_events = module_events_schema();
     let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
         "type":"object","properties":{"tool":{"type":"string","enum":EDIT_TOOLS},"arguments":{"type":"object"}},
         "required":["tool","arguments"],"additionalProperties":false
     }});
     json!([
+        tool("trigger_module","Queue a live seq3 clock, run toggle, or reset action. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":["clock","run","reset"]},"expected_revision":rev}),&["id","action"],false),
+        tool("inspect_performance","Read live module-event queue and callback counters. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
+        tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits; layouts and files are not included.",json!({}),&[],true),
         tool("apply_edits","Atomically apply 1..256 graph edits, validate the final graph, and commit one revision and undo step. Any error leaves state unchanged. Each edit has tool and arguments; revisions belong on this outer transaction.",json!({"edits":edits,"expected_revision":rev}),&["edits"],false),
         tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
@@ -738,7 +958,7 @@ pub fn tools() -> Value {
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
-        tool("replace_patch","Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
+        tool("replace_patch","Sequencers start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Occupied inputs are rejected. Version 1 rejects cycles; version 2 permits feedback with one sample of delay on every cable.",json!({"from":s,"output":s,"to":s,"input":s,"expected_revision":rev}),&["from","to","input"],false),
@@ -746,10 +966,10 @@ pub fn tools() -> Value {
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
-        tool("load_patch","Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
-        tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI events drive midi_cv modules. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events}),&["filename","seconds"],false),
-        tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events}),&["id","seconds"],true),
-        tool("capture_signal","Capture a calibrated waveform from any named output/channel offline from reset. Returns bounded nonempty min/max/mean bins preserving every active-sample peak, plus active-sample DC/RMS/peak. Raw output units come from catalog; no live audio, summing, clipping, or history changes. Optional sample-frame MIDI events reproduce performances; expected_revision guards the captured snapshot.",json!({"id":s,"port":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"seconds":{"type":"number","minimum":0.001,"maximum":2},"points":{"type":"integer","minimum":64,"maximum":2048,"default":512},"midi_events":midi_events,"expected_revision":rev}),&["id","seconds"],true),
+        tool("load_patch","Sequencers start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
+        tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI and module events drive reproducible performances. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events,"module_events":module_events}),&["filename","seconds"],false),
+        tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI and module events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),
+        tool("capture_signal","Capture a calibrated waveform from any named output/channel offline from reset. Returns bounded nonempty min/max/mean bins preserving every active-sample peak, plus active-sample DC/RMS/peak. Raw output units come from catalog; no live audio, summing, clipping, or history changes. Optional sample-frame MIDI and module events reproduce performances; expected_revision guards the captured snapshot.",json!({"id":s,"port":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"seconds":{"type":"number","minimum":0.001,"maximum":2},"points":{"type":"integer","minimum":64,"maximum":2048,"default":512},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),
         tool("benchmark","Measure this patch's offline DSP throughput, excluding compilation. Release builds recommended. No VCV Rack comparison.",json!({"seconds":{"type":"number","minimum":0.01,"maximum":5}}),&[],true)
     ])
 }

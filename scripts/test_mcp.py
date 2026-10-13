@@ -461,7 +461,8 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
              "connect", "disconnect", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
-             "inspect_history", "undo", "redo", "analyze_signal", "capture_signal"}.issubset(names),
+             "inspect_history", "undo", "redo", "analyze_signal", "capture_signal",
+             "trigger_module", "inspect_performance", "rotate_sequence"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         catalog = self.require_tool_success("catalog")
@@ -534,6 +535,75 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.assertEqual(rendered.getnframes(), 4800)
             samples = self._first_channel_samples(rendered.readframes(4800), rendered.getsampwidth(), rendered.getnchannels())
         self.assertTrue(any(abs(sample) > 100 for sample in samples))
+
+    def test_seq3_rotation_offline_events_and_headless_live_boundary(self) -> None:
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "add_module", "arguments": {"id": "seq", "kind": "seq3", "params": {
+                "tempo": 15, "row1_1": 0.1, "row1_2": 0.2, "row1_3": 0.3, "gate1": 0,
+            }}},
+            {"tool": "set_output", "arguments": {"id": "seq", "port": "cv1"}},
+        ]})
+        before = self.patch_snapshot()
+        telemetry = self.payload(self.require_tool_success("inspect_performance", {
+            "expected_revision": before["revision"],
+        }))
+        self.assertFalse(telemetry["supported"])
+        self.assertIsNone(telemetry["performance"])
+        self.require_tool_error("trigger_module", {"id": "seq", "action": "clock"})
+        self.require_tool_error("inspect_performance", {"expected_revision": 0})
+        trace = [
+            {"frame": 10, "id": "seq", "action": "clock"},
+            {"frame": 20, "id": "seq", "action": "reset"},
+        ]
+        args = {"id": "seq", "port": "cv1", "seconds": 0.001,
+                "module_events": trace, "expected_revision": before["revision"]}
+        captured = self.payload(self.require_tool_success("capture_signal", args))
+        self.assertEqual(captured["module_event_count"], 2)
+        for frame, point in enumerate(captured["bins"]):
+            self.assertAlmostEqual(point["mean"], 0.2 if 10 <= frame < 20 else 0.1, places=6)
+        analyzed = self.payload(self.require_tool_success("analyze_signal", args))
+        self.assertEqual(analyzed["channels"][0]["mean"], captured["summary"]["dc"])
+        self.assertEqual(analyzed["channels"][0]["rms"], captured["summary"]["rms"])
+        self.assertEqual(self.payload(self.require_tool_success("capture_signal", args)), captured)
+        for filename in ("seq-one.wav", "seq-two.wav"):
+            rendered = self.payload(self.require_tool_success("render_audio", {
+                "filename": filename, "seconds": 0.001, "module_events": trace,
+            }))
+            self.assertEqual(rendered["module_event_count"], 2)
+        self.assertEqual((self.workspace / "seq-one.wav").read_bytes(),
+                         (self.workspace / "seq-two.wav").read_bytes())
+        self.assertEqual(self.patch_snapshot(), before)
+        invalid_traces = [
+            [{"frame": 48, "id": "seq", "action": "clock"}],
+            [{"frame": 0, "id": "missing", "action": "clock"}],
+            [{"frame": 0, "id": "seq", "action": "clock", "extra": True}],
+            [{"frame": 0, "id": "seq", "action": "start"}],
+            [{"frame": 1, "id": "seq", "action": "clock"},
+             {"frame": 0, "id": "seq", "action": "reset"}],
+            [{"frame": 0, "id": "seq", "action": "clock"}] * 65,
+        ]
+        for invalid_trace in invalid_traces:
+            self.require_tool_error("render_audio", {
+                "filename": "invalid-seq.wav", "seconds": 0.001, "module_events": invalid_trace,
+            })
+            self.assertFalse((self.workspace / "invalid-seq.wav").exists())
+            self.require_tool_error("capture_signal", {**args, "module_events": invalid_trace})
+            self.require_tool_error("analyze_signal", {**args, "module_events": invalid_trace})
+        self.assertEqual(self.patch_snapshot(), before)
+        rotated = self.payload(self.require_tool_success("rotate_sequence", {
+            "id": "seq", "direction": "left", "expected_revision": before["revision"],
+        }))
+        self.assertEqual(rotated["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        params = rotated["patch"]["nodes"][0]["params"]
+        self.assertAlmostEqual(params["row1_1"], 0.2, places=6)
+        self.assertAlmostEqual(params["row1_8"], 0.1, places=6)
+        self.assertEqual(params["gate8"], 0)
+        self.assertEqual(params["gate1"], 1)
+        self.require_tool_error("rotate_sequence", {
+            "id": "seq", "direction": "left", "expected_revision": before["revision"],
+        })
+        undone = self.payload(self.require_tool_success("undo", {"expected_revision": rotated["revision"]}))
+        self.assertEqual(undone["patch"], before["patch"])
 
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()

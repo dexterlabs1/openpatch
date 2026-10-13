@@ -3,7 +3,7 @@
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, FontId, PointerButton, Pos2, Rect, Sense, Stroke, Vec2,
 };
-use openpatch_core::{Cable, Node, Patch};
+use openpatch_core::{Cable, ModuleTelemetry, Node, Patch};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -82,6 +82,8 @@ pub struct Rack {
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
+    sequence_states: BTreeMap<String, ModuleTelemetry>,
+    performance_available: bool,
 }
 
 impl Default for Rack {
@@ -97,11 +99,22 @@ impl Default for Rack {
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
+            sequence_states: BTreeMap::new(),
+            performance_available: false,
         }
     }
 }
 
 impl Rack {
+    pub fn set_sequence_states(
+        &mut self,
+        states: BTreeMap<String, ModuleTelemetry>,
+        available: bool,
+    ) {
+        self.sequence_states = states;
+        self.performance_available = available;
+    }
+
     pub fn layout_revision(&self) -> u64 {
         self.layout_revision
     }
@@ -324,6 +337,20 @@ impl Rack {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
                 monitor_menu(ui, node, &output_ports, patch, &mut action);
+                if node.kind == "seq3" {
+                    for (direction, label) in [
+                        ("left", "Rotate pattern left"),
+                        ("right", "Rotate pattern right"),
+                    ] {
+                        if ui.button(label).clicked() {
+                            action = Some(RackAction::Command(
+                                "rotate_sequence",
+                                json!({"id":node.id,"direction":direction}),
+                            ));
+                            ui.close();
+                        }
+                    }
+                }
                 if ui.button("Remove module").clicked() {
                     action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
                     self.selected = None;
@@ -383,6 +410,20 @@ impl Rack {
                 ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                 ui.separator();
                 monitor_menu(ui, node, &output_ports, patch, &mut action);
+                if node.kind == "seq3" {
+                    for (direction, label) in [
+                        ("left", "Rotate pattern left"),
+                        ("right", "Rotate pattern right"),
+                    ] {
+                        if ui.button(label).clicked() {
+                            action = Some(RackAction::Command(
+                                "rotate_sequence",
+                                json!({"id":node.id,"direction":direction}),
+                            ));
+                            ui.close();
+                        }
+                    }
+                }
                 if ui.button("Remove module").clicked() {
                     action = Some(RackAction::Command("remove_module", json!({"id":node.id})));
                     self.selected = None;
@@ -407,6 +448,11 @@ impl Rack {
                 .unwrap_or("mono");
             header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move. Panels snap to rack rows and free space."));
 
+            if node.kind == "seq3" {
+                if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
+                    action = Some(edit);
+                }
+            }
             let parameters = ordered_parameters(node, module);
             let count = parameters.len();
             if node.kind == "poly_constant" {
@@ -527,6 +573,9 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
+                if node.kind == "seq3" && sequence_cell(name).is_none() {
+                    continue;
+                }
                 if node.kind == "midi_cv" {
                     let x = 20.0 + (index % 2) as f32 * width * 0.5;
                     let y = 90.0 + (index / 2) as f32 * 52.0;
@@ -700,7 +749,14 @@ impl Rack {
                     }
                     continue;
                 }
-                let (knob_position, radius) = if node.kind == "quantizer" {
+                let (knob_position, radius) = if let Some((row, column)) =
+                    sequence_cell(name).filter(|_| node.kind == "seq3")
+                {
+                    (
+                        pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
+                        17.0,
+                    )
+                } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
                 } else if node.kind == "multi_lfo" {
                     (
@@ -835,7 +891,9 @@ impl Rack {
                 painter.text(
                     center - vec2(0.0, (radius + 13.0) * self.zoom),
                     Align2::CENTER_BOTTOM,
-                    if clock_ratio {
+                    if node.kind == "seq3" {
+                        ""
+                    } else if clock_ratio {
                         "CLOCK RATIO"
                     } else {
                         parameter_label(name)
@@ -856,7 +914,9 @@ impl Rack {
                     Rect::from_center_size(
                         value_center,
                         vec2(
-                            if count >= 4 || node.kind == "mid_side" {
+                            if node.kind == "seq3" {
+                                54.0
+                            } else if count >= 4 || node.kind == "mid_side" {
                                 width * 0.5 - 12.0
                             } else {
                                 width - 20.0
@@ -1188,6 +1248,167 @@ impl Rack {
         }
     }
 
+    fn sequence_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+    ) -> Option<RackAction> {
+        let painter = ui.painter().clone();
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let specs = module.and_then(|m| m["params"].as_object());
+        let value = |name: &str, fallback: f32| {
+            node.params
+                .get(name)
+                .copied()
+                .or_else(|| specs?.get(name)?["default"].as_f64().map(|v| v as f32))
+                .unwrap_or(fallback)
+        };
+        let state = self.sequence_states.get(&node.id).copied();
+        let length = state.map_or(value("steps", 8.0) as usize, |s| s.length as usize);
+        let mut action = None;
+        painter.line_segment(
+            [point(207.0, 72.0), point(207.0, 385.0)],
+            Stroke::new(zoom, Color32::from_gray(174)),
+        );
+        for (name, label, x, y, w, suffix) in [
+            ("tempo", "TEMPO", 20.0, 99.0, 175.0, " BPM"),
+            ("steps", "LENGTH", 20.0, 152.0, 175.0, " steps"),
+            ("tempo_amount", "TEMPO CV", 20.0, 206.0, 80.0, "×"),
+            ("steps_amount", "LENGTH CV", 114.0, 206.0, 80.0, "×"),
+        ] {
+            painter.text(
+                point(x, y - 12.0),
+                Align2::LEFT_CENTER,
+                label,
+                FontId::proportional(10.0 * zoom),
+                INK,
+            );
+            if let Some(spec) = specs.and_then(|p| p.get(name)) {
+                if let Some(edit) = self.compact_parameter(
+                    ui,
+                    node,
+                    name,
+                    spec,
+                    Rect::from_min_size(point(x, y), vec2(w, 24.0) * zoom),
+                    suffix,
+                ) {
+                    action = Some(edit);
+                }
+            }
+        }
+        for (name, label, y) in [
+            ("passthrough", "Pass clock gate", 245.0),
+            ("running", "Start running on load", 275.0),
+        ] {
+            let enabled = value(name, if name == "running" { 1.0 } else { 0.0 }) != 0.0;
+            if panel_button(
+                ui,
+                &painter,
+                Rect::from_min_size(point(20.0, y), vec2(175.0, 23.0) * zoom),
+                ui.id().with((&node.id, name)),
+                label,
+                enabled,
+                true,
+                zoom,
+            ) {
+                action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":name,"value":if enabled{0.0}else{1.0}}),
+                ));
+            }
+        }
+        for (index, (event, label)) in [("clock", "Clock"), ("run", "Run"), ("reset", "Reset")]
+            .iter()
+            .enumerate()
+        {
+            if panel_button(
+                ui,
+                &painter,
+                Rect::from_min_size(
+                    point(20.0 + index as f32 * 60.0, 309.0),
+                    vec2(55.0, 25.0) * zoom,
+                ),
+                ui.id().with((&node.id, "perform", event)),
+                label,
+                *event == "run" && state.is_some_and(|s| s.running),
+                self.performance_available,
+                zoom,
+            ) {
+                action = Some(RackAction::Command(
+                    "trigger_module",
+                    json!({"id":node.id,"action":event}),
+                ));
+            }
+        }
+        let text = state.map_or("Waiting for live engine".into(), |s| {
+            format!(
+                "{} · step {} / {}",
+                if s.running { "Running" } else { "Stopped" },
+                s.step,
+                s.length
+            )
+        });
+        painter.text(
+            point(107.0, 345.0),
+            Align2::CENTER_CENTER,
+            text,
+            FontId::monospace(9.0 * zoom),
+            MUTED,
+        );
+        for row in 0..3 {
+            painter.text(
+                point(203.0, 123.0 + row as f32 * 73.0),
+                Align2::RIGHT_CENTER,
+                format!("{}", row + 1),
+                FontId::monospace(9.0 * zoom),
+                MUTED,
+            );
+        }
+        for column in 0..8 {
+            let x = 238.0 + column as f32 * 67.0;
+            let current = state.is_some_and(|s| s.step as usize == column + 1);
+            if column >= length || current {
+                painter.rect_filled(
+                    Rect::from_min_max(point(x - 29.0, 72.0), point(x + 29.0, 303.0)),
+                    3.0,
+                    if current {
+                        Color32::from_rgb(177, 202, 182)
+                    } else {
+                        Color32::from_rgb(194, 196, 191)
+                    },
+                );
+            }
+            let gate = format!("gate{}", column + 1);
+            let enabled = value(&gate, 1.0) != 0.0;
+            if panel_button(
+                ui,
+                &painter,
+                Rect::from_center_size(point(x, 85.0), vec2(31.0, 22.0) * zoom),
+                ui.id().with((&node.id, "gate", column)),
+                &format!("{}", column + 1),
+                enabled,
+                true,
+                zoom,
+            ) {
+                action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":gate,"value":if enabled{0.0}else{1.0}}),
+                ));
+            }
+            if current {
+                painter.circle_filled(
+                    point(x + 23.0, 85.0),
+                    3.0 * zoom,
+                    Color32::from_rgb(51, 137, 80),
+                );
+            }
+        }
+        action
+    }
+
     fn choice_parameter(
         &mut self,
         ui: &mut egui::Ui,
@@ -1491,6 +1712,18 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
+    if kind == "seq3" {
+        return if input {
+            pos2(35.0 + index as f32 * 37.0, 374.0)
+        } else if (4..12).contains(&index) {
+            pos2(238.0 + (index - 4) as f32 * 67.0, 374.0)
+        } else {
+            pos2(
+                238.0 + (if index < 4 { index } else { index - 8 }) as f32 * 67.0,
+                330.0,
+            )
+        };
+    }
     if kind == "mid_side" {
         return if input {
             match index {
@@ -1907,8 +2140,60 @@ fn coordinate(value: &Value) -> Result<Pos2, String> {
         finite_number(&pair[1], -100_000.0, 100_000.0)?,
     ))
 }
+
+fn sequence_cell(name: &str) -> Option<(usize, usize)> {
+    let (row, column) = name.strip_prefix("row")?.split_once('_')?;
+    let row = row.parse::<usize>().ok()?;
+    let column = column.parse::<usize>().ok()?;
+    ((1..=3).contains(&row) && (1..=8).contains(&column))
+        .then_some((row.saturating_sub(1), column.saturating_sub(1)))
+}
+#[allow(clippy::too_many_arguments)]
+fn panel_button(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    rect: Rect,
+    id: egui::Id,
+    label: &str,
+    selected: bool,
+    enabled: bool,
+    zoom: f32,
+) -> bool {
+    let response = ui.interact(rect, id, Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, selected, label)
+    });
+    let fill = if !enabled {
+        Color32::from_gray(190)
+    } else if selected {
+        Color32::from_rgb(133, 183, 151)
+    } else if response.hovered() {
+        Color32::from_rgb(239, 241, 232)
+    } else {
+        Color32::from_rgb(229, 230, 220)
+    };
+    painter.rect_filled(rect, 2.0, fill);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(0.7 * zoom, Color32::from_gray(151)),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(10.0 * zoom),
+        if enabled { INK } else { MUTED },
+    );
+    let clicked = enabled && response.clicked();
+    response.on_hover_text(if label == "Start running on load" { "Sets the saved initial run state and applies it now. The Run performance button changes only runtime state." } else { label });
+    clicked
+}
+
 fn panel_width(kind: &str) -> f32 {
     match kind {
+        "seq3" => HP * 52.0,
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
         "audio_stereo" | "octave" => HP * 12.0,
@@ -1955,6 +2240,7 @@ fn title(kind: &str) -> &str {
         "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
         "multi_lfo" => "LFO",
+        "seq3" => "SEQUENCE 3",
         "lfo" => "SINE LFO",
         "gain" => "VCA",
         "lowpass" => "LOW-PASS",
@@ -2618,6 +2904,104 @@ mod tests {
             vec![egui::Event::PointerMoved(to)],
         );
         frame(ctx, rack, patch, time + 0.2, vec![button(to, false)])
+    }
+
+    #[test]
+    fn sequencer_cells_gates_runtime_buttons_and_last_output_have_separate_targets() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"seq","kind":"seq3"},{"id":"out","kind":"audio_out"}]})).unwrap();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let origin = pos2(24.0, 12.0);
+        // Last cell is independently editable without hitting a neighbouring value.
+        let cell = origin + vec2(707.0, 269.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(cell), button(cell, true)],
+        );
+        let action = frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::PointerMoved(cell - vec2(0.0, 12.0))],
+        );
+        assert!(
+            matches!(action,Some(RackAction::Command("set_parameter",ref args))if args["parameter"]=="row3_8"&&args["value"].as_f64().unwrap()>0.0)
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![button(cell - vec2(0.0, 12.0), false)],
+        );
+        let gate = origin + vec2(707.0, 85.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            vec![egui::Event::PointerMoved(gate), button(gate, true)],
+        );
+        let action = frame(&ctx, &mut rack, &patch, 2.1, vec![button(gate, false)]);
+        assert!(
+            matches!(action,Some(RackAction::Command("set_parameter",ref args))if args["parameter"]=="gate8"&&args["value"]==0.0)
+        );
+        let clock = origin + vec2(47.0, 320.0);
+        for (time, available) in [(3.0, false), (4.0, true)] {
+            rack.set_sequence_states(
+                BTreeMap::from([(
+                    "seq".into(),
+                    ModuleTelemetry {
+                        step: 3,
+                        running: true,
+                        length: 8,
+                    },
+                )]),
+                available,
+            );
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(clock), button(clock, true)],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                time + 0.1,
+                vec![button(clock, false)],
+            );
+            if available {
+                assert!(
+                    matches!(action,Some(RackAction::Command("trigger_module",ref args))if args["action"]=="clock")
+                );
+            } else {
+                assert!(action.is_none());
+            }
+        }
+        let output = origin + port_position("seq3", false, 11, 16, panel_width("seq3")).to_vec2();
+        let destination = origin
+            + vec2(780.0, 0.0)
+            + port_position("audio_out", true, 0, 1, panel_width("audio_out")).to_vec2();
+        let action = drag(&ctx, &mut rack, &patch, 5.0, output, destination);
+        assert!(
+            matches!(action,Some(RackAction::Command("connect",ref args))if args["output"]=="step8"&&args["to"]=="out")
+        );
+        let points: Vec<_> = (0..16)
+            .map(|i| port_position("seq3", false, i, 16, panel_width("seq3")))
+            .collect();
+        for (i, a) in points.iter().enumerate() {
+            for b in &points[i + 1..] {
+                assert!(a.distance(*b) >= 40.0);
+            }
+        }
     }
 
     #[test]

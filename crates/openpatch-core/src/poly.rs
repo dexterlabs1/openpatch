@@ -4,6 +4,7 @@
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::multi_lfo::{self, MultiLfo};
 use crate::routing::{self, Routing};
+use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -55,6 +56,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "midi_cv"
                 | "audio_stereo"
                 | "multi_lfo"
+                | "seq3"
         )
 }
 fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
@@ -71,6 +73,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
     match kind {
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
+        "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
@@ -86,7 +89,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if let Some(ports) = routing::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
-    if kind == "multi_lfo" {
+    if kind == "seq3" {
+        sequence::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "multi_lfo" {
         multi_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "midi_cv" {
         MIDI_OUTPUTS.iter().position(|port| *port == name)
@@ -148,6 +153,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
     let outputs = if let Some(names) = routing::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if kind == "seq3" {
+        sequence::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
     } else if kind == "multi_lfo" {
         multi_lfo::OUTPUTS
             .iter()
@@ -216,6 +226,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
+    if kind == "seq3" {
+        sequence::annotate(module);
+    }
 }
 
 #[derive(Debug)]
@@ -234,9 +247,13 @@ enum Model {
     Stereo(f32),
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
+    Seq3(Box<Seq3>),
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if node.kind == "seq3" {
+            return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
+        }
         if node.kind == "multi_lfo" {
             return Ok(Self::MultiLfo(Box::new(MultiLfo::build(node, rate)?)));
         }
@@ -344,6 +361,45 @@ pub(crate) struct PolyEngine {
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_module_event(&self, id: &str) -> Result<usize, String> {
+        let node = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("module '{id}' does not exist"))?;
+        if !matches!(self.nodes[node].model, Model::Seq3(_)) {
+            return Err(format!("module '{id}' does not support runtime actions"));
+        }
+        Ok(node)
+    }
+    pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
+        match self.nodes.get_mut(node).map(|node| &mut node.model) {
+            Some(Model::Seq3(seq)) => seq.enqueue(action),
+            _ => false,
+        }
+    }
+    pub(crate) fn module_telemetry(&self, node: usize) -> Option<ModuleTelemetry> {
+        match self.nodes.get(node).map(|node| &node.model) {
+            Some(Model::Seq3(seq)) => Some(seq.telemetry()),
+            _ => None,
+        }
+    }
+    pub(crate) fn reset_module_state(&mut self, index: usize) -> bool {
+        let Some(node) = self.nodes.get_mut(index) else {
+            return false;
+        };
+        let Model::Seq3(seq) = &mut node.model else {
+            return false;
+        };
+        seq.reset_state();
+        self.outputs[node.output_start..node.output_start + sequence::OUTPUTS.len()]
+            .fill(PortFrame::default());
+        for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
+            if edge.source_node == index || edge.destination_node == index {
+                *frame = PortFrame::default();
+            }
+        }
+        true
+    }
     pub(crate) fn resolve_tap(&self, id: &str, port: &str) -> Result<usize, String> {
         let index = *self
             .node_lookup
@@ -407,6 +463,7 @@ impl PolyEngine {
                     "poly_split" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
+                    "seq3" => sequence::OUTPUTS.len(),
                     _ => 1,
                 }
             };
@@ -553,6 +610,19 @@ impl PolyEngine {
                     }
                     self.outputs[node.output_start] = frame;
                 }
+                Model::Seq3(seq) => {
+                    let mut inputs = [PortFrame::default(); 5];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.edge_frames[*edge];
+                        }
+                    }
+                    seq.process(
+                        &inputs,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + sequence::OUTPUTS.len()],
+                    );
+                }
                 Model::MultiLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -671,10 +741,22 @@ impl PolyEngine {
             } else {
                 (true, true)
             };
+            let seq_unchanged = if self.nodes[*index].kind == "seq3" {
+                [
+                    self.input_unchanged(*index, old, *old_index, 1),
+                    self.input_unchanged(*index, old, *old_index, 2),
+                    self.input_unchanged(*index, old, *old_index, 3),
+                ]
+            } else {
+                [true; 3]
+            };
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
                 continue;
+            }
+            if let (Model::Seq3(seq), Model::Seq3(previous)) = (&mut node.model, &previous.model) {
+                seq.adopt(previous, seq_unchanged);
             }
             if let (Model::MultiLfo(lfo), Model::MultiLfo(previous)) =
                 (&mut node.model, &previous.model)

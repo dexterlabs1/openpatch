@@ -1,12 +1,12 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 29 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**. This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 30 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds, five functional utilities, four polyphonic routing/source utilities, MIDI input, stereo output, four additional stereo/pitch/routing processors and a four-output clocked LFO do not constitute 29 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The seven legacy utilities, six reference-voice kinds, five functional utilities, four polyphonic routing/source utilities, MIDI input, stereo output, four additional stereo/pitch/routing processors, a four-output clocked LFO and a three-row sequencer do not constitute 30 completed VCV equivalents.
 
 The third-party ecosystem is an ongoing compatibility program, not a finite “all modules” milestone. A Rust extension API, a Rust implementation of selected module behavior, a `.vcv` importer, and a loader for existing VCV C++ binaries are four different deliverables. Each must state which plugins and versions it supports. Neither a generic filter nor a circuit-derived reference model establishes the behavior of a particular commercial module.
 
@@ -94,30 +94,25 @@ The next gates are:
    and MIDI allocation. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
-## Next instrument milestone: three-row sequencer
+## Three-row sequencer: implemented contract, partial parity
 
-After project recovery and calibrated signal inspection, implement the complete
-8-step, 3-row sequencing workflow. The [SEQ 3 manual](https://vcvrack.com/Free#vcv-seq-3)
-and [official v2 implementation](https://github.com/VCVRack/Fundamental/blob/v2/src/SEQ3.cpp)
-are reference contracts; implementation remains original Rust. This is planned,
-not present in the module catalog yet.
+The 3×8 editor, all five inputs and sixteen outputs, pattern rotation, live
+step/run indicators, and bounded Clock/Run/Reset actions are implemented.
+Offline MCP renders/captures accept ordered module events alongside MIDI.
+[SEQUENCER.md](SEQUENCER.md) specifies timing, state, persistence, and explicit
+differences from the pinned reference. The connected example uses all three
+rows for pitch, filter movement, and accents.
 
-- Specify all five inputs and sixteen outputs, 24 voltage cells, eight trigger
-  flags, tempo/length CV, run/reset/clock behavior, passthrough, and atomic pattern
-  rotation before adding the panel. Provide a real 3×8 voltage editor and
-  DSP-derived step/run indicators.
-- Add bounded, ordered runtime module events for Clock/Run/Reset buttons, with
-  matching offline sample-frame events for MCP capture/render. Momentary
-  parameter edits are insufficient: the graph exchange deliberately coalesces
-  pending graph updates and could lose button presses.
-- Test simultaneous and one-sample-skewed reset/clock paths, one-step patterns,
-  dynamic length changes, stopped clocks, rewiring, exact pulse lengths,
-  compatible state adoption, chained sequencers, and callback allocation bounds.
-- Pin a VCV release and resolve reference discrepancies with differential traces.
-  The manual describes RESET on wrap; current source generates it from reset
-  controls. Source pulse-mode CLK/TRIG behavior also depends on a changed step
-  index, which matters for length one. Do not call a preferred musical policy
-  equivalent without recording these differences and validating the target.
+Acceptance tests cover reset/clock ordering, one-step patterns, dynamic length,
+stopped clocks, rewiring, exact pulses, adoption, chained sequences, callback
+heap activity, and module removal/recreation across coalesced graph updates.
+The queue distinguishes accepted actions from audio-applied actions and reports
+expiry, obsolete identities and backpressure.
+
+Remaining gates are direct differential traces against the pinned VCV version,
+runtime state persistence, parameter/phase mapping alignment, and actual native
+playback/device qualification. Current policy differences remain explicit;
+passing OpenPatch tests does not promote SEQ 3 to complete VCV equivalence.
 
 ## MCP and visuals beyond the baseline
 
@@ -130,7 +125,7 @@ These are OpenPatch differentiators and do not substitute for missing host or mo
 | Agent discovery and attachment | Missing | Attach to an existing chosen desktop session, with session identity and explicit transport lifetime; demonstrate simultaneous UI/two-client edits without lost updates. |
 | Subscriptions and diagnostics | Missing | Bounded revision/transport/meter/solver-event subscriptions, backpressure and reconnect/resync tests; no JSON or network work in DSP callbacks. |
 | Render/analysis jobs | Partial: synchronous offline render and benchmark | Cancellable background jobs, progress, reproducible patch/seed/configuration records, and artifact results; GUI and other control requests remain responsive. |
-| Musical operations | Partial: graph tools, shared undo/redo and grouped parameter edits | Sample-timed automation, audition, transport control and reusable subpatch operations share the same validation/history as human edits. |
+| Musical operations | Partial: graph tools, shared undo/redo, grouped parameter edits, atomic sequence rotation and live/offline module actions | Sample-timed automation, audition, transport control and reusable subpatch operations share the same validation/history as human edits. |
 | Objective evaluation | Partial: numerical tests, per-channel statistics and peak-preserving MCP offline waveform capture | Agents can request calibrated spectra, pitch, clipping, latency and CPU diagnostics from explicit taps; tests use known signals and declared error bounds. |
 | Native visual instruments | Partial: GLSL dock/editor plus calibrated two-source live scope with arbitrary ports/voices, trigger, freeze and X/Y | Arbitrary-port and per-voice taps, calibrated scope/spectrum, saved shader/preset state and synchronized controls; GPU failures preserve the instrument and last valid shader. |
 | Better performance at equal quality | Unproven | Fixed workload/quality comparisons, reproducible CPU and callback-tail measurements, memory and power observations; publish improvements and regressions separately. |

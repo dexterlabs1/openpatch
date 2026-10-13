@@ -580,3 +580,57 @@ fn multi_lfo_first_callbacks_adoption_and_detector_rewiring_neither_allocate_nor
     TRACK_MEMORY.with(|tracking| tracking.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn sequencer_actions_telemetry_identity_reset_and_adoption_neither_allocate_nor_free() {
+    use openpatch_core::ModuleAction;
+    let mut p = patch(
+        vec![
+            node("s", "seq3", &[("tempo", 960.0)]),
+            node("out", "audio_stereo", &[]),
+        ],
+        vec![cable("s", "cv1", "out", "left")],
+        "out",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let old_h = old.resolve_module_event("s").unwrap();
+    let new_h = new.resolve_module_event("s").unwrap();
+    p.nodes.reverse();
+    let mut reordered = p.compile().unwrap();
+    let re_h = reordered.resolve_module_event("s").unwrap();
+    let mut audio = [[0.0; 2]; 129];
+    let mut poly = [PortFrame::default(); 129];
+    let mut mono = [0.0; 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 127, 128, 129] {
+        for _ in 0..20 {
+            for action in [
+                ModuleAction::Run,
+                ModuleAction::Clock,
+                ModuleAction::Run,
+                ModuleAction::Clock,
+                ModuleAction::Reset,
+            ] {
+                assert!(old.handle_module_event(old_h, action));
+            }
+            old.process_audio_block(&mut audio[..count]);
+            new.adopt_state_from(&old);
+            reordered.adopt_state_from(&old);
+            let _ = old.module_telemetry(old_h);
+            let _ = new.module_telemetry(new_h);
+            let _ = reordered.module_telemetry(re_h);
+            assert!(!new.handle_module_event(old_h, ModuleAction::Clock));
+            assert!(reordered.reset_module_state(re_h));
+            new.process_poly_block(&mut poly[..count]);
+            reordered.process_block(&mut mono[..count]);
+            // A zero-length callback leaves pending actions queued, so reset before
+            // the next test iteration rather than overflowing a deliberately bounded queue.
+            assert!(old.reset_module_state(old_h));
+            assert!(new.reset_module_state(new_h));
+        }
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}

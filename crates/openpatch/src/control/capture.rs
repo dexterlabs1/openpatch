@@ -1,6 +1,6 @@
 //! Bounded offline waveform capture. Aggregate every active sample rather than
 //! subsampling, so an isolated pulse remains visible in a bin's extrema.
-use super::{midi_events, optional_string, string, Session};
+use super::{optional_string, string, PerformanceEvents, Session};
 use openpatch_core::{catalog, PortFrame, BLOCK_SIZE};
 use serde_json::{json, Value};
 
@@ -94,7 +94,7 @@ impl Session {
         patch.output_port = port.into();
         let mut engine = patch.compile()?;
         let frames = (seconds * f64::from(patch.sample_rate)).round() as usize;
-        let events = midi_events(args, frames)?;
+        let mut events = PerformanceEvents::new(args, frames, &engine)?;
         let node = patch
             .nodes
             .iter()
@@ -127,7 +127,6 @@ impl Session {
         let mut summary = Statistics::default();
         let mut block = [PortFrame::default(); BLOCK_SIZE];
         let mut cursor = 0;
-        let mut event_index = 0;
         let mut bin_index = 0;
         #[cfg(test)]
         {
@@ -137,13 +136,8 @@ impl Session {
             }
         }
         while cursor < frames {
-            while event_index < events.len() && events[event_index].frame == cursor as u64 {
-                engine.handle_midi(events[event_index].event);
-                event_index += 1;
-            }
-            let end = events
-                .get(event_index)
-                .map_or(frames, |event| event.frame as usize);
+            events.apply(&mut engine, cursor);
+            let end = events.next_frame(frames);
             let count = (frames - cursor).min(BLOCK_SIZE).min(end - cursor);
             engine.process_poly_block(&mut block[..count]);
             for (offset, frame) in block[..count].iter().enumerate() {
@@ -167,7 +161,7 @@ impl Session {
             json!({"revision":self.revision,"id":id,"port":port,"channel":channel,"sample_rate":patch.sample_rate,"frames":frames,
             "requested_points":requested_points,"points":points,"units":units,"amplitude_domain":domain,
             "digital_full_scale":(domain=="normalized_audio").then_some(1.0),
-            "state":"captured offline from reset","midi_event_count":events.len(),"solver_failures":engine.solver_failures(),
+            "state":"captured offline from reset","midi_event_count":events.midi.len(),"module_event_count":events.modules.len(),"solver_failures":engine.solver_failures(),
             "statistics":"active channel samples only; inactive channels excluded, not treated as zero",
             "amplitude_policy":"raw selected channel; no summing, normalization, or WAV clipping",
             "summary":summary.summary(),"bins":bins}),

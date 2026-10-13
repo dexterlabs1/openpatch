@@ -23,7 +23,12 @@ pub mod midi;
 mod multi_lfo;
 mod poly;
 mod routing;
+mod sequence;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
+pub use sequence::{
+    validate_module_events, ModuleAction, ModuleHandle, ModuleTelemetry, TimedModuleEvent,
+    MAX_MODULE_ACTIONS_PER_SAMPLE, MAX_MODULE_EVENTS,
+};
 mod utilities;
 pub use poly::{PortFrame, MAX_CHANNELS};
 
@@ -168,6 +173,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(multi_lfo::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(sequence::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -804,6 +813,51 @@ enum EngineKind {
     Poly(poly::PolyEngine),
 }
 impl Engine {
+    /// Resolve runtime action/telemetry targets on the control thread. Handles
+    /// belong to this compiled engine and must be re-resolved after replacement.
+    pub fn resolve_module_event(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(engine) => engine.resolve_module_event(id)?,
+            _ => return Err("module actions require patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    /// Queue an ordered action for the next sample, without allocation. Returns
+    /// false for stale handles or a full 64-action module queue. No action is lost
+    /// silently: hosts must report/retry rejected events according to policy.
+    pub fn handle_module_event(&mut self, handle: ModuleHandle, action: ModuleAction) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.handle_module_event(handle.node, action),
+            _ => false,
+        }
+    }
+    pub fn module_telemetry(&self, handle: ModuleHandle) -> Option<ModuleTelemetry> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.module_telemetry(handle.node),
+            _ => None,
+        }
+    }
+    /// Restore a newly created host module instance after compatible-ID state
+    /// adoption skipped an intermediate removal/re-addition. Clears its outgoing
+    /// and incoming delayed frames too. Compiled parameters and engine identity stay intact.
+    pub fn reset_module_state(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.reset_module_state(handle.node),
+            _ => false,
+        }
+    }
     /// Invalid direct events are ignored without allocating on the audio thread.
     /// Legacy graphs have no MIDI modules and ignore all events.
     pub fn handle_midi(&mut self, event: MidiEvent) {
@@ -1121,12 +1175,35 @@ pub fn render_audio_with_events(
     seconds: f64,
     events: &[TimedMidiEvent],
 ) -> Result<RenderedAudio, String> {
+    render_audio_with_performance_events(patch, seconds, events, &[])
+}
+/// Offline render from reset with two ordered traces. MIDI is dispatched before
+/// module actions at an equal frame; all queued module actions are applied in
+/// supplied order before that sample's CV run/reset/clock processing. Validate
+/// both traces and resolve every module ID before rendering any samples.
+pub fn render_audio_with_performance_events(
+    patch: &Patch,
+    seconds: f64,
+    midi: &[TimedMidiEvent],
+    modules: &[TimedModuleEvent],
+) -> Result<RenderedAudio, String> {
     if !seconds.is_finite() || !(0.0..=30.0).contains(&seconds) {
         return Err("seconds must be finite and in 0..=30".into());
     }
     let mut engine = patch.compile()?;
     let count = (seconds * patch.sample_rate as f64).round() as usize;
-    validate_midi_events(events, count)?;
+    validate_midi_events(midi, count)?;
+    validate_module_events(modules, count)?;
+    let resolved: Vec<_> = modules
+        .iter()
+        .enumerate()
+        .map(|(index, event)| {
+            engine
+                .resolve_module_event(&event.id)
+                .map(|handle| (event.frame, handle, event.action))
+                .map_err(|error| format!("module event {index}: {error}"))
+        })
+        .collect::<Result<_, _>>()?;
     let channels = engine.output_channels();
     let mut samples = Vec::new();
     samples
@@ -1134,17 +1211,27 @@ pub fn render_audio_with_events(
         .map_err(|e| format!("cannot allocate render buffer: {e}"))?;
     let mut buffer = [[0.0; 2]; BLOCK_SIZE];
     let mut frame = 0;
-    let mut next = 0;
+    let mut next_midi = 0;
+    let mut next_module = 0;
     while frame < count {
-        while next < events.len() && events[next].frame == frame as u64 {
-            engine.handle_midi(events[next].event);
-            next += 1;
+        while next_midi < midi.len() && midi[next_midi].frame == frame as u64 {
+            engine.handle_midi(midi[next_midi].event);
+            next_midi += 1;
         }
-        let end = if next < events.len() {
-            count.min(events[next].frame as usize)
-        } else {
-            count
-        };
+        while next_module < resolved.len() && resolved[next_module].0 == frame as u64 {
+            if !engine.handle_module_event(resolved[next_module].1, resolved[next_module].2) {
+                return Err("validated module action queue rejected an event".into());
+            }
+            next_module += 1;
+        }
+        let end = midi
+            .get(next_midi)
+            .map_or(count, |event| event.frame as usize)
+            .min(
+                resolved
+                    .get(next_module)
+                    .map_or(count, |event| event.0 as usize),
+            );
         let length = (end - frame).min(BLOCK_SIZE);
         engine.process_audio_block(&mut buffer[..length]);
         for pair in &buffer[..length] {

@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **29 built-in kinds**: seven legacy utilities, six reference-voice
+There are **30 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, and a four-output clocked LFO. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, and a three-row eight-step sequencer. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -110,7 +110,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Mutes | Routing | Planned | Independent mute states, normaling and persistence |
 | Pulses | Gate utility | Clock-gate interface implemented; not equivalent | Pulse duration and held-gate behavior across sample rates |
 | Scope | Measurement | Partial: native dock with two arbitrary named-output/voice taps, calibrated time/voltage scales, auto/normal/free trigger, freeze, X/Y and raw statistics; MCP offline trace bins | Rack-mounted instances, external trigger, all-voice overlays, persistence, direct VCV comparison; [contract](SCOPE.md) |
-| SEQ 3 | Sequencing | Planned | Step/reset ordering, clock boundaries and saved sequence |
+| SEQ 3 | Sequencing | Partial: 3×8 voltage editor, five inputs/sixteen outputs, gates, length/tempo CV, passthrough, atomic rotation and bounded live/offline actions | Direct pinned-reference traces, timing/mapping differences, runtime state persistence and native qualification; [contract](SEQUENCER.md) |
 | Sequential Switch 1 to 4 | Routing | Planned | Selected-path routing and clock/reset transitions |
 | Sequential Switch 4 to 1 | Routing | Planned | Input selection and clock/reset transitions |
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison, bypass and full host workflow acceptance remain open |

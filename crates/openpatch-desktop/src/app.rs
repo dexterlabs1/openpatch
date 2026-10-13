@@ -150,7 +150,7 @@ impl OpenPatch {
             Some(Err(e)) => (None, e),
             None => (None, "OpenGL unavailable".into()),
         };
-        let audio_revision = audio.as_ref().map(|_| revision);
+        let audio_revision = None;
         let volume = audio.as_ref().map_or(0.65, Audio::volume);
         let mut rack = Rack::default();
         rack.reconcile(&patch, &catalog());
@@ -234,7 +234,14 @@ impl OpenPatch {
         app.refresh_files();
         app.refresh_devices();
         app.connect_selected_midi();
+        app.attach_live_events();
         app
+    }
+    fn attach_live_events(&self) {
+        let sender = self.audio.as_ref().map(Audio::module_event_sender);
+        if let Ok(mut session) = self.shared.lock() {
+            session.set_live_module_events(sender);
+        }
     }
     fn open_audio(patch: &Patch, device: Option<&str>) -> (Option<Audio>, String) {
         let opened = match device {
@@ -318,7 +325,8 @@ impl OpenPatch {
             self.audio = Some(audio);
             self.device = label;
             self.output_device = selected;
-            self.audio_revision = Some(self.revision);
+            self.audio_revision = None;
+            self.attach_live_events();
             self.status = "Audio ready — press Play".into();
             self.refresh_devices();
             self.connect_selected_midi();
@@ -487,7 +495,12 @@ impl OpenPatch {
         }
         match execute_shared(&self.shared, name, args) {
             Ok(_) => {
-                self.status = "Patch updated".into();
+                self.status = if name == "trigger_module" {
+                    "Performance action queued"
+                } else {
+                    "Patch updated"
+                }
+                .into();
                 self.sync();
                 true
             }
@@ -530,7 +543,7 @@ impl OpenPatch {
                 self.keyboard.release();
             }
             if self.audio_revision != Some(self.revision) {
-                match audio.submit_patch(&self.patch) {
+                match audio.submit_patch_at_revision(&self.patch, self.revision) {
                     Ok(()) => self.audio_revision = Some(self.revision),
                     Err(e) => {
                         audio.set_playing(false);
@@ -549,6 +562,7 @@ impl OpenPatch {
             self.midi = None;
             self.keyboard.release();
             self.audio = None;
+            self.attach_live_events();
             self.audio_revision = None;
             self.device = error;
             self.status = "Audio stopped".into();
@@ -641,10 +655,18 @@ impl OpenPatch {
             self.active_file = None;
             self.active_token = None;
             self.rack = Rack::default();
+            if title == "Sequenced analog voice" {
+                self.sequence_layout();
+            }
             self.documents.mark_unsaved();
             self.autosave_needed = true;
             self.capture_document();
         }
+    }
+    fn sequence_layout(&mut self) {
+        let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "sequence":[0,0],"vco":[780,0],"filter":[990,0],"envelope":[0,420],"vca":[240,420],"accent":[390,420],"out":[540,420]
+        }}));
     }
     fn perform_action(&mut self, action: PendingAction) {
         match action {
@@ -969,6 +991,14 @@ impl OpenPatch {
                             ))
                             .expect("valid bundled random voice");
                             self.replace_from_menu(patch, "Clocked random voice");
+                            ui.close();
+                        }
+                        if ui.button("Sequenced analog voice").clicked() {
+                            let patch = serde_json::from_str(include_str!(
+                                "../../../examples/sequenced-analog-voice.json"
+                            ))
+                            .expect("valid bundled sequence");
+                            self.replace_from_menu(patch, "Sequenced analog voice");
                             ui.close();
                         }
                         if ui.button("Clocked modulation").clicked() {
@@ -1712,12 +1742,35 @@ impl OpenPatch {
             self.title = "Signal inspection".into();
             self.scope.smoke_fixture();
         }
+        if *frame == 172 {
+            self.scope.open = false;
+            let patch: Patch = serde_json::from_str(include_str!(
+                "../../../examples/sequenced-analog-voice.json"
+            ))
+            .unwrap();
+            let mut engine = patch.compile().unwrap();
+            let handle = engine.resolve_module_event("sequence").unwrap();
+            for _ in 0..3 {
+                assert!(engine.handle_module_event(handle, openpatch_core::ModuleAction::Clock));
+            }
+            engine.process_block(&mut [0.0; 128]);
+            let telemetry = engine.module_telemetry(handle).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("sequence compiles");
+            self.rack = Rack::default();
+            let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+                "sequence":[0,0],"vco":[780,0],"filter":[990,0],"envelope":[0,420],"vca":[240,420],"accent":[390,420],"out":[540,420]
+            }}));
+            self.rack
+                .set_sequence_states(BTreeMap::from([("sequence".into(), telemetry)]), false);
+            self.title = "Sequenced analog voice · offline preview".into();
+        }
         if *frame == 160 {
             self.scope.smoke_xy();
         }
         if matches!(
             *frame,
-            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168
+            12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 | 156 | 168 | 184
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -1749,7 +1802,8 @@ impl OpenPatch {
                 10 => path.with_file_name("project-save.png"),
                 11 => path.with_file_name("project-unsaved.png"),
                 12 => path.with_file_name("signal-scope.png"),
-                _ => path.with_file_name("signal-scope-xy.png"),
+                13 => path.with_file_name("signal-scope-xy.png"),
+                _ => path.with_file_name("rack-sequencer.png"),
             };
             image::save_buffer(
                 target,
@@ -1760,12 +1814,12 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             *captures += 1;
-            if *captures == 14 {
+            if *captures == 15 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(*frame < 180, "Native screenshot timeout");
+        assert!(*frame < 210, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -1818,6 +1872,21 @@ impl eframe::App for OpenPatch {
         self.visual_dock(ctx);
         self.scope
             .show(ctx, &self.patch, &self.catalog, self.audio.as_mut());
+        if self.smoke_test.is_none() || self.audio.is_some() {
+            let states = self
+                .patch
+                .nodes
+                .iter()
+                .filter(|n| n.kind == "seq3")
+                .filter_map(|n| {
+                    self.audio
+                        .as_ref()?
+                        .sequence_state(&n.id)
+                        .map(|state| (n.id.clone(), state))
+                })
+                .collect();
+            self.rack.set_sequence_states(states, self.audio.is_some());
+        }
         let mut action = None;
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
