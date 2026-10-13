@@ -139,6 +139,28 @@ playback qualification remains separate.</sub>
 </details>
 
 <details>
+<summary><strong>Shape voltages and mute a voice</strong></summary>
+
+![8vert voltage bank and CV Mix setting a VCO pitch, with a ten-row Mutes bank feeding audio](docs/images/openpatch-voltage-utilities.png)
+
+Choose **File → Voltage utilities**. The first two 8vert rows create pitch
+voltages, CV Mix adds them, and Mutes row 1 controls the oscillator's output.
+Each row is independently editable; right-click Mutes to invert all ten states.
+
+![The same patch with Mutes bypassed, an amber panel border, and a visible BYPASSED label](docs/images/openpatch-bypass.png)
+
+Right-click a panel to bypass it. The amber border identifies the saved bypass
+state; controls and cables stay editable. Bypass and mute inversion share the
+same undo history through the UI and MCP.
+
+<sub>Native Linux / Mesa CI renders. Signal behavior is tested offline; these
+images do not establish live audio-device qualification.</sub>
+
+[Normaling, polyphony, and bypass behavior →](docs/VOLTAGE_UTILITIES.md)
+
+</details>
+
+<details>
 <summary><strong>Make a voice move with a clocked LFO</strong></summary>
 
 ![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)
