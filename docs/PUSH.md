@@ -8,6 +8,10 @@ Choose **File → Manual push voice**. Hold PUSH to play the envelope. Click HOL
 
 The native panel separates two physical buttons from the GATE and LATCH indicators. Button depression follows actual held controls; LATCH follows the audio engine’s current HOLD state. Releasing the pointer, leaving a button, losing focus, or opening a modal releases the physical control. A fast click delivered in one GUI frame still queues both edges.
 
+![Native Push panel with momentary PUSH and HOLD controls, separate gate/latch indicators, and a connected analog voice](images/openpatch-push.png)
+
+*Native Linux/Mesa CI render with HOLD latched in an offline engine preview. This image does not demonstrate audio-device playback.*
+
 ## Signal contract
 
 Inputs `push` and `hold` read channel 0 only, without polyphonic broadcast. Each detector switches high at 1 V and low at 0.1 V; the interval between thresholds retains its previous state. Nonfinite input is zero. An initially high input sets its detector without a rising-edge event.

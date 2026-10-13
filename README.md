@@ -65,6 +65,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Add transpose and vibrato to a chord | **File → Stacked pitch voice** |
 | Shape gates and sample pitch | **File → Gate shaping voice** |
 | Explore voltage and mute banks | **File → Voltage utilities** |
+| Play manual gates and triggers | **File → Manual pulses voice** |
+| Latch and interrupt a note | **File → Manual push voice** |
 | Bypass a module | Right-click its panel → **Bypass module** |
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
@@ -82,7 +84,7 @@ Compatible jacks glow and snap during patching. An ordinary drop onto an occupie
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 
-Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, view, and current sequencer Run settings; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
+Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, view, and current sequencer Run and Push HOLD settings; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
 
 <details>
 <summary><strong>See the visualizer dock</strong></summary>
