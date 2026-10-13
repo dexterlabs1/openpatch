@@ -5,6 +5,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use openpatch::control::LiveModuleEvents;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
 use openpatch_core::{Engine, MidiEvent, Patch, ResolvedTap, TapSample, BLOCK_SIZE};
+#[path = "audio_diagnostics.rs"]
+mod audio_diagnostics;
+pub use audio_diagnostics::Snapshot as AudioTimingSnapshot;
 #[path = "performance.rs"]
 mod performance;
 use performance::{EventReader, ModulePlan, Performance, EVENT_CAPACITY};
@@ -666,6 +669,14 @@ impl Audio {
         self.shared.stream_error.swap(false, Ordering::Relaxed)
     }
 
+    pub fn diagnostics(&self) -> AudioTimingSnapshot {
+        self.performance.diagnostics.snapshot()
+    }
+
+    pub fn reset_diagnostics(&self) -> u64 {
+        self.performance.diagnostics.request_reset()
+    }
+
     pub fn solver_failures(&self) -> usize {
         self.shared.solver_failures.load(Ordering::Relaxed)
     }
@@ -805,6 +816,7 @@ struct Callback {
     scope_packets: Option<Consumer<ScopePacket>>,
     performance: Arc<Performance>,
     module_events: EventReader,
+    timing: audio_diagnostics::Recorder,
 }
 
 impl Callback {
@@ -817,10 +829,11 @@ impl Callback {
     ) -> Self {
         let midi = MidiQueues::new(shared.clone());
         let (scope, scope_packets) = ScopeCapture::new(rate);
-        let (performance, module_events) = Performance::new(rate);
+        let (performance, module_events, timing) = Performance::new(rate);
         Self {
             performance,
             module_events,
+            timing,
             scope,
             scope_packets: Some(scope_packets),
             midi,
@@ -842,7 +855,25 @@ impl Callback {
     }
 
     fn render<T: OutputSample>(&mut self, output: &mut [T], channels: usize) {
-        if self.graphs.poll() {
+        let started = std::time::Instant::now();
+        let epoch = self.timing.begin();
+        let (adopted, crossfade) = self.render_inner(output, channels);
+        let elapsed = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        // Only diagnostics accumulation/publication is outside this measurement.
+        self.timing.record(
+            epoch,
+            elapsed,
+            output.len().checked_div(channels).unwrap_or(0),
+            channels,
+            self.graphs.active.revision,
+            adopted,
+            crossfade,
+        );
+    }
+
+    fn render_inner<T: OutputSample>(&mut self, output: &mut [T], channels: usize) -> (bool, bool) {
+        let adopted = self.graphs.poll();
+        if adopted {
             if let Some(previous) = self.graphs.previous.as_ref() {
                 let active = &mut self.graphs.active;
                 active
@@ -891,8 +922,9 @@ impl Callback {
         let mut previous = [[0.0_f32; 2]; BLOCK_SIZE];
         let mut taps = [[TapSample::default(); 2]; BLOCK_SIZE];
         if channels == 0 {
-            return;
+            return (adopted, false);
         }
+        let crossfade = self.graphs.previous.is_some() && output.len() >= channels;
         for chunk in output.chunks_mut(BLOCK_SIZE * channels) {
             let frames = chunk.len() / channels;
             let mut offset = 0;
@@ -1034,6 +1066,7 @@ impl Callback {
         self.shared
             .peak
             .store(peak.max(previous_peak * 0.92).to_bits(), Ordering::Relaxed);
+        (adopted, crossfade)
     }
     fn sync_midi_reset(&mut self) {
         if self.midi.sync_epoch() {
@@ -1112,7 +1145,7 @@ fn build_stream<T: OutputSample>(
 pub(crate) fn test_module_incarnation_tokens(
     session: &mut openpatch::control::Session,
 ) -> impl Fn(&Patch, u64) -> Vec<u64> {
-    let (performance, reader) = Performance::new(48_000);
+    let (performance, reader, _timing) = Performance::new(48_000);
     session.set_live_module_events(Some(performance.clone()));
     move |patch, revision| {
         let _keep_reader_alive = &reader;
@@ -1355,6 +1388,96 @@ mod tests {
         callback.gain.value = 1.0;
         (callback, updates, disposal)
     }
+    #[test]
+    fn timing_covers_callback_adoption_conversion_reset_and_close_without_heap() {
+        let patch = sequence_patch();
+        let (mut measured, mut updates, _retired) = sequence_callback(&patch);
+        let (mut reference, mut raw_updates, _raw_retired) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch.clone(), Some(0)).unwrap();
+        session.set_live_module_events(Some(measured.performance.clone()));
+        assert!(!measured.performance.diagnostics.snapshot().available);
+        let mut actual = [0_i16; 513];
+        let mut expected = actual;
+        without_heap_activity(|| measured.render(&mut actual, 2));
+        reference.render_inner(&mut expected, 2);
+        assert_eq!(actual, expected);
+        assert_eq!(actual[512], 0);
+        let first = measured.performance.diagnostics.snapshot();
+        assert!(first.available && first.coherent);
+        assert_eq!(
+            (first.frames, first.channels, first.sample_rate),
+            (256, 2, 48_000)
+        );
+        assert_eq!((first.callbacks, first.callback_sequence), (1, 1));
+        assert!(!first.adopted_graph && !first.crossfade);
+        assert!(first.utilization.is_some());
+        updates
+            .push(sequence_graph(&measured, &patch, 2))
+            .ok()
+            .unwrap();
+        raw_updates
+            .push(sequence_graph(&reference, &patch, 2))
+            .ok()
+            .unwrap();
+        without_heap_activity(|| measured.render(&mut actual, 2));
+        reference.render_inner(&mut expected, 2);
+        assert_eq!(actual, expected);
+        let second = measured.performance.diagnostics.snapshot();
+        assert!(second.adopted_graph && second.crossfade);
+        assert_eq!((second.revision, second.transition_callbacks), (2, 1));
+        let receipt = session
+            .execute("inspect_performance", serde_json::json!({}))
+            .unwrap();
+        assert_eq!(
+            receipt["performance"]["audio_timing"],
+            serde_json::to_value(&second).unwrap()
+        );
+        let epoch = measured.performance.diagnostics.request_reset();
+        assert!(measured.performance.diagnostics.snapshot().reset_pending);
+        without_heap_activity(|| measured.render(&mut [0.0_f32; 2], 0));
+        let empty = measured.performance.diagnostics.snapshot();
+        assert_eq!(empty.epoch, epoch);
+        assert!(!empty.reset_pending);
+        assert_eq!(
+            (
+                empty.callbacks,
+                empty.invalid_callbacks,
+                empty.callback_sequence
+            ),
+            (0, 1, 3)
+        );
+        assert!(empty.utilization.is_none() && empty.peak_utilization.is_none());
+        measured.performance.close();
+        assert!(measured.performance.diagnostics.snapshot().closed);
+        assert!(!measured.performance.diagnostics.snapshot().available);
+    }
+
+    #[test]
+    fn timing_matches_uninstrumented_audio_across_formats_and_variable_buffers() {
+        let patch = sequence_patch();
+        let (mut measured, _, _retired) = sequence_callback(&patch);
+        let (mut reference, _, _raw_retired) = sequence_callback(&patch);
+        for samples in [0, 1, 17, 511, 512, 777] {
+            let mut actual = vec![0.0_f32; samples];
+            let mut expected = actual.clone();
+            without_heap_activity(|| measured.render(&mut actual, 2));
+            reference.render_inner(&mut expected, 2);
+            assert_eq!(actual, expected);
+            assert_eq!(
+                measured.performance.diagnostics.snapshot().frames,
+                samples / 2
+            );
+        }
+        let mut actual = [0_u16; 57];
+        let mut expected = actual;
+        without_heap_activity(|| measured.render(&mut actual, 6));
+        reference.render_inner(&mut expected, 6);
+        assert_eq!(actual, expected);
+        assert_eq!(&actual[54..], &[32768; 3]);
+    }
+
     fn note_on(note: u8) -> MidiEvent {
         MidiEvent::NoteOn {
             channel: 0,
@@ -1803,7 +1926,7 @@ mod tests {
         patch.assign_missing_cable_ids().unwrap();
         patch
     }
-    fn sequence_callback(
+    pub(super) fn sequence_callback(
         patch: &Patch,
     ) -> (Callback, Producer<PreparedGraph>, Consumer<PreparedGraph>) {
         let (mut callback, updates, disposal) = callback_for(patch);
@@ -1815,7 +1938,11 @@ mod tests {
         callback.graphs.active.revision = 1;
         (callback, updates, disposal)
     }
-    fn sequence_graph(callback: &Callback, patch: &Patch, revision: u64) -> PreparedGraph {
+    pub(super) fn sequence_graph(
+        callback: &Callback,
+        patch: &Patch,
+        revision: u64,
+    ) -> PreparedGraph {
         let mut graph = prepare_graph(patch, 48000, None, revision, true).unwrap();
         graph.modules = callback
             .performance
@@ -5105,3 +5232,7 @@ mod tests {
         assert_eq!(sender.snapshot()["applied"], 256);
     }
 }
+
+#[cfg(test)]
+#[path = "audio_profile.rs"]
+mod profile;

@@ -227,6 +227,34 @@ or change patch revisions. Headless sessions and desktop sessions without an
 audio backend report `supported: false`, `performance: null`, and reject
 `trigger_module` as unsupported.
 
+Native backends also publish `performance.audio_timing`. This is an independently
+coherent completed-callback snapshot, not an atomic extension of the module
+meters. Check `available` and `coherent` before interpreting measurements;
+`closed` marks a stopped stream. A fresh stream starts new counters.
+
+- `callback_sequence`, `revision`, `sample_rate`, `frames`, `channels`, and
+  `duration_ns` identify the measured callback. Its graph revision can differ
+  from the control session's latest revision while an edit is waiting.
+- `utilization` is duration divided by the actual buffer budget; `1.0` means
+  100%. `peak_utilization`, `max_duration_ns`, `callbacks`, `overruns`,
+  `total_duration_ns`, and `total_frames` describe the current interval.
+  Frame-weighted mean use is `total_duration_ns * sample_rate /
+  (total_frames * 1e9)` when total frames is nonzero. Counters saturate.
+- `adopted_graph` and `crossfade` describe this callback;
+  `transition_callbacks` counts valid callbacks with either flag.
+- `epoch`, `requested_epoch`, and `reset_pending` distinguish applied native
+  statistics resets from requests waiting for the next callback. Callback
+  sequence does not reset. MCP inspection is read-only.
+- Empty/invalid-budget callbacks increment `invalid_callbacks`, expose null
+  `utilization`, and do not affect valid counts, totals or peaks.
+
+Reported elapsed wall time covers graph adoption, crossfade, processing, output conversion
+and existing module telemetry, excluding the timing accumulator/publication
+itself. Preemption during rendering is included, but pre-entry scheduling
+lateness is not. `overruns` counts processing-budget overruns, **not hardware
+xruns**. Headless servers still report unsupported rather than
+inventing live measurements. See [performance measurement](PERFORMANCE.md).
+
 For reproducible offline actions, supply `module_events` to `render_audio`,
 `analyze_signal`, or `capture_signal`:
 

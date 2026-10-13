@@ -1,5 +1,6 @@
 //! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
+use super::audio_diagnostics::{Diagnostics, Recorder};
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
@@ -319,6 +320,7 @@ impl Shared {
 }
 pub(super) struct Performance {
     control: Mutex<Control>,
+    pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
 }
@@ -494,7 +496,8 @@ pub(super) struct EventReader {
 }
 
 impl Performance {
-    pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader) {
+    pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader, Recorder) {
+        let (diagnostics, timing) = Diagnostics::new(rate);
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
         let shared = Arc::new(Shared {
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
@@ -534,9 +537,11 @@ impl Performance {
                     next_sequence: 1,
                 }),
                 shared,
+                diagnostics,
                 rate,
             }),
             reader,
+            timing,
         )
     }
     pub(super) fn plan(
@@ -663,6 +668,7 @@ impl Performance {
         // Serialize against producer acceptance. This mutex never reaches audio.
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.closed.store(true, Ordering::Release);
+        self.diagnostics.close();
     }
     fn load_saved_states(&self, states: &BTreeMap<String, bool>, kind: SavedModuleState) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
@@ -1010,7 +1016,7 @@ impl LiveModuleEvents for Performance {
                 }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
         }).collect();
-        json!({"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
+        json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
             "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
             "closed_dropped":shared.closed_dropped.load(Ordering::Relaxed),"crossfade_rejected":shared.crossfade_rejected.load(Ordering::Relaxed),
@@ -1193,7 +1199,7 @@ mod tests {
 
     #[test]
     fn multi_module_snapshot_never_exposes_a_partial_publish() {
-        let (performance, _reader) = Performance::new(48_000);
+        let (performance, _reader, _timing) = Performance::new(48_000);
         {
             let mut control = performance.control.lock().unwrap();
             control.revision = 1;

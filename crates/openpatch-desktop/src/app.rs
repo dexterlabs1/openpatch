@@ -1,5 +1,5 @@
 use crate::{
-    audio::Audio,
+    audio::{Audio, AudioTimingSnapshot},
     chrome::{icon_button, Icon},
     document_state::{apply_document_guarded, DocumentState},
     keyboard::Keyboard,
@@ -36,6 +36,74 @@ const ACCENT: Color32 = Color32::from_rgb(229, 186, 106);
 enum AnalysisTab {
     Scope,
     Visuals,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TimingStatus {
+    Unavailable,
+    Stopped,
+    ResetPending,
+    Waiting,
+    Contended,
+    Ready,
+}
+
+fn timing_status(snapshot: Option<&AudioTimingSnapshot>) -> TimingStatus {
+    let Some(snapshot) = snapshot else {
+        return TimingStatus::Unavailable;
+    };
+    if snapshot.closed {
+        TimingStatus::Stopped
+    } else if snapshot.reset_pending {
+        TimingStatus::ResetPending
+    } else if !snapshot.coherent {
+        TimingStatus::Contended
+    } else if !snapshot.available
+        || snapshot.callbacks == 0
+        || snapshot.sample_rate == 0
+        || snapshot.frames == 0
+        || snapshot.utilization.is_none()
+    {
+        TimingStatus::Waiting
+    } else {
+        TimingStatus::Ready
+    }
+}
+
+fn timing_footer(snapshot: Option<&AudioTimingSnapshot>) -> String {
+    match timing_status(snapshot) {
+        TimingStatus::Ready => {
+            format!("DSP {:.1}%", snapshot.unwrap().utilization.unwrap() * 100.0)
+        }
+        TimingStatus::ResetPending => "DSP reset…".into(),
+        _ => "DSP —".into(),
+    }
+}
+
+fn timing_explanation(status: TimingStatus) -> &'static str {
+    match status {
+        TimingStatus::Unavailable => "Audio is unavailable. No callback timing has been measured.",
+        TimingStatus::Stopped => {
+            "Audio stream stopped. Start or reconnect audio for fresh measurements."
+        }
+        TimingStatus::ResetPending => {
+            "Reset requested. Waiting for the next audio callback to start a fresh interval."
+        }
+        TimingStatus::Waiting => "Waiting for a measured audio callback with a valid frame budget.",
+        TimingStatus::Contended => {
+            "A coherent timing snapshot is unavailable. Retrying on the next frame."
+        }
+        TimingStatus::Ready => {
+            "Measured audio callback processing time relative to its frame budget."
+        }
+    }
+}
+
+fn weighted_mean_utilization(snapshot: &AudioTimingSnapshot) -> Option<f64> {
+    (snapshot.sample_rate > 0 && snapshot.total_frames > 0).then(|| {
+        snapshot.total_duration_ns as f64 * snapshot.sample_rate as f64
+            / (snapshot.total_frames as f64 * 1_000_000_000.0)
+    })
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -213,6 +281,8 @@ pub struct OpenPatch {
     midi_epoch: u64,
     settings_open: bool,
     settings_status: String,
+    audio_performance_open: bool,
+    smoke_diagnostics: Option<AudioTimingSnapshot>,
     keyboard: Keyboard,
     keyboard_open: bool,
     rack: Rack,
@@ -347,6 +417,8 @@ impl OpenPatch {
             midi_epoch,
             settings_open: false,
             settings_status: String::new(),
+            audio_performance_open: false,
+            smoke_diagnostics: None,
             keyboard: Keyboard::default(),
             keyboard_open: false,
             rack,
@@ -544,6 +616,7 @@ impl OpenPatch {
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.settings_open
+            && !self.audio_performance_open
             && !self.recovery_open
             && !self.confirm_engine_upgrade
             && self.confirm_discard.is_none();
@@ -649,6 +722,122 @@ impl OpenPatch {
                 ui.label(&self.settings_status);
             });
         self.settings_open = open;
+    }
+
+    fn diagnostic_snapshot(&self) -> Option<AudioTimingSnapshot> {
+        if self.smoke_test.is_some() {
+            if let Some(snapshot) = &self.smoke_diagnostics {
+                return Some(snapshot.clone());
+            }
+        }
+        self.audio.as_ref().map(Audio::diagnostics)
+    }
+
+    fn audio_performance(&mut self, ctx: &egui::Context) {
+        if !self.audio_performance_open {
+            return;
+        }
+        let snapshot = self.diagnostic_snapshot();
+        let status = timing_status(snapshot.as_ref());
+        let simulated = self.smoke_test.is_some() && self.smoke_diagnostics.is_some();
+        let mut open = true;
+        let mut reset = false;
+        egui::Window::new("Audio performance")
+            .default_pos(ctx.content_rect().center() - Vec2::new(210.0, 205.0))
+            .open(&mut open)
+            .resizable(false)
+            .default_width(420.0)
+            .show(ctx, |ui| {
+                if simulated {
+                    ui.colored_label(ACCENT, "SIMULATED DATA · SCREENSHOT FIXTURE");
+                } else if self.audio.as_ref().is_some_and(|audio| !audio.is_playing())
+                    && status == TimingStatus::Ready
+                {
+                    ui.label("Transport paused · audio callbacks continue");
+                }
+                ui.label(timing_explanation(status));
+                if status == TimingStatus::Ready {
+                    let snapshot = snapshot.as_ref().unwrap();
+                    let percent = |value: f64| format!("{:.1}%", value * 100.0);
+                    let current = snapshot.utilization.map(percent).unwrap_or_else(|| "—".into());
+                    let peak = snapshot.peak_utilization.map(percent).unwrap_or_else(|| "—".into());
+                    let mean = weighted_mean_utilization(snapshot)
+                        .map(percent)
+                        .unwrap_or_else(|| "—".into());
+                    ui.separator();
+                    egui::Grid::new("audio-performance-metrics")
+                        .num_columns(2)
+                        .spacing([18.0, 5.0])
+                        .show(ui, |ui| {
+                            ui.label("Current budget use");
+                            ui.strong(current);
+                            ui.end_row();
+                            ui.label("Peak budget use");
+                            ui.strong(peak);
+                            ui.end_row();
+                            ui.label("Weighted mean");
+                            ui.strong(mean);
+                            ui.end_row();
+                            ui.label("Last processing / budget");
+                            ui.label(format!(
+                                "{:.3} / {:.3} ms",
+                                snapshot.duration_ns as f64 / 1_000_000.0,
+                                snapshot.frames as f64 * 1000.0 / snapshot.sample_rate as f64
+                            ));
+                            ui.end_row();
+                            ui.label("Measured callbacks");
+                            ui.label(snapshot.callbacks.to_string());
+                            ui.end_row();
+                            ui.label("Invalid or empty callbacks");
+                            ui.label(snapshot.invalid_callbacks.to_string());
+                            ui.end_row();
+                            ui.label("Processing budget overruns");
+                            ui.colored_label(ACCENT, snapshot.overruns.to_string());
+                            ui.end_row();
+                            ui.label("Graph transitions in interval");
+                            ui.label(snapshot.transition_callbacks.to_string());
+                            ui.end_row();
+                        });
+                    ui.separator();
+                    ui.label(format!(
+                        "Last callback · {} frames × {} channels at {} Hz",
+                        snapshot.frames, snapshot.channels, snapshot.sample_rate
+                    ));
+                    ui.label(format!(
+                        "Graph revision {} · callback sequence {}",
+                        snapshot.revision, snapshot.callback_sequence
+                    ));
+                    ui.label(format!(
+                        "Graph adopted: {} · crossfade: {}",
+                        if snapshot.adopted_graph { "yes" } else { "no" },
+                        if snapshot.crossfade { "yes" } else { "no" }
+                    ));
+                }
+                ui.separator();
+                ui.label(RichText::new("Processing overruns mean measured callback time exceeded its frame budget. Elapsed time includes preemption during rendering; it does not measure late callback delivery or hardware xruns.").size(10.0).color(MUTED));
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.audio.is_some() && !simulated && status != TimingStatus::Stopped,
+                            egui::Button::new("Reset statistics"),
+                        )
+                        .on_hover_text("Start a new measurement interval on the next audio callback")
+                        .clicked()
+                    {
+                        reset = true;
+                    }
+                    if status == TimingStatus::ResetPending {
+                        ui.label("Waiting for callback…");
+                    }
+                });
+            });
+        self.audio_performance_open = open;
+        if reset {
+            if let Some(audio) = &self.audio {
+                audio.reset_diagnostics();
+                ctx.request_repaint();
+            }
+        }
     }
     fn refresh_files(&mut self) {
         self.files = std::fs::read_dir(&self.workspace)
@@ -1892,6 +2081,10 @@ impl OpenPatch {
                                 }
                             }
                             ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
+                            if ui.button("Audio performance…").clicked() {
+                                self.audio_performance_open = true;
+                                ui.close();
+                            }
                             if ui.button("Reset rack view").clicked() {
                                 self.rack.reset_view();
                                 ui.close();
@@ -2053,11 +2246,21 @@ impl OpenPatch {
             });
     }
     fn footer(&mut self, ctx: &egui::Context) {
+        let timing = self.diagnostic_snapshot();
+        let timing_label = timing_footer(timing.as_ref());
+        let timing_help = timing_explanation(timing_status(timing.as_ref()));
         egui::TopBottomPanel::bottom("status")
             .frame(egui::Frame::new().fill(CHROME).inner_margin(egui::Margin::symmetric(12,5)))
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Audio health stays visible even when a status message is long.
+                    if ui
+                        .button(RichText::new(&timing_label).size(10.0).color(ACCENT))
+                        .on_hover_text(format!("{timing_help}\nOpen Audio performance for details."))
+                        .clicked()
+                    {
+                        self.audio_performance_open = true;
+                    }
                     if self.audio.is_none() {
                         if ui.button("Retry audio").on_hover_text(&self.device).clicked() {
                             self.reopen_audio(self.output_device.clone());
@@ -2178,6 +2381,7 @@ impl OpenPatch {
         self.rack.set_shortcuts_enabled(
             drag.is_none()
                 && !self.settings_open
+                && !self.audio_performance_open
                 && !self.shader_open
                 && self.preset_dialog.is_none(),
         );
@@ -2193,6 +2397,7 @@ impl OpenPatch {
                     && !self.recovery_open
                     && !self.confirm_engine_upgrade
                     && self.preset_dialog.is_none()
+                    && !self.audio_performance_open
                     && !self.allow_close;
                 let canvas = ui.available_rect_before_wrap();
                 ui.add_enabled_ui(interactive && drag.is_none(), |ui| {
@@ -2293,6 +2498,7 @@ impl OpenPatch {
             && !self.confirm_engine_upgrade
             && self.preset_dialog.is_none()
             && !self.settings_open
+            && !self.audio_performance_open
             && !self.shader_open
             && !self.allow_close
     }
@@ -3322,6 +3528,31 @@ impl OpenPatch {
             self.title = "Delayed gate voice · offline preview".into();
             self.status = "Left: timed gate · Right: delayed gate · LENGTH changes both · RESET clears timing".into();
         }
+        if frame == 584 {
+            // The native smoke runner has no output stream. Keep the screenshot
+            // explicit about the simulated data rather than showing a fake live meter.
+            self.smoke_diagnostics = Some(AudioTimingSnapshot {
+                available: true,
+                coherent: true,
+                sample_rate: 48_000,
+                frames: 256,
+                channels: 2,
+                revision: self.revision,
+                callback_sequence: 321,
+                duration_ns: 900_000,
+                callbacks: 320,
+                total_duration_ns: 393_000_000,
+                total_frames: 81_920,
+                peak_utilization: Some(0.73),
+                utilization: Some(0.16875),
+                transition_callbacks: 4,
+                adopted_graph: true,
+                crossfade: true,
+                ..AudioTimingSnapshot::default()
+            });
+            self.audio_performance_open = true;
+            self.status = "Audio performance · simulated screenshot fixture".into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -3360,6 +3591,7 @@ impl OpenPatch {
                 | 530
                 | 554
                 | 578
+                | 600
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3411,7 +3643,8 @@ impl OpenPatch {
                 30 => path.with_file_name("analysis-visuals-compact.png"),
                 31 => path.with_file_name("rack-pulses.png"),
                 32 => path.with_file_name("rack-push.png"),
-                _ => path.with_file_name("rack-gates.png"),
+                33 => path.with_file_name("rack-gates.png"),
+                _ => path.with_file_name("audio-performance-simulated.png"),
             };
             image::save_buffer(
                 target,
@@ -3423,12 +3656,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 34 {
+            if captures == 35 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 608, "Native screenshot timeout");
+        assert!(frame < 632, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -3486,6 +3719,7 @@ impl eframe::App for OpenPatch {
         self.preset_window(ctx);
         self.shader_window(ctx);
         self.audio_settings(ctx);
+        self.audio_performance(ctx);
         self.recovery_window(ctx);
         self.unsaved_window(ctx);
         self.observe_document();
@@ -3565,6 +3799,8 @@ mod project_workflow_tests {
             midi_epoch: 0,
             settings_open: false,
             settings_status: String::new(),
+            audio_performance_open: false,
+            smoke_diagnostics: None,
             keyboard: Keyboard::default(),
             keyboard_open: false,
             rack,
@@ -4535,7 +4771,14 @@ mod project_workflow_tests {
     #[test]
     fn global_shortcuts_respect_windows_popups_focus_and_library_drag() {
         for blocked in [
-            "settings", "shader", "popup", "blur", "text", "drag", "none",
+            "settings",
+            "audio-performance",
+            "shader",
+            "popup",
+            "blur",
+            "text",
+            "drag",
+            "none",
         ] {
             let dir = tempfile::tempdir().unwrap();
             let mut app = host(dir.path());
@@ -4545,6 +4788,7 @@ mod project_workflow_tests {
             ));
             let before = app.shared.lock().unwrap().snapshot();
             app.settings_open = blocked == "settings";
+            app.audio_performance_open = blocked == "audio-performance";
             app.shader_open = blocked == "shader";
             let ctx = egui::Context::default();
             let _ = ctx.run(
@@ -4599,6 +4843,94 @@ mod project_workflow_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn audio_timing_presentation_never_turns_missing_or_pending_data_into_zero_load() {
+        assert_eq!(timing_status(None), TimingStatus::Unavailable);
+        assert_eq!(timing_footer(None), "DSP —");
+        let mut snapshot = AudioTimingSnapshot {
+            available: true,
+            coherent: true,
+            sample_rate: 48_000,
+            frames: 256,
+            channels: 2,
+            callbacks: 3,
+            utilization: Some(0.16875),
+            peak_utilization: Some(0.73),
+            total_duration_ns: 500_000_000,
+            total_frames: 48_000,
+            ..AudioTimingSnapshot::default()
+        };
+        assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Ready);
+        assert_eq!(timing_footer(Some(&snapshot)), "DSP 16.9%");
+        assert_eq!(weighted_mean_utilization(&snapshot), Some(0.5));
+        snapshot.reset_pending = true;
+        assert_eq!(timing_status(Some(&snapshot)), TimingStatus::ResetPending);
+        assert_eq!(timing_footer(Some(&snapshot)), "DSP reset…");
+        snapshot.reset_pending = false;
+        snapshot.coherent = false;
+        assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Contended);
+        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+        snapshot.coherent = true;
+        snapshot.available = false;
+        assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Waiting);
+        snapshot.available = true;
+        snapshot.closed = true;
+        assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Stopped);
+        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+    }
+
+    #[test]
+    fn audio_performance_window_shows_measured_budget_and_explicit_simulation_label() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.audio_performance_open = true;
+        app.smoke_test = Some((dir.path().join("unused.png"), 0, 0));
+        app.smoke_diagnostics = Some(AudioTimingSnapshot {
+            available: true,
+            coherent: true,
+            sample_rate: 48_000,
+            frames: 256,
+            channels: 2,
+            duration_ns: 900_000,
+            callbacks: 320,
+            total_duration_ns: 500_000_000,
+            total_frames: 48_000,
+            utilization: Some(0.16875),
+            peak_utilization: Some(0.73),
+            ..AudioTimingSnapshot::default()
+        });
+        let ctx = egui::Context::default();
+        let render = |time: f64, app: &mut OpenPatch| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(940.0, 680.0),
+                    )),
+                    time: Some(time),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    app.footer(ctx);
+                    egui::CentralPanel::default().show(ctx, |_ui| {});
+                    app.audio_performance(ctx);
+                },
+            )
+        };
+        render(0.0, &mut app);
+        let output = render(1.0, &mut app);
+        preset_text(&output, "SIMULATED DATA · SCREENSHOT FIXTURE");
+        preset_text(&output, "Current budget use");
+        preset_text(&output, "16.9%");
+        preset_text(&output, "Weighted mean");
+        preset_text(&output, "50.0%");
+        preset_text(&output, "Processing budget overruns");
+        preset_text(&output, "Reset statistics");
+        assert!(app.audio_performance_open);
+        assert!(!app.library_enabled());
     }
 
     #[test]

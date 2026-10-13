@@ -3,6 +3,85 @@
 The goal is lower CPU use and predictable audio deadlines on large patches.
 Rust alone is not evidence of a speedup. No VCV Rack comparison is available yet.
 
+## Live callback diagnostics
+
+Open **View → Audio performance**, or click **DSP** in the footer. The native
+app shows current, peak and frame-weighted mean processing budget use, actual
+buffer size/rate, interval callback counts and processing-budget overruns.
+**Reset statistics** starts a new interval at the next callback; until then it
+shows a pending reset. Reconnecting audio creates fresh statistics. Transport
+pause still runs the callback and is measured.
+
+Two monotonic clock reads measure elapsed wall time around graph adoption, state transfer, crossfade,
+DSP, device sample conversion and existing telemetry publication. The timing
+accumulator and its own atomic publication happen afterward and are excluded
+from the reported duration. Preemption during processing is included; scheduling
+lateness before callback entry is not. Storage is fixed; this adds no callback allocations,
+locks, logging or per-sample clock reads. Readers make at most four attempts at
+an independently coherent timing snapshot. Missing, closed or contended data
+is shown as unavailable, never as zero budget use.
+
+A callback's budget is its actual complete frames divided by the device sample
+rate. A processing-budget overrun means elapsed nanoseconds × sample rate is
+strictly greater than frames × 1,000,000,000, using integer arithmetic. This is
+**not a hardware xrun counter**: it does not measure late delivery by the audio
+driver or OS before callback entry. Zero-frame/channel callbacks have no utilization and do not
+enter valid interval totals or peaks. Counters saturate rather than wrap.
+
+MCP `inspect_performance.performance.audio_timing` exposes the same read-only
+snapshot with its own completed-callback sequence, graph revision and reset
+epoch. It is independent of module-state publication; consumers must not assume
+those snapshots describe the same instant. See [the MCP contract](MCP.md).
+
+For repeatable **headless callback** observations (no device is opened):
+
+```sh
+OPENPATCH_CALLBACK_PROFILE=/tmp/openpatch-callbacks.json \
+  cargo test --release -p openpatch-desktop callback_timing_profile -- --ignored --nocapture
+```
+
+This harness covers one/sixteen functional oscillator, circuit-voice and full
+Gates-history workloads at 48 kHz with 256-frame stereo buffers. It alternates
+instrumented/uninstrumented timing order (comparing each batch's final buffer),
+checks every warmup/steady/transition buffer for exact output equality, and
+records graph checkpoint, cable edit and fresh-replacement adoption buffers.
+Compilation is excluded. Timing results are observations, not CI pass/fail
+thresholds or proof of hardware deadlines. The callback's 5 ms crossfade fits
+inside each measured 256-frame adoption buffer. Cable edits can reduce the
+active voice width. Initial Gates graphs and checkpoint transitions have full
+histories; repeated fresh replacements start new histories.
+
+### Headless callback observation — Apple M1 Max
+
+A local release run on 2026-10-13 (Rust 1.99.0) produced the results below.
+Each buffer has **5.333 ms** of frame-time budget. Steady observations use 256
+callbacks per workload; checkpoint transitions use 16 observations and include
+state adoption plus both graphs during the crossfade.
+[Raw timings, patches, source hashes and method](benchmarks/callback-timing-m1max.json).
+
+| Workload | Steady median ms | Steady p99 ms | Checkpoint median ms | Steady overruns |
+|---|---:|---:|---:|---:|
+| Functional, 1 voice | 0.026 | 0.028 | 0.061 | 0/256 |
+| Functional, 16 voices | 0.312 | 0.373 | 0.637 | 0/256 |
+| Circuit, 1 voice | 0.597 | 0.663 | 1.205 | 0/256 |
+| Circuit, 16 voices | 8.755 | 9.254 | 17.570 | 256/256 |
+| Gates, 1 voice | 0.060 | 0.061 | 0.129 | 0/256 |
+| Gates, 16 voices | 0.689 | 0.768 | 1.384 | 0/256 |
+
+The sixteen-voice circuit patch exceeds this processing budget even without an
+edit, and its checkpoint crossfade roughly doubles the cost. This makes circuit
+processing and edit transitions the next optimization targets. These are
+headless callback observations, not live audio-device distributions.
+
+Five alternating enabled/raw batches per workload also measured the full
+instrumented call, including statistics publication. Differences crossed zero
+and varied with background activity (the one-voice functional median difference
+was about 0.143 µs per callback). This run does **not** resolve a reliable precise
+instrumentation overhead. Checked output buffers matched exactly. It establishes
+neither faster-than-Rack performance nor glitch-free hardware playback.
+
+## Offline engine throughput
+
 Run release benchmarks using `cargo bench -p openpatch-core`, or MCP `benchmark`
 on the current patch. The MCP result records sample rate, block size, node count,
 OS/architecture, build mode, elapsed time, frames/s and realtime factor.

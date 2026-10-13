@@ -71,6 +71,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Bypass a module | Right-click its panel → **Bypass module** |
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
+| Inspect audio processing load | **View → Audio performance**, or click **DSP** in the footer; [measurement details](docs/PERFORMANCE.md) |
 | Inspect a signal | **View → Signal scope**, the scope toolbar icon, or right-click an output jack → **Inspect in scope X/Y** |
 | Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
 | Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** adds inputs for a selection, or all cables for a hovered module when nothing is selected |
