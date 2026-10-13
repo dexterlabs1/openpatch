@@ -3602,6 +3602,12 @@ impl OpenPatch {
         if frame == 160 {
             self.scope.smoke_xy();
         }
+        if frame == 622 {
+            assert!(
+                egui::Popup::is_any_open(ctx),
+                "Parameter screenshot must contain the open editor"
+            );
+        }
         if matches!(
             frame,
             12 | 24
@@ -3713,6 +3719,22 @@ impl OpenPatch {
     }
 }
 impl eframe::App for OpenPatch {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
+        if self
+            .smoke_test
+            .as_ref()
+            .is_some_and(|(_, frame, _)| *frame >= 606)
+        {
+            // Xvfb without a window manager need not grant OS focus. This
+            // screenshot fixture explicitly models a focused editor; production
+            // input and focus-loss cancellation remain untouched.
+            input.focused = true;
+            input
+                .events
+                .retain(|event| !matches!(event, egui::Event::WindowFocused(_)));
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.smoke_test.is_some() {
             ctx.style_mut(|style| style.interaction.tooltip_delay = f32::INFINITY);
@@ -3922,24 +3944,36 @@ mod project_workflow_tests {
         app.smoke(&ctx);
         app.sync();
         let mut output = None;
-        for frame in 0..3 {
-            output = Some(ctx.run(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::vec2(1000.0, 800.0),
-                    )),
-                    time: Some(frame as f64),
-                    focused: true,
-                    ..Default::default()
-                },
-                |ctx| app.rack_workspace(ctx, None),
-            ));
+        for frame in 0..18 {
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1000.0, 800.0),
+                )),
+                time: Some(frame as f64),
+                focused: false,
+                events: vec![egui::Event::WindowFocused(false)],
+                ..Default::default()
+            };
+            eframe::App::raw_input_hook(&mut app, &ctx, &mut input);
+            output = Some(ctx.run(input, |ctx| app.rack_workspace(ctx, None)));
         }
         let output = output.unwrap();
         preset_text(&output, "Apply");
         preset_text(&output, "Enter frequency in Hz.");
         assert!(egui::Popup::is_any_open(&ctx));
+        app.smoke_test = None;
+        let mut real_input = egui::RawInput {
+            focused: false,
+            events: vec![egui::Event::WindowFocused(false)],
+            ..Default::default()
+        };
+        eframe::App::raw_input_hook(&mut app, &ctx, &mut real_input);
+        assert!(!real_input.focused);
+        assert!(matches!(
+            real_input.events.as_slice(),
+            [egui::Event::WindowFocused(false)]
+        ));
     }
 
     #[test]
