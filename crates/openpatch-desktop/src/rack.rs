@@ -2861,13 +2861,6 @@ impl Rack {
             && self.performance_available
             && !node.bypassed
             && ui.input(|i| i.focused);
-        painter.text(
-            point(120.0, 68.0),
-            Align2::CENTER_CENTER,
-            "TIMED LOGIC",
-            FontId::proportional(9.0 * zoom),
-            MUTED,
-        );
         painter.line_segment(
             [point(24.0, 247.0), point(216.0, 247.0)],
             Stroke::new(0.8 * zoom, Color32::from_rgb(146, 140, 126)),
