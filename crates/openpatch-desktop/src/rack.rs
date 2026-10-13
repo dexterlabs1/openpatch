@@ -25,9 +25,38 @@ const CABLES: [Color32; 6] = [
     Color32::from_rgb(169, 112, 173),
     Color32::from_rgb(195, 138, 80),
 ];
+const PULSE_PRESS: [&str; 10] = [
+    "pulse1_press",
+    "pulse2_press",
+    "pulse3_press",
+    "pulse4_press",
+    "pulse5_press",
+    "pulse6_press",
+    "pulse7_press",
+    "pulse8_press",
+    "pulse9_press",
+    "pulse10_press",
+];
+const PULSE_RELEASE: [&str; 10] = [
+    "pulse1_release",
+    "pulse2_release",
+    "pulse3_release",
+    "pulse4_release",
+    "pulse5_release",
+    "pulse6_release",
+    "pulse7_release",
+    "pulse8_release",
+    "pulse9_release",
+    "pulse10_release",
+];
 
 pub(crate) enum RackAction {
     Command(&'static str, Value),
+    ManualClick {
+        id: String,
+        press: &'static str,
+        release: &'static str,
+    },
     OpenBrowser,
     Preset {
         id: String,
@@ -137,6 +166,7 @@ struct HeldManual {
     id: String,
     kind: String,
     release: &'static str,
+    button_rect: Rect,
 }
 
 struct GroupDrag {
@@ -530,12 +560,17 @@ impl Rack {
     fn release_manual_if_needed(&mut self, ui: &egui::Ui, patch: &Patch) -> Option<RackAction> {
         let held = self.held_manual.as_ref()?;
         let eligible = ui.is_enabled()
+            && self.shortcuts_enabled
             && self.performance_available
             && self.editing.is_none()
             && ui.input(|i| {
                 i.focused
                     && i.pointer.primary_down()
                     && !i.pointer.button_released(PointerButton::Primary)
+                    && (held.kind != "pulses"
+                        || i.pointer
+                            .latest_pos()
+                            .is_some_and(|position| held.button_rect.contains(position)))
                     && !i
                         .raw
                         .events
@@ -1165,6 +1200,11 @@ impl Rack {
             }
             if is_signal_utility(&node.kind) {
                 if let Some(edit) = self.signal_panel(ui, node, rect, released_manual.is_none()) {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "pulses" {
+                if let Some(edit) = self.pulses_panel(ui, node, rect, released_manual.is_none()) {
                     action = Some(edit);
                 }
             }
@@ -1914,7 +1954,7 @@ impl Rack {
                     connected,
                     true,
                     self.zoom,
-                    is_voltage_utility(&node.kind),
+                    is_voltage_utility(&node.kind) || node.kind == "pulses",
                 );
                 self.cable_jack(
                     &jack,
@@ -2410,6 +2450,7 @@ impl Rack {
                     id: node.id.clone(),
                     kind: node.kind.clone(),
                     release,
+                    button_rect,
                 });
                 self.select_primary(node.id.clone());
                 action = Some(RackAction::Command(
@@ -2470,6 +2511,168 @@ impl Rack {
                 MUTED,
             );
         }
+        action
+    }
+
+    fn pulses_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        rect: Rect,
+        allow_press: bool,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let enabled = ui.is_enabled()
+            && self.shortcuts_enabled
+            && self.performance_available
+            && !node.bypassed
+            && ui.input(|i| i.focused);
+        for (x, label) in [(92.0, "FIRE"), (155.0, "TRIG"), (205.0, "GATE")] {
+            painter.text(
+                point(x, 80.0),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(9.0 * zoom),
+                MUTED,
+            );
+        }
+        let pressed_mask = self
+            .module_controls
+            .get(&node.id)
+            .map_or(0, |controls| controls.pressed_mask);
+        let mut action = None;
+        for row in 0..10 {
+            let y = 100.0 + row as f32 * 29.0;
+            let active = pressed_mask & (1_u16 << row) != 0;
+            let button_rect = Rect::from_center_size(point(92.0, y), vec2(62.0, 21.0) * zoom);
+            let response = ui.interact(
+                button_rect,
+                ui.id().with((&node.id, "pulse-button", row)),
+                Sense::click_and_drag(),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    enabled,
+                    format!(
+                        "PULSES {} row {} momentary trigger and gate",
+                        node.id,
+                        row + 1
+                    ),
+                )
+            });
+            painter.text(
+                point(35.0, y),
+                Align2::CENTER_CENTER,
+                format!("{:02}", row + 1),
+                FontId::monospace(9.0 * zoom),
+                MUTED,
+            );
+            painter.rect_filled(
+                button_rect.translate(vec2(0.8, 1.5) * zoom),
+                3.0 * zoom,
+                Color32::from_black_alpha(80),
+            );
+            painter.rect_filled(
+                button_rect,
+                3.0 * zoom,
+                if active {
+                    Color32::from_rgb(212, 166, 86)
+                } else if enabled && response.hovered() {
+                    Color32::from_rgb(246, 237, 210)
+                } else {
+                    Color32::from_rgb(190, 186, 175)
+                },
+            );
+            painter.rect_stroke(
+                button_rect,
+                3.0 * zoom,
+                Stroke::new(zoom, Color32::from_rgb(89, 85, 76)),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                button_rect.center(),
+                Align2::CENTER_CENTER,
+                "PUSH",
+                FontId::proportional(8.0 * zoom),
+                if enabled { INK } else { MUTED },
+            );
+            let brightness = self
+                .module_lights
+                .get(&node.id)
+                .filter(|lights| row < usize::from(lights.count))
+                .map_or(0.0, |lights| lights.brightness[row][0])
+                .clamp(0.0, 1.0);
+            painter.circle_filled(point(132.0, y), 4.0 * zoom, Color32::from_rgb(71, 66, 58));
+            painter.circle_filled(
+                point(132.0, y),
+                2.8 * zoom,
+                Color32::from_rgb(238, 177, 65).gamma_multiply(0.12 + 0.88 * brightness),
+            );
+            if row < 9 {
+                painter.line_segment(
+                    [point(24.0, y + 14.0), point(216.0, y + 14.0)],
+                    Stroke::new(0.55 * zoom, Color32::from_white_alpha(28)),
+                );
+            }
+            if enabled
+                && allow_press
+                && self.held_manual.is_none()
+                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+            {
+                if response.clicked_by(PointerButton::Primary) {
+                    self.select_primary(node.id.clone());
+                    action = Some(RackAction::ManualClick {
+                        id: node.id.clone(),
+                        press: PULSE_PRESS[row],
+                        release: PULSE_RELEASE[row],
+                    });
+                } else if response.is_pointer_button_down_on() {
+                    self.held_manual = Some(HeldManual {
+                        id: node.id.clone(),
+                        kind: node.kind.clone(),
+                        release: PULSE_RELEASE[row],
+                        button_rect,
+                    });
+                    self.select_primary(node.id.clone());
+                    action = Some(RackAction::Command(
+                        "trigger_module",
+                        json!({"id":node.id,"action":PULSE_PRESS[row]}),
+                    ));
+                }
+            }
+            response.on_hover_text(if enabled {
+                format!(
+                    "Row {}: press for TRIG {}, hold for GATE {}. Moving outside or releasing the button ends the gate.",
+                    row + 1,
+                    row + 1,
+                    row + 1
+                )
+            } else {
+                "Momentary controls require a live audio engine and an active module.".into()
+            });
+        }
+        painter.text(
+            point(120.0, 384.0),
+            Align2::CENTER_CENTER,
+            if node.bypassed {
+                "BYPASSED"
+            } else if !self.module_controls.contains_key(&node.id) {
+                if self.performance_available {
+                    "WAITING FOR ENGINE"
+                } else {
+                    "AUDIO OFFLINE"
+                }
+            } else if !self.performance_available {
+                "LAST ENGINE STATE"
+            } else {
+                "TRIGGER / HELD GATE"
+            },
+            FontId::proportional(8.0 * zoom),
+            MUTED,
+        );
         action
     }
 
@@ -3761,6 +3964,12 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "pulses" if !input => {
+            return pos2(
+                if index < 10 { 155.0 } else { 205.0 },
+                100.0 + (index % 10) as f32 * 29.0,
+            )
+        }
         "vca_mix" if input => {
             return if index < 4 {
                 pos2(37.5 + index as f32 * 75.0, 226.0)
@@ -4384,7 +4593,7 @@ fn panel_width(kind: &str) -> f32 {
         "vca_mix" => HP * 26.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
-        "attenuverter8" | "mutes10" | "cv_mix" => HP * 16.0,
+        "attenuverter8" | "mutes10" | "cv_mix" | "pulses" => HP * 16.0,
         "seq3" => HP * 52.0,
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
@@ -4434,6 +4643,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "attenuverter8" => "8VERT",
         "mutes10" => "MUTES 10",
         "cv_mix" => "CV MIX",
+        "pulses" => "PULSES",
         "attenuverter" => "ATTENUVERTER",
         "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
@@ -4967,13 +5177,15 @@ fn paint_panel(
         [point(22.0, 65.0), point(width - 22.0, 65.0)],
         Stroke::new(0.9 * zoom, Color32::from_rgb(158, 153, 140)),
     );
-    painter.text(
-        point(width * 0.5, PANEL_HEIGHT - 7.0),
-        Align2::CENTER_CENTER,
-        "OPENPATCH",
-        FontId::proportional(7.0 * zoom),
-        MUTED,
-    );
+    if node.kind != "pulses" {
+        painter.text(
+            point(width * 0.5, PANEL_HEIGHT - 7.0),
+            Align2::CENTER_CENTER,
+            "OPENPATCH",
+            FontId::proportional(7.0 * zoom),
+            MUTED,
+        );
+    }
     if master {
         paint_jack_light(
             painter,
@@ -7355,6 +7567,196 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn pulses_first_and_tenth_buttons_and_jacks_use_their_own_rows() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[
+                {"id":"manual","kind":"pulses"},
+                {"id":"sink","kind":"gain"}
+            ]
+        }))
+        .unwrap();
+        for (row, output_name) in [(0, "trig1"), (9, "gate10")] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let button_center = pos2(24.0 + 92.0, 12.0 + 100.0 + row as f32 * 29.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![
+                    egui::Event::PointerMoved(button_center),
+                    button(button_center, true),
+                ],
+            );
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["id"] == "manual" && args["action"] == PULSE_PRESS[row]
+            ));
+            assert_eq!(
+                rack.held_manual.as_ref().unwrap().release,
+                PULSE_RELEASE[row]
+            );
+            assert!(patch.nodes[0].params.is_empty());
+            assert!(frame(&ctx, &mut rack, &patch, 1.1, vec![]).is_none());
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.2,
+                vec![button(button_center, false)],
+            );
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["action"] == PULSE_RELEASE[row]
+            ));
+            let source = fixture_jack(&rack, &patch, "manual", output_name, false);
+            let sink = fixture_jack(&rack, &patch, "sink", "signal", true);
+            let action = drag(&ctx, &mut rack, &patch, 2.0, source, sink);
+            assert!(matches!(action,
+                Some(RackAction::Command("connect", ref args))
+                    if args["from"] == "manual" && args["output"] == output_name
+                    && args["to"] == "sink" && args["input"] == "signal"
+            ));
+        }
+    }
+
+    #[test]
+    fn pulses_same_frame_pointer_click_sends_ordered_press_and_release_without_hold() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"pulses"}]
+        }))
+        .unwrap();
+        for row in [0, 9] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(116.0, 112.0 + row as f32 * 29.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![
+                    egui::Event::PointerMoved(target),
+                    button(target, true),
+                    button(target, false),
+                ],
+            );
+            assert!(matches!(action,
+                Some(RackAction::ManualClick { id, press, release })
+                    if id == "manual" && press == PULSE_PRESS[row] && release == PULSE_RELEASE[row]
+            ));
+            assert!(rack.held_manual.is_none());
+            assert!(frame(&ctx, &mut rack, &patch, 1.1, vec![]).is_none());
+            assert!(patch.nodes[0].params.is_empty());
+        }
+    }
+
+    #[test]
+    fn pulses_held_row_releases_on_exit_focus_modal_bypass_removal_and_engine_loss() {
+        for cause in [
+            "exit",
+            "focus",
+            "modal",
+            "shortcut-modal",
+            "bypass",
+            "removal",
+            "engine",
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            let mut patch: Patch = serde_json::from_value(json!({
+                "version":2,"nodes":[{"id":"manual","kind":"pulses"}]
+            }))
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(116.0, 112.0 + 9.0 * 29.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["action"] == "pulse10_press"
+            ));
+            let mut events = vec![];
+            let (focused, enabled) = match cause {
+                "exit" => {
+                    events.push(egui::Event::PointerMoved(target + vec2(70.0, 0.0)));
+                    (true, true)
+                }
+                "focus" => {
+                    events.push(egui::Event::WindowFocused(false));
+                    (false, true)
+                }
+                "modal" => (true, false),
+                "shortcut-modal" => {
+                    rack.set_shortcuts_enabled(false);
+                    (true, true)
+                }
+                "bypass" => {
+                    patch.nodes[0].bypassed = true;
+                    (true, true)
+                }
+                "removal" => {
+                    patch.nodes.clear();
+                    (true, true)
+                }
+                _ => {
+                    rack.set_sequence_states(BTreeMap::new(), false);
+                    (true, true)
+                }
+            };
+            let action = frame_state(&ctx, &mut rack, &patch, 1.1, events, focused, enabled).0;
+            assert!(
+                matches!(action,
+                    Some(RackAction::Command("trigger_module", ref args))
+                        if args["id"] == "manual" && args["action"] == "pulse10_release"
+                ),
+                "{cause}"
+            );
+            assert!(rack.held_manual.is_none(), "{cause}");
+        }
+    }
+
+    #[test]
+    fn pulses_uses_each_telemetry_bit_instead_of_any_held_state() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        // A stopped engine still paints its last telemetry; it only disables presses.
+        rack.module_controls.insert(
+            "manual".into(),
+            ModuleControlState {
+                pressed: true,
+                pressed_mask: 1 << 9,
+            },
+        );
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"pulses"}]
+        }))
+        .unwrap();
+        let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let active = Color32::from_rgb(212, 166, 86);
+        let row_fill = |row: usize| {
+            let center = pos2(116.0, 112.0 + row as f32 * 29.0);
+            output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::epaint::Shape::Rect(rect)
+                    if rect.rect.center() == center && rect.fill == active)
+            })
+        };
+        assert!(!row_fill(0));
+        assert!(row_fill(9));
     }
 
     #[test]

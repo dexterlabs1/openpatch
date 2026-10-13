@@ -245,12 +245,18 @@ fn meter_handles_adopt_envelopes_divider_and_new_parameters_but_identity_reset_i
     assert!(edited.resolve_module_event("s").is_err());
     assert!(!edited.reset_module_state(old_h));
     assert!(edited.reset_module_state(h));
-    assert_eq!(edited.module_lights(h).unwrap().brightness, [[0.0; 2]; 8]);
+    assert_eq!(
+        edited.module_lights(h).unwrap().brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     p.sample_rate = 16000;
     let mut rate = p.compile().unwrap();
     rate.adopt_state_from(&old);
     let h = rate.resolve_module_lights("s").unwrap();
-    assert_eq!(rate.module_lights(h).unwrap().brightness, [[0.0; 2]; 8]);
+    assert_eq!(
+        rate.module_lights(h).unwrap().brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     assert!(patch("fade", "out")
         .compile()
         .unwrap()

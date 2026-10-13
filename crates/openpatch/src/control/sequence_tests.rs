@@ -733,3 +733,58 @@ fn offline_manual_actions_preserve_string_wire_format_and_reject_wrong_target_be
     assert_eq!(s.snapshot(), before);
     fs::remove_dir_all(path).unwrap();
 }
+
+#[test]
+fn pulses_actions_validate_rows_preserve_history_and_release_while_bypassed() {
+    let mut s = session();
+    s.execute("add_module", json!({"id":"pulses","kind":"pulses"}))
+        .unwrap();
+    let backend = Arc::new(MockLive::default());
+    s.set_live_module_events(Some(backend.clone()));
+    let before = s.snapshot();
+    for row in 1..=10 {
+        for edge in ["press", "release"] {
+            let action = format!("pulse{row}_{edge}");
+            let receipt = s
+                .execute("trigger_module", json!({"id":"pulses","action":action}))
+                .unwrap();
+            assert_eq!(receipt["receipt"]["action"], action);
+        }
+    }
+    for action in [
+        json!("pulse0_press"),
+        json!("pulse11_release"),
+        json!("pulse01_press"),
+        json!("pulse1_toggle"),
+        json!({"PulsePress":1}),
+        json!("gate_press"),
+    ] {
+        assert!(s
+            .execute("trigger_module", json!({"id":"pulses","action":action}))
+            .is_err());
+    }
+    assert!(s
+        .execute(
+            "trigger_module",
+            json!({"id":"seq","action":"pulse1_press"})
+        )
+        .is_err());
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 20);
+    assert_eq!(s.snapshot(), before);
+    s.execute("set_bypass", json!({"id":"pulses","bypassed":true}))
+        .unwrap();
+    let bypassed = s.snapshot();
+    assert!(s
+        .execute(
+            "trigger_module",
+            json!({"id":"pulses","action":"pulse10_press"})
+        )
+        .is_err());
+    s.execute(
+        "trigger_module",
+        json!({"id":"pulses","action":"pulse10_release"}),
+    )
+    .unwrap();
+    assert_eq!(s.snapshot(), bypassed);
+    assert_eq!(backend.queued.load(Ordering::Relaxed), 21);
+}

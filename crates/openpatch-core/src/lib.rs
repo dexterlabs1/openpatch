@@ -27,16 +27,17 @@ mod multi_vco;
 mod parameter_actions;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;
+mod pulses;
 mod routing;
 mod sequence;
 mod signal;
-pub use signal::{ModuleControlState, ModuleLightState};
+pub use signal::{ModuleControlState, ModuleLightState, MAX_MODULE_LIGHTS};
 mod switch;
 mod utility_bank;
 pub use midi::{parse_midi, MidiEvent, TimedMidiEvent};
 pub use sequence::{
     validate_module_events, ModuleAction, ModuleHandle, ModuleTelemetry, TimedModuleEvent,
-    MAX_MODULE_ACTIONS_PER_SAMPLE, MAX_MODULE_EVENTS,
+    MAX_MODULE_ACTIONS_PER_SAMPLE, MAX_MODULE_EVENTS, MODULE_ACTION_NAMES,
 };
 mod utilities;
 pub use poly::{PortFrame, MAX_CHANNELS};
@@ -223,6 +224,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(sequence::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(pulses::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

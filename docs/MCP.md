@@ -241,8 +241,8 @@ For reproducible offline actions, supply `module_events` to `render_audio`,
 ```
 
 Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
-module for sequence actions, or `logic`/`process` for manual controls), and `action`
-(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, or `gate_release`).
+module for sequence actions, or `logic`/`process`/`pulses` for manual controls), and `action`
+(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`).
 Each action must match its module kind. Frames index the stored patch
 sample rate, must be less than the rounded render frame count, and must be
 nondecreasing. The list is capped at 65,536 events and at 64 actions for one
@@ -268,11 +268,11 @@ timing and the stereo example.
 ## Momentary controls and live module observations
 
 Logic accepts `b_press` and `b_release`; Process accepts `gate_press` and
-`gate_release`. Use these with `trigger_module` for live controls, or as
+`gate_release`. Pulses accepts `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`. Use these with `trigger_module` for live controls, or as
 sample-timed `module_events` for offline render/analysis/capture. Sequence
 clock/run/reset actions still require `seq3`. A manual press remains held until
 release; it is not a one-sample pulse and is not saved as a parameter or undo
-entry. At one sample, the last ordered button state wins before CV evaluation.
+entry. For Logic and Process, the last ordered button state wins before CV evaluation. Pulses preserves same-sample press/release edges as triggers; a click can emit a trigger without leaving a gate held.
 
 ```json
 {"id":"logic","action":"b_press","expected_revision":7}
@@ -281,20 +281,20 @@ entry. At one sample, the last ordered button state wins before CV evaluation.
 Send the matching release to end a hold. Releases remain valid during bypass.
 A full live queue can return `queued: false`, `emergency_release: true`, and
 `safety_pending: true` in the receipt: a separate bounded path clears the hold
-and invalidates older queued presses. It does not reset held voltages or DSP
+and invalidates older queued presses. For Pulses this releases every held row, while ordinary row releases are independent. It does not reset held voltages or DSP
 histories. `emergency_release_requests` and `emergency_release_applied` are
 separate from ordinary queued/applied/dropped counters. A receipt is acceptance,
 not proof that audio has processed it. No live backend means these requests are
 unsupported; offline event traces remain available.
 
 `inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, the four signal processors, and VCA Mix. Each entry has
+sequencer, sequential switches, the four signal processors, VCA Mix, and Pulses. Each entry has
 `kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
 `state`, `controls`, and `lights`. Sequence state retains step/running/length.
-Manual `controls` reports `pressed`; indicator `lights` provides `count`, eight
+Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9); indicator `lights` provides `count`, ten
 fixed-capacity brightness pairs, and a `manual` flag. Signal processors use
 mono/poly pairs; VCA Mix uses the first value for each channel meter and leaves
-the second value zero. Only the first
+the second value zero. Pulses uses one entry per row. Only the first
 `count` pairs are meaningful; names and interpretation come from the catalog's
 `light_names` and `light_policy`. Unsupported fields are null.
 
@@ -465,3 +465,5 @@ and 1,024 cables. File arguments accept simple filenames, not paths; symlinks
 are rejected and writes use exclusive creation. Use a workspace owned by you,
 not a directory concurrently modified by untrusted users. This is a local tool,
 not an OS sandbox or a hardened multi-user file service.
+
+[Ten-row Pulses timing and state contract →](PULSES.md)

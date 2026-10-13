@@ -1390,6 +1390,40 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "manual-utilities.json"})
         self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
 
+    def test_pulses_indexed_events_ports_and_transient_project_state(self) -> None:
+        modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}
+        self.assertEqual(modules["pulses"]["inputs"], [])
+        self.assertEqual(len(modules["pulses"]["runtime_actions"]), 20)
+        self.require_tool_success("add_module", {"id": "buttons", "kind": "pulses"})
+        before = self.patch_snapshot()
+        events = [{"frame": 0, "id": "buttons", "action": "pulse10_press"},
+                  {"frame": 0, "id": "buttons", "action": "pulse10_release"},
+                  {"frame": 4, "id": "buttons", "action": "pulse1_press"},
+                  {"frame": 8, "id": "buttons", "action": "pulse1_release"}]
+        for port, expected in [("trig10", [10] * 48 + [0] * 48),
+                               ("gate10", [0] * 96),
+                               ("gate1", [10 if 4 <= n < 8 else 0 for n in range(96)])]:
+            capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": "buttons", "port": port, "seconds": 0.002, "module_events": events}))
+            self.assertEqual([point["mean"] for point in capture["bins"]], expected)
+        for action in ["pulse0_press", "pulse11_release", "pulse01_press", "pulse1_toggle", "gate_press", {"PulsePress": 1}]:
+            self.require_tool_error("render_audio", {"filename": "invalid-pulses.wav", "seconds": 0.002,
+                "module_events": [{"frame": 0, "id": "buttons", "action": action}]})
+            self.assertFalse((self.workspace / "invalid-pulses.wav").exists())
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("save_patch", {"filename": "pulses.json"})
+        saved = json.loads((self.workspace / "pulses.json").read_text())
+        node = next(node for node in saved["nodes"] if node["id"] == "buttons")
+        self.assertEqual(node["params"], {})
+        self.assertNotIn("pressed_mask", node)
+        self.require_tool_success("set_bypass", {"id": "buttons", "bypassed": True})
+        self.require_tool_error("capture_signal", {"id": "buttons", "port": "gate10", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "buttons", "action": "pulse10_press"}]})
+        self.require_tool_success("capture_signal", {"id": "buttons", "port": "gate10", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "buttons", "action": "pulse10_release"}]})
+        self.require_tool_success("load_patch", {"filename": "pulses.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

@@ -7,8 +7,37 @@ use std::collections::BTreeMap;
 
 pub const MAX_MODULE_EVENTS: usize = 65_536;
 pub const MAX_MODULE_ACTIONS_PER_SAMPLE: usize = 64;
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// String-only runtime action names, shared with host protocol schemas.
+pub const MODULE_ACTION_NAMES: &[&str] = &[
+    "clock",
+    "run",
+    "reset",
+    "b_press",
+    "b_release",
+    "gate_press",
+    "gate_release",
+    "pulse1_press",
+    "pulse1_release",
+    "pulse2_press",
+    "pulse2_release",
+    "pulse3_press",
+    "pulse3_release",
+    "pulse4_press",
+    "pulse4_release",
+    "pulse5_press",
+    "pulse5_release",
+    "pulse6_press",
+    "pulse6_release",
+    "pulse7_press",
+    "pulse7_release",
+    "pulse8_press",
+    "pulse8_release",
+    "pulse9_press",
+    "pulse9_release",
+    "pulse10_press",
+    "pulse10_release",
+];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleAction {
     Clock,
     Run,
@@ -17,33 +46,70 @@ pub enum ModuleAction {
     BRelease,
     GatePress,
     GateRelease,
+    /// One-based PULSES button, valid only in 1..=10.
+    PulsePress(u8),
+    /// One-based PULSES button, valid only in 1..=10.
+    PulseRelease(u8),
+}
+impl ModuleAction {
+    /// Validated zero-based PULSES button and whether this is a press.
+    pub fn pulse_button(self) -> Option<(usize, bool)> {
+        match self {
+            Self::PulsePress(button @ 1..=10) => Some((usize::from(button - 1), true)),
+            Self::PulseRelease(button @ 1..=10) => Some((usize::from(button - 1), false)),
+            _ => None,
+        }
+    }
+    fn name(self) -> Option<&'static str> {
+        let index = match self {
+            Self::Clock => 0,
+            Self::Run => 1,
+            Self::Reset => 2,
+            Self::BPress => 3,
+            Self::BRelease => 4,
+            Self::GatePress => 5,
+            Self::GateRelease => 6,
+            action => {
+                let (button, press) = action.pulse_button()?;
+                7 + 2 * button + usize::from(!press)
+            }
+        };
+        Some(MODULE_ACTION_NAMES[index])
+    }
+}
+impl Serialize for ModuleAction {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let name = self
+            .name()
+            .ok_or_else(|| serde::ser::Error::custom("PULSES button must be in 1..=10"))?;
+        serializer.serialize_str(name)
+    }
 }
 impl<'de> Deserialize<'de> for ModuleAction {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Unit-enum derives also accept externally tagged objects. Our wire
-        // contract is deliberately a string enum, including inside trace events.
+        // String decoding deliberately rejects externally tagged objects.
         let value = String::deserialize(deserializer)?;
-        match value.as_str() {
-            "clock" => Ok(Self::Clock),
-            "run" => Ok(Self::Run),
-            "reset" => Ok(Self::Reset),
-            "b_press" => Ok(Self::BPress),
-            "b_release" => Ok(Self::BRelease),
-            "gate_press" => Ok(Self::GatePress),
-            "gate_release" => Ok(Self::GateRelease),
-            _ => Err(serde::de::Error::unknown_variant(
-                &value,
-                &[
-                    "clock",
-                    "run",
-                    "reset",
-                    "b_press",
-                    "b_release",
-                    "gate_press",
-                    "gate_release",
-                ],
-            )),
-        }
+        let index = MODULE_ACTION_NAMES
+            .iter()
+            .position(|name| *name == value)
+            .ok_or_else(|| serde::de::Error::unknown_variant(&value, MODULE_ACTION_NAMES))?;
+        Ok(match index {
+            0 => Self::Clock,
+            1 => Self::Run,
+            2 => Self::Reset,
+            3 => Self::BPress,
+            4 => Self::BRelease,
+            5 => Self::GatePress,
+            6 => Self::GateRelease,
+            _ => {
+                let button = ((index - 7) / 2 + 1) as u8;
+                if (index - 7) % 2 == 0 {
+                    Self::PulsePress(button)
+                } else {
+                    Self::PulseRelease(button)
+                }
+            }
+        })
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +146,11 @@ pub fn validate_module_events(
     let mut previous = 0;
     let mut counts = BTreeMap::<&str, usize>::new();
     for (index, event) in events.iter().enumerate() {
+        if event.action.name().is_none() {
+            return Err(format!(
+                "module event {index}: PULSES button must be in 1..=10"
+            ));
+        }
         if event.frame >= total_frames as u64 {
             return Err(format!("module event {index}: frame is outside render"));
         }

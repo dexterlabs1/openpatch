@@ -2646,7 +2646,7 @@ mod tests {
 
     #[test]
     fn initialization_releases_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);
@@ -2692,7 +2692,7 @@ mod tests {
 
     #[test]
     fn preset_load_and_history_release_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3236,7 +3236,161 @@ mod tests {
         assert_eq!(status["pending"], 0);
     }
 
+    #[test]
+    fn pulses_publish_ten_independent_rows_and_validate_rust_action_indices() {
+        let patch = manual_patch("pulses");
+        let (mut callback, _, _) = sequence_callback(&patch);
+        for action in [
+            ModuleAction::PulsePress(0),
+            ModuleAction::PulsePress(11),
+            ModuleAction::PulseRelease(0),
+            ModuleAction::PulseRelease(255),
+            ModuleAction::GatePress,
+        ] {
+            assert!(callback.performance.trigger("manual", action).is_err());
+        }
+        for row in 1..=10 {
+            callback
+                .performance
+                .trigger("manual", ModuleAction::PulsePress(row))
+                .unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+        let controls = callback.performance.module_control_state("manual").unwrap();
+        assert!(controls.pressed);
+        assert_eq!(controls.pressed_mask, 0x3ff);
+        let lights = callback.performance.module_lights("manual").unwrap();
+        assert_eq!(lights.count, 10);
+        assert!(lights.brightness.iter().all(|pair| pair[0] > 0.0));
+        let snapshot = callback.performance.snapshot();
+        assert_eq!(snapshot["coherent"], true);
+        assert_eq!(
+            snapshot["modules"]["manual"]["controls"]["pressed_mask"],
+            0x3ff
+        );
+        callback
+            .performance
+            .trigger("manual", ModuleAction::PulseRelease(1))
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed_mask,
+            0x3fe
+        );
+        callback
+            .performance
+            .trigger("manual", ModuleAction::PulseRelease(10))
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed_mask,
+            0x1fe
+        );
+        // A saturated row release clears every held row, invalidating all older presses.
+        for _ in 0..EVENT_CAPACITY {
+            callback
+                .performance
+                .trigger("manual", ModuleAction::PulsePress(10))
+                .unwrap();
+        }
+        let receipt = callback
+            .performance
+            .trigger("manual", ModuleAction::PulseRelease(1))
+            .unwrap();
+        assert_eq!(receipt["emergency_release"], true);
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let controls = callback.performance.module_control_state("manual").unwrap();
+        assert!(!controls.pressed);
+        assert_eq!(controls.pressed_mask, 0);
+        assert_eq!(callback.performance.snapshot()["pending"], 0);
+    }
+
+    #[test]
+    fn pulses_layout_checkpoint_preserves_held_rows_and_exact_trigger_tail() {
+        let patch = manual_patch("pulses");
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        for action in [
+            ModuleAction::PulsePress(1),
+            ModuleAction::PulsePress(10),
+            ModuleAction::PulseRelease(10),
+        ] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1)); // sample 1
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "gate1"),
+                ("manual", "trig10")
+            ),
+            [10.0, 10.0]
+        ); // sample 2
+        let token = callback.graphs.active.modules.bindings[0].unwrap().token;
+        session
+            .record_layout_checkpoint(session.revision())
+            .unwrap();
+        let graph = sequence_graph(&callback, session.patch(), session.revision());
+        assert_eq!(graph.modules.bindings[0].unwrap().token, token);
+        assert!(updates.push(graph).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1)); // sample 3
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "gate1"),
+                ("manual", "trig10")
+            ),
+            [10.0, 10.0]
+        ); // sample 4
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed_mask,
+            1
+        );
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 42], 1)); // samples 5..46
+        for _ in 0..2 {
+            // final high samples 47,48
+            assert_eq!(
+                read_raw_pair(
+                    &mut callback.graphs.active.engine,
+                    ("manual", "gate1"),
+                    ("manual", "trig10")
+                ),
+                [10.0, 10.0]
+            );
+        }
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "gate1"),
+                ("manual", "trig10")
+            ),
+            [10.0, 0.0]
+        ); // sample49
+    }
+
     fn manual_patch(kind: &str) -> Patch {
+        if kind == "pulses" {
+            return serde_json::from_value(serde_json::json!({"version":2,
+                "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
+                    {"id":"manual","kind":"pulses"}],
+                "output":"manual","output_port":"gate10"}))
+            .unwrap();
+        }
         serde_json::from_value(serde_json::json!({"version":2,
             "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
                 {"id":"manual","kind":kind}],
@@ -3244,7 +3398,9 @@ mod tests {
             "output":"manual","output_port":if kind=="logic" {"or"} else {"track_hold"}})).unwrap()
     }
     fn manual_actions(kind: &str) -> (ModuleAction, ModuleAction) {
-        if kind == "logic" {
+        if kind == "pulses" {
+            (ModuleAction::PulsePress(10), ModuleAction::PulseRelease(10))
+        } else if kind == "logic" {
             (ModuleAction::BPress, ModuleAction::BRelease)
         } else {
             (ModuleAction::GatePress, ModuleAction::GateRelease)
@@ -3253,7 +3409,7 @@ mod tests {
 
     #[test]
     fn manual_controls_publish_coherent_actual_lights_and_preserve_ordered_releases() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let patch = manual_patch(kind);
             let (mut callback, _, _) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3280,7 +3436,14 @@ mod tests {
             );
             let lights = callback.performance.module_lights("manual").unwrap();
             assert!(lights.manual);
-            assert_eq!(lights.count, if kind == "logic" { 8 } else { 0 });
+            assert_eq!(
+                lights.count,
+                match kind {
+                    "logic" => 8,
+                    "pulses" => 10,
+                    _ => 0,
+                }
+            );
             assert!(callback.performance.sequence_state("manual").is_none());
             let actual = callback.performance.snapshot();
             assert_eq!(actual["modules"]["manual"]["available"], true);
@@ -3307,7 +3470,7 @@ mod tests {
 
     #[test]
     fn full_manual_queue_uses_emergency_release_and_cancels_old_presses() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let mut patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3389,7 +3552,7 @@ mod tests {
 
     #[test]
     fn coalesced_manual_bypass_releases_held_controls_and_allows_bypassed_release() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3454,7 +3617,7 @@ mod tests {
 
     #[test]
     fn removed_manual_module_reappears_with_fresh_controls_and_lights() {
-        for kind in ["logic", "process"] {
+        for kind in ["logic", "process", "pulses"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);
@@ -3595,7 +3758,7 @@ mod tests {
                 .module_lights("mixer")
                 .unwrap()
                 .brightness,
-            [[0.0; 2]; 8]
+            [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
         );
     }
 

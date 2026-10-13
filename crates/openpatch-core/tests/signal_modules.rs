@@ -224,7 +224,10 @@ fn runtime_light_handles_adopt_dividers_freeze_on_bypass_and_clear_on_identity_r
         one(&mut old);
     }
     let h = old.resolve_module_lights("s").unwrap();
-    assert_eq!(old.module_lights(h).unwrap().brightness, [[0.0; 2]; 8]);
+    assert_eq!(
+        old.module_lights(h).unwrap().brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     let mut edited = p.compile().unwrap();
     edited.adopt_state_from(&old);
     let h = edited.resolve_module_lights("s").unwrap();
@@ -247,7 +250,10 @@ fn runtime_light_handles_adopt_dividers_freeze_on_bypass_and_clear_on_identity_r
     }
     assert_eq!(muted.module_lights(h).unwrap(), lights);
     assert!(muted.reset_module_state(h));
-    assert_eq!(muted.module_lights(h).unwrap().brightness, [[0.0; 2]; 8]);
+    assert_eq!(
+        muted.module_lights(h).unwrap().brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     for kind in ["compare", "rescale"] {
         let port = if kind == "compare" { "max" } else { "out" };
         let mut e = patch(kind, port).compile().unwrap();

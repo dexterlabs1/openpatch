@@ -20,6 +20,7 @@ use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
     write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, ModuleParameterActions, Node,
     Patch, PortFrame, TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
+    MODULE_ACTION_NAMES,
 };
 use serde_json::{json, Value};
 use std::{
@@ -537,13 +538,15 @@ impl Session {
                     "process" => {
                         matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease)
                     }
+                    "pulses" => action.pulse_button().is_some(),
                     _ => false,
                 };
                 if !supported {
-                    return Err("module action requires a seq3 module for clock/run/reset, logic for b_press/b_release, or process for gate_press/gate_release".into());
+                    return Err("module action requires a seq3 module for clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release".into());
                 }
                 if node.bypassed
                     && !matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
+                    && !matches!(action.pulse_button(), Some((_, false)))
                 {
                     return Err("module actions are unavailable while module is bypassed".into());
                 }
@@ -875,8 +878,8 @@ impl PerformanceEvents {
 
 fn module_events_schema() -> Value {
     json!({"type":"array","maxItems":65536,
-        "description":"Offline seq3, logic, and process actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
-        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":["clock","run","reset","b_press","b_release","gate_press","gate_release"]}},"required":["frame","id","action"],"additionalProperties":false}})
+        "description":"Offline seq3, logic, process, and pulses actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
+        "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":MODULE_ACTION_NAMES}},"required":["frame","id","action"],"additionalProperties":false}})
 }
 
 fn midi_events(args: &Value, frames: usize) -> Result<Vec<TimedMidiEvent>, String> {
@@ -1369,7 +1372,7 @@ pub fn tools() -> Value {
         "required":["tool","arguments"],"additionalProperties":false
     }});
     json!([
-        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, or process gate_press/gate_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":["clock","run","reset","b_press","b_release","gate_press","gate_release"]},"expected_revision":rev}),&["id","action"],false),
+        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits; layouts and files are not included.",json!({}),&[],true),

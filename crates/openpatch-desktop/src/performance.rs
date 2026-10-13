@@ -3,7 +3,7 @@
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
-    ModuleTelemetry, Patch, MAX_CABLES, MAX_NODES,
+    ModuleTelemetry, Patch, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -35,6 +35,7 @@ enum ModuleKind {
     Process,
     Rescale,
     VcaMix,
+    Pulses,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -47,6 +48,7 @@ impl ModuleKind {
             "process" => Some(Self::Process),
             "rescale" => Some(Self::Rescale),
             "vca_mix" => Some(Self::VcaMix),
+            "pulses" => Some(Self::Pulses),
             _ => None,
         }
     }
@@ -60,10 +62,11 @@ impl ModuleKind {
             Self::Process => "process",
             Self::Rescale => "rescale",
             Self::VcaMix => "vca_mix",
+            Self::Pulses => "pulses",
         }
     }
     fn manual(self) -> bool {
-        matches!(self, Self::Logic | Self::Process)
+        matches!(self, Self::Logic | Self::Process | Self::Pulses)
     }
     fn sequential(self) -> bool {
         matches!(self, Self::Sequence | Self::Switch1To4 | Self::Switch4To1)
@@ -76,12 +79,14 @@ impl ModuleKind {
             ),
             Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
             Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
+            Self::Pulses => action.pulse_button().is_some(),
             _ => false,
         }
     }
 }
 fn is_release(action: ModuleAction) -> bool {
     matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
+        || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]
 struct Entry {
@@ -152,7 +157,7 @@ struct Meter {
     frame: AtomicU64,
     value: AtomicU32,
     flags: AtomicU32,
-    brightness: [AtomicU32; 16],
+    brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
     fn new() -> Self {
@@ -182,7 +187,8 @@ impl Meter {
             );
         }
         if let Some(controls) = snapshot.controls {
-            flags |= 2 | (u32::from(controls.pressed) << 3);
+            flags |=
+                2 | (u32::from(controls.pressed) << 3) | (u32::from(controls.pressed_mask) << 16);
         }
         if let Some(lights) = snapshot.lights {
             flags |= 4 | (u32::from(lights.manual) << 4) | (u32::from(lights.count) << 8);
@@ -224,6 +230,7 @@ impl Meter {
                     }),
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
                         pressed: flags & 8 != 0,
+                        pressed_mask: (flags >> 16) as u16,
                     }),
                     lights: (flags & 4 != 0).then_some(ModuleLightState {
                         count: (flags >> 8) as u8,

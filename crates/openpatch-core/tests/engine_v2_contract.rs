@@ -999,3 +999,52 @@ fn generic_state_exclusions_and_incident_edge_clearing_neither_allocate_nor_free
         assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     }
 }
+
+#[test]
+fn pulses_actions_twenty_outputs_and_state_adoption_use_no_callback_heap() {
+    use openpatch_core::ModuleAction;
+    let mut p = patch(vec![node("p", "pulses", &[])], vec![], "p");
+    p.output_port = "trig10".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let old_control = old.resolve_module_control("p").unwrap();
+    let replacement_control = replacement.resolve_module_control("p").unwrap();
+    p.nodes[0].bypassed = true;
+    p.output_port = "gate10".into();
+    let mut bypassed = p.compile().unwrap();
+    let bypass_control = bypassed.resolve_module_control("p").unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 128, 129] {
+        assert!(old.release_module_controls(old_control));
+        for _ in 0..32 {
+            assert!(old.handle_module_event(old_control, ModuleAction::PulsePress(10)));
+            assert!(old.handle_module_event(old_control, ModuleAction::PulseRelease(10)));
+        }
+        assert!(!old.handle_module_event(old_control, ModuleAction::PulsePress(1)));
+        old.process_poly_block(&mut frames[..count]);
+        replacement.adopt_state_from(&old);
+        assert!(replacement
+            .module_control_state(replacement_control)
+            .is_some());
+        assert_eq!(
+            replacement
+                .module_lights(replacement_control)
+                .unwrap()
+                .count,
+            10
+        );
+        assert!(replacement.handle_module_event(replacement_control, ModuleAction::PulsePress(1)));
+        replacement.process_poly_block(&mut frames[..count]);
+        bypassed.adopt_state_from(&replacement);
+        assert!(bypassed.handle_module_event(bypass_control, ModuleAction::PulseRelease(10)));
+        bypassed.process_poly_block(&mut frames[..count]);
+        assert!(bypassed.release_module_controls(bypass_control));
+        assert!(replacement.initialize_module_state(replacement_control));
+        assert!(replacement.reset_module_state(replacement_control));
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
+}

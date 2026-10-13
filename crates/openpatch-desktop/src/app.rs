@@ -687,6 +687,35 @@ impl OpenPatch {
             }
         }
     }
+    fn manual_click(&mut self, id: &str, press: &str, release: &str) -> bool {
+        // A fast pointer click can arrive entirely within one GUI frame.
+        // Keep both actions on the same module incarnation while enqueueing;
+        // the ordinary release path also handles queue-full safety.
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_owned())
+            .and_then(|mut session| {
+                session.execute(
+                    "trigger_module",
+                    json!({"id":id,"action":press,"expected_revision":self.revision}),
+                )?;
+                session.execute(
+                    "trigger_module",
+                    json!({"id":id,"action":release,"expected_revision":self.revision}),
+                )
+            });
+        let succeeded = result.is_ok();
+        self.status = match result {
+            Ok(receipt) if receipt["receipt"]["emergency_release"] == true => {
+                "Button release requested through the safety path".into()
+            }
+            Ok(_) => "Button click queued".into(),
+            Err(error) => error,
+        };
+        self.sync();
+        succeeded
+    }
     fn sync(&mut self) {
         if let Ok(s) = self.shared.try_lock() {
             self.can_undo = s.can_undo();
@@ -947,6 +976,10 @@ impl OpenPatch {
         self.rack = Rack::default();
         if title == "Sequenced analog voice" {
             self.sequence_layout();
+        } else if title == "Manual pulses voice" {
+            self.rack
+                .restore_layout(&Self::pulses_layout())
+                .expect("bundled Pulses layout");
         } else if title == "Switched stereo voice" {
             self.switched_stereo_layout();
         } else if title == "Synced waveform voice" {
@@ -973,6 +1006,12 @@ impl OpenPatch {
                 "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
             }}),
         );
+    }
+    fn pulses_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "buttons":[0,0],"sequence":[240,0],
+            "vco":[0,420],"envelope":[210,420],"vca":[450,420],"out":[600,420]
+        }})
     }
     fn waveform_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -1691,6 +1730,14 @@ impl OpenPatch {
                                 self.replace_from_menu(patch, "Layered stereo morph");
                                 ui.close();
                             }
+                            if ui.button("Manual pulses voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/manual-pulses-voice.json"
+                                ))
+                                .unwrap();
+                                ui.close();
+                                self.replace_from_menu(patch, "Manual pulses voice");
+                            }
                             if ui.button("Gate shaping voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/gate-shaping-voice.json"
@@ -2164,6 +2211,9 @@ impl OpenPatch {
         match action {
             Some(RackAction::Command(name, args)) => {
                 self.command(name, args);
+            }
+            Some(RackAction::ManualClick { id, press, release }) => {
+                self.manual_click(&id, press, release);
             }
             Some(RackAction::Duplicate {
                 ids,
@@ -3170,6 +3220,30 @@ impl OpenPatch {
         if frame == 494 {
             self.select_analysis(Some(AnalysisTab::Visuals));
         }
+        if frame == 518 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1440.0, 960.0)));
+            self.select_analysis(None);
+            self.keyboard_open = false;
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/manual-pulses-voice.json"))
+                    .unwrap();
+            let mut engine = patch.compile().expect("Pulses fixture compiles");
+            let handle = engine.resolve_module_event("buttons").unwrap();
+            engine.handle_module_event(handle, openpatch_core::ModuleAction::PulsePress(1));
+            engine.handle_module_event(handle, openpatch_core::ModuleAction::PulsePress(10));
+            engine.process_block(&mut [0.0; 64]);
+            let lights = engine.module_lights(handle).unwrap();
+            let controls = engine.module_control_state(handle).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack.restore_layout(&Self::pulses_layout()).unwrap();
+            self.rack.set_module_states(
+                BTreeMap::from([("buttons".into(), lights)]),
+                BTreeMap::from([("buttons".into(), controls)]),
+            );
+            self.title = "Manual pulses voice · rows 1 and 10 held · offline preview".into();
+            self.status = "Row 1 plays the envelope · Row 2 advances pitch · Row 3 toggles Run · Row 4 resets".into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -3205,6 +3279,7 @@ impl OpenPatch {
                 | 466
                 | 482
                 | 506
+                | 530
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3253,7 +3328,8 @@ impl OpenPatch {
                 27 => path.with_file_name("module-browser.png"),
                 28 => path.with_file_name("module-library-compact.png"),
                 29 => path.with_file_name("analysis-dock-compact.png"),
-                _ => path.with_file_name("analysis-visuals-compact.png"),
+                30 => path.with_file_name("analysis-visuals-compact.png"),
+                _ => path.with_file_name("rack-pulses.png"),
             };
             image::save_buffer(
                 target,
@@ -3265,12 +3341,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 31 {
+            if captures == 32 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 536, "Native screenshot timeout");
+        assert!(frame < 560, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5175,6 +5251,70 @@ mod project_workflow_tests {
         assert!(app.after_save.is_none());
         assert!(!app.allow_close);
         assert!(app.dirty());
+    }
+
+    #[test]
+    fn fast_manual_click_enqueues_pair_under_one_session_lock_without_history() {
+        use openpatch::control::LiveModuleEvents;
+        use std::sync::{Arc, Mutex};
+        struct ClickBackend {
+            shared: openpatch::control::SharedSession,
+            events: Mutex<Vec<openpatch_core::ModuleAction>>,
+            reject_press: std::sync::atomic::AtomicBool,
+        }
+        impl LiveModuleEvents for ClickBackend {
+            fn trigger(
+                &self,
+                _id: &str,
+                action: openpatch_core::ModuleAction,
+            ) -> Result<Value, String> {
+                assert!(
+                    self.shared.try_lock().is_err(),
+                    "incarnation is pinned across both actions"
+                );
+                if self.reject_press.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Err("injected queue full".into());
+                }
+                self.events.lock().unwrap().push(action);
+                Ok(json!({"queued":true,"action":action}))
+            }
+            fn snapshot(&self) -> Value {
+                json!({})
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[{"id":"buttons","kind":"pulses"}]}})
+        ));
+        let backend = Arc::new(ClickBackend {
+            shared: app.shared.clone(),
+            events: Mutex::new(Vec::new()),
+            reject_press: std::sync::atomic::AtomicBool::new(false),
+        });
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(backend.clone()));
+        let before = app.shared.lock().unwrap().snapshot();
+        assert!(app.manual_click("buttons", "pulse10_press", "pulse10_release"));
+        assert_eq!(
+            *backend.events.lock().unwrap(),
+            vec![
+                openpatch_core::ModuleAction::PulsePress(10),
+                openpatch_core::ModuleAction::PulseRelease(10)
+            ]
+        );
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        backend
+            .reject_press
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(!app.manual_click("buttons", "pulse1_press", "pulse1_release"));
+        assert_eq!(backend.events.lock().unwrap().len(), 2);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        // Break the test backend's intentional Session reference cycle.
+        app.shared.lock().unwrap().set_live_module_events(None);
     }
 
     struct ProjectTelemetry(std::sync::Mutex<Value>);

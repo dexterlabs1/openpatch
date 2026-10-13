@@ -4,14 +4,18 @@ use crate::{
 };
 use serde_json::{json, Value};
 
+pub const MAX_MODULE_LIGHTS: usize = 10;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct ModuleControlState {
     pub pressed: bool,
+    /// One bit per held button; single-button utilities use bit zero.
+    pub pressed_mask: u16,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
     pub count: u8,
-    pub brightness: [[f32; 2]; 8],
+    pub brightness: [[f32; 2]; MAX_MODULE_LIGHTS],
     pub manual: bool,
 }
 pub(crate) fn input_names(kind: &str) -> Option<&'static [&'static str]> {
@@ -331,9 +335,13 @@ impl SignalDsp {
     }
     pub(crate) fn controls(&self) -> Option<ModuleControlState> {
         match self {
-            Self::Logic(m) => Some(ModuleControlState { pressed: m.pressed }),
+            Self::Logic(m) => Some(ModuleControlState {
+                pressed: m.pressed,
+                pressed_mask: u16::from(m.pressed),
+            }),
             Self::Process(p) => Some(ModuleControlState {
                 pressed: p.manual.pressed,
+                pressed_mask: u16::from(p.manual.pressed),
             }),
             _ => None,
         }
@@ -452,7 +460,7 @@ pub(crate) struct Signal {
     divider: u8,
     frame: u8,
     light_count: u8,
-    lights: [[f64; 2]; 8],
+    lights: [[f64; 2]; MAX_MODULE_LIGHTS],
 }
 impl Signal {
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
@@ -468,7 +476,7 @@ impl Signal {
             divider,
             frame: 0,
             light_count,
-            lights: [[0.0; 2]; 8],
+            lights: [[0.0; 2]; MAX_MODULE_LIGHTS],
         })
     }
     pub(crate) fn supports(&self, a: ModuleAction) -> bool {
@@ -485,7 +493,7 @@ impl Signal {
     }
     pub(crate) fn reset_state(&mut self) {
         self.dsp.reset_state();
-        self.lights = [[0.0; 2]; 8];
+        self.lights = [[0.0; 2]; MAX_MODULE_LIGHTS];
         self.frame = 0;
     }
     pub(crate) fn adopt(&mut self, old: &Self) {
@@ -507,7 +515,7 @@ impl Signal {
             return;
         }
         self.frame = 0;
-        let mut active = [false; 8];
+        let mut active = [false; MAX_MODULE_LIGHTS];
         let count = outputs[0].channels;
         match &self.dsp {
             SignalDsp::Logic(_) => {
@@ -860,7 +868,7 @@ mod tests {
         for _ in 0..31 {
             sample(&mut s, [PortFrame::default(); 3]);
         }
-        assert_eq!(s.lights().brightness, [[0.0; 2]; 8]);
+        assert_eq!(s.lights().brightness, [[0.0; 2]; MAX_MODULE_LIGHTS]);
         sample(&mut s, [PortFrame::default(); 3]);
         assert_eq!(s.lights().brightness[0], [1.0, 0.0]);
         for _ in 0..32 {

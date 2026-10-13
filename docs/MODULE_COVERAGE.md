@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **42 built-in kinds**: seven legacy utilities, six reference-voice
+There are **43 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, and a four-output audio oscillator. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, and a ten-row manual trigger/gate source. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -96,6 +96,10 @@ per-module states and controls; offline actions support repeatable manual gates.
 See [SIGNAL_PROCESSING.md](SIGNAL_PROCESSING.md) for numerical differences, state
 policies, and the connected gate-shaping example.
 
+`pulses` adds ten independent manual trigger/gate pairs, indexed runtime actions,
+row-specific panel controls, and coherent held-button telemetry. See
+[PULSES.md](PULSES.md) for pulse timing, safety, state and the manual voice example.
+
 ## Core inventory
 
 Names follow the Core library; parenthesized aliases match the manual. The Audio family contains three distinct modules. [Official Core inventory](https://library.vcvrack.com/Core)
@@ -133,7 +137,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | VCA Mix | Mixing | Implemented signal role: `vca_mix`, four squared-gain strips, independent outputs, master VCA, linear/quartic CV and live meters | Direct reference traces, Rack import/state mapping, native qualification; [contract](VOLTAGE_MIXING.md) |
 | 8vert | Voltage utility | Implemented signal role: `attenuverter8`, eight gains, downward input/polyphony propagation, voltage/percent presentation | Direct reference traces and Rack import/UI parity; [contract](VOLTAGE_UTILITIES.md) |
 | Mutes | Routing | Implemented signal role: `mutes10`, ten flags, atomic invert, pinned mono inheritance and direct bypass | Direct reference traces, legacy state polarity migration and native qualification; [contract](VOLTAGE_UTILITIES.md) |
-| Pulses | Gate utility | Clock-gate interface implemented; not equivalent | Pulse duration and held-gate behavior across sample rates |
+| Pulses | Gate utility | Implemented signal role: `pulses`, ten independent 1 ms triggers and held gates, native buttons and indexed MCP actions | Explicit integer timing/event policies; direct VCV comparison and native qualification remain open; [contract](PULSES.md) |
 | Scope | Measurement | Partial: native dock with two arbitrary named-output/voice taps, calibrated time/voltage scales, auto/normal/free trigger, freeze, X/Y and raw statistics; MCP offline trace bins | Rack-mounted instances, external trigger, all-voice overlays, persistence, direct VCV comparison; [contract](SCOPE.md) |
 | SEQ 3 | Sequencing | Partial: 3×8 voltage editor, five inputs/sixteen outputs, gates, length/tempo CV, passthrough, atomic rotation and bounded live/offline actions | Direct pinned-reference traces, timing/mapping differences, runtime state persistence and native qualification; [contract](SEQUENCER.md) |
 | Sequential Switch 1 to 4 | Routing | Implemented documented signal role: `switch_1to4`, 2–4 routes, clock/reset, de-click and live indicators | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |

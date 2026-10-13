@@ -359,7 +359,10 @@ mod tests {
         for _ in 0..512 {
             sample(&mut m, &inputs);
         }
-        assert_eq!(m.lights().unwrap().brightness, [[0.0; 2]; 8]);
+        assert_eq!(
+            m.lights().unwrap().brightness,
+            [[0.0; 2]; crate::MAX_MODULE_LIGHTS]
+        );
     }
     #[test]
     fn peak_envelope_brightness_divider_and_release_recurrence_are_exact_policies() {
@@ -385,7 +388,10 @@ mod tests {
         let expected = ((20.0 * envelope.log10() + 24.0) / 24.0).clamp(0.0, 1.0) as f32;
         assert!((m.lights().unwrap().brightness[0][0] - expected).abs() < 1e-7);
         m.reset_state();
-        assert_eq!(m.lights().unwrap().brightness, [[0.0; 2]; 8]);
+        assert_eq!(
+            m.lights().unwrap().brightness,
+            [[0.0; 2]; crate::MAX_MODULE_LIGHTS]
+        );
     }
     #[test]
     fn fade_complement_cv_clamp_signed_amount_and_square_root_law_are_distinct() {
