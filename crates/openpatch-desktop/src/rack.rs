@@ -14,16 +14,16 @@ use std::sync::{
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
 const PANEL_HEIGHT: f32 = 396.0;
-const PAPER: Color32 = Color32::from_rgb(216, 217, 211);
-const INK: Color32 = Color32::from_rgb(35, 39, 40);
-const MUTED: Color32 = Color32::from_rgb(94, 98, 96);
+const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
+const INK: Color32 = Color32::from_rgb(35, 34, 31);
+const MUTED: Color32 = Color32::from_rgb(95, 91, 82);
 const CABLES: [Color32; 6] = [
-    Color32::from_rgb(229, 74, 57),
-    Color32::from_rgb(232, 181, 52),
-    Color32::from_rgb(57, 155, 217),
-    Color32::from_rgb(88, 174, 114),
-    Color32::from_rgb(182, 107, 205),
-    Color32::from_rgb(236, 132, 61),
+    Color32::from_rgb(211, 101, 83),
+    Color32::from_rgb(223, 164, 67),
+    Color32::from_rgb(72, 171, 167),
+    Color32::from_rgb(75, 139, 189),
+    Color32::from_rgb(169, 112, 173),
+    Color32::from_rgb(195, 138, 80),
 ];
 
 pub enum RackAction {
@@ -2819,16 +2819,16 @@ impl Rack {
                 ui.style_mut().override_font_id = Some(FontId::monospace(10.0 * self.zoom));
                 ui.spacing_mut().button_padding = vec2(2.0, 1.0) * self.zoom;
                 ui.spacing_mut().interact_size = vec2(8.0, 18.0) * self.zoom;
-                ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(234, 235, 228);
-                ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(244, 246, 238);
-                ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(181, 215, 195);
+                ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(235, 231, 219);
+                ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(246, 241, 227);
+                ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(226, 197, 143);
                 // DragValue paints a Button at rest and a TextEdit while typing.
                 // Set both surfaces so the dark panel text stays legible.
                 let visuals = ui.visuals_mut();
                 visuals.widgets.inactive.weak_bg_fill = visuals.widgets.inactive.bg_fill;
                 visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
                 visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
-                visuals.text_edit_bg_color = Some(Color32::from_rgb(244, 246, 238));
+                visuals.text_edit_bg_color = Some(Color32::from_rgb(246, 241, 227));
                 ui.add_sized(
                     rect.size(),
                     egui::DragValue::new(&mut value)
@@ -4177,19 +4177,19 @@ fn panel_button(
         egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, selected, label)
     });
     let fill = if !enabled {
-        Color32::from_gray(190)
+        Color32::from_rgb(184, 181, 172)
     } else if selected {
-        Color32::from_rgb(133, 183, 151)
+        Color32::from_rgb(222, 177, 96)
     } else if response.hovered() {
-        Color32::from_rgb(239, 241, 232)
+        Color32::from_rgb(246, 241, 227)
     } else {
-        Color32::from_rgb(229, 230, 220)
+        Color32::from_rgb(228, 224, 211)
     };
     painter.rect_filled(rect, 2.0, fill);
     painter.rect_stroke(
         rect,
         2.0,
-        Stroke::new(0.7 * zoom, Color32::from_gray(151)),
+        Stroke::new(0.7 * zoom, Color32::from_rgb(139, 134, 122)),
         egui::StrokeKind::Inside,
     );
     painter.text(
@@ -4604,13 +4604,14 @@ fn settle_group(requested: Pos2, members: &[(Pos2, f32)], others: &[(Pos2, f32)]
 }
 
 fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32) {
-    painter.rect_filled(canvas, 0, Color32::from_rgb(27, 29, 30));
-    let line_spacing = (4.0 * zoom).max(2.0);
+    painter.rect_filled(canvas, 0, Color32::from_rgb(30, 31, 30));
+    // A few broad charcoal striations give the bays depth without a bitmap texture.
+    let line_spacing = (18.0 * zoom).max(8.0);
     let mut y = canvas.top();
     while y < canvas.bottom() {
         painter.line_segment(
             [pos2(canvas.left(), y), pos2(canvas.right(), y)],
-            Stroke::new(1.0_f32, Color32::from_white_alpha(3)),
+            Stroke::new(1.0_f32, Color32::from_white_alpha(5)),
         );
         y += line_spacing;
     }
@@ -4622,23 +4623,39 @@ fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32)
             pos2(canvas.left(), y - 9.0 * zoom),
             vec2(canvas.width(), 18.0 * zoom),
         );
-        painter.rect_filled(rail, 0, Color32::from_rgb(64, 68, 69));
-        painter.line_segment(
-            [rail.left_top(), rail.right_top()],
-            Stroke::new(1.0_f32, Color32::from_gray(105)),
+        painter.rect_filled(rail, 0, Color32::from_rgb(58, 59, 57));
+        painter.rect_filled(
+            Rect::from_min_max(rail.min, pos2(rail.right(), y - 3.0 * zoom)),
+            0,
+            Color32::from_black_alpha(68),
         );
         painter.line_segment(
-            [pos2(rail.left(), y + 1.0), pos2(rail.right(), y + 1.0)],
-            Stroke::new(2.0 * zoom, Color32::from_gray(30)),
+            [rail.left_top(), rail.right_top()],
+            Stroke::new(1.0_f32, Color32::from_rgb(105, 106, 101)),
+        );
+        painter.line_segment(
+            [
+                pos2(rail.left(), y + 3.0 * zoom),
+                pos2(rail.right(), y + 3.0 * zoom),
+            ],
+            Stroke::new(1.6 * zoom, Color32::from_rgb(23, 24, 23)),
+        );
+        painter.line_segment(
+            [rail.left_bottom(), rail.right_bottom()],
+            Stroke::new(1.0_f32, Color32::from_rgb(114, 112, 104)),
         );
         let start = ((-pan.x) / (HP * zoom)).floor() as i32;
         let count = (canvas.width() / (HP * zoom)).ceil() as i32 + 2;
         for slot in start..start + count {
             let x = canvas.left() + pan.x + slot as f32 * HP * zoom;
-            painter.rect_filled(
-                Rect::from_center_size(pos2(x + 7.5 * zoom, y), vec2(6.0, 3.0) * zoom),
-                1.0,
-                Color32::from_gray(28),
+            let hole = pos2(x + 7.5 * zoom, y);
+            painter.circle_filled(hole, 2.8 * zoom, Color32::from_rgb(19, 20, 20));
+            painter.line_segment(
+                [
+                    hole + vec2(-1.5, -2.1) * zoom,
+                    hole + vec2(1.5, -2.1) * zoom,
+                ],
+                Stroke::new(0.7 * zoom, Color32::from_rgb(124, 124, 117)),
             );
         }
     }
@@ -4653,39 +4670,77 @@ fn paint_panel(
     zoom: f32,
 ) {
     painter.rect_filled(
-        rect.translate(vec2(3.0, 4.0) * zoom),
-        0,
-        Color32::from_black_alpha(95),
+        rect.translate(vec2(4.0, 5.0) * zoom),
+        1.5 * zoom,
+        Color32::from_black_alpha(100),
     );
-    painter.rect_filled(rect, 0, PAPER);
-    for band in 0..8 {
-        let shine = Rect::from_min_size(
-            rect.min + vec2(0.0, rect.height() * band as f32 / 16.0),
-            vec2(rect.width(), rect.height() / 16.0),
+    painter.rect_filled(rect, 1.5 * zoom, Color32::from_rgb(84, 81, 74));
+    let face = rect.shrink(1.5 * zoom);
+    // Six vertices provide continuous overhead lighting at every zoom, with
+    // no texture upload or resolution-dependent tessellation.
+    let mut lighting = egui::epaint::Mesh::default();
+    for (y, color) in [
+        (face.top(), Color32::from_rgb(237, 233, 221)),
+        (face.center().y, PAPER),
+        (face.bottom(), Color32::from_rgb(207, 203, 191)),
+    ] {
+        lighting.colored_vertex(pos2(face.left(), y), color);
+        lighting.colored_vertex(pos2(face.right(), y), color);
+    }
+    lighting.add_triangle(0, 1, 2);
+    lighting.add_triangle(1, 3, 2);
+    lighting.add_triangle(2, 3, 4);
+    lighting.add_triangle(3, 5, 4);
+    painter.add(egui::Shape::mesh(lighting));
+    // Sparse horizontal brushing remains legible at the minimum rack zoom.
+    for grain in 0..9 {
+        let y = face.top() + (32.0 + grain as f32 * 39.0) * zoom;
+        painter.line_segment(
+            [
+                pos2(face.left() + 3.0 * zoom, y),
+                pos2(face.right() - 3.0 * zoom, y),
+            ],
+            Stroke::new(0.6 * zoom, Color32::from_white_alpha(9)),
         );
-        painter.rect_filled(shine, 0, Color32::from_white_alpha(16 - band * 2));
     }
     painter.line_segment(
         [rect.left_top(), rect.left_bottom()],
-        Stroke::new(1.0_f32, Color32::from_gray(245)),
+        Stroke::new(1.0_f32, Color32::from_rgb(246, 242, 228)),
+    );
+    painter.line_segment(
+        [rect.left_top(), rect.right_top()],
+        Stroke::new(1.0_f32, Color32::from_rgb(242, 238, 224)),
     );
     painter.line_segment(
         [rect.right_top(), rect.right_bottom()],
-        Stroke::new(1.0_f32, Color32::from_gray(110)),
+        Stroke::new(1.0_f32, Color32::from_rgb(94, 89, 79)),
+    );
+    painter.line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        Stroke::new(1.0_f32, Color32::from_rgb(111, 105, 92)),
     );
     if node.bypassed {
         painter.rect_stroke(
             rect.shrink(3.0),
             0,
-            Stroke::new(2.0 * zoom, Color32::from_rgb(171, 113, 48)),
+            Stroke::new(1.8 * zoom, Color32::from_rgb(146, 102, 61)),
             egui::StrokeKind::Inside,
         );
     }
     if selected {
         painter.rect_stroke(
+            rect.expand(1.0 * zoom),
+            1.0 * zoom,
+            Stroke::new(
+                3.0 * zoom,
+                Color32::from_rgba_unmultiplied(225, 159, 58, 45),
+            ),
+            egui::StrokeKind::Outside,
+        );
+        painter.rect_stroke(
             rect.shrink(1.0),
             0,
-            Stroke::new(1.5_f32, Color32::from_rgb(77, 156, 182)),
+            Stroke::new(1.5 * zoom, Color32::from_rgb(201, 137, 54)),
             egui::StrokeKind::Inside,
         );
     }
@@ -4694,18 +4749,28 @@ fn paint_panel(
     for x in [8.0, width - 8.0] {
         for y in [9.0, PANEL_HEIGHT - 9.0] {
             let center = point(x, y);
-            painter.circle_filled(center, 3.7 * zoom, Color32::from_gray(112));
+            painter.circle_filled(
+                center + vec2(0.5, 0.8) * zoom,
+                4.5 * zoom,
+                Color32::from_black_alpha(75),
+            );
+            painter.circle_filled(center, 3.8 * zoom, Color32::from_rgb(99, 97, 91));
+            painter.circle_filled(
+                center - vec2(0.4, 0.5) * zoom,
+                2.9 * zoom,
+                Color32::from_rgb(204, 200, 190),
+            );
             painter.circle_stroke(
                 center,
                 3.7 * zoom,
-                Stroke::new(0.8 * zoom, Color32::from_gray(237)),
+                Stroke::new(0.8 * zoom, Color32::from_rgb(245, 241, 229)),
             );
             painter.line_segment(
                 [
-                    center - vec2(2.4, 0.0) * zoom,
-                    center + vec2(2.4, 0.0) * zoom,
+                    center - vec2(1.7, 1.7) * zoom,
+                    center + vec2(1.7, 1.7) * zoom,
                 ],
-                Stroke::new(1.0 * zoom, Color32::from_gray(57)),
+                Stroke::new(0.9 * zoom, Color32::from_rgb(68, 67, 63)),
             );
         }
     }
@@ -4725,7 +4790,7 @@ fn paint_panel(
     );
     painter.line_segment(
         [point(22.0, 65.0), point(width - 22.0, 65.0)],
-        Stroke::new(1.0_f32, Color32::from_gray(173)),
+        Stroke::new(0.9 * zoom, Color32::from_rgb(158, 153, 140)),
     );
     painter.text(
         point(width * 0.5, PANEL_HEIGHT - 7.0),
@@ -4770,31 +4835,50 @@ fn paint_knob(
         );
     }
     painter.circle_filled(
-        center + vec2(1.0, 3.0) * zoom,
-        radius + 2.0 * zoom,
-        Color32::from_black_alpha(53),
+        center + vec2(1.5, 3.0) * zoom,
+        radius + 2.5 * zoom,
+        Color32::from_black_alpha(78),
     );
-    painter.circle_filled(center, radius + 1.0 * zoom, Color32::from_gray(45));
+    painter.circle_filled(center, radius + 1.2 * zoom, Color32::from_rgb(67, 67, 63));
     painter.circle_stroke(
         center,
-        radius,
+        radius + 0.7 * zoom,
         Stroke::new(
-            1.3 * zoom,
-            Color32::from_gray(if active { 105 } else { 67 }),
+            1.0 * zoom,
+            if active {
+                Color32::from_rgb(218, 162, 70)
+            } else {
+                Color32::from_rgb(174, 172, 162)
+            },
         ),
     );
-    painter.circle_filled(center, radius * 0.82, Color32::from_rgb(27, 30, 31));
-    for step in 0..24 {
-        let a = step as f32 * std::f32::consts::TAU / 24.0;
+    painter.circle_filled(center, radius * 0.94, Color32::from_rgb(24, 25, 25));
+    for step in 0..16 {
+        let a = step as f32 * std::f32::consts::TAU / 16.0;
         let direction = vec2(a.cos(), a.sin());
         painter.line_segment(
             [
                 center + direction * radius * 0.86,
-                center + direction * radius * 0.96,
+                center + direction * radius * 0.95,
             ],
-            Stroke::new(1.0 * zoom, Color32::from_gray(74)),
+            Stroke::new(0.8 * zoom, Color32::from_rgb(105, 105, 98)),
         );
     }
+    painter.circle_filled(
+        center - vec2(0.8, 1.0) * zoom,
+        radius * 0.79,
+        Color32::from_rgb(54, 56, 54),
+    );
+    painter.circle_filled(
+        center + vec2(0.7, 0.9) * zoom,
+        radius * 0.74,
+        Color32::from_rgb(29, 31, 31),
+    );
+    painter.circle_stroke(
+        center,
+        radius * 0.77,
+        Stroke::new(0.8 * zoom, Color32::from_rgb(14, 16, 17)),
+    );
     let a = angle(normalized);
     let direction = vec2(a.cos(), a.sin());
     painter.line_segment(
@@ -4802,12 +4886,12 @@ fn paint_knob(
             center + direction * radius * 0.29,
             center + direction * radius * 0.73,
         ],
-        Stroke::new(2.8 * zoom, Color32::from_gray(235)),
+        Stroke::new(2.5 * zoom, Color32::from_rgb(237, 235, 225)),
     );
     painter.circle_filled(
-        center - vec2(radius * 0.25, radius * 0.25),
-        radius * 0.10,
-        Color32::from_white_alpha(8),
+        center - vec2(radius * 0.33, radius * 0.34),
+        radius * 0.08,
+        Color32::from_white_alpha(35),
     );
 }
 
@@ -4906,23 +4990,41 @@ fn jack(
         );
     }
     painter.circle_filled(
-        center + vec2(0.0, 1.0) * zoom,
-        10.0 * zoom,
-        Color32::from_gray(145),
+        center + vec2(0.8, 1.8) * zoom,
+        11.3 * zoom,
+        Color32::from_black_alpha(79),
     );
-    painter.circle_filled(center, 9.0 * zoom, Color32::from_gray(216));
+    painter.circle_filled(center, 10.2 * zoom, Color32::from_rgb(66, 65, 61));
+    painter.circle_filled(
+        center - vec2(0.4, 0.5) * zoom,
+        9.2 * zoom,
+        Color32::from_rgb(218, 215, 205),
+    );
+    painter.circle_filled(center, 7.9 * zoom, Color32::from_rgb(111, 108, 99));
     painter.circle_stroke(
         center,
-        9.0 * zoom,
-        Stroke::new(1.2 * zoom, Color32::from_gray(100)),
+        9.4 * zoom,
+        Stroke::new(1.0 * zoom, Color32::from_rgb(247, 243, 229)),
     );
-    painter.circle_filled(center, 6.0 * zoom, Color32::from_gray(39));
-    painter.circle_filled(center, 3.6 * zoom, Color32::from_gray(13));
+    painter.circle_filled(center, 6.5 * zoom, Color32::from_rgb(30, 31, 30));
+    painter.circle_stroke(
+        center,
+        6.5 * zoom,
+        Stroke::new(0.7 * zoom, Color32::from_rgb(68, 68, 63)),
+    );
+    painter.circle_filled(center, 3.7 * zoom, Color32::from_rgb(12, 14, 14));
+    if connected {
+        painter.circle_stroke(
+            center,
+            8.2 * zoom,
+            Stroke::new(0.7 * zoom, Color32::from_rgb(145, 126, 91)),
+        );
+    }
     if response.hovered() {
         painter.circle_stroke(
             center,
             11.0 * zoom,
-            Stroke::new(1.8 * zoom, Color32::from_rgb(63, 145, 174)),
+            Stroke::new(1.8 * zoom, Color32::from_rgb(221, 157, 64)),
         );
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -4960,38 +5062,42 @@ fn paint_cable(
         )
     };
     painter.add(curve(
-        points.map(|point| point + vec2(1.0, 3.0) * zoom),
-        (if bus { 9.0 } else { 7.0 }) * zoom,
-        Color32::from_black_alpha(100),
+        points.map(|point| point + vec2(1.4, 3.2) * zoom),
+        (if bus { 10.0 } else { 8.0 }) * zoom,
+        Color32::from_black_alpha(112),
     ));
     painter.add(curve(
         points,
-        (if bus { 7.0 } else { 5.0 }) * zoom,
-        color.gamma_multiply(0.62),
+        (if bus { 7.8 } else { 6.0 }) * zoom,
+        color.gamma_multiply(0.64),
     ));
     painter.add(curve(
-        points.map(|point| point - vec2(0.0, 0.7) * zoom),
-        (if bus { 4.5 } else { 3.0 }) * zoom,
-        color,
+        points.map(|point| point - vec2(0.5, 0.8) * zoom),
+        (if bus { 3.6 } else { 2.6 }) * zoom,
+        color.gamma_multiply(1.13),
     ));
     for (index, point) in [from, to].iter().enumerate() {
         if index == 1 && !plugged {
             continue;
         }
         painter.circle_filled(
-            *point + vec2(0.0, 1.0) * zoom,
-            7.0 * zoom,
-            Color32::from_black_alpha(110),
+            *point + vec2(0.5, 1.8) * zoom,
+            7.5 * zoom,
+            Color32::from_black_alpha(125),
         );
         painter.rect_filled(
             Rect::from_center_size(*point + vec2(0.0, 5.0) * zoom, vec2(7.0, 12.0) * zoom),
             2.0 * zoom,
-            color.gamma_multiply(0.65),
+            color.gamma_multiply(0.52),
         );
-        painter.circle_filled(*point, 7.1 * zoom, Color32::from_gray(128));
-        painter.circle_filled(*point, 6.1 * zoom, color.gamma_multiply(0.65));
-        painter.circle_stroke(*point, 5.3 * zoom, Stroke::new(1.4 * zoom, color));
-        painter.circle_filled(*point, 2.0 * zoom, Color32::from_gray(33));
+        painter.circle_filled(*point, 7.2 * zoom, Color32::from_rgb(82, 81, 75));
+        painter.circle_filled(*point, 6.1 * zoom, color.gamma_multiply(0.58));
+        painter.circle_stroke(
+            *point,
+            5.3 * zoom,
+            Stroke::new(1.2 * zoom, color.gamma_multiply(1.16)),
+        );
+        painter.circle_filled(*point, 2.0 * zoom, Color32::from_rgb(34, 35, 33));
     }
 }
 

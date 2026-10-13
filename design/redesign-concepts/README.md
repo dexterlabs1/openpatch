@@ -9,7 +9,9 @@ Generated with the built-in image generation tool on 2026-10-13. These are visua
 | 03 — Live Canvas | Performance macros, scenes, large audio-reactive visualizer |
 | 04 — Modern Modular | Native desktop organization, contextual inspector, patch assistance |
 
-Suggested direction: Studio Rack as the primary editing surface, Modern Modular's optional assistant and inspector, and Live Canvas as a dedicated performance workspace. Precision Lab's measurement views could be available when inspecting a module.
+Selected direction: **01 — Studio Rack**, chosen by the user on 2026-10-13. Use its rack-first composition, warm aluminum faceplates, tactile dark controls, restrained amber lighting and clear cable paths as the native application's visual foundation. The other concepts remain alternatives for future exploration, not approved replacements for this direction.
+
+Implementation starts with procedural rack materials and matching graphite application chrome. The reference's docked thumbnail library, transport layout and integrated measurement dock require subsequent interaction work; this first material pass does not implement the entire mockup. Keep actual port definitions, control geometry and signal behavior authoritative over generated details.
 
 ## Visual previews
 

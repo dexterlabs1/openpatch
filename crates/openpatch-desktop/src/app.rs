@@ -25,10 +25,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-const CHROME: Color32 = Color32::from_rgb(37, 39, 43);
-const TEXT: Color32 = Color32::from_rgb(218, 220, 223);
-const MUTED: Color32 = Color32::from_rgb(151, 157, 167);
-const ACCENT: Color32 = Color32::from_rgb(120, 185, 164);
+const CHROME: Color32 = Color32::from_rgb(32, 35, 35);
+const TEXT: Color32 = Color32::from_rgb(235, 233, 226);
+const MUTED: Color32 = Color32::from_rgb(164, 167, 162);
+const ACCENT: Color32 = Color32::from_rgb(229, 186, 106);
 
 #[derive(Clone, Copy, PartialEq)]
 enum FileMode {
@@ -260,13 +260,23 @@ impl OpenPatch {
         let mut style = (*cc.egui_ctx.style()).clone();
         style.visuals = egui::Visuals::dark();
         style.visuals.panel_fill = CHROME;
-        style.visuals.window_fill = Color32::from_rgb(43, 46, 51);
-        style.visuals.extreme_bg_color = Color32::from_rgb(24, 26, 30);
+        style.visuals.window_fill = Color32::from_rgb(42, 45, 44);
+        style.visuals.extreme_bg_color = Color32::from_rgb(21, 24, 24);
         style.visuals.override_text_color = Some(TEXT);
-        style.visuals.selection.bg_fill = Color32::from_rgb(65, 95, 90);
-        style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(53, 57, 63);
-        style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(71, 78, 86);
-        style.visuals.widgets.active.bg_fill = Color32::from_rgb(64, 103, 90);
+        style.visuals.selection.bg_fill = Color32::from_rgb(106, 82, 43);
+        style.visuals.selection.stroke = egui::Stroke::new(1.0_f32, TEXT);
+        style.visuals.widgets.noninteractive.bg_stroke =
+            egui::Stroke::new(1.0_f32, Color32::from_rgb(65, 69, 66));
+        style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(48, 52, 51);
+        style.visuals.widgets.inactive.bg_stroke =
+            egui::Stroke::new(1.0_f32, Color32::from_rgb(76, 80, 76));
+        style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(64, 68, 65);
+        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, ACCENT);
+        style.visuals.widgets.active.bg_fill = Color32::from_rgb(94, 74, 43);
+        style.visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, ACCENT);
+        style.visuals.widgets.inactive.weak_bg_fill = style.visuals.widgets.inactive.bg_fill;
+        style.visuals.widgets.hovered.weak_bg_fill = style.visuals.widgets.hovered.bg_fill;
+        style.visuals.widgets.active.weak_bg_fill = style.visuals.widgets.active.bg_fill;
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
@@ -1243,7 +1253,7 @@ impl OpenPatch {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("OPENPATCH").strong().size(14.0));
+                    ui.label(RichText::new("OpenPatch").strong().size(14.0));
                     ui.add_space(10.0);
                     ui.menu_button("File", |ui| {
                         if ui.button("New patch").clicked() {
@@ -1479,9 +1489,9 @@ impl OpenPatch {
                                 self.audio.is_some(),
                                 egui::Button::new(if playing { "Pause" } else { "Play" })
                                     .fill(if playing {
-                                        Color32::from_rgb(63, 99, 87)
+                                        Color32::from_rgb(55, 98, 75)
                                     } else {
-                                        Color32::from_rgb(59, 66, 72)
+                                        Color32::from_rgb(51, 57, 54)
                                     })
                                     .min_size(Vec2::new(65.0, 24.0)),
                             )
@@ -1575,7 +1585,7 @@ impl OpenPatch {
             .resizable(true)
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(20, 23, 29))
+                    .fill(Color32::from_rgb(20, 24, 24))
                     .inner_margin(10),
             )
             .show(ctx, |ui| {
@@ -1729,9 +1739,9 @@ impl OpenPatch {
                                         rect,
                                         2.0,
                                         if response.hovered() {
-                                            Color32::from_rgb(229, 231, 224)
+                                            Color32::from_rgb(238, 233, 219)
                                         } else {
-                                            Color32::from_rgb(204, 207, 200)
+                                            Color32::from_rgb(220, 217, 204)
                                         },
                                     );
                                     p.rect_stroke(
@@ -2721,6 +2731,9 @@ impl OpenPatch {
             self.rack.apply_duplicate_placement(placement, false);
             self.title = "VCO copy · incoming pitch and outgoing audio cables".into();
         }
+        if frame == 438 {
+            self.browse();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -2752,6 +2765,7 @@ impl OpenPatch {
                 | 392
                 | 416
                 | 432
+                | 448
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -2796,7 +2810,8 @@ impl OpenPatch {
                 23 => path.with_file_name("rack-multi-vco.png"),
                 24 => path.with_file_name("module-preset-save.png"),
                 25 => path.with_file_name("module-preset-browser.png"),
-                _ => path.with_file_name("rack-duplication-outgoing.png"),
+                26 => path.with_file_name("rack-duplication-outgoing.png"),
+                _ => path.with_file_name("module-browser.png"),
             };
             image::save_buffer(
                 target,
@@ -2808,12 +2823,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 27 {
+            if captures == 28 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 458, "Native screenshot timeout");
+        assert!(frame < 474, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
