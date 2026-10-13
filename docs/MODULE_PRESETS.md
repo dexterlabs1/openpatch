@@ -6,7 +6,7 @@ loads into a VCO, and a SEQ-3 preset loads into a SEQ-3. Cables, module identity
 selection and panel placement stay in place.
 
 The save window captures the settings once and displays them for review. Choose
-a new `.opreset` filename to save those exact settings. A later knob turn or Run
+a new `.opreset` filename to save those exact settings. A later knob turn, Run toggle, or HOLD
 button press does not silently change the reviewed capture. Refresh the capture
 to save the latest state instead. Existing files are never overwritten.
 
@@ -21,7 +21,7 @@ canceling the window leaves the rack unchanged.
 
 A complete capture includes all effective saved controls, saved menu settings,
 and bypass. Omitted ordinary parameters are filled with their catalog defaults.
-SEQ-3 also captures its **actual current Run state**, which may differ from the
+SEQ-3 captures its **actual current Run state** and Push its **actual HOLD latch**, which may differ from the
 saved initial setting. It does not capture step position, oscillator phase,
 trigger detectors, meters, held manual buttons, queued actions, cables or layout.
 Loading does not implicitly Initialize the module.
@@ -45,12 +45,12 @@ sequence's step, phase, trigger history or detectors.
 
 ## Live capture and undo
 
-Live SEQ-3 capture reads one coherent telemetry snapshot from the latest completed
+Live SEQ-3 and Push capture reads one coherent telemetry snapshot from the latest completed
 audio callback at the current patch revision. Its frame number belongs to the
-same snapshot as its Run state. It does not predict queued future button presses.
+same snapshot as its Run/HOLD state. It does not predict queued future button presses.
 If the current graph has not reached the callback, capture reports that live
 state is unavailable and can be retried; it never silently substitutes the
-initial Run setting. Headless/offline sessions with no audio backend use the
+initial Run/HOLD setting. Headless/offline sessions with no audio backend use the
 initial/default state and label the capture `offline_reset`.
 
 Preset application is one undo step. SEQ-3 history records the actual before and
@@ -68,6 +68,13 @@ actions; subsequent actions wait for the corresponding graph. State loads work
 while bypassed and preserve the module's incarnation. The callback applies them
 after ordinary state adoption using fixed storage, without file access, JSON,
 allocation or control locks.
+
+Push uses `holding` (0 or 1) with the same explicit-assignment, coherent capture,
+and undo/redo guarantees. Omitting it preserves the live latch; assigning it
+applies even when the configured value is unchanged. Initialize clears HOLD;
+Randomize preserves it. Copying a Push captures actual HOLD into a fresh module
+with no held buttons or pulse remainder. History restores captured latch values,
+without replaying HOLD presses. See the [Push timing and persistence contract](PUSH.md).
 
 ## MCP tools
 
@@ -99,7 +106,7 @@ rejects more than 1,024 matching filenames rather than silently hiding them.
 This is OpenPatch's native format. Rack `.vcvm` conversion, factory presets,
 user templates/defaults for new modules, preset rename/delete/overwrite and
 cross-workspace browsing remain unfinished. Native project Save/recovery also
-capture current Run coherently; step position and other DSP histories restart
+capture current Run/HOLD coherently; step position and other DSP histories restart
 on load. Graph-only MCP interchange retains configured parameters. These
 contracts do not claim that every project/history path captures all live state.
 

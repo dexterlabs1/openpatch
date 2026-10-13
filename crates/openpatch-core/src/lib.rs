@@ -28,6 +28,9 @@ mod parameter_actions;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;
 mod pulses;
+mod push;
+mod saved_state;
+pub use saved_state::SavedModuleState;
 mod routing;
 mod sequence;
 mod signal;
@@ -228,6 +231,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(pulses::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(push::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1104,6 +1111,31 @@ impl Engine {
         }
         match &mut self.inner {
             EngineKind::Poly(engine) => engine.set_module_running(handle.node, running),
+            EngineKind::Legacy(_) => false,
+        }
+    }
+    /// Read a module's persistent runtime latch, excluding physical controls.
+    pub fn module_saved_state(&self, handle: ModuleHandle) -> Option<SavedModuleState> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.module_saved_state(handle.node),
+            EngineKind::Legacy(_) => None,
+        }
+    }
+    /// Assign persistent runtime state without replaying a button event. The
+    /// state variant must match the target kind, including while bypassed.
+    pub fn set_module_saved_state(
+        &mut self,
+        handle: ModuleHandle,
+        state: SavedModuleState,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.set_module_saved_state(handle.node, state),
             EngineKind::Legacy(_) => false,
         }
     }

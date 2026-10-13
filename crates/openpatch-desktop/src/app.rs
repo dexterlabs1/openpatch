@@ -820,16 +820,16 @@ impl OpenPatch {
             .try_lock()
             .ok()
             .and_then(|live| live.capture_project_running(Some(self.revision)).ok())
-            .map(|snapshot| snapshot.running);
+            .map(|snapshot| (snapshot.running, snapshot.holding));
         if self
             .documents
-            .observe_running(&self.patch, self.revision, &self.rack, running)
+            .observe_runtime(&self.patch, self.revision, &self.rack, running)
         {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
         }
     }
-    // Persist one coherent graph/Run/layout snapshot. Raw capture_document below
+    // Persist one coherent graph/Run/HOLD/layout snapshot. Raw capture_document below
     // remains the graph/layout receipt used by history and UI installers.
     fn capture_persisted_document(&mut self) -> Result<Document, String> {
         self.rack.reconcile(&self.patch, &self.catalog);
@@ -838,11 +838,11 @@ impl OpenPatch {
             .try_lock()
             .map_err(|_| "Project is busy; try again".to_string())?
             .capture_project_patch(Some(self.revision))?;
-        if self.documents.observe_running(
+        if self.documents.observe_runtime(
             &self.patch,
             self.revision,
             &self.rack,
-            Some(captured.running),
+            Some((captured.running, captured.holding)),
         ) {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
@@ -976,6 +976,10 @@ impl OpenPatch {
         self.rack = Rack::default();
         if title == "Sequenced analog voice" {
             self.sequence_layout();
+        } else if title == "Manual push voice" {
+            self.rack
+                .restore_layout(&Self::push_layout())
+                .expect("bundled Push layout");
         } else if title == "Manual pulses voice" {
             self.rack
                 .restore_layout(&Self::pulses_layout())
@@ -1006,6 +1010,12 @@ impl OpenPatch {
                 "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
             }}),
         );
+    }
+    fn push_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "push":[0,0],"buttons":[180,0],"vco":[420,0],"filter":[630,0],
+            "envelope":[0,420],"vca":[240,420],"out":[390,420]
+        }})
     }
     fn pulses_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -1729,6 +1739,14 @@ impl OpenPatch {
                                 .expect("valid bundled layered stereo morph");
                                 self.replace_from_menu(patch, "Layered stereo morph");
                                 ui.close();
+                            }
+                            if ui.button("Manual push voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/manual-push-voice.json"
+                                ))
+                                .unwrap();
+                                ui.close();
+                                self.replace_from_menu(patch, "Manual push voice");
                             }
                             if ui.button("Manual pulses voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
@@ -3244,6 +3262,29 @@ impl OpenPatch {
             self.title = "Manual pulses voice · rows 1 and 10 held · offline preview".into();
             self.status = "Row 1 plays the envelope · Row 2 advances pitch · Row 3 toggles Run · Row 4 resets".into();
         }
+        if frame == 542 {
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/manual-push-voice.json"))
+                    .unwrap();
+            let mut engine = patch.compile().expect("Push fixture compiles");
+            let handle = engine.resolve_module_event("push").unwrap();
+            engine.handle_module_event(handle, openpatch_core::ModuleAction::HoldPress);
+            engine.handle_module_event(handle, openpatch_core::ModuleAction::HoldRelease);
+            engine.process_block(&mut [0.0; 64]);
+            let lights = engine.module_lights(handle).unwrap();
+            let controls = engine.module_control_state(handle).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack.restore_layout(&Self::push_layout()).unwrap();
+            self.rack.set_module_states(
+                BTreeMap::from([("push".into(), lights)]),
+                BTreeMap::from([("push".into(), controls)]),
+            );
+            self.title = "Manual push voice · HOLD latched · offline preview".into();
+            self.status =
+                "PUSH plays a gate · HOLD latches it · While latched, PUSH interrupts the gate"
+                    .into();
+        }
         if frame == 160 {
             self.scope.smoke_xy();
         }
@@ -3280,6 +3321,7 @@ impl OpenPatch {
                 | 482
                 | 506
                 | 530
+                | 554
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3329,7 +3371,8 @@ impl OpenPatch {
                 28 => path.with_file_name("module-library-compact.png"),
                 29 => path.with_file_name("analysis-dock-compact.png"),
                 30 => path.with_file_name("analysis-visuals-compact.png"),
-                _ => path.with_file_name("rack-pulses.png"),
+                31 => path.with_file_name("rack-pulses.png"),
+                _ => path.with_file_name("rack-push.png"),
             };
             image::save_buffer(
                 target,
@@ -3341,12 +3384,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 32 {
+            if captures == 33 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 560, "Native screenshot timeout");
+        assert!(frame < 584, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5356,6 +5399,215 @@ mod project_workflow_tests {
             value["modules"][id]["frame"] = json!(frame);
             value["modules"][id]["state"]["step"] = json!(frame % 8);
         }
+    }
+
+    fn push_host(path: &Path) -> (OpenPatch, std::sync::Arc<ProjectTelemetry>) {
+        let mut app = host(path);
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+                {"id":"button","kind":"push","params":{"holding":0}}
+            ]}})
+        ));
+        app.save_document("push.openpatch", true);
+        assert!(!app.dirty());
+        let telemetry = std::sync::Arc::new(ProjectTelemetry(std::sync::Mutex::new(json!({
+            "coherent":true,"modules":{
+                "button":{"kind":"push","available":true,"revision":app.revision,
+                          "frame":128,"state":{"holding":false}}
+            }
+        }))));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(telemetry.clone()));
+        (app, telemetry)
+    }
+
+    fn set_project_hold(telemetry: &ProjectTelemetry, holding: bool, frame: u64) {
+        let mut value = telemetry.0.lock().unwrap();
+        value["modules"]["button"]["state"]["holding"] = json!(holding);
+        value["modules"]["button"]["frame"] = json!(frame);
+    }
+
+    #[test]
+    fn live_hold_alone_marks_dirty_and_saves_actual_latch_to_recovery_and_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = push_host(dir.path());
+        let raw_graph = app.shared.lock().unwrap().snapshot();
+        let revision = app.revision;
+        app.observe_document();
+        assert!(!app.dirty());
+        set_project_hold(&telemetry, false, 256);
+        app.observe_document();
+        assert!(!app.dirty(), "callback frame alone is not saved content");
+        set_project_hold(&telemetry, true, 256);
+        app.observe_document();
+        assert!(app.dirty(), "HOLD alone changes saved content");
+        assert_eq!(app.revision, revision);
+        make_autosave_due(&mut app);
+        app.autosave();
+        let files = recovery_files(dir.path());
+        assert_eq!(files.len(), 1);
+        std::fs::copy(&files[0], dir.path().join("recovery-copy.openpatch")).unwrap();
+        let recovery = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("recovery-copy.openpatch")
+            .unwrap()
+            .document;
+        assert_eq!(recovery.patch.nodes[0].params["holding"], 1.0);
+        app.save_current();
+        assert!(!app.dirty());
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("push.openpatch")
+            .unwrap()
+            .document;
+        assert!(saved.equivalent(&recovery));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), raw_graph);
+        assert_eq!(app.revision, revision);
+        assert!(recovery_files(dir.path()).is_empty());
+        set_project_hold(&telemetry, false, 512);
+        app.observe_document();
+        assert!(
+            app.dirty(),
+            "same revision but changed live HOLD invalidates cached baseline"
+        );
+        set_project_hold(&telemetry, true, 512);
+        app.observe_document();
+        assert!(!app.dirty());
+    }
+
+    #[test]
+    fn unavailable_or_missing_push_state_blocks_save_and_keeps_recovery_and_close_guard() {
+        for missing in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut app, telemetry) = push_host(dir.path());
+            set_project_hold(&telemetry, true, 256);
+            app.observe_document();
+            make_autosave_due(&mut app);
+            app.autosave();
+            let files = recovery_files(dir.path());
+            assert_eq!(files.len(), 1);
+            let recovery_bytes = std::fs::read(&files[0]).unwrap();
+            let saved_bytes = std::fs::read(dir.path().join("push.openpatch")).unwrap();
+            if missing {
+                telemetry.0.lock().unwrap()["modules"] = json!({});
+            } else {
+                telemetry.0.lock().unwrap()["modules"]["button"]["available"] = json!(false);
+            }
+            app.observe_document();
+            assert!(app.dirty());
+            app.save_current();
+            assert!(app.dirty());
+            assert!(app.status.contains("live state"));
+            make_autosave_due(&mut app);
+            app.autosave();
+            assert_eq!(std::fs::read(&files[0]).unwrap(), recovery_bytes);
+            assert_eq!(
+                std::fs::read(dir.path().join("push.openpatch")).unwrap(),
+                saved_bytes
+            );
+            app.request_action(PendingAction::Close);
+            assert!(!app.allow_close);
+            assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+        }
+    }
+
+    #[test]
+    fn final_clean_close_rechecks_hold_even_without_a_graph_revision_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = push_host(dir.path());
+        app.observe_document();
+        assert!(!app.dirty());
+        let revision = app.revision;
+        set_project_hold(&telemetry, true, 256);
+        app.close_if_saved();
+        assert!(!app.allow_close);
+        assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+        assert_eq!(app.revision, revision);
+        app.confirm_discard = None;
+        set_project_hold(&telemetry, false, 512);
+        app.request_action(PendingAction::Close);
+        assert!(app.allow_close, "frame change with saved HOLD is clean");
+        assert!(app.confirm_discard.is_none());
+    }
+
+    #[test]
+    fn hold_save_failure_requires_another_close_decision_and_explicit_discard_clears_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = push_host(dir.path());
+        set_project_hold(&telemetry, true, 256);
+        app.observe_document();
+        make_autosave_due(&mut app);
+        app.autosave();
+        assert_eq!(recovery_files(dir.path()).len(), 1);
+        let bytes = std::fs::read(dir.path().join("push.openpatch")).unwrap();
+        app.after_save = Some(PendingAction::Close);
+        crate::project::fail_next_publish();
+        app.save_current();
+        assert!(!app.allow_close);
+        assert!(matches!(app.confirm_discard, Some(PendingAction::Close)));
+        assert!(app.after_save.is_none());
+        assert!(app.dirty());
+        assert_eq!(
+            std::fs::read(dir.path().join("push.openpatch")).unwrap(),
+            bytes
+        );
+        app.request_action(PendingAction::DiscardClose);
+        assert!(app.allow_close);
+        assert!(recovery_files(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn mixed_live_run_and_hold_are_saved_from_one_coherent_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+                {"id":"seq","kind":"seq3","params":{"running":1}},
+                {"id":"button","kind":"push","params":{"holding":0}}
+            ]}})
+        ));
+        app.save_document("mixed.openpatch", true);
+        let telemetry = std::sync::Arc::new(ProjectTelemetry(std::sync::Mutex::new(json!({
+            "coherent":true,"modules":{
+                "seq":{"kind":"seq3","available":true,"revision":app.revision,"frame":256,"state":{"running":false}},
+                "button":{"kind":"push","available":true,"revision":app.revision,"frame":256,"state":{"holding":true}}
+            }
+        }))));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(telemetry.clone()));
+        app.observe_document();
+        assert!(app.dirty());
+        app.save_current();
+        assert!(!app.dirty());
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("mixed.openpatch")
+            .unwrap()
+            .document;
+        assert_eq!(saved.patch.nodes[0].params["running"], 0.0);
+        assert_eq!(saved.patch.nodes[1].params["holding"], 1.0);
+        telemetry.0.lock().unwrap()["modules"]["button"]["frame"] = json!(512);
+        assert!(app.capture_persisted_document().is_err());
+        let still_saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("mixed.openpatch")
+            .unwrap()
+            .document;
+        assert!(still_saved.equivalent(&saved));
     }
 
     #[test]

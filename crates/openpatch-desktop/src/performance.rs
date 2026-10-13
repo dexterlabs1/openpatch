@@ -3,7 +3,7 @@
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
-    ModuleTelemetry, Patch, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
+    ModuleTelemetry, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -36,6 +36,7 @@ enum ModuleKind {
     Rescale,
     VcaMix,
     Pulses,
+    Push,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -49,6 +50,7 @@ impl ModuleKind {
             "rescale" => Some(Self::Rescale),
             "vca_mix" => Some(Self::VcaMix),
             "pulses" => Some(Self::Pulses),
+            "push" => Some(Self::Push),
             _ => None,
         }
     }
@@ -63,10 +65,14 @@ impl ModuleKind {
             Self::Rescale => "rescale",
             Self::VcaMix => "vca_mix",
             Self::Pulses => "pulses",
+            Self::Push => "push",
         }
     }
     fn manual(self) -> bool {
-        matches!(self, Self::Logic | Self::Process | Self::Pulses)
+        matches!(
+            self,
+            Self::Logic | Self::Process | Self::Pulses | Self::Push
+        )
     }
     fn sequential(self) -> bool {
         matches!(self, Self::Sequence | Self::Switch1To4 | Self::Switch4To1)
@@ -80,13 +86,25 @@ impl ModuleKind {
             Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
             Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
             Self::Pulses => action.pulse_button().is_some(),
+            Self::Push => matches!(
+                action,
+                ModuleAction::PushPress
+                    | ModuleAction::PushRelease
+                    | ModuleAction::HoldPress
+                    | ModuleAction::HoldRelease
+            ),
             _ => false,
         }
     }
 }
 fn is_release(action: ModuleAction) -> bool {
-    matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
-        || matches!(action.pulse_button(), Some((_, false)))
+    matches!(
+        action,
+        ModuleAction::BRelease
+            | ModuleAction::GateRelease
+            | ModuleAction::PushRelease
+            | ModuleAction::HoldRelease
+    ) || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]
 struct Entry {
@@ -104,9 +122,9 @@ struct StateEntry {
     kind: String,
     initialize_generation: u64,
     initialize_revision: u64,
-    running_generation: u64,
-    running_revision: u64,
-    desired_running: bool,
+    saved_generation: u64,
+    saved_revision: u64,
+    desired_state: Option<SavedModuleState>,
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -147,6 +165,7 @@ struct ModuleSnapshot {
     revision: u64,
     frame: u64,
     state: Option<ModuleTelemetry>,
+    saved_state: Option<SavedModuleState>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
 }
@@ -157,6 +176,7 @@ struct Meter {
     frame: AtomicU64,
     value: AtomicU32,
     flags: AtomicU32,
+    saved_state: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -168,6 +188,7 @@ impl Meter {
             frame: AtomicU64::new(0),
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
+            saved_state: AtomicU32::new(0),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -186,6 +207,14 @@ impl Meter {
                 Ordering::SeqCst,
             );
         }
+        self.saved_state.store(
+            match snapshot.saved_state {
+                Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 2),
+                Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 2),
+                None => 0,
+            },
+            Ordering::SeqCst,
+        );
         if let Some(controls) = snapshot.controls {
             flags |=
                 2 | (u32::from(controls.pressed) << 3) | (u32::from(controls.pressed_mask) << 16);
@@ -210,6 +239,7 @@ impl Meter {
             let frame = self.frame.load(Ordering::SeqCst);
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
+            let saved_state = self.saved_state.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -228,6 +258,11 @@ impl Meter {
                         length: (value >> 8) as u8,
                         running: value & (1 << 16) != 0,
                     }),
+                    saved_state: match saved_state & 3 {
+                        1 => Some(SavedModuleState::Seq3Run(saved_state & 4 != 0)),
+                        2 => Some(SavedModuleState::PushHold(saved_state & 4 != 0)),
+                        _ => None,
+                    },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
                         pressed: flags & 8 != 0,
                         pressed_mask: (flags >> 16) as u16,
@@ -292,9 +327,9 @@ pub(super) struct StateBinding {
     pub handle: ModuleHandle,
     initialize_generation: u64,
     applied_initialization: u64,
-    running_generation: u64,
-    applied_running: u64,
-    desired_running: bool,
+    saved_generation: u64,
+    applied_saved: u64,
+    desired_state: Option<SavedModuleState>,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -328,22 +363,37 @@ impl Default for ModulePlan {
     }
 }
 impl ModulePlan {
-    /// Saved custom state is assigned, never replayed as a button press. The
-    /// generation is independent of Initialize because history deliberately
-    /// reloads Run while leaving phase and step position alone.
-    pub(super) fn load_running_pending(&mut self, engine: &mut Engine, previous: Option<&Self>) {
+    /// Saved custom state is assigned after DSP adoption, never replayed as a
+    /// button press. A load also reaches the fading instance of the same module.
+    pub(super) fn load_saved_pending(
+        &mut self,
+        engine: &mut Engine,
+        mut previous: Option<(&mut Self, &mut Engine)>,
+    ) {
         for (slot, binding) in self.states.iter_mut().enumerate() {
             let Some(binding) = binding else { continue };
-            if let Some(old) = previous
-                .and_then(|plan| plan.states[slot])
-                .filter(|old| old.token == binding.token)
-            {
-                binding.applied_running = binding.applied_running.max(old.applied_running);
+            let old = previous.as_mut().and_then(|(plan, engine)| {
+                plan.states[slot]
+                    .as_mut()
+                    .filter(|old| old.token == binding.token)
+                    .map(|old| (old, &mut **engine))
+            });
+            if let Some((old, _)) = old.as_ref() {
+                binding.applied_saved = binding.applied_saved.max(old.applied_saved);
             }
-            if binding.running_generation > binding.applied_running
-                && engine.set_module_running(binding.handle, binding.desired_running)
-            {
-                binding.applied_running = binding.running_generation;
+            if binding.saved_generation <= binding.applied_saved {
+                continue;
+            }
+            let Some(state) = binding.desired_state else {
+                continue;
+            };
+            if engine.set_module_saved_state(binding.handle, state) {
+                binding.applied_saved = binding.saved_generation;
+                if let Some((old, old_engine)) = old {
+                    if old_engine.set_module_saved_state(old.handle, state) {
+                        old.applied_saved = old.applied_saved.max(binding.saved_generation);
+                    }
+                }
             }
         }
     }
@@ -508,13 +558,13 @@ impl Performance {
                         0
                     },
                     applied_initialization: 0,
-                    running_generation: if revision >= entry.running_revision {
-                        entry.running_generation
+                    saved_generation: if revision >= entry.saved_revision {
+                        entry.saved_generation
                     } else {
                         0
                     },
-                    applied_running: 0,
-                    desired_running: entry.desired_running,
+                    applied_saved: 0,
+                    desired_state: entry.desired_state,
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
@@ -606,6 +656,30 @@ impl Performance {
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.closed.store(true, Ordering::Release);
     }
+    fn load_saved_states(&self, states: &BTreeMap<String, bool>, kind: SavedModuleState) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        let revision = control.revision;
+        for (id, value) in states {
+            let Some(state) = control.state_entries.get_mut(id).filter(|state| {
+                state
+                    .desired_state
+                    .is_some_and(|desired| desired.kind() == kind.kind())
+            }) else {
+                continue;
+            };
+            state.saved_generation = state.saved_generation.saturating_add(1);
+            state.saved_revision = revision;
+            state.desired_state = Some(kind.with_value(*value));
+            if let Some(entry) = control.entries.get_mut(id) {
+                entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
+            }
+        }
+    }
+
     /// Call only after the stream has stopped and its consumer has been dropped.
     pub(super) fn finish_close(&self) {
         let pending = self
@@ -622,27 +696,11 @@ impl Performance {
 }
 impl LiveModuleEvents for Performance {
     fn load_module_running(&self, states: &BTreeMap<String, bool>) {
-        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
-        if self.shared.closed.load(Ordering::Acquire) {
-            return;
-        }
-        let revision = control.revision;
-        for (id, running) in states {
-            let Some(state) = control
-                .state_entries
-                .get_mut(id)
-                .filter(|state| state.kind == "seq3")
-            else {
-                continue;
-            };
-            state.running_generation = state.running_generation.saturating_add(1);
-            state.running_revision = revision;
-            state.desired_running = *running;
-            if let Some(entry) = control.entries.get_mut(id) {
-                entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
-                self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
-            }
-        }
+        self.load_saved_states(states, SavedModuleState::Seq3Run(false));
+    }
+
+    fn load_module_holding(&self, states: &BTreeMap<String, bool>) {
+        self.load_saved_states(states, SavedModuleState::PushHold(false));
     }
 
     fn release_module_controls(&self, ids: &[String]) {
@@ -774,9 +832,9 @@ impl LiveModuleEvents for Performance {
                     kind: node.kind.clone(),
                     initialize_generation: 0,
                     initialize_revision: revision,
-                    running_generation: 0,
-                    running_revision: revision,
-                    desired_running: false,
+                    saved_generation: 0,
+                    saved_revision: revision,
+                    desired_state: SavedModuleState::from_node(node),
                 },
             );
         }
@@ -935,7 +993,13 @@ impl LiveModuleEvents for Performance {
         }
         let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
-                "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot|snapshot.state).map(|state|json!({"step":state.step,"length":state.length,"running":state.running})),
+                "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
+                    if let Some(SavedModuleState::PushHold(holding)) = snapshot.saved_state {
+                        Some(json!({"holding":holding}))
+                    } else {
+                        snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
+                    }
+                }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
         }).collect();
         json!({"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
@@ -1096,6 +1160,7 @@ impl EventReader {
                             } else {
                                 None
                             },
+                            saved_state: engine.module_saved_state(binding.handle),
                             controls: if binding.kind.manual() {
                                 engine.module_control_state(binding.handle)
                             } else {
@@ -1131,7 +1196,11 @@ mod tests {
                         slot,
                         token: slot as u64 + 11,
                         born_revision: 1,
-                        kind: ModuleKind::Sequence,
+                        kind: if slot == 0 {
+                            ModuleKind::Sequence
+                        } else {
+                            ModuleKind::Push
+                        },
                         bypassed: false,
                         action_epoch: 1,
                     },
@@ -1158,13 +1227,22 @@ mod tests {
                             ModuleSnapshot {
                                 revision: 1,
                                 frame,
-                                state: Some(ModuleTelemetry {
+                                state: (slot == 0).then_some(ModuleTelemetry {
                                     step: frame as u8,
                                     length: 8,
                                     running: true,
                                 }),
-                                controls: None,
-                                lights: None,
+                                saved_state: (slot == 1)
+                                    .then_some(SavedModuleState::PushHold(frame & 1 != 0)),
+                                controls: (slot == 1).then_some(ModuleControlState {
+                                    pressed: true,
+                                    pressed_mask: 3,
+                                }),
+                                lights: (slot == 1).then_some(ModuleLightState {
+                                    count: 2,
+                                    manual: true,
+                                    ..ModuleLightState::default()
+                                }),
                             },
                         );
                         std::thread::yield_now();
@@ -1183,8 +1261,14 @@ mod tests {
                 for id in ["first", "second"] {
                     assert_eq!(snapshot["modules"][id]["available"], true);
                     assert_eq!(snapshot["modules"][id]["frame"], frame);
-                    assert_eq!(snapshot["modules"][id]["state"]["step"], frame as u8);
                 }
+                assert_eq!(snapshot["modules"]["first"]["state"]["step"], frame as u8);
+                assert_eq!(
+                    snapshot["modules"]["second"]["state"],
+                    json!({"holding": frame & 1 != 0})
+                );
+                assert_eq!(snapshot["modules"]["second"]["controls"]["pressed_mask"], 3);
+                assert_eq!(snapshot["modules"]["second"]["lights"]["count"], 2);
             }
         }
         writer.join().unwrap();

@@ -89,7 +89,7 @@ impl Category {
             "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "poly_sum"
             | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" => Self::InputOutput,
-            "pulses" => Self::Utilities,
+            "pulses" | "push" => Self::Utilities,
             _ => Self::Utilities,
         }
     }
@@ -722,6 +722,22 @@ fn paint_tile(
             );
             mini_knob(painter, pos2(x, area.top() + 34.0), 4.8);
         }
+    } else if kind == "push" {
+        for (index, x) in [area.left() + 28.0, area.right() - 28.0]
+            .into_iter()
+            .enumerate()
+        {
+            painter.rect_filled(
+                Rect::from_center_size(pos2(x, area.center().y - 5.0), vec2(28.0, 22.0)),
+                3.0,
+                if index == 0 {
+                    AMBER
+                } else {
+                    Color32::from_rgb(163, 158, 143)
+                },
+            );
+            painter.circle_filled(pos2(x, area.center().y + 17.0), 3.5, AMBER);
+        }
     } else if kind == "pulses" {
         for row in 0..4 {
             let y = area.top() + 7.0 + row as f32 * 16.0;
@@ -903,6 +919,7 @@ mod tests {
         assert_eq!(Category::of_kind("ladder_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
+        assert_eq!(Category::of_kind("push"), Category::Utilities);
         library.set_favorites(&["analog_vco".into(), "removed_plugin".into()], &catalog);
         assert_eq!(library.favorites(), vec!["analog_vco"]);
         assert!(!library.take_favorites_changed());

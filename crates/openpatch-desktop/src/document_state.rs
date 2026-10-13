@@ -1,5 +1,5 @@
 //! Content-based saved state, independent of revision/history identities.
-//! Refreshed when graph, persisted rack layout, or effective sequencer Run changes.
+//! Refreshed when graph, persisted rack layout, or effective persistent module state changes.
 use crate::{project::Document, rack::Rack};
 use openpatch_core::Patch;
 use serde_json::{json, Value};
@@ -11,25 +11,34 @@ pub struct DocumentState {
     observed: Option<(u64, u64)>,
     dirty: bool,
     running: BTreeMap<String, bool>,
+    holding: BTreeMap<String, bool>,
     known: bool,
 }
 impl DocumentState {
     pub fn new(patch: &Patch, revision: u64, rack: &Rack) -> Self {
         let running = configured_running(patch);
-        let current = content(patch, rack.layout(), &running);
+        let holding = configured_holding(patch);
+        let current = content(patch, rack.layout(), &running, &holding);
         Self {
             baseline: Some(current.clone()),
             current,
             observed: Some((revision, rack.layout_revision())),
             dirty: false,
             running,
+            holding,
             known: true,
         }
     }
     #[cfg(test)]
     pub fn observe(&mut self, patch: &Patch, revision: u64, rack: &Rack) -> bool {
-        self.observe_running(patch, revision, rack, Some(configured_running(patch)))
+        self.observe_runtime(
+            patch,
+            revision,
+            rack,
+            Some((configured_running(patch), configured_holding(patch))),
+        )
     }
+    #[cfg(test)]
     pub fn observe_running(
         &mut self,
         patch: &Patch,
@@ -37,21 +46,40 @@ impl DocumentState {
         rack: &Rack,
         running: Option<BTreeMap<String, bool>>,
     ) -> bool {
-        let Some(running) = running else {
+        self.observe_runtime(
+            patch,
+            revision,
+            rack,
+            running.map(|running| (running, configured_holding(patch))),
+        )
+    }
+    pub fn observe_runtime(
+        &mut self,
+        patch: &Patch,
+        revision: u64,
+        rack: &Rack,
+        states: Option<(BTreeMap<String, bool>, BTreeMap<String, bool>)>,
+    ) -> bool {
+        let Some((running, holding)) = states else {
             let changed = self.known;
             self.known = false;
             self.observed = None;
             return changed;
         };
         let key = (revision, rack.layout_revision());
-        if self.known && self.observed == Some(key) && self.running == running {
+        if self.known
+            && self.observed == Some(key)
+            && self.running == running
+            && self.holding == holding
+        {
             return false;
         }
         let was_unknown = !self.known;
         self.known = true;
         self.observed = Some(key);
-        let next = content(patch, rack.layout(), &running);
+        let next = content(patch, rack.layout(), &running, &holding);
         self.running = running;
+        self.holding = holding;
         let changed = was_unknown || self.current != next;
         self.current = next;
         self.dirty = self.baseline.as_ref() != Some(&self.current);
@@ -91,24 +119,49 @@ fn configured_running(patch: &Patch) -> BTreeMap<String, bool> {
         .collect()
 }
 
+fn configured_holding(patch: &Patch) -> BTreeMap<String, bool> {
+    patch
+        .nodes
+        .iter()
+        .filter(|node| node.kind == "push")
+        .map(|node| {
+            (
+                node.id.clone(),
+                node.params.get("holding").copied().unwrap_or(0.0) == 1.0,
+            )
+        })
+        .collect()
+}
+
 fn document_content(document: &Document) -> Value {
     content(
         &document.patch,
         document.layout.clone(),
         &configured_running(&document.patch),
+        &configured_holding(&document.patch),
     )
 }
 
-// Missing Run and its explicit default represent the same saved content.
+// Omitted persistent flags and their explicit defaults are equal saved content.
 // Normalize only the serialized projection; never edit the live patch/history.
-fn content(patch: &Patch, layout: Value, running: &BTreeMap<String, bool>) -> Value {
+fn content(
+    patch: &Patch,
+    layout: Value,
+    running: &BTreeMap<String, bool>,
+    holding: &BTreeMap<String, bool>,
+) -> Value {
     let mut value = json!({"patch":patch,"layout":layout});
     for node in value["patch"]["nodes"]
         .as_array_mut()
         .expect("serialized patch nodes")
     {
-        if let Some(run) = node["id"].as_str().and_then(|id| running.get(id)) {
-            node["params"]["running"] = json!(if *run { 1.0 } else { 0.0 });
+        let (parameter, values) = match node["kind"].as_str() {
+            Some("seq3") => ("running", running),
+            Some("push") => ("holding", holding),
+            _ => continue,
+        };
+        if let Some(value) = node["id"].as_str().and_then(|id| values.get(id)) {
+            node["params"][parameter] = json!(if *value { 1.0 } else { 0.0 });
         }
     }
     value
@@ -186,6 +239,44 @@ mod tests {
         assert!(state.observe_running(&patch, 1, &rack, running(true)));
         assert!(!state.dirty());
         assert!(!state.observe_running(&patch, 1, &rack, running(true)));
+    }
+
+    #[test]
+    fn hold_projection_normalizes_omitted_zero_and_tracks_live_flip_at_same_revision() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"button","kind":"push"}]
+        }))
+        .unwrap();
+        let mut rack = Rack::default();
+        rack.reconcile(&patch, &openpatch_core::catalog());
+        let mut state = DocumentState::new(&patch, 7, &rack);
+        let original = Document {
+            patch: patch.clone(),
+            layout: rack.layout(),
+        };
+        let mut explicit_zero = original.clone();
+        explicit_zero.patch.nodes[0]
+            .params
+            .insert("holding".into(), 0.0);
+        assert!(state.matches_saved(&explicit_zero));
+        let observed = |held| Some((BTreeMap::new(), BTreeMap::from([("button".into(), held)])));
+        assert!(!state.observe_runtime(&patch, 7, &rack, observed(false)));
+        assert!(!state.dirty());
+        assert!(state.observe_runtime(&patch, 7, &rack, observed(true)));
+        assert!(
+            state.dirty(),
+            "HOLD changed without a graph or layout revision"
+        );
+        assert!(!state.observe_runtime(&patch, 7, &rack, observed(true)));
+        assert!(state.observe_runtime(&patch, 7, &rack, observed(false)));
+        assert!(!state.dirty());
+        assert!(state.observe_runtime(&patch, 7, &rack, None));
+        assert!(
+            state.dirty(),
+            "unavailable live HOLD cannot be called clean"
+        );
+        assert!(state.observe_runtime(&patch, 7, &rack, observed(false)));
+        assert!(!state.dirty());
     }
 
     #[test]

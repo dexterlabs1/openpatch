@@ -1,7 +1,7 @@
 # Projects, saving, and recovery
 
 Native projects now keep modules, cables, output selection, module positions,
-pan, zoom, and each SEQ-3’s current Run setting in **one `.openpatch` file**. Files live in `~/OpenPatch` by
+pan, zoom, and each SEQ-3’s current Run and Push’s HOLD settings in **one `.openpatch` file**. Files live in `~/OpenPatch` by
 default, or the directory selected with `--workspace`.
 
 ## Everyday controls
@@ -20,9 +20,9 @@ use ASCII letters, digits, hyphens, underscores, and periods, with no directory
 components. A standard operating-system file picker remains future work.
 
 The title's asterisk follows saved **content**, including layout and view
-changes and live SEQ-3 Run toggles. Advancing steps and audio frames do not mark
+changes and live SEQ-3 Run or Push HOLD toggles. Advancing steps and audio frames do not mark
 the project changed. Returning to saved content clears the asterisk. A later
-Run toggle or MCP edit during Save remains unsaved. Open, New, Revert, and Close offer Save / Discard /
+Run/HOLD toggle or MCP edit during Save remains unsaved. Open, New, Revert, and Close offer Save / Discard /
 Cancel when needed; Save continues the requested action only if no newer edits
 remain. Recovery and newly opened projects start with playback paused.
 
@@ -78,11 +78,11 @@ fields and unsupported versions reject. Native files are limited to 2 MiB;
 legacy graph and sidecar reads are each limited to 1 MiB. Nonregular files and
 symlinks are rejected.
 
-Save captures one observed graph/layout pair with every SEQ-3 Run value from
+Save captures one observed graph/layout pair with every SEQ-3 Run and Push HOLD value from
 the same completed audio callback at that graph revision. Unavailable, stale,
 or mixed-frame live state blocks Save and preserves the previous file and
 recovery copy. Recovery retries later. Without an attached audio backend,
-capture uses the configured initial Run settings. Capture is read-only: it
+capture uses the configured initial Run/HOLD settings. Capture is read-only: it
 does not reset steps, oscillator phase, cable delays, or held controls.
 
 Validation, serialization, and
@@ -109,7 +109,7 @@ failures; they do not prove every storage device's power-failure behavior.
 Open/Revert validate the entire graph and layout before committing. The session
 revision is checked at commit; a concurrent MCP edit causes a conflict and
 leaves the existing project and view intact. Clean and save-before-action
-continuations also recheck projected Run content before replacing the graph
+continuations also recheck projected Run/HOLD content before replacing the graph
 or sealing Close. New changes prompt again. Explicit Discard can proceed when
 live telemetry is unavailable. Failed saves retain a visible pending decision.
 
@@ -128,10 +128,10 @@ MCP `save_patch` and `load_patch` remain **graph-only JSON interchange** command
 They do not read native `.openpatch` envelopes or save the view. Agents can
 continue editing the live native session while the user saves complete native
 projects through File. Read-only MCP `capture_project_patch` exposes the same
-Run projection and provenance, without layout or disk writes. Full project-level
+Run/HOLD projection and provenance, without layout or disk writes. Full project-level
 MCP operations remain a separate gate.
 
-Native documents preserve SEQ-3 Run, but not sequence position, oscillator
+Native documents preserve SEQ-3 Run and Push HOLD, but not sequence position, oscillator
 phase, delay history, held controls, external assets,
 custom GLSL, keyboard/device preferences, or the undo stack. Device preferences
 remain separate host settings. [Native module presets](MODULE_PRESETS.md) are

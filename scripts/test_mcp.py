@@ -1424,6 +1424,49 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "pulses.json"})
         self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
 
+    def test_push_xor_edges_persisted_hold_and_protocol_validation(self) -> None:
+        modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}
+        self.assertEqual(modules["push"]["inputs"], ["push", "hold"])
+        self.assertEqual(modules["push"]["outputs"], ["trig", "gate"])
+        self.assertEqual(modules["push"]["runtime_actions"], ["push_press", "push_release", "hold_press", "hold_release"])
+        self.assertEqual(len(modules["pulses"]["runtime_actions"]), 20)
+        self.require_tool_success("add_module", {"id": "button", "kind": "push"})
+        before = self.patch_snapshot()
+        events = [{"frame": 0, "id": "button", "action": "hold_press"},
+                  {"frame": 1, "id": "button", "action": "hold_release"},
+                  {"frame": 60, "id": "button", "action": "push_press"},
+                  {"frame": 70, "id": "button", "action": "push_release"}]
+        for port, expected in [("trig", [10 if n < 48 or 70 <= n < 118 else 0 for n in range(144)]),
+                               ("gate", [0 if 60 <= n < 70 else 10 for n in range(144)])]:
+            capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": "button", "port": port, "seconds": 0.003, "module_events": events}))
+            self.assertEqual([point["mean"] for point in capture["bins"]], expected)
+        self.assertEqual(self.patch_snapshot(), before)
+        for action in ["pulse1_press", "b_press", "hold_toggle", {"hold_press": None}]:
+            self.require_tool_error("render_audio", {"filename": "invalid-push.wav", "seconds": 0.002,
+                "module_events": [{"frame": 0, "id": "button", "action": action}]})
+            self.assertFalse((self.workspace / "invalid-push.wav").exists())
+        self.require_tool_error("set_parameter", {"id": "button", "parameter": "holding", "value": 0.5})
+        self.require_tool_success("set_parameter", {"id": "button", "parameter": "holding", "value": 1})
+        saved = self.payload(self.require_tool_success("capture_project_patch"))
+        self.assertEqual(saved["holding"], {"button": True})
+        self.assertEqual(saved["running"], {})
+        self.assertEqual(saved["state_source"], "offline_reset")
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "button"}))["preset"]
+        self.assertEqual(preset["params"], {"holding": 1.0})
+        capture = self.payload(self.require_tool_success("capture_signal", {"id": "button", "port": "trig", "seconds": 0.002}))
+        self.assertTrue(all(point["mean"] == 0 for point in capture["bins"]))  # Loaded HOLD starts without a trigger.
+        self.require_tool_success("initialize_modules", {"ids": ["button"]})
+        self.assertFalse(self.payload(self.require_tool_success("capture_project_patch"))["holding"]["button"])
+        self.require_tool_success("undo")
+        self.assertTrue(self.payload(self.require_tool_success("capture_project_patch"))["holding"]["button"])
+        self.require_tool_success("set_bypass", {"id": "button", "bypassed": True})
+        self.require_tool_error("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
+            "module_events": [{"frame": 0, "id": "button", "action": "hold_press"}]})
+        for action in ["hold_release", "push_release"]:
+            self.require_tool_success("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
+                "module_events": [{"frame": 0, "id": "button", "action": action}]})
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

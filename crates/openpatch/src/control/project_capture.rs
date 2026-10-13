@@ -7,85 +7,112 @@ pub struct ProjectPatchSnapshot {
     pub revision: u64,
     pub state_id: u64,
     pub running: BTreeMap<String, bool>,
+    pub holding: BTreeMap<String, bool>,
     pub state_source: &'static str,
     pub frame: Option<u64>,
 }
 
-/// Lightweight Run metadata for dirty observation; does not clone the graph.
+/// Lightweight Run and HOLD metadata for dirty observation; does not clone the graph.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectRunningSnapshot {
     pub revision: u64,
     pub state_id: u64,
     pub running: BTreeMap<String, bool>,
+    pub holding: BTreeMap<String, bool>,
     pub state_source: &'static str,
     pub frame: Option<u64>,
 }
 
 impl Session {
-    /// Read all current SEQ3 Run values from one coherent callback snapshot.
-    /// No sequencers means no backend read or patch clone.
+    /// Read current SEQ3 Run and PUSH HOLD from one coherent callback snapshot.
+    /// Kept under the original method name for existing native callers.
     pub fn capture_project_running(
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectRunningSnapshot, String> {
         self.check_revision(expected_revision)?;
         let mut running = BTreeMap::new();
+        let mut holding = BTreeMap::new();
         let mut frame = None;
-        let has_sequence = self.patch.nodes.iter().any(|node| node.kind == "seq3");
-        let state_source = if !has_sequence {
+        let has_state = self
+            .patch
+            .nodes
+            .iter()
+            .any(|node| SavedModuleState::from_node(node).is_some());
+        let snapshot = if has_state {
+            self.live_module_events
+                .as_ref()
+                .map(|backend| backend.snapshot())
+        } else {
+            None
+        };
+        let state_source = if !has_state {
             "parameters"
-        } else if let Some(backend) = &self.live_module_events {
-            let snapshot = backend.snapshot();
-            // Older backends omit the coherence marker. An explicit failed
-            // publication must never be accepted, even with plausible meters.
-            if snapshot["coherent"].as_bool() == Some(false) {
-                return Err("live project state is not coherent; retry capture".into());
-            }
-            for node in self.patch.nodes.iter().filter(|node| node.kind == "seq3") {
-                let (value, captured_frame) =
-                    running::live_running(&snapshot, &node.id, self.revision)?;
+        } else if snapshot.is_some() {
+            "live"
+        } else {
+            "offline_reset"
+        };
+        for node in &self.patch.nodes {
+            let Some(initial) = SavedModuleState::from_node(node) else {
+                continue;
+            };
+            let state = if let Some(snapshot) = &snapshot {
+                let (state, captured_frame) =
+                    running::live_saved(snapshot, &node.id, self.revision, initial)?;
                 if frame.is_some_and(|frame| frame != captured_frame) {
                     return Err(
                         "live project state has mixed callback frames; retry capture".into(),
                     );
                 }
                 frame = Some(captured_frame);
-                running.insert(node.id.clone(), value);
+                state
+            } else {
+                initial
+            };
+            match state {
+                SavedModuleState::Seq3Run(value) => {
+                    running.insert(node.id.clone(), value);
+                }
+                SavedModuleState::PushHold(value) => {
+                    holding.insert(node.id.clone(), value);
+                }
             }
-            "live"
-        } else {
-            for node in self.patch.nodes.iter().filter(|node| node.kind == "seq3") {
-                running.insert(node.id.clone(), running::initial_running(node));
-            }
-            "offline_reset"
-        };
+        }
         Ok(ProjectRunningSnapshot {
             revision: self.revision,
             state_id: self.state_id,
             running,
+            holding,
             state_source,
             frame,
         })
     }
 
-    /// Capture current SEQ3 Run into a cloned patch, with the same validation as
-    /// lightweight dirty observation. No session/history/runtime mutation.
+    /// Project live persistent flags into a cloned patch without modifying history.
     pub fn capture_project_patch(
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectPatchSnapshot, String> {
         let captured = self.capture_project_running(expected_revision)?;
         let mut patch = self.patch.clone();
-        for node in patch.nodes.iter_mut().filter(|node| node.kind == "seq3") {
-            let value = captured.running[&node.id];
+        for node in &mut patch.nodes {
+            let Some(state) = SavedModuleState::from_node(node) else {
+                continue;
+            };
+            let value = match state {
+                SavedModuleState::Seq3Run(_) => captured.running[&node.id],
+                SavedModuleState::PushHold(_) => captured.holding[&node.id],
+            };
             node.params
-                .insert("running".into(), if value { 1.0 } else { 0.0 });
+                .insert(state.parameter().into(), if value { 1.0 } else { 0.0 });
         }
         Ok(ProjectPatchSnapshot {
             patch,
             revision: captured.revision,
             state_id: captured.state_id,
             running: captured.running,
+            holding: captured.holding,
             state_source: captured.state_source,
             frame: captured.frame,
         })

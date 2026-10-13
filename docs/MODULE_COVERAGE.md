@@ -8,9 +8,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 ## Current implementation baseline
 
-There are **43 built-in kinds**: seven legacy utilities, six reference-voice
+There are **44 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, and a ten-row manual trigger/gate source. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, a ten-row manual trigger/gate source, and a manual/CV gate source with a persistent HOLD latch. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
@@ -160,7 +160,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
 | Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Random Values | Source | Planned | Sampling events, statistics and repeatability |
-| Push | Gate utility | Clock-gate interface implemented; not equivalent | Press/release/latch state and persistence |
+| Push | Gate utility | Implemented signal role: `push`, manual/CV push and HOLD, XOR gate, rising-gate trigger, coherent saved latch and native controls | Direct reference traces, saved-state import, smoothed reference lights and native qualification; [contract](PUSH.md) |
 | Sample & Hold Analog Shift Register | Sampling | Partial: single `sample_hold`, hysteresis and live-state continuity | Eight rows, shift ordering, clear/random modes and runtime JSON persistence |
 
 ## Hidden legacy modules and existing patches

@@ -11,18 +11,18 @@ impl Session {
             .iter()
             .find(|node| node.id == id)
             .ok_or("module not found")?;
-        let (running, source, frame) = if node.kind == "seq3" {
+        let (state, source, frame) = if let Some(initial) = SavedModuleState::from_node(node) {
             if let Some(backend) = &self.live_module_events {
-                let (running, frame) =
-                    running::live_running(&backend.snapshot(), id, self.revision)?;
-                (Some(running), "live", Some(frame))
+                let (value, frame) =
+                    running::live_saved(&backend.snapshot(), id, self.revision, initial)?;
+                (Some(value), "live", Some(frame))
             } else {
-                (Some(running::initial_running(node)), "offline_reset", None)
+                (Some(initial), "offline_reset", None)
             }
         } else {
             (None, "saved_parameters", None)
         };
-        let preset = presets::capture(node, running)?;
+        let preset = presets::capture_state(node, state)?;
         Ok(
             json!({"revision":self.revision,"id":id,"preset":preset,"state_source":source,"frame":frame}),
         )

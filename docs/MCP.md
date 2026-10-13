@@ -97,19 +97,19 @@ yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
 A window that has committed its final close decision rejects subsequent graph
 mutations and live module actions with `session is closing`; inspection and exports remain available.
 
-## Capture current project Run state
+## Capture current project persistent state
 
 `capture_project_patch` accepts optional `expected_revision` and returns
-`patch`, `revision`, `state_id`, `running` (module ID → boolean), `state_source`,
-and `frame`. It projects current SEQ-3 Run into a cloned graph without modifying
+`patch`, `revision`, `state_id`, `running` and `holding` (module ID → boolean), `state_source`,
+and `frame`. It projects current SEQ-3 Run and Push HOLD into a cloned graph without modifying
 history, queuing controls, resetting DSP state, or writing a file. Native Save
 and recovery use this same capture path; the MCP result does not include layout.
 
-With live audio, every sequencer must be available at the requested revision
+With live audio, every SEQ-3 and Push must be available at the requested revision
 and one completed callback frame. Stale, missing, or incoherent telemetry
 rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
-configured initial Run when no backend is attached, or `parameters` when there
-are no sequencers. The latter two return a null frame. This is a point-in-time
+configured initial Run/HOLD when no backend is attached, or `parameters` when there
+are no SEQ-3 or Push modules. The latter two return a null frame. This is a point-in-time
 capture, not an acknowledgment of controls awaiting audio processing.
 
 ## Initialize and Randomize
@@ -132,7 +132,7 @@ save those exact contents with `save_module_preset`. Use `list_module_presets`
 and `read_module_preset` to browse saved `.opreset` files. Apply reviewed inline
 contents with `apply_module_preset`, including the observed `expected_revision`.
 Application supports preview and atomic batches; file reads are not repeated at
-commit time. Complete live SEQ-3 captures use actual Run state from a coherent
+commit time. Complete live SEQ-3 and Push captures use actual Run/HOLD state from a coherent
 callback snapshot, never an unavailable-state guess. See the
 [preset format, history and storage contract](MODULE_PRESETS.md).
 
@@ -241,8 +241,8 @@ For reproducible offline actions, supply `module_events` to `render_audio`,
 ```
 
 Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
-module for sequence actions, or `logic`/`process`/`pulses` for manual controls), and `action`
-(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`).
+module for sequence actions, or `logic`/`process`/`pulses`/`push` for manual controls), and `action`
+(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`, plus Push’s `push_press`, `push_release`, `hold_press`, and `hold_release`).
 Each action must match its module kind. Frames index the stored patch
 sample rate, must be less than the rounded render frame count, and must be
 nondecreasing. The list is capped at 65,536 events and at 64 actions for one
@@ -288,13 +288,13 @@ not proof that audio has processed it. No live backend means these requests are
 unsupported; offline event traces remain available.
 
 `inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, the four signal processors, VCA Mix, and Pulses. Each entry has
+sequencer, sequential switches, the four signal processors, VCA Mix, Pulses, and Push. Each entry has
 `kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
-`state`, `controls`, and `lights`. Sequence state retains step/running/length.
-Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9); indicator `lights` provides `count`, ten
+`state`, `controls`, and `lights`. Sequence state retains step/running/length. Push state reports `holding`.
+Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9; Push uses bit 0 for PUSH and bit 1 for HOLD); indicator `lights` provides `count`, ten
 fixed-capacity brightness pairs, and a `manual` flag. Signal processors use
 mono/poly pairs; VCA Mix uses the first value for each channel meter and leaves
-the second value zero. Pulses uses one entry per row. Only the first
+the second value zero. Pulses uses one entry per row; Push exposes final gate and HOLD. Only the first
 `count` pairs are meaningful; names and interpretation come from the catalog's
 `light_names` and `light_policy`. Unsupported fields are null.
 
@@ -425,7 +425,7 @@ break the group. Omit this field inside transactions.
 including outgoing connections to existing destinations). Selected endpoints
 are remapped; external endpoints stay attached. Each cable is copied once with
 a fresh ID, preserving repeated routes and order. Saved parameters, bypass and
-current SEQ-3 Run are copied; other runtime state starts fresh. The selected
+current SEQ-3 Run and Push HOLD are copied; other runtime state starts fresh. The selected
 patch output remains unchanged. Version-1 stacking restrictions still apply to
 the final graph. The tool supports
 `expected_revision`, transaction previews, batches, and one-step undo/redo.
@@ -467,3 +467,5 @@ not a directory concurrently modified by untrusted users. This is a local tool,
 not an OS sandbox or a hardened multi-user file service.
 
 [Ten-row Pulses timing and state contract →](PULSES.md)
+
+[Push HOLD persistence, timing and runtime controls →](PUSH.md)

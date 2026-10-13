@@ -36,6 +36,10 @@ pub const MODULE_ACTION_NAMES: &[&str] = &[
     "pulse9_release",
     "pulse10_press",
     "pulse10_release",
+    "push_press",
+    "push_release",
+    "hold_press",
+    "hold_release",
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleAction {
@@ -50,6 +54,10 @@ pub enum ModuleAction {
     PulsePress(u8),
     /// One-based PULSES button, valid only in 1..=10.
     PulseRelease(u8),
+    PushPress,
+    PushRelease,
+    HoldPress,
+    HoldRelease,
 }
 impl ModuleAction {
     /// Validated zero-based PULSES button and whether this is a press.
@@ -69,6 +77,10 @@ impl ModuleAction {
             Self::BRelease => 4,
             Self::GatePress => 5,
             Self::GateRelease => 6,
+            Self::PushPress => 27,
+            Self::PushRelease => 28,
+            Self::HoldPress => 29,
+            Self::HoldRelease => 30,
             action => {
                 let (button, press) = action.pulse_button()?;
                 7 + 2 * button + usize::from(!press)
@@ -101,6 +113,10 @@ impl<'de> Deserialize<'de> for ModuleAction {
             4 => Self::BRelease,
             5 => Self::GatePress,
             6 => Self::GateRelease,
+            27 => Self::PushPress,
+            28 => Self::PushRelease,
+            29 => Self::HoldPress,
+            30 => Self::HoldRelease,
             _ => {
                 let button = ((index - 7) / 2 + 1) as u8;
                 if (index - 7) % 2 == 0 {

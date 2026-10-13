@@ -13,7 +13,7 @@ pub(crate) fn catalog() -> Value {
     json!({"kind":"pulses","title":"PULSES","model":"functional","inputs":[],"params":{},"description":"Ten independent momentary buttons. Each rising press emits a mono 10 V trigger for 1 ms; its gate is 10 V while held. Controls and pulse tails are runtime-only, not saved parameters."})
 }
 pub(crate) fn annotate(module: &mut Value) {
-    module["runtime_actions"] = json!(&crate::MODULE_ACTION_NAMES[7..]);
+    module["runtime_actions"] = json!(&crate::MODULE_ACTION_NAMES[7..27]);
     module["polyphony"]["version_2"] = json!("twenty independent mono outputs; no inputs");
     module["polyphony"]["maximum_channels"] = json!(1);
     module["polyphony"]["primary_input"] = Value::Null;

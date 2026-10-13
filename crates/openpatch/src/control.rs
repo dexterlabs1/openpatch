@@ -13,13 +13,15 @@ mod parameter_action_tests;
 #[cfg(test)]
 mod preset_tests;
 #[cfg(test)]
+mod push_tests;
+#[cfg(test)]
 mod sequence_tests;
 #[cfg(test)]
 mod stack_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
     write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, ModuleParameterActions, Node,
-    Patch, PortFrame, TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
+    Patch, PortFrame, SavedModuleState, TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
     MODULE_ACTION_NAMES,
 };
 use serde_json::{json, Value};
@@ -47,6 +49,8 @@ pub trait LiveModuleEvents: Send + Sync {
     fn initialize_modules(&self, _ids: &[String]) {}
     /// Assign saved SEQ3 Run after adoption, including equal-value loads/history.
     fn load_module_running(&self, _states: &BTreeMap<String, bool>) {}
+    /// Assign saved PUSH HOLD after adoption, including equal-value loads/history.
+    fn load_module_holding(&self, _states: &BTreeMap<String, bool>) {}
     /// Release transient manual buttons without resetting DSP histories.
     fn release_module_controls(&self, _ids: &[String]) {}
 }
@@ -72,8 +76,8 @@ struct HistoryEntry {
     // identically. Replay it whenever undo/redo crosses this boundary.
     retired_modules: Vec<String>,
     retired_cables: Vec<String>,
-    restore_running: BTreeMap<String, bool>,
-    return_running: BTreeMap<String, bool>,
+    restore_saved: BTreeMap<String, SavedModuleState>,
+    return_saved: BTreeMap<String, SavedModuleState>,
     release_controls: Vec<String>,
 }
 
@@ -272,7 +276,7 @@ impl Session {
         if group.is_some() && group == self.history_group {
             self.patch = candidate;
             if let Some(entry) = self.undo.back_mut() {
-                entry.return_running.extend(effects.after_running.clone());
+                entry.return_saved.extend(effects.after_saved.clone());
             }
         } else {
             if self.undo.len() == HISTORY_LIMIT {
@@ -283,8 +287,8 @@ impl Session {
                 state_id: self.state_id,
                 retired_modules: effects.retired.clone(),
                 retired_cables: effects.retired_cables.clone(),
-                restore_running: effects.before_running.clone(),
-                return_running: effects.after_running.clone(),
+                restore_saved: effects.before_saved.clone(),
+                return_saved: effects.after_saved.clone(),
                 release_controls: effects.release_controls.iter().cloned().collect(),
             });
             self.state_id = revision;
@@ -313,8 +317,8 @@ impl Session {
                     &effects.release_controls.iter().cloned().collect::<Vec<_>>(),
                 );
             }
-            if !effects.load_running.is_empty() {
-                backend.load_module_running(&effects.load_running);
+            if !effects.load_saved.is_empty() {
+                running::load_saved(backend.as_ref(), &effects.load_saved);
             }
         }
         Ok(revision)
@@ -345,8 +349,8 @@ impl Session {
             state_id: std::mem::replace(&mut self.state_id, entry.state_id),
             retired_modules: entry.retired_modules.clone(),
             retired_cables: entry.retired_cables.clone(),
-            restore_running: entry.return_running.clone(),
-            return_running: entry.restore_running.clone(),
+            restore_saved: entry.return_saved.clone(),
+            return_saved: entry.restore_saved.clone(),
             release_controls: entry.release_controls.clone(),
         };
         if redo {
@@ -374,8 +378,8 @@ impl Session {
             if !releases.is_empty() {
                 backend.release_module_controls(&releases);
             }
-            if !entry.restore_running.is_empty() {
-                backend.load_module_running(&entry.restore_running);
+            if !entry.restore_saved.is_empty() {
+                running::load_saved(backend.as_ref(), &entry.restore_saved);
             }
         }
         Ok(self.snapshot())
@@ -507,7 +511,7 @@ impl Session {
             "capture_project_patch" => {
                 let captured = self.capture_project_patch(expected_revision(&args)?)?;
                 return Ok(json!({"patch":captured.patch,"revision":captured.revision,
-                    "state_id":captured.state_id,"running":captured.running,
+                    "state_id":captured.state_id,"running":captured.running,"holding":captured.holding,
                     "state_source":captured.state_source,"frame":captured.frame}));
             }
             "capture_module_preset" => return self.capture_module_preset(&args),
@@ -539,13 +543,26 @@ impl Session {
                         matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease)
                     }
                     "pulses" => action.pulse_button().is_some(),
+                    "push" => matches!(
+                        action,
+                        ModuleAction::PushPress
+                            | ModuleAction::PushRelease
+                            | ModuleAction::HoldPress
+                            | ModuleAction::HoldRelease
+                    ),
                     _ => false,
                 };
                 if !supported {
-                    return Err("module action requires a seq3 module for clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release".into());
+                    return Err("module action requires a seq3 module for clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release".into());
                 }
                 if node.bypassed
-                    && !matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
+                    && !matches!(
+                        action,
+                        ModuleAction::BRelease
+                            | ModuleAction::GateRelease
+                            | ModuleAction::PushRelease
+                            | ModuleAction::HoldRelease
+                    )
                     && !matches!(action.pulse_button(), Some((_, false)))
                 {
                     return Err("module actions are unavailable while module is bypassed".into());
@@ -878,7 +895,7 @@ impl PerformanceEvents {
 
 fn module_events_schema() -> Value {
     json!({"type":"array","maxItems":65536,
-        "description":"Offline seq3, logic, process, and pulses actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
+        "description":"Offline seq3, logic, process, pulses, and push actions sorted by frame; equal-frame array order is preserved. MIDI runs first at ties. At most 64 actions per module per frame. Each frame must be inside the render.",
         "items":{"type":"object","properties":{"frame":{"type":"integer","minimum":0},"id":{"type":"string"},"action":{"type":"string","enum":MODULE_ACTION_NAMES}},"required":["frame","id","action"],"additionalProperties":false}})
 }
 
@@ -1372,7 +1389,7 @@ pub fn tools() -> Value {
         "required":["tool","arguments"],"additionalProperties":false
     }});
     json!([
-        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
+        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits; layouts and files are not included.",json!({}),&[],true),
@@ -1382,11 +1399,11 @@ pub fn tools() -> Value {
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
-        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run overlaid on a cloned graph. All live sequencers must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default Run. No sequencers means parameter-only capture without reading the backend. Returns patch, revision, state_id, running map, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
+        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run and Push HOLD overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running and holding maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
-        tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run is copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
+        tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run and Push HOLD are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"expected_revision":rev}),&["from","to","input"],false),
         disconnect_tool(&s, &module_id, &rev),
@@ -1397,7 +1414,7 @@ pub fn tools() -> Value {
         tool("save_module_preset","Save exactly the supplied, reviewed native preset to a new workspace .opreset file. Capture first with capture_module_preset. Never recaptures a module, overwrites a file, or changes graph/history. Files are bounded to 64 KiB; symlinks and directories are rejected.",json!({"filename":s,"preset":preset_tools::schema()}),&["filename","preset"],false),
         tool("read_module_preset","Read and validate one bounded regular workspace .opreset file. Returns immutable preset contents for review and inline apply; no graph/history change and no .vcvm compatibility.",json!({"filename":s}),&["filename"],true),
         tool("list_module_presets","Browse sorted workspace .opreset files, optionally filtering valid entries by module kind. Corrupt or unsafe entries remain visible with errors. Filename query matches case-insensitively before pagination. Paged results default to 50, maximum 100; library is bounded to 1024 files.",json!({"kind":s,"query":{"type":"string","maxLength":120},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50}}),&[],true),
-        tool("apply_module_preset","Merge reviewed native preset params and optional bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running assigns actual Run after adoption even if its saved value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured Run.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
+        tool("apply_module_preset","Merge reviewed native preset params and optional bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running or Push holding assigns actual saved state after adoption even if its configured value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured Run/HOLD.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
         tool("initialize_modules","Initialize saved parameters for 1..256 unique module IDs using catalog policy, preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values and captured SEQ3 Run without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
         tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Preview and apply agree; undo/redo restore values and captured SEQ3 Run without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),

@@ -49,6 +49,8 @@ const PULSE_RELEASE: [&str; 10] = [
     "pulse9_release",
     "pulse10_release",
 ];
+const PUSH_PRESS: [&str; 2] = ["push_press", "hold_press"];
+const PUSH_RELEASE: [&str; 2] = ["push_release", "hold_release"];
 
 pub(crate) enum RackAction {
     Command(&'static str, Value),
@@ -567,7 +569,7 @@ impl Rack {
                 i.focused
                     && i.pointer.primary_down()
                     && !i.pointer.button_released(PointerButton::Primary)
-                    && (held.kind != "pulses"
+                    && (!matches!(held.kind.as_str(), "pulses" | "push")
                         || i.pointer
                             .latest_pos()
                             .is_some_and(|position| held.button_rect.contains(position)))
@@ -1208,12 +1210,23 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "push" {
+                if let Some(edit) = self.push_panel(ui, node, rect, released_manual.is_none()) {
+                    action = Some(edit);
+                }
+            }
             if is_voltage_utility(&node.kind) {
                 if let Some(edit) = self.utility_panel(ui, node, module, patch, rect) {
                     action = Some(edit);
                 }
             }
-            let parameters = ordered_parameters(node, module);
+            // Saved `holding` seeds the runtime latch; the two performance
+            // buttons are PUSH's only on-panel controls.
+            let parameters = if node.kind == "push" {
+                Vec::new()
+            } else {
+                ordered_parameters(node, module)
+            };
             let count = parameters.len();
             if node.kind == "poly_constant" {
                 painter.text(
@@ -2676,6 +2689,156 @@ impl Rack {
         action
     }
 
+    fn push_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        rect: Rect,
+        allow_press: bool,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let enabled = ui.is_enabled()
+            && self.shortcuts_enabled
+            && self.performance_available
+            && !node.bypassed
+            && ui.input(|i| i.focused);
+        for (y, label) in [(78.0, "REMOTE"), (159.0, "MANUAL")] {
+            painter.text(
+                point(90.0, y),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(9.0 * zoom),
+                MUTED,
+            );
+        }
+        let pressed_mask = self
+            .module_controls
+            .get(&node.id)
+            .map_or(0, |controls| controls.pressed_mask);
+        let lights = self.module_lights.get(&node.id).copied();
+        let mut action = None;
+        for (index, x, label, led_label, led_color) in [
+            (0, 49.0, "PUSH", "GATE", Color32::from_rgb(238, 177, 65)),
+            (1, 131.0, "HOLD", "LATCH", Color32::from_rgb(75, 165, 178)),
+        ] {
+            let active = pressed_mask & (1_u16 << index) != 0;
+            let button_rect = Rect::from_center_size(point(x, 209.0), vec2(72.0, 48.0) * zoom);
+            let response = ui.interact(
+                button_rect,
+                ui.id().with((&node.id, "push-button", index)),
+                Sense::click_and_drag(),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    enabled,
+                    format!("PUSH {} {} performance button", node.id, label),
+                )
+            });
+            painter.rect_filled(
+                button_rect.translate(vec2(1.3, 2.5) * zoom),
+                4.0 * zoom,
+                Color32::from_black_alpha(95),
+            );
+            painter.rect_filled(
+                button_rect,
+                4.0 * zoom,
+                if active {
+                    Color32::from_rgb(212, 166, 86)
+                } else if enabled && response.hovered() {
+                    Color32::from_rgb(246, 237, 210)
+                } else {
+                    Color32::from_rgb(190, 186, 175)
+                },
+            );
+            painter.rect_stroke(
+                button_rect,
+                4.0 * zoom,
+                Stroke::new(1.2 * zoom, Color32::from_rgb(89, 85, 76)),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                button_rect.center(),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(12.0 * zoom),
+                if enabled { INK } else { MUTED },
+            );
+            let brightness = lights
+                .filter(|state| index < usize::from(state.count))
+                .map_or(0.0, |state| state.brightness[index][0])
+                .clamp(0.0, 1.0);
+            painter.circle_filled(point(x, 265.0), 6.0 * zoom, Color32::from_rgb(71, 66, 58));
+            painter.circle_filled(
+                point(x, 265.0),
+                4.4 * zoom,
+                led_color.gamma_multiply(0.12 + 0.88 * brightness),
+            );
+            painter.text(
+                point(x, 283.0),
+                Align2::CENTER_CENTER,
+                led_label,
+                FontId::proportional(9.0 * zoom),
+                MUTED,
+            );
+            if enabled
+                && allow_press
+                && self.held_manual.is_none()
+                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+            {
+                if response.clicked_by(PointerButton::Primary) {
+                    self.select_primary(node.id.clone());
+                    action = Some(RackAction::ManualClick {
+                        id: node.id.clone(),
+                        press: PUSH_PRESS[index],
+                        release: PUSH_RELEASE[index],
+                    });
+                } else if response.is_pointer_button_down_on() {
+                    self.held_manual = Some(HeldManual {
+                        id: node.id.clone(),
+                        kind: node.kind.clone(),
+                        release: PUSH_RELEASE[index],
+                        button_rect,
+                    });
+                    self.select_primary(node.id.clone());
+                    action = Some(RackAction::Command(
+                        "trigger_module",
+                        json!({"id":node.id,"action":PUSH_PRESS[index]}),
+                    ));
+                }
+            }
+            response.on_hover_text(if enabled {
+                if index == 0 {
+                    "Momentary Push control. Hold can invert the resulting gate. The Gate lamp follows the audio engine. Moving outside or releasing ends the press."
+                } else {
+                    "Press Hold to toggle the runtime latch. The Latch lamp shows the actual latched state; Hold can invert the resulting gate. Moving outside or releasing ends the physical press."
+                }
+            } else {
+                "Performance controls require a live audio engine and an active module. Lamps show the last reported engine state."
+            });
+        }
+        painter.text(
+            point(90.0, 302.0),
+            Align2::CENTER_CENTER,
+            if node.bypassed {
+                "BYPASSED"
+            } else if self.module_controls.contains_key(&node.id) && !self.performance_available {
+                "LAST ENGINE STATE"
+            } else if !self.performance_available {
+                "AUDIO OFFLINE"
+            } else if !self.module_controls.contains_key(&node.id) {
+                "WAITING FOR ENGINE"
+            } else {
+                "HOLD INVERTS GATE"
+            },
+            FontId::proportional(8.0 * zoom),
+            MUTED,
+        );
+        action
+    }
+
     fn utility_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -3964,6 +4127,12 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "push" => {
+            return pos2(
+                if index == 0 { 49.0 } else { 131.0 },
+                if input { 117.0 } else { 356.0 },
+            )
+        }
         "pulses" if !input => {
             return pos2(
                 if index < 10 { 155.0 } else { 205.0 },
@@ -4598,7 +4767,7 @@ fn panel_width(kind: &str) -> f32 {
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
-        "audio_stereo" | "octave" => HP * 12.0,
+        "audio_stereo" | "octave" | "push" => HP * 12.0,
         "mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
         "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
@@ -4644,6 +4813,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "mutes10" => "MUTES 10",
         "cv_mix" => "CV MIX",
         "pulses" => "PULSES",
+        "push" => "PUSH",
         "attenuverter" => "ATTENUVERTER",
         "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
@@ -7757,6 +7927,206 @@ mod tests {
         };
         assert!(!row_fill(0));
         assert!(row_fill(9));
+    }
+
+    #[test]
+    fn push_buttons_and_four_jacks_have_independent_targets_without_parameter_edits() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[
+                {"id":"src","kind":"constant"},
+                {"id":"manual","kind":"push","params":{"holding":1}},
+                {"id":"sink","kind":"gain"}
+            ]
+        }))
+        .unwrap();
+        for (index, input_name, output_name) in [(0, "push", "trig"), (1, "hold", "gate")] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            assert_eq!(panel_width("push"), 180.0);
+            let center = pos2(24.0 + 120.0 + if index == 0 { 49.0 } else { 131.0 }, 221.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(center), button(center, true)],
+            );
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["id"] == "manual" && args["action"] == PUSH_PRESS[index]
+            ));
+            assert_eq!(
+                rack.held_manual.as_ref().unwrap().release,
+                PUSH_RELEASE[index]
+            );
+            let action = frame(&ctx, &mut rack, &patch, 1.1, vec![button(center, false)]);
+            assert!(matches!(action,
+                Some(RackAction::Command("trigger_module", ref args))
+                    if args["action"] == PUSH_RELEASE[index]
+            ));
+            assert_eq!(patch.nodes[1].params["holding"], 1.0);
+            let source = fixture_jack(&rack, &patch, "src", "out", false);
+            let input = fixture_jack(&rack, &patch, "manual", input_name, true);
+            let action = drag(&ctx, &mut rack, &patch, 2.0, source, input);
+            assert!(matches!(action,
+                Some(RackAction::Command("connect", ref args))
+                    if args["to"] == "manual" && args["input"] == input_name
+            ));
+            let output = fixture_jack(&rack, &patch, "manual", output_name, false);
+            let sink = fixture_jack(&rack, &patch, "sink", "signal", true);
+            let action = drag(&ctx, &mut rack, &patch, 3.0, output, sink);
+            assert!(matches!(action,
+                Some(RackAction::Command("connect", ref args))
+                    if args["from"] == "manual" && args["output"] == output_name
+                    && args["to"] == "sink"
+            ));
+        }
+    }
+
+    #[test]
+    fn push_same_frame_click_pairs_actions_without_held_state_or_retrigger() {
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"push"}]
+        }))
+        .unwrap();
+        for index in 0..2 {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            rack.set_sequence_states(BTreeMap::new(), true);
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(24.0 + if index == 0 { 49.0 } else { 131.0 }, 221.0);
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![
+                    egui::Event::PointerMoved(target),
+                    button(target, true),
+                    button(target, false),
+                ],
+            );
+            assert!(matches!(action,
+                Some(RackAction::ManualClick { id, press, release })
+                    if id == "manual" && press == PUSH_PRESS[index] && release == PUSH_RELEASE[index]
+            ));
+            assert!(rack.held_manual.is_none());
+            assert!(frame(&ctx, &mut rack, &patch, 1.1, vec![]).is_none());
+        }
+    }
+
+    #[test]
+    fn push_releases_each_button_on_exit_focus_modal_bypass_and_removal() {
+        for index in 0..2 {
+            for cause in [
+                "exit",
+                "focus",
+                "modal",
+                "shortcut-modal",
+                "bypass",
+                "removal",
+            ] {
+                let ctx = egui::Context::default();
+                let mut rack = Rack::default();
+                rack.set_sequence_states(BTreeMap::new(), true);
+                let mut patch: Patch = serde_json::from_value(json!({
+                    "version":2,"nodes":[{"id":"manual","kind":"push"}]
+                }))
+                .unwrap();
+                frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+                let target = pos2(24.0 + if index == 0 { 49.0 } else { 131.0 }, 221.0);
+                let action = frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.0,
+                    vec![egui::Event::PointerMoved(target), button(target, true)],
+                );
+                assert!(matches!(action,
+                    Some(RackAction::Command("trigger_module", ref args))
+                        if args["action"] == PUSH_PRESS[index]
+                ));
+                let mut events = vec![];
+                let (focused, enabled) = match cause {
+                    "exit" => {
+                        events.push(egui::Event::PointerMoved(target + vec2(0.0, 70.0)));
+                        (true, true)
+                    }
+                    "focus" => {
+                        events.push(egui::Event::WindowFocused(false));
+                        (false, true)
+                    }
+                    "modal" => (true, false),
+                    "shortcut-modal" => {
+                        rack.set_shortcuts_enabled(false);
+                        (true, true)
+                    }
+                    "bypass" => {
+                        patch.nodes[0].bypassed = true;
+                        (true, true)
+                    }
+                    _ => {
+                        patch.nodes.clear();
+                        (true, true)
+                    }
+                };
+                let action = frame_state(&ctx, &mut rack, &patch, 1.1, events, focused, enabled).0;
+                assert!(
+                    matches!(action,
+                        Some(RackAction::Command("trigger_module", ref args))
+                            if args["id"] == "manual" && args["action"] == PUSH_RELEASE[index]
+                    ),
+                    "button {index} {cause}"
+                );
+                assert!(rack.held_manual.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn push_offline_telemetry_separates_pressed_buttons_from_gate_and_latch() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.module_controls.insert(
+            "manual".into(),
+            ModuleControlState {
+                pressed: true,
+                pressed_mask: 1,
+            },
+        );
+        let mut lights = ModuleLightState {
+            count: 2,
+            ..ModuleLightState::default()
+        };
+        lights.brightness[1][0] = 1.0;
+        rack.module_lights.insert("manual".into(), lights);
+        let patch: Patch = serde_json::from_value(json!({
+            "version":2,"nodes":[{"id":"manual","kind":"push","params":{"holding":0}}]
+        }))
+        .unwrap();
+        let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
+        let active = Color32::from_rgb(212, 166, 86);
+        let active_button = |x: f32| {
+            output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::epaint::Shape::Rect(rect)
+                    if rect.rect.center() == pos2(24.0 + x, 221.0) && rect.fill == active)
+            })
+        };
+        assert!(active_button(49.0));
+        assert!(!active_button(131.0));
+        let lamp_fill = |x: f32, color: Color32| {
+            output.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::epaint::Shape::Circle(circle)
+                    if circle.center == pos2(24.0 + x, 277.0) && circle.fill == color)
+            })
+        };
+        assert!(lamp_fill(
+            49.0,
+            Color32::from_rgb(238, 177, 65).gamma_multiply(0.12)
+        ));
+        assert!(lamp_fill(131.0, Color32::from_rgb(75, 165, 178)));
     }
 
     #[test]

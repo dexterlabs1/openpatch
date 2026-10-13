@@ -1048,3 +1048,53 @@ fn pulses_actions_twenty_outputs_and_state_adoption_use_no_callback_heap() {
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
 }
+
+#[test]
+fn push_saved_latch_controls_cv_and_state_adoption_use_no_callback_heap() {
+    use openpatch_core::{ModuleAction, SavedModuleState};
+    let mut p = patch(vec![node("p", "push", &[])], vec![], "p");
+    p.output_port = "trig".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let h = old.resolve_module_control("p").unwrap();
+    let hr = replacement.resolve_module_state("p").unwrap();
+    p.nodes[0].bypassed = true;
+    let mut bypassed = p.compile().unwrap();
+    let hb = bypassed.resolve_module_control("p").unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for count in [0, 1, 3, 64, 128, 129] {
+        assert!(old.release_module_controls(h));
+        for _ in 0..16 {
+            for action in [
+                ModuleAction::PushPress,
+                ModuleAction::HoldPress,
+                ModuleAction::PushRelease,
+                ModuleAction::HoldRelease,
+            ] {
+                assert!(old.handle_module_event(h, action));
+            }
+        }
+        assert!(!old.handle_module_event(h, ModuleAction::PushPress));
+        old.process_poly_block(&mut frames[..count]);
+        replacement.adopt_state_from(&old);
+        assert!(replacement.set_module_saved_state(hr, SavedModuleState::PushHold(true)));
+        assert_eq!(
+            replacement.module_saved_state(hr),
+            Some(SavedModuleState::PushHold(true))
+        );
+        assert_eq!(replacement.module_lights(hr).unwrap().count, 2);
+        assert!(replacement.release_module_controls(hr));
+        replacement.process_poly_block(&mut frames[..count]);
+        bypassed.adopt_state_from(&replacement);
+        assert!(bypassed.handle_module_event(hb, ModuleAction::PushRelease));
+        assert!(bypassed.handle_module_event(hb, ModuleAction::HoldRelease));
+        bypassed.process_poly_block(&mut frames[..count]);
+        assert!(replacement.initialize_module_state(hr));
+        assert!(replacement.reset_module_state(hr));
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
+}

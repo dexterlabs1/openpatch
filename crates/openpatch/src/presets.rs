@@ -1,5 +1,5 @@
 //! Native module preset values and bounded workspace storage. Control-thread only.
-use openpatch_core::{catalog, Node};
+use openpatch_core::{catalog, Node, SavedModuleState};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -97,6 +97,11 @@ pub fn validate(preset: &Value) -> Result<(), String> {
 
 /// Capture effective defaults. The caller supplies coherent current SEQ3 Run.
 pub fn capture(node: &Node, running: Option<bool>) -> Result<Value, String> {
+    capture_state(node, running.map(SavedModuleState::Seq3Run))
+}
+
+/// Capture current typed persistent state. Depressed controls and pulse tails are omitted.
+pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Value, String> {
     let module = descriptor(&node.kind)?;
     let mut params = BTreeMap::new();
     for (name, spec) in module["params"].as_object().unwrap() {
@@ -108,14 +113,27 @@ pub fn capture(node: &Node, running: Option<bool>) -> Result<Value, String> {
                 .unwrap_or(spec["default"].as_f64().unwrap() as f32),
         );
     }
-    if node.kind == "seq3" {
+    if let Some(expected) = SavedModuleState::from_node(node) {
+        let actual = state
+            .filter(|state| state.kind() == expected.kind())
+            .ok_or_else(|| {
+                format!(
+                    "{} capture requires current {}",
+                    if expected.kind() == "seq3" {
+                        "SEQ3"
+                    } else {
+                        "PUSH"
+                    },
+                    if expected.kind() == "seq3" {
+                        "Run"
+                    } else {
+                        "HOLD"
+                    }
+                )
+            })?;
         params.insert(
-            "running".into(),
-            if running.ok_or("SEQ3 capture requires current Run")? {
-                1.0
-            } else {
-                0.0
-            },
+            actual.parameter().into(),
+            if actual.value() { 1.0 } else { 0.0 },
         );
     }
     let preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
@@ -298,7 +316,7 @@ mod tests {
                 params: BTreeMap::new(),
                 bypassed: false,
             };
-            let defaults = capture(&base, (kind == "seq3").then_some(true)).unwrap();
+            let defaults = capture_state(&base, SavedModuleState::from_node(&base)).unwrap();
             assert_eq!(
                 defaults["params"].as_object().unwrap().len(),
                 module["params"].as_object().unwrap().len()
@@ -308,11 +326,8 @@ mod tests {
                     let mut original = base.clone();
                     let value = spec[boundary].as_f64().unwrap() as f32;
                     original.params.insert(name.clone(), value);
-                    let preset = capture(
-                        &original,
-                        (kind == "seq3").then_some(value != 0.0 || name != "running"),
-                    )
-                    .unwrap_or_else(|error| panic!("{kind}.{name} {boundary}: {error}"));
+                    let preset = capture_state(&original, SavedModuleState::from_node(&original))
+                        .unwrap_or_else(|error| panic!("{kind}.{name} {boundary}: {error}"));
                     let bytes = serde_json::to_vec(&preset).unwrap();
                     let decoded: Value = serde_json::from_slice(&bytes).unwrap();
                     validate(&decoded).unwrap();

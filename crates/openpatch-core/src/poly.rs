@@ -6,12 +6,16 @@ use crate::mixing::{self, Mixing};
 use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
+use crate::push::{self, Push};
 use crate::routing::{self, Routing};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
-use crate::{bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, MAX_CABLES, MAX_NODES};
+use crate::{
+    bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, SavedModuleState, MAX_CABLES,
+    MAX_NODES,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -69,6 +73,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "multi_vco"
                 | "seq3"
                 | "pulses"
+                | "push"
         )
 }
 fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
@@ -99,6 +104,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
+        "push" => push::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "pulses" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
@@ -128,6 +134,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     }
     if kind == "pulses" {
         pulses::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "push" {
+        push::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -204,6 +212,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if kind == "pulses" {
         pulses::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "push" {
+        push::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -298,6 +311,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "pulses" {
         pulses::annotate(module);
     }
+    if kind == "push" {
+        push::annotate(module);
+    }
 }
 
 #[derive(Debug)]
@@ -319,6 +335,7 @@ enum Model {
     MultiVco(Box<MultiVco>),
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
+    Push(Box<Push>),
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
     Signal(Box<Signal>),
@@ -337,6 +354,9 @@ impl Model {
         }
         if switch::input_names(&node.kind).is_some() {
             return Ok(Self::Switch(SequentialSwitch::build(node, rate)?));
+        }
+        if node.kind == "push" {
+            return Ok(Self::Push(Box::new(Push::build(node, rate)?)));
         }
         if node.kind == "pulses" {
             return Ok(Self::Pulses(Box::new(Pulses::build(node, rate)?)));
@@ -508,6 +528,7 @@ impl PolyEngine {
         match self.nodes.get(index).map(|n| &n.model) {
             Some(Model::Signal(s)) => s.controls(),
             Some(Model::Pulses(p)) => Some(p.controls()),
+            Some(Model::Push(p)) => Some(p.controls()),
             _ => None,
         }
     }
@@ -515,6 +536,7 @@ impl PolyEngine {
         match self.nodes.get(index).map(|n| &n.model) {
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
+            Some(Model::Push(p)) => Some(p.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             _ => None,
         }
@@ -523,6 +545,10 @@ impl PolyEngine {
         match self.nodes.get_mut(index).map(|n| &mut n.model) {
             Some(Model::Signal(s)) => s.release(),
             Some(Model::Pulses(p)) => {
+                p.release();
+                true
+            }
+            Some(Model::Push(p)) => {
                 p.release();
                 true
             }
@@ -537,6 +563,7 @@ impl PolyEngine {
             ),
             Some(Model::Signal(s)) => s.supports(action),
             Some(Model::Pulses(_)) => action.pulse_button().is_some(),
+            Some(Model::Push(_)) => Push::supports(action),
             _ => false,
         }
     }
@@ -549,8 +576,13 @@ impl PolyEngine {
             .node_lookup
             .get(id)
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
-        let release = matches!(action, ModuleAction::BRelease | ModuleAction::GateRelease)
-            || action.pulse_button().is_some_and(|(_, press)| !press);
+        let release = matches!(
+            action,
+            ModuleAction::BRelease
+                | ModuleAction::GateRelease
+                | ModuleAction::PushRelease
+                | ModuleAction::HoldRelease
+        ) || action.pulse_button().is_some_and(|(_, press)| !press);
         if !self.supports_module_action(index, action) || (self.nodes[index].bypassed && !release) {
             return Err(format!(
                 "module '{id}' does not support this action in its current state"
@@ -583,6 +615,15 @@ impl PolyEngine {
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if matches!(
+                action,
+                ModuleAction::PushRelease | ModuleAction::HoldRelease
+            ) {
+                if let Model::Push(p) = &mut self.nodes[node].model {
+                    p.release_button(action == ModuleAction::HoldRelease);
+                    return true;
+                }
+            }
             if let Some((button, false)) = action.pulse_button() {
                 if let Model::Pulses(p) = &mut self.nodes[node].model {
                     p.release_button(button);
@@ -602,6 +643,7 @@ impl PolyEngine {
             Some(Model::Seq3(seq)) => seq.enqueue(action),
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
+            Some(Model::Push(p)) => p.enqueue(action),
             _ => false,
         }
     }
@@ -617,6 +659,10 @@ impl PolyEngine {
             return false;
         };
         let count = match &mut node.model {
+            Model::Push(p) => {
+                p.reset_state();
+                push::OUTPUTS.len()
+            }
             Model::Pulses(p) => {
                 p.reset_state();
                 pulses::OUTPUTS.len()
@@ -655,6 +701,7 @@ impl PolyEngine {
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
+            Model::Push(p) => p.initialize_state(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
@@ -669,6 +716,25 @@ impl PolyEngine {
         match &mut node.model {
             Model::Seq3(seq) => {
                 seq.set_running(running);
+                true
+            }
+            _ => false,
+        }
+    }
+    pub(crate) fn module_saved_state(&self, index: usize) -> Option<SavedModuleState> {
+        match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
+            Some(Model::Push(push)) => Some(SavedModuleState::PushHold(push.holding())),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_module_saved_state(&mut self, index: usize, state: SavedModuleState) -> bool {
+        if let SavedModuleState::Seq3Run(running) = state {
+            return self.set_module_running(index, running);
+        }
+        match (self.nodes.get_mut(index).map(|node| &mut node.model), state) {
+            (Some(Model::Push(push)), SavedModuleState::PushHold(holding)) => {
+                push.set_holding(holding);
                 true
             }
             _ => false,
@@ -750,6 +816,7 @@ impl PolyEngine {
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
+                    "push" => push::OUTPUTS.len(),
                     _ => 1,
                 }
             };
@@ -963,6 +1030,10 @@ impl PolyEngine {
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     );
                 }
+                Model::Push(p) => p.process(
+                    &[a, b],
+                    &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                ),
                 Model::Pulses(p) => p.process(
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                 ),
@@ -1263,6 +1334,12 @@ impl PolyEngine {
             }
             if let (Model::Pulses(p), Model::Pulses(previous)) = (&mut node.model, &previous.model)
             {
+                p.adopt(previous);
+                if bypass_changed {
+                    p.release();
+                }
+            }
+            if let (Model::Push(p), Model::Push(previous)) = (&mut node.model, &previous.model) {
                 p.adopt(previous);
                 if bypass_changed {
                     p.release();

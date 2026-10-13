@@ -866,9 +866,12 @@ impl Callback {
                 &mut active.engine,
                 self.graphs.previous.as_ref().map(|graph| &graph.modules),
             );
-            active.modules.load_running_pending(
+            active.modules.load_saved_pending(
                 &mut active.engine,
-                self.graphs.previous.as_ref().map(|graph| &graph.modules),
+                self.graphs
+                    .previous
+                    .as_mut()
+                    .map(|graph| (&mut graph.modules, &mut graph.engine)),
             );
             self.fade_position = 0;
             self.scope.reset(self.graphs.active.scope.generation);
@@ -2646,7 +2649,7 @@ mod tests {
 
     #[test]
     fn initialization_releases_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);
@@ -2692,7 +2695,7 @@ mod tests {
 
     #[test]
     fn preset_load_and_history_release_held_buttons_without_replacing_the_instance() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3384,6 +3387,13 @@ mod tests {
     }
 
     fn manual_patch(kind: &str) -> Patch {
+        if kind == "push" {
+            return serde_json::from_value(serde_json::json!({"version":2,
+                "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
+                    {"id":"manual","kind":"push","params":{"holding":0}}],
+                "output":"manual","output_port":"gate"}))
+            .unwrap();
+        }
         if kind == "pulses" {
             return serde_json::from_value(serde_json::json!({"version":2,
                 "nodes":[{"id":"signal","kind":"constant","params":{"value":2}},
@@ -3400,6 +3410,8 @@ mod tests {
     fn manual_actions(kind: &str) -> (ModuleAction, ModuleAction) {
         if kind == "pulses" {
             (ModuleAction::PulsePress(10), ModuleAction::PulseRelease(10))
+        } else if kind == "push" {
+            (ModuleAction::PushPress, ModuleAction::PushRelease)
         } else if kind == "logic" {
             (ModuleAction::BPress, ModuleAction::BRelease)
         } else {
@@ -3409,7 +3421,7 @@ mod tests {
 
     #[test]
     fn manual_controls_publish_coherent_actual_lights_and_preserve_ordered_releases() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let patch = manual_patch(kind);
             let (mut callback, _, _) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3441,6 +3453,7 @@ mod tests {
                 match kind {
                     "logic" => 8,
                     "pulses" => 10,
+                    "push" => 2,
                     _ => 0,
                 }
             );
@@ -3452,7 +3465,11 @@ mod tests {
             assert_eq!(actual["modules"]["manual"]["lights"]["manual"], true);
             assert_eq!(
                 actual["modules"]["manual"]["state"],
-                serde_json::Value::Null
+                if kind == "push" {
+                    serde_json::json!({"holding":false})
+                } else {
+                    serde_json::Value::Null
+                }
             );
             callback.performance.trigger("manual", release).unwrap();
             without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
@@ -3470,7 +3487,7 @@ mod tests {
 
     #[test]
     fn full_manual_queue_uses_emergency_release_and_cancels_old_presses() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let mut patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, release) = manual_actions(kind);
@@ -3552,7 +3569,7 @@ mod tests {
 
     #[test]
     fn coalesced_manual_bypass_releases_held_controls_and_allows_bypassed_release() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let workspace = tempfile::tempdir().unwrap();
@@ -3617,7 +3634,7 @@ mod tests {
 
     #[test]
     fn removed_manual_module_reappears_with_fresh_controls_and_lights() {
-        for kind in ["logic", "process", "pulses"] {
+        for kind in ["logic", "process", "pulses", "push"] {
             let patch = manual_patch(kind);
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let (press, _) = manual_actions(kind);
@@ -3640,6 +3657,490 @@ mod tests {
             );
             assert!(!callback.performance.module_lights("manual").unwrap().manual);
             assert_eq!(callback.performance.snapshot()["obsolete"], 1);
+        }
+    }
+
+    #[test]
+    fn push_holding_publication_preserves_actual_latch_across_edits_and_bypass() {
+        let mut patch = manual_patch("push");
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+        let actual = callback.performance.snapshot();
+        assert_eq!(
+            actual["modules"]["manual"]["state"],
+            serde_json::json!({"holding":true})
+        );
+        assert_eq!(actual["modules"]["manual"]["controls"]["pressed_mask"], 0);
+        assert!(callback.performance.sequence_state("manual").is_none());
+        let lights = callback.performance.module_lights("manual").unwrap();
+        assert_eq!(lights.count, 2);
+        assert_eq!(lights.brightness[0][0], 1.0);
+        assert_eq!(lights.brightness[1][0], 1.0);
+        assert!(!lights.manual);
+        assert_eq!(patch.nodes[1].params["holding"], 0.0);
+        for (revision, bypassed) in [(2, false), (3, true), (4, false)] {
+            patch.nodes[0]
+                .params
+                .insert("value".into(), revision as f32);
+            patch.nodes[1].bypassed = bypassed;
+            callback.performance.sync_patch(&patch, revision);
+            assert!(updates
+                .push(sequence_graph(&callback, &patch, revision))
+                .is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+            while disposal.pop().is_ok() {}
+            assert_eq!(
+                callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+                true
+            );
+            let handle = callback
+                .graphs
+                .active
+                .engine
+                .resolve_module_state("manual")
+                .unwrap();
+            assert_eq!(
+                callback.graphs.active.engine.module_saved_state(handle),
+                Some(openpatch_core::SavedModuleState::PushHold(true))
+            );
+        }
+    }
+
+    #[test]
+    fn push_emergency_release_clears_both_buttons_and_preserves_holding_in_both_engines() {
+        for release in [ModuleAction::PushRelease, ModuleAction::HoldRelease] {
+            let mut patch = manual_patch("push");
+            let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+            for action in [ModuleAction::HoldPress, ModuleAction::PushPress] {
+                callback.performance.trigger("manual", action).unwrap();
+            }
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert_eq!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed_mask,
+                3
+            );
+            patch.nodes[0].params.insert("value".into(), 3.0);
+            callback.performance.sync_patch(&patch, 2);
+            assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            for _ in 0..EVENT_CAPACITY {
+                callback
+                    .performance
+                    .trigger("manual", ModuleAction::PushPress)
+                    .unwrap();
+            }
+            assert!(callback
+                .performance
+                .trigger("manual", ModuleAction::GateRelease)
+                .is_err());
+            assert_eq!(
+                callback.performance.trigger("manual", release).unwrap()["emergency_release"],
+                true
+            );
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+            assert_eq!(
+                callback
+                    .performance
+                    .module_control_state("manual")
+                    .unwrap()
+                    .pressed_mask,
+                0
+            );
+            assert_eq!(
+                callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+                true
+            );
+            for graph in [
+                &callback.graphs.active,
+                callback.graphs.previous.as_ref().unwrap(),
+            ] {
+                let handle = graph.engine.resolve_module_state("manual").unwrap();
+                assert_eq!(
+                    graph
+                        .engine
+                        .module_control_state(handle)
+                        .unwrap()
+                        .pressed_mask,
+                    0
+                );
+                assert_eq!(
+                    graph.engine.module_saved_state(handle),
+                    Some(openpatch_core::SavedModuleState::PushHold(true))
+                );
+            }
+            assert_eq!(callback.performance.snapshot()["dropped"], EVENT_CAPACITY);
+        }
+    }
+
+    #[test]
+    fn holding_load_fences_stale_actions_and_plans_and_assigns_both_crossfade_engines() {
+        let patch = manual_patch("push");
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let stale = sequence_graph(&callback, &patch, 1);
+        callback
+            .performance
+            .trigger("manual", ModuleAction::HoldPress)
+            .unwrap();
+        callback.performance.sync_patch(&patch, 2);
+        callback
+            .performance
+            .load_module_holding(&[("manual".into(), false)].into());
+        assert!(updates.push(stale).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        assert_eq!(callback.performance.snapshot()["rejected"], 1);
+        while disposal.pop().is_ok() {}
+        let older = sequence_graph(&callback, &patch, 1);
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        for graph in [
+            &callback.graphs.active,
+            callback.graphs.previous.as_ref().unwrap(),
+        ] {
+            let handle = graph.engine.resolve_module_state("manual").unwrap();
+            assert_eq!(
+                graph.engine.module_saved_state(handle),
+                Some(openpatch_core::SavedModuleState::PushHold(false))
+            );
+        }
+        // The patch already configured false: an explicit load still wins over
+        // actual HOLD. Older prepared graphs cannot replay it after a new press.
+        for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert!(updates.push(older).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            true
+        );
+        // Loading the wrong saved-state kind must neither mutate nor fence PUSH.
+        callback.performance.sync_patch(&patch, 3);
+        callback
+            .performance
+            .trigger("manual", ModuleAction::HoldPress)
+            .unwrap();
+        callback
+            .performance
+            .load_module_running(&[("manual".into(), false)].into());
+        assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            false
+        );
+        callback.performance.sync_patch(&patch, 4);
+        callback
+            .performance
+            .load_module_holding(&[("manual".into(), true)].into());
+        callback.performance.retire_modules(&["manual".into()]);
+        callback.performance.sync_patch(&patch, 5);
+        assert!(updates.push(sequence_graph(&callback, &patch, 5)).is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            false
+        );
+    }
+
+    #[test]
+    fn initialize_mixed_saved_states_resets_push_hold_and_preserves_sequence_run() {
+        let mut patch = sequence_patch();
+        patch.nodes.push(
+            serde_json::from_value(
+                serde_json::json!({"id":"manual","kind":"push","params":{"holding":0}}),
+            )
+            .unwrap(),
+        );
+        let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        for action in [ModuleAction::Clock, ModuleAction::Run] {
+            callback.performance.trigger("seq", action).unwrap();
+        }
+        for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            true
+        );
+        session
+            .execute(
+                "initialize_modules",
+                serde_json::json!({"ids":["seq","manual"]}),
+            )
+            .unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        let sequence = callback.performance.sequence_state("seq").unwrap();
+        assert_eq!((sequence.step, sequence.running), (1, false));
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            false
+        );
+        for graph in [
+            &callback.graphs.active,
+            callback.graphs.previous.as_ref().unwrap(),
+        ] {
+            let handle = graph.engine.resolve_module_state("manual").unwrap();
+            assert_eq!(
+                graph.engine.module_saved_state(handle),
+                Some(openpatch_core::SavedModuleState::PushHold(false))
+            );
+        }
+    }
+
+    #[test]
+    fn push_project_and_preset_capture_and_duplication_use_actual_coherent_holding() {
+        let mut patch = sequence_patch();
+        patch.nodes.push(
+            serde_json::from_value(serde_json::json!({"id":"manual","kind":"push"})).unwrap(),
+        );
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        assert!(session.capture_project_patch(Some(1)).is_err());
+        assert!(session
+            .execute("capture_module_preset", serde_json::json!({"id":"manual"}))
+            .is_err());
+        callback
+            .performance
+            .trigger("seq", ModuleAction::Run)
+            .unwrap();
+        for action in [
+            ModuleAction::HoldPress,
+            ModuleAction::HoldRelease,
+            ModuleAction::PushPress,
+        ] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 137], 1));
+        let before_live = callback.performance.snapshot();
+        let before_session = session.snapshot();
+        let captured = session.capture_project_patch(Some(1)).unwrap();
+        assert_eq!(captured.frame, Some(137));
+        assert!(!captured.running["seq"]);
+        assert!(captured.holding["manual"]);
+        assert_eq!(captured.patch.nodes[2].params["holding"], 1.0);
+        assert!(!session.patch().nodes[2].params.contains_key("holding"));
+        let preset = session
+            .execute("capture_module_preset", serde_json::json!({"id":"manual"}))
+            .unwrap();
+        assert_eq!(preset["preset"]["params"]["holding"], 1.0);
+        assert_eq!(preset["frame"], 137);
+        assert_eq!(callback.performance.snapshot(), before_live);
+        assert_eq!(session.snapshot(), before_session);
+        let (mut reopened, _, _) = sequence_callback(&captured.patch);
+        without_heap_activity(|| reopened.render(&mut [0.0_f32; 1], 1));
+        assert!(!reopened.performance.sequence_state("seq").unwrap().running);
+        assert_eq!(
+            reopened.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            true
+        );
+        assert_eq!(
+            reopened
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed_mask,
+            0
+        );
+        session
+            .execute(
+                "duplicate_modules",
+                serde_json::json!({"modules":[{"id":"manual","new_id":"copy"}]}),
+            )
+            .unwrap();
+        assert!(session.capture_project_patch(None).is_err());
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["copy"]["state"]["holding"],
+            true
+        );
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("copy")
+                .unwrap()
+                .pressed_mask,
+            0
+        );
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("manual")
+                .unwrap()
+                .pressed_mask,
+            1
+        );
+        assert_eq!(
+            read_raw_pair(
+                &mut callback.graphs.active.engine,
+                ("manual", "gate"),
+                ("copy", "gate")
+            ),
+            [0.0, 10.0]
+        );
+        session.execute("undo", serde_json::json!({})).unwrap();
+        session.execute("redo", serde_json::json!({})).unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+        while disposal.pop().is_ok() {}
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["copy"]["state"]["holding"],
+            true
+        );
+        assert_eq!(
+            callback
+                .performance
+                .module_control_state("copy")
+                .unwrap()
+                .pressed_mask,
+            0
+        );
+        // The immutable captured preset remains true after the live latch changes.
+        for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+            callback.performance.trigger("manual", action).unwrap();
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+        assert_eq!(
+            callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+            false
+        );
+        session
+            .execute(
+                "save_module_preset",
+                serde_json::json!({"filename":"held.opreset","preset":preset["preset"]}),
+            )
+            .unwrap();
+        let saved = session
+            .execute(
+                "read_module_preset",
+                serde_json::json!({"filename":"held.opreset"}),
+            )
+            .unwrap();
+        assert_eq!(saved["preset"]["params"]["holding"], 1.0);
+    }
+
+    #[test]
+    fn push_preset_loads_assign_equal_values_and_partial_history_preserves_latch_and_presence() {
+        for explicit in [false, true] {
+            for partial in [false, true] {
+                let mut patch = manual_patch("push");
+                if !explicit {
+                    patch.nodes[1].params.remove("holding");
+                }
+                let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+                let workspace = tempfile::tempdir().unwrap();
+                let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+                session.replace_patch(patch, Some(0)).unwrap();
+                session.set_live_module_events(Some(callback.performance.clone()));
+                for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+                    callback.performance.trigger("manual", action).unwrap();
+                }
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                session.execute("apply_module_preset", serde_json::json!({"id":"manual","preset":{
+                    "format":"openpatch-module-preset","version":1,"kind":"push",
+                    "params":if partial {serde_json::json!({})} else {serde_json::json!({"holding":0})}
+                }})).unwrap();
+                assert!(updates
+                    .push(sequence_graph(
+                        &callback,
+                        session.patch(),
+                        session.revision()
+                    ))
+                    .is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+                while disposal.pop().is_ok() {}
+                assert_eq!(
+                    callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+                    partial
+                );
+                if partial {
+                    assert_eq!(
+                        session.patch().nodes[1].params.contains_key("holding"),
+                        explicit
+                    );
+                    for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
+                        callback.performance.trigger("manual", action).unwrap();
+                    }
+                    without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                }
+                session.execute("undo", serde_json::json!({})).unwrap();
+                assert!(updates
+                    .push(sequence_graph(
+                        &callback,
+                        session.patch(),
+                        session.revision()
+                    ))
+                    .is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+                while disposal.pop().is_ok() {}
+                assert_eq!(
+                    callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+                    true
+                );
+                assert_eq!(
+                    session.patch().nodes[1].params.contains_key("holding"),
+                    explicit
+                );
+                session.execute("redo", serde_json::json!({})).unwrap();
+                assert!(updates
+                    .push(sequence_graph(
+                        &callback,
+                        session.patch(),
+                        session.revision()
+                    ))
+                    .is_ok());
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
+                assert_eq!(
+                    callback.performance.snapshot()["modules"]["manual"]["state"]["holding"],
+                    partial
+                );
+            }
         }
     }
 
