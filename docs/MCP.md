@@ -15,11 +15,68 @@ starts paused: press **Play** in the window (or Space when a text field is not
 focused) to hear the patch. MCP can edit a playing patch, but has no tool to start
 or stop speaker playback. `render_audio` exports a WAV independently of playback.
 
-A window launched manually is a separate session. This stdio integration does
-not attach to an already running window. If Claude and Codex each launch the
-executable, each gets its own window and patch. Sharing a workspace only shares
-saved files. When stdin reaches EOF, the MCP thread exits and the window remains
-open; a client that terminates its child process can still close the application.
+Each desktop launch owns a separate session. On macOS and Linux, clients can also
+attach to an already-open window, including one launched manually. Sharing a
+workspace alone only shares saved files; attaching to the same session shares
+the live patch, revisions and undo history.
+
+## Connect to an open rack (macOS / Linux)
+
+Open the native application, then list its available sessions:
+
+```sh
+/absolute/path/openpatch/target/release/openpatch sessions
+```
+
+The output includes each session's `id`, workspace and process ID. Click the
+window's **MCP ready** indicator to copy its attachment command. Configure each
+MCP client to launch the CLI executable with these arguments:
+
+```sh
+/absolute/path/openpatch/target/release/openpatch attach --session SESSION_ID
+```
+
+The macOS app bundle includes the CLI at
+`OpenPatch.app/Contents/MacOS/openpatch`; a packaged window copies that absolute
+path. Use it as the executable when configuring a client without a source checkout.
+
+For a configuration that survives application restarts, select the workspace:
+
+```sh
+/absolute/path/openpatch/target/release/openpatch attach --workspace /absolute/path/patches
+```
+
+Workspace selection succeeds only when exactly one live window matches. With no
+selector, attachment requires exactly one live session overall. Ambiguous or
+missing sessions produce an error; attachment never opens another window or
+creates a replacement patch. Session IDs last for the lifetime of a window.
+Restart the client's MCP connection after reopening the application.
+
+Use the `openpatch` CLI as the client **command** and `attach` plus the selector
+as its **args**, in place of the desktop command/arguments in the examples below.
+Two clients attached to the same session have independent protocol handshakes
+but operate on the same rack. Use `expected_revision` on edits: a concurrent
+change must be inspected before retrying. Disconnecting a client leaves the
+window open. Closing the window disconnects its clients. The CLI exits on socket closure
+while its client continues reading stdout; a client that stops reading stdout
+may also need to terminate its bridge process. Attachment does not start or stop
+speaker playback.
+
+The local transport uses Unix-domain sockets in a private per-user directory,
+with peer-user verification at both ends. It opens no TCP/HTTP port and calls no
+model API. This is a same-user boundary, not isolation from other software running
+as your user. Up to eight socket clients can connect to a window. Socket requests
+are bounded to 1 MiB, with deadlines for initialization, incomplete messages and
+stalled responses; initialized idle clients can remain connected. At most two
+expensive socket-request jobs execute concurrently across the process; excess
+jobs return a busy error rather than queuing. A disconnected operation that has
+already started may finish; never automatically replay a mutation after losing
+its response.
+
+Windows attachment is not implemented yet. The desktop `--mcp` stdio mode below
+continues to work on all three platforms. It launches a new window per client.
+When stdin reaches EOF, its MCP thread exits and the window remains open; a
+client that terminates its child process can still close that application.
 
 ## Codex
 

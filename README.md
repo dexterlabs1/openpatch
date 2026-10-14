@@ -338,9 +338,9 @@ The library stays open while you patch cables and edit controls. Its thumbnails 
 
 ## Claude & Codex
 
-Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. The client launches OpenPatch with `--mcp` and controls the live patch in that window. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
+Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. On macOS and Linux, `openpatch attach` connects clients to an already-open rack: Claude and Codex can share the same live patch, revision checks and undo history. Click **MCP ready** in the window to copy its attachment command. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
 
-Each launch owns its own app session. The separate CLI supports headless MCP, offline rendering, and visualizer export.
+The desktop `--mcp` mode launches a new window per client and remains available on all three platforms; Windows attachment is still ahead. The separate CLI also supports headless MCP, offline rendering, and visualizer export.
 
 ## Where it stands
 

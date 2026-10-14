@@ -68,6 +68,15 @@ fn run() -> Result<(), String> {
     let (session, startup) =
         startup::prepare(&workspace, explicit_patch.as_deref(), smoke_test.is_some())?;
     let shared: SharedSession = Arc::new(Mutex::new(session));
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let local_mcp = if smoke_test.is_none() {
+        Some(openpatch::local_mcp::LocalServer::start(
+            shared.clone(),
+            &workspace,
+        ))
+    } else {
+        None
+    };
     if mcp {
         let shared = shared.clone();
         std::thread::Builder::new()
@@ -95,9 +104,16 @@ fn run() -> Result<(), String> {
         "OpenPatch",
         options,
         Box::new(move |cc| {
-            Ok(Box::new(app::OpenPatch::new(
-                cc, shared, mcp, smoke_test, startup,
-            )))
+            let app = app::OpenPatch::new(cc, shared, mcp, smoke_test, startup);
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            let app = {
+                let mut app = app;
+                if let Some(server) = local_mcp {
+                    app.set_local_mcp(server);
+                }
+                app
+            };
+            Ok(Box::new(app))
         }),
     )
     .map_err(|e| e.to_string())

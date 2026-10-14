@@ -8,17 +8,23 @@ import subprocess
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--binary", default="target/release/openpatch-desktop")
+parser.add_argument("--cli-binary", help="MCP attachment CLI (default: openpatch beside desktop binary)")
 parser.add_argument("--output", default="dist/OpenPatch.app")
 args = parser.parse_args()
 binary = pathlib.Path(args.binary)
 if not binary.is_file():
     parser.error(f"Build the desktop executable first: {binary}")
+cli = pathlib.Path(args.cli_binary) if args.cli_binary else binary.with_name("openpatch")
+if not cli.is_file():
+    parser.error(f"Build the workspace CLI first: {cli}")
 app = pathlib.Path(args.output)
 contents = app / "Contents"
 macos = contents / "MacOS"
 macos.mkdir(parents=True, exist_ok=True)
 shutil.copy2(binary, macos / "openpatch-desktop")
 (macos / "openpatch-desktop").chmod(0o755)
+shutil.copy2(cli, macos / "openpatch")
+(macos / "openpatch").chmod(0o755)
 resources = contents / "Resources"
 resources.mkdir(parents=True, exist_ok=True)
 icon = pathlib.Path(__file__).resolve().parents[1] / "crates/openpatch-desktop/assets/OpenPatch.icns"

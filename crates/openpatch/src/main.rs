@@ -4,10 +4,13 @@ use openpatch_core::{
     TimedMidiEvent,
 };
 use std::{fs, path::Path};
+mod attach;
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some("sessions") if args.len() == 1 => attach::list(),
+        Some("attach") => attach::run(&args[1..]),
         Some("mcp") => {
             let workspace = match args.as_slice() {
                 [_, flag, path] if flag == "--workspace" => path,
@@ -64,7 +67,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n\nMCP uses stdio. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),

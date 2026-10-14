@@ -1,4 +1,5 @@
-//! Bounded newline-delimited JSON-RPC over stdio. No network listener or model API.
+//! Bounded newline-delimited JSON-RPC over stdio and local Unix streams.
+//! Listener ownership remains with the host; this module opens no listener.
 use crate::control::{execute_shared, tools, Application, SharedSession};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -49,8 +50,65 @@ struct Connection {
     live_desktop: bool,
     initialized: bool,
     ready: bool,
+    bounded_socket_jobs: bool,
 }
+// The socket host bounds client workers separately. These permits additionally
+// bound CPU-heavy snapshots across all socket connections, before copying a
+// patch or acquiring the shared session lock. Stdio retains its original policy.
+const MAX_SOCKET_JOBS: usize = 2;
+static SOCKET_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+struct SocketJobGuard;
+impl SocketJobGuard {
+    fn acquire() -> Result<Self, String> {
+        use std::sync::atomic::Ordering;
+        let mut active = SOCKET_JOBS.load(Ordering::Relaxed);
+        loop {
+            if active >= MAX_SOCKET_JOBS {
+                return Err(
+                    "offline snapshot jobs busy; retry after an active job completes".into(),
+                );
+            }
+            match SOCKET_JOBS.compare_exchange_weak(
+                active,
+                active + 1,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return Ok(Self),
+                Err(current) => active = current,
+            }
+        }
+    }
+}
+impl Drop for SocketJobGuard {
+    fn drop(&mut self) {
+        SOCKET_JOBS.fetch_sub(1, std::sync::atomic::Ordering::Release);
+    }
+}
+
+fn expensive_snapshot(name: &str) -> bool {
+    matches!(
+        name,
+        "render_audio"
+            | "render_arrangement"
+            | "analyze_signal"
+            | "capture_signal"
+            | "benchmark"
+            | "export_visualizer"
+    )
+}
+
 impl Connection {
+    fn execute_tool(&self, name: &str, args: Value) -> Result<Value, String> {
+        let _permit = if self.bounded_socket_jobs && expensive_snapshot(name) {
+            Some(SocketJobGuard::acquire()?)
+        } else {
+            None
+        };
+        execute_shared(&self.session, name, args)
+    }
+
     fn handle(&mut self, msg: Value) -> Option<Value> {
         let id = msg.get("id").cloned().unwrap_or(Value::Null);
         let valid_id = msg
@@ -115,7 +173,7 @@ impl Connection {
                     return Some(error(id, -32602, "unknown tool"));
                 }
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                match execute_shared(&self.session, name, args) {
+                match self.execute_tool(name, args) {
                     Ok(data) => {
                         json!({"content":[{"type":"text","text":data.to_string()}],"structuredContent":if data.is_object(){data}else{json!({"data":data})},"isError":false})
                     }
@@ -164,6 +222,7 @@ fn run<R: BufRead, W: Write>(
         live_desktop,
         initialized: false,
         ready: false,
+        bounded_socket_jobs: false,
     };
     while let Some(line) = read_message(&mut input).map_err(|e| e.to_string())? {
         let response = match line {
@@ -181,18 +240,197 @@ fn run<R: BufRead, W: Write>(
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[derive(Clone, Copy)]
+struct SocketLimits {
+    handshake: std::time::Duration,
+    frame: std::time::Duration,
+    write: std::time::Duration,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn remaining(deadline: std::time::Instant) -> io::Result<std::time::Duration> {
+    deadline
+        .checked_duration_since(std::time::Instant::now())
+        .filter(|duration| !duration.is_zero())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "socket deadline exceeded"))
+}
+
+/// Socket frames require their newline. Once initialized, a completely idle
+/// connection can wait indefinitely; the first received byte starts an absolute
+/// incomplete-frame deadline that cannot be extended by trickling more bytes.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn read_socket_message(
+    reader: &mut io::BufReader<std::os::unix::net::UnixStream>,
+    handshake_deadline: Option<std::time::Instant>,
+    frame_timeout: std::time::Duration,
+) -> io::Result<Option<Vec<u8>>> {
+    let mut line = Vec::new();
+    let mut frame_deadline = None;
+    loop {
+        let deadline = match (handshake_deadline, frame_deadline) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) | (None, Some(a)) => Some(a),
+            (None, None) => None,
+        };
+        reader
+            .get_ref()
+            .set_read_timeout(deadline.map(remaining).transpose()?)?;
+        let buffer = match reader.fill_buf() {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => result?,
+        };
+        if buffer.is_empty() {
+            return if line.is_empty() {
+                Ok(None)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "incomplete socket frame",
+                ))
+            };
+        }
+        frame_deadline.get_or_insert_with(|| std::time::Instant::now() + frame_timeout);
+        let count = buffer
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .map(|index| index + 1)
+            .unwrap_or(buffer.len());
+        if count > MAX_LINE - line.len() {
+            // Unlike stdio, never drain an unbounded hostile frame. The socket
+            // worker returns and shuts down both directions immediately.
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "message exceeds 1 MiB",
+            ));
+        }
+        let complete = buffer[count - 1] == b'\n';
+        line.extend_from_slice(&buffer[..count]);
+        reader.consume(count);
+        if complete {
+            // Check after the read as well: a queued newline arriving at the
+            // deadline must not complete a timed-out handshake or partial frame.
+            if let Some(deadline) = deadline {
+                remaining(deadline)?;
+            }
+            return Ok(Some(line));
+        }
+    }
+}
+
+/// The write deadline applies to the entire serialized response, not each
+/// partial write. A stalled peer cannot retain a worker by occasionally reading.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn write_socket_response(
+    stream: &mut std::os::unix::net::UnixStream,
+    response: &Value,
+    deadline: std::time::Instant,
+) -> io::Result<()> {
+    let mut bytes = serde_json::to_vec(response).map_err(io::Error::other)?;
+    bytes.push(b'\n');
+    let mut written = 0;
+    while written < bytes.len() {
+        stream.set_write_timeout(Some(remaining(deadline)?))?;
+        match stream.write(&bytes[written..]) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "socket write returned zero",
+                ))
+            }
+            Ok(count) => written += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// Serve one accepted local client against the desktop's shared session. Every
+/// call owns fresh handshake state. Reads/writes occur only after control calls
+/// release their session lock. Shutdown of a cloned socket wakes blocked I/O.
+/// The host must separately bound accepted client threads (normally eight).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn run_socket(
+    stream: std::os::unix::net::UnixStream,
+    session: SharedSession,
+) -> Result<(), String> {
+    use std::time::Duration;
+    run_socket_with_limits(
+        stream,
+        session,
+        SocketLimits {
+            handshake: Duration::from_secs(10),
+            frame: Duration::from_secs(30),
+            write: Duration::from_secs(10),
+        },
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn run_socket_with_limits(
+    stream: std::os::unix::net::UnixStream,
+    session: SharedSession,
+    limits: SocketLimits,
+) -> Result<(), String> {
+    stream
+        .set_nonblocking(false)
+        .map_err(|error| error.to_string())?;
+    let handshake_deadline = std::time::Instant::now() + limits.handshake;
+    let mut reader = io::BufReader::new(stream);
+    let mut connection = Connection {
+        session,
+        live_desktop: true,
+        initialized: false,
+        ready: false,
+        bounded_socket_jobs: true,
+    };
+    let result = (|| loop {
+        let line = read_socket_message(
+            &mut reader,
+            (!connection.ready).then_some(handshake_deadline),
+            limits.frame,
+        )
+        .map_err(|error| error.to_string())?;
+        let Some(bytes) = line else {
+            return Ok(());
+        };
+        let response = match serde_json::from_slice(&bytes) {
+            Ok(message) => connection.handle(message),
+            Err(_) => Some(error(Value::Null, -32700, "parse error")),
+        };
+        if let Some(response) = response {
+            let write_deadline = std::time::Instant::now() + limits.write;
+            let deadline = if connection.ready {
+                write_deadline
+            } else {
+                write_deadline.min(handshake_deadline)
+            };
+            write_socket_response(reader.get_mut(), &response, deadline)
+                .map_err(|error| error.to_string())?;
+        }
+    })();
+    // Also close immediately on oversize/deadline errors. The server can use a
+    // cloned descriptor's shutdown during teardown to wake these same reads.
+    let _ = reader.get_ref().shutdown(std::net::Shutdown::Both);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn workspace() -> std::path::PathBuf {
+        // Clock resolution alone cannot distinguish parallel test threads.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         std::env::temp_dir().join(format!(
-            "openpatch-mcp-test-{}-{}",
+            "openpatch-mcp-test-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         ))
     }
 
@@ -284,5 +522,285 @@ mod tests {
                 > 44
         );
         std::fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    mod socket_tests {
+        use super::*;
+        use std::net::Shutdown;
+        use std::os::unix::net::UnixStream;
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        struct Client {
+            reader: io::BufReader<UnixStream>,
+            finished: mpsc::Receiver<Result<(), String>>,
+            worker: Option<thread::JoinHandle<()>>,
+        }
+        impl Client {
+            fn spawn(session: SharedSession, limits: SocketLimits) -> Self {
+                let (server, client) = UnixStream::pair().unwrap();
+                client
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                client
+                    .set_write_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let (sender, finished) = mpsc::channel();
+                let worker = thread::spawn(move || {
+                    let _ = sender.send(run_socket_with_limits(server, session, limits));
+                });
+                Self {
+                    reader: io::BufReader::new(client),
+                    finished,
+                    worker: Some(worker),
+                }
+            }
+            fn notify(&mut self, message: Value) {
+                writeln!(self.reader.get_mut(), "{message}").unwrap();
+            }
+            fn request(&mut self, message: Value) -> Value {
+                self.notify(message);
+                let mut line = String::new();
+                assert!(self.reader.read_line(&mut line).unwrap() > 0);
+                serde_json::from_str(&line).unwrap()
+            }
+            fn initialize(&mut self) {
+                let response = self.request(json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+                    "params":{"protocolVersion":VERSIONS[0]}}));
+                assert!(response["result"]["instructions"]
+                    .as_str()
+                    .unwrap()
+                    .contains("same live patch"));
+                self.notify(json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+            }
+            fn result(&mut self) -> Result<(), String> {
+                let result = self
+                    .finished
+                    .recv_timeout(Duration::from_secs(2))
+                    .expect("socket worker did not wake");
+                self.worker.take().unwrap().join().unwrap();
+                result
+            }
+        }
+        impl Drop for Client {
+            fn drop(&mut self) {
+                let _ = self.reader.get_ref().shutdown(Shutdown::Both);
+                if let Some(worker) = self.worker.take() {
+                    let _ = worker.join();
+                }
+            }
+        }
+        fn short_limits() -> SocketLimits {
+            SocketLimits {
+                handshake: Duration::from_millis(180),
+                frame: Duration::from_millis(120),
+                write: Duration::from_millis(100),
+            }
+        }
+        fn session() -> (SharedSession, std::path::PathBuf) {
+            let directory = workspace();
+            (
+                Application::new(&directory).unwrap().into_shared(),
+                directory,
+            )
+        }
+
+        #[test]
+        fn socket_handshake_deadline_is_absolute_and_requires_ready_notification() {
+            let (session, directory) = session();
+            let mut client = Client::spawn(session, short_limits());
+            let start = Instant::now();
+            let response = client.request(json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+                "params":{"protocolVersion":VERSIONS[0]}}));
+            assert!(response.get("result").is_some());
+            for id in 2..5 {
+                thread::sleep(Duration::from_millis(35));
+                assert!(client
+                    .request(json!({"jsonrpc":"2.0","id":id,"method":"ping"}))
+                    .get("result")
+                    .is_some());
+            }
+            assert!(client.result().is_err());
+            assert!(start.elapsed() < Duration::from_secs(1));
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_idle_initialized_client_survives_and_shutdown_wakes_reader() {
+            let (session, directory) = session();
+            let mut client = Client::spawn(session, short_limits());
+            client.initialize();
+            thread::sleep(Duration::from_millis(360));
+            assert!(matches!(
+                client.finished.try_recv(),
+                Err(mpsc::TryRecvError::Empty)
+            ));
+            assert!(client
+                .request(json!({"jsonrpc":"2.0","id":2,"method":"ping"}))
+                .get("result")
+                .is_some());
+            client.reader.get_ref().shutdown(Shutdown::Both).unwrap();
+            client.result().unwrap();
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_partial_frame_deadline_does_not_reset_on_more_bytes() {
+            let (session, directory) = session();
+            let mut client = Client::spawn(session, short_limits());
+            client.initialize();
+            let start = Instant::now();
+            client.reader.get_mut().write_all(b"{").unwrap();
+            for _ in 0..2 {
+                thread::sleep(Duration::from_millis(35));
+                client.reader.get_mut().write_all(b" ").unwrap();
+            }
+            assert!(client.result().is_err());
+            assert!(start.elapsed() < Duration::from_secs(1));
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_oversize_without_newline_closes_and_partial_eof_is_rejected() {
+            let (shared, directory) = session();
+            let mut client = Client::spawn(
+                shared.clone(),
+                SocketLimits {
+                    handshake: Duration::from_secs(2),
+                    frame: Duration::from_secs(2),
+                    write: Duration::from_secs(2),
+                },
+            );
+            let _ = client.reader.get_mut().write_all(&vec![b'x'; MAX_LINE + 1]);
+            assert!(client.result().unwrap_err().contains("exceeds 1 MiB"));
+            let mut partial = Client::spawn(shared, short_limits());
+            partial.reader.get_mut().write_all(b"{").unwrap();
+            partial.reader.get_ref().shutdown(Shutdown::Write).unwrap();
+            assert!(partial
+                .result()
+                .unwrap_err()
+                .contains("incomplete socket frame"));
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_client_handshakes_are_isolated_but_session_revisions_are_shared() {
+            let (session, directory) = session();
+            let limits = SocketLimits {
+                handshake: Duration::from_secs(2),
+                ..short_limits()
+            };
+            let mut first = Client::spawn(session.clone(), limits);
+            let mut second = Client::spawn(session.clone(), limits);
+            first.initialize();
+            let unready = second.request(json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+                "params":{"name":"inspect_patch"}}));
+            assert_eq!(unready["error"]["code"], -32002);
+            let added = first.request(json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
+                "params":{"name":"add_module","arguments":{"id":"socket-node","kind":"constant",
+                    "params":{"value":0.5},"expected_revision":0}}}));
+            assert_eq!(added["result"]["structuredContent"]["revision"], 1);
+            second.initialize();
+            let inspected = second.request(json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
+                "params":{"name":"inspect_patch"}}));
+            assert_eq!(inspected["result"]["structuredContent"]["revision"], 1);
+            let stale = second.request(json!({"jsonrpc":"2.0","id":4,"method":"tools/call",
+                "params":{"name":"remove_module","arguments":{"id":"socket-node","expected_revision":0}}}));
+            assert_eq!(stale["result"]["isError"], true);
+            assert_eq!(session.lock().unwrap().revision(), 1);
+            assert!(
+                first.request(json!({"jsonrpc":"2.0","id":5,"method":"initialize",
+                "params":{"protocolVersion":VERSIONS[0]}}))["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("already initialized")
+            );
+            first.reader.get_ref().shutdown(Shutdown::Both).unwrap();
+            second.reader.get_ref().shutdown(Shutdown::Both).unwrap();
+            first.result().unwrap();
+            second.result().unwrap();
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_stalled_response_has_bounded_total_write_and_shutdown_wakes_writer() {
+            let (mut server, client) = UnixStream::pair().unwrap();
+            let start = Instant::now();
+            let value = json!({"text":"x".repeat(4 * MAX_LINE)});
+            assert!(
+                write_socket_response(&mut server, &value, start + Duration::from_millis(100))
+                    .is_err()
+            );
+            assert!(start.elapsed() < Duration::from_secs(1));
+            drop(client);
+            let (mut server, client) = UnixStream::pair().unwrap();
+            let stopper = server.try_clone().unwrap();
+            let (sender, finished) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                sender
+                    .send(write_socket_response(
+                        &mut server,
+                        &value,
+                        Instant::now() + Duration::from_secs(10),
+                    ))
+                    .unwrap();
+            });
+            thread::sleep(Duration::from_millis(30));
+            stopper.shutdown(Shutdown::Both).unwrap();
+            assert!(finished
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .is_err());
+            worker.join().unwrap();
+            drop(client);
+        }
+
+        #[test]
+        fn socket_snapshot_jobs_are_global_bounded_and_busy_never_locks_session() {
+            let (session, directory) = session();
+            let first = SocketJobGuard::acquire().unwrap();
+            let second = SocketJobGuard::acquire().unwrap();
+            let mut connection = Connection {
+                session: session.clone(),
+                live_desktop: true,
+                initialized: true,
+                ready: true,
+                bounded_socket_jobs: true,
+            };
+            // Holding this mutex proves rejection happens before snapshot/lock.
+            let lock = session.lock().unwrap();
+            for name in [
+                "render_audio",
+                "render_arrangement",
+                "analyze_signal",
+                "capture_signal",
+                "benchmark",
+                "export_visualizer",
+            ] {
+                let response = connection
+                    .handle(json!({"jsonrpc":"2.0","id":1,
+                    "method":"tools/call","params":{"name":name}}))
+                    .unwrap();
+                assert_eq!(response["result"]["isError"], true);
+                assert!(response["result"]["content"][0]["text"]
+                    .as_str()
+                    .unwrap()
+                    .contains("busy"));
+            }
+            drop(lock);
+            drop(first);
+            // The permit is returned on ordinary tool errors as well as success.
+            assert!(!connection
+                .execute_tool("benchmark", json!({"seconds":0.0}))
+                .unwrap_err()
+                .contains("busy"));
+            let replacement = SocketJobGuard::acquire().unwrap();
+            assert!(SocketJobGuard::acquire().is_err());
+            drop(replacement);
+            drop(second);
+            std::fs::remove_dir_all(directory).unwrap();
+        }
     }
 }

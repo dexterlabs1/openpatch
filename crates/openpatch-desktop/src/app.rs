@@ -315,6 +315,11 @@ pub struct OpenPatch {
     catalog: Value,
     start: Instant,
     mcp: bool,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    local_mcp: Option<openpatch::local_mcp::LocalServer>,
+    local_mcp_error: Option<String>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    local_mcp_command: String,
     documents: DocumentState,
     projects: Option<Store>,
     active_file: Option<String>,
@@ -337,6 +342,63 @@ pub struct OpenPatch {
     smoke_test: Option<(PathBuf, u32, usize)>,
 }
 impl OpenPatch {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    pub fn set_local_mcp(&mut self, server: Result<openpatch::local_mcp::LocalServer, String>) {
+        match server {
+            Ok(server) => {
+                let cli = std::env::current_exe()
+                    .ok()
+                    .and_then(|path| path.parent().map(|parent| parent.join("openpatch")))
+                    .filter(|path| path.is_file());
+                let executable = cli
+                    .map(|path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''")))
+                    .unwrap_or_else(|| "openpatch".into());
+                self.local_mcp_command =
+                    format!("{executable} attach --session {}", server.session_id());
+                self.local_mcp = Some(server);
+            }
+            Err(error) => self.local_mcp_error = Some(error),
+        }
+    }
+
+    fn mcp_status(&self, ui: &mut egui::Ui) {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if let Some(server) = &self.local_mcp {
+            let clients = server.client_count();
+            let label = if clients == 0 {
+                "MCP ready".to_owned()
+            } else {
+                format!("MCP · {clients} attached")
+            };
+            let command = &self.local_mcp_command;
+            if ui
+                .small_button(RichText::new(label).color(ACCENT).size(10.0))
+                .on_hover_text(format!(
+                    "Connect an MCP client to this rack. Click to copy:\n{command}\nPlayback stays under your control.{}",
+                    if self.mcp { "\nA stdio connection is also enabled." } else { "" }
+                ))
+                .clicked()
+            {
+                ui.ctx().copy_text(command.clone());
+            }
+            return;
+        }
+        if self.mcp {
+            ui.label(RichText::new("MCP stdio").color(ACCENT).size(10.0))
+                .on_hover_text(
+                    "The client that launched this window controls its live patch over stdio.",
+                );
+        }
+        if let Some(error) = &self.local_mcp_error {
+            ui.label(
+                RichText::new("MCP attach unavailable")
+                    .color(ACCENT)
+                    .size(10.0),
+            )
+            .on_hover_text(error);
+        }
+    }
+
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         shared: SharedSession,
@@ -461,6 +523,11 @@ impl OpenPatch {
             catalog: catalog(),
             start: Instant::now(),
             mcp,
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            local_mcp: None,
+            local_mcp_error: None,
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            local_mcp_command: String::new(),
             documents,
             projects: startup.store,
             active_file: startup.active_file,
@@ -2512,10 +2579,7 @@ impl OpenPatch {
                             ui.colored_label(ACCENT,"Solver holds").on_hover_text(format!("{} circuit solves reached the bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.",audio.solver_failures()));
                         }
                     }
-                    if self.mcp {
-                        ui.label(RichText::new("MCP").color(ACCENT).size(10.0))
-                            .on_hover_text("This window exposes the local MCP server");
-                    }
+                    self.mcp_status(ui);
                     ui.separator();
                     ui.allocate_ui_with_layout(ui.available_size(),egui::Layout::left_to_right(egui::Align::Center),|ui| {
                         ui.label(RichText::new(format!("{} modules · {} cables",self.patch.nodes.len(),self.patch.cables.len())).size(10.0).color(MUTED))
@@ -4120,6 +4184,8 @@ impl eframe::App for OpenPatch {
         ctx.request_repaint_after(Duration::from_millis(33));
     }
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        drop(self.local_mcp.take());
         if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
             v.destroy(gl);
         }
@@ -4192,6 +4258,11 @@ mod project_workflow_tests {
             catalog: catalog(),
             start: Instant::now(),
             mcp: true,
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            local_mcp: None,
+            local_mcp_error: None,
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            local_mcp_command: String::new(),
             documents,
             projects: Some(store),
             active_file: None,

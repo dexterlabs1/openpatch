@@ -4,6 +4,8 @@
 //! must consume compiled engines separately and must never lock this session.
 
 pub mod control;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub mod local_mcp;
 pub mod mcp;
 pub mod presets;
 pub mod visualizer;
