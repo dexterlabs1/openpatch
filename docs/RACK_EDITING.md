@@ -163,6 +163,12 @@ loss, newer revisions, and unsupported version-1 graph changes cancel the entire
 proposal. Opening a menu captures its revision; a changed patch makes it stale,
 so even a reused cable ID cannot silently retarget an old menu action.
 
+![Output cable menu with individual cables and bundle actions](images/openpatch-cable-output-menu.png)
+
+![Input cable menu uses the same actions](images/openpatch-cable-input-menu.png)
+
+*Native Linux CI captures; macOS is the primary design target.*
+
 Top currently means the last matching cable in saved patch order. Independent
 per-end plug ordering, editable palette presets, next-colour cycling, and physical
 native input qualification remain open.
