@@ -3473,7 +3473,8 @@ mod tests {
         assert_eq!(controls.pressed_mask, 0x3ff);
         let lights = callback.performance.module_lights("manual").unwrap();
         assert_eq!(lights.count, 10);
-        assert!(lights.brightness.iter().all(|pair| pair[0] > 0.0));
+        assert!(lights.brightness[..10].iter().all(|pair| pair[0] > 0.0));
+        assert!(lights.brightness[10..].iter().all(|pair| *pair == [0.0; 2]));
         let snapshot = callback.performance.snapshot();
         assert_eq!(snapshot["coherent"], true);
         assert_eq!(
@@ -4396,6 +4397,7 @@ mod tests {
     }
 
     include!("sum_audio_tests.rs");
+    include!("viz_audio_tests.rs");
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

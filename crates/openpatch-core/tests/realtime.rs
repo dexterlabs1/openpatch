@@ -80,3 +80,24 @@ fn sum_meter_and_channel_telemetry_allocate_nothing() {
         Some(16)
     );
 }
+
+#[test]
+fn viz_light_callback_allocates_nothing() {
+    use openpatch_core::{Patch, PortFrame};
+    let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"source","kind":"poly_constant","params":{"channels":16}},{"id":"viz","kind":"poly_viz"}],"cables":[{"from":"source","to":"viz","input":"signal"}]})).unwrap();
+    let mut engine = patch.compile().unwrap();
+    let handle = engine.resolve_module_lights("viz").unwrap();
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for _ in 0..20 {
+        engine.process_poly_block(&mut frames);
+        std::hint::black_box(engine.module_lights(handle));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(
+        engine.module_lights(handle).unwrap().input_channels,
+        Some(16)
+    );
+}

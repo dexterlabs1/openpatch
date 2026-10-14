@@ -3402,30 +3402,46 @@ impl OpenPatch {
                 (
                     include_str!("../../../examples/polyphonic-routing.json"),
                     "Polyphonic routing study",
-                    1.0,
+                    0.85,
                 )
             };
-            let patch: Patch =
+            let mut patch: Patch =
                 serde_json::from_str(source).expect("valid bundled polyphonic patch");
-            let sum_lights = (frame == 52).then(|| {
+            let meter_lights = (frame == 52).then(|| {
+                for channel in 1..=16 {
+                    patch.nodes[0].params.insert(
+                        format!("v{channel}"),
+                        if channel % 2 == 0 { -4.0 } else { 8.0 },
+                    );
+                }
+                patch
+                    .nodes
+                    .push(serde_json::from_value(json!({"id":"viz","kind":"poly_viz"})).unwrap());
+                patch.cables.push(
+                    serde_json::from_value(json!({"from":"voltages","to":"viz","input":"signal"}))
+                        .unwrap(),
+                );
                 let mut engine = patch.compile().expect("routing meter fixture compiles");
                 engine.process_block(&mut [0.0; 1024]);
-                let handle = engine
-                    .resolve_module_lights("sum")
-                    .expect("SUM meter handle");
-                let state = engine.module_lights(handle).expect("SUM meter snapshot");
-                assert_eq!(state.input_channels, Some(16));
-                assert_eq!(state.brightness[0][0], 1.0);
-                state
+                let mut states = BTreeMap::new();
+                for id in ["sum", "viz"] {
+                    let handle = engine.resolve_module_lights(id).expect("meter handle");
+                    let state = engine.module_lights(handle).expect("meter snapshot");
+                    assert_eq!(state.input_channels, Some(16));
+                    states.insert(id.into(), state);
+                }
+                assert_eq!(states["sum"].brightness[0][0], 1.0);
+                assert_eq!(states["viz"].brightness[0][0], 0.8);
+                assert_eq!(states["viz"].brightness[1][1], 0.4);
+                states
             });
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("polyphonic patch compiles");
             self.rack = Rack::default();
             self.rack.set_zoom(zoom);
             self.title = title.into();
-            if let Some(lights) = sum_lights {
-                self.rack
-                    .set_module_states(BTreeMap::from([("sum".into(), lights)]), BTreeMap::new());
+            if let Some(lights) = meter_lights {
+                self.rack.set_module_states(lights, BTreeMap::new());
                 self.title.push_str(" · offline DSP snapshot");
             }
         }
@@ -6303,6 +6319,37 @@ mod project_workflow_tests {
         assert_eq!(value["output_device"], "Chosen output");
         assert_eq!(value["midi_device"], "Chosen input");
         assert_eq!(value["module_favorites"], json!(["analog_vco", "constant"]));
+    }
+
+    #[test]
+    fn browser_viz_add_select_delete_and_history_preserve_monitor_output() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = host(root.path());
+        assert!(app.command("replace_patch", json!({"patch":{"version":2,"nodes":[]}})));
+        assert!(app.add_module("poly_viz", None));
+        assert_eq!(app.rack.selected.as_deref(), Some("poly_viz-1"));
+        assert!(app.patch.output.is_none());
+        assert!(app.command("undo", json!({})));
+        assert!(app.patch.nodes.is_empty());
+        assert!(app.command("redo", json!({})));
+        assert!(app.patch.output.is_none());
+        assert_eq!(app.patch.nodes[0].kind, "poly_viz");
+        assert!(app.add_module("audio_out", None));
+        assert_eq!(app.patch.output.as_deref(), Some("audio_out-1"));
+        app.rack.select_only("poly_viz-1".into());
+        let revision = app.revision;
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert!(!app.command("set_output", json!({"id":"poly_viz-1","port":"out"})));
+        assert_eq!(app.revision, revision);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+        assert!(app.command("remove_module", json!({"id":"poly_viz-1"})));
+        assert_eq!(app.patch.output.as_deref(), Some("audio_out-1"));
+        assert!(app.command("undo", json!({})));
+        assert!(app.patch.nodes.iter().any(|n| n.kind == "poly_viz"));
+        assert_eq!(app.patch.output.as_deref(), Some("audio_out-1"));
+        assert!(app.command("redo", json!({})));
+        assert!(!app.patch.nodes.iter().any(|n| n.kind == "poly_viz"));
+        assert_eq!(app.patch.output.as_deref(), Some("audio_out-1"));
     }
 
     #[test]

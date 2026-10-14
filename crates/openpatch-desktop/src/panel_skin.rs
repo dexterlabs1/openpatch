@@ -72,6 +72,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "poly_split" => "POLYPHONIC SPLITTER",
         "poly_merge" => "POLYPHONIC MERGER",
         "poly_sum" => "POLYPHONIC SUMMER",
+        "poly_viz" => "POLYPHONIC VOLTAGE DISPLAY",
         "switch_1to4" | "switch_4to1" => "SEQUENTIAL SWITCH",
         "logic" => "BOOLEAN LOGIC",
         "compare" => "VOLTAGE COMPARATOR",

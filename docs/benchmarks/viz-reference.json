@@ -1,0 +1,208 @@
+{
+  "reference": {
+    "fundamental_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Viz.cpp",
+    "source_sha256": "c1892ee12954833fec56c346d687e309f9fd0f45d45e7a59dd99cf6307525a3a",
+    "sdk_path": "/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
+    "sdk_header_sha256": {
+      "engine/Light.hpp": "70affe4a5f167d5e018633da41931d7d1666a113ea8358fa8f01a63cae46e4c2",
+      "dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+      "dsp/common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "math.hpp": "154bf143e14071e782b28c54c5c4a0782290d5ef0428e113583cef2ba9f209de"
+    }
+  },
+  "method": "Production viz.rs compiled directly with minimal host types versus actual Rack SDK Input, Light, ClockDivider; independent C++ driver follows pinned Viz scheduling. Upstream Viz.cpp is fetched and hashed, not compiled or vendored.",
+  "coverage": [
+    "0..16 active lanes with independent signed polarity",
+    "16-frame sampling and held count/lights",
+    "raw signed SDK Light state (including negative values and values above one)",
+    "retired/disconnected lanes retain positive release tails",
+    "release at 44100/48000/96000 Hz",
+    "rebuild adoption retains light state and divider phase",
+    "input-only production process returns unit"
+  ],
+  "limitations": [
+    "Not full upstream module/plugin or GUI execution",
+    "Minimal Rust host adapters bypass graph/cable timing, safety bounding, telemetry publication, UI and MCP",
+    "Inactive SDK voltages are zeroed by host to model engine bookkeeping; Rust host channel accessor likewise returns zero",
+    "Finite test voltages remain within OpenPatch safety bound; no nonfinite or unrestricted voltage parity claim",
+    "No bypass or sample-rate-change lifecycle validation; graph zero-output metadata requires separate integration tests"
+  ],
+  "tolerances": {
+    "brightness_absolute": 3e-06,
+    "brightness_relative": 1e-06,
+    "channel_count": "exact"
+  },
+  "production_source_sha256": "466853e5eab53b59c3727db8fdd4c55003ccbec51dd01db092a297d06ec94a65",
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "cases": [
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "5f3837f784298bae8628825c7f112595bf67cb0f6d3680dc55d39fd4a9172524",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_release",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "4e0db874f45d93524ce013cbed68e128390b6a5cf5e4feef96a576b9f4754e18",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "d8de109b4ac51d5a27d48a739298f1dda75c5ee16b0759ee27fa62c24bf95ab7",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "retirement_and_reactivation",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "6555402b68002b1bdb8303d7d692f1cd1523f33e57bcefa56fd060686bee4755",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "8d930e303425aaef59cf73e2f69814253df7719ce046435b4956ee78d61261e9",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "high_voltage_adoption",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "7fd4bf23ee7903fea1180751db01fc544214c7417085a7042487bab06f21a879",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "5f3837f784298bae8628825c7f112595bf67cb0f6d3680dc55d39fd4a9172524",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_release",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "4e0db874f45d93524ce013cbed68e128390b6a5cf5e4feef96a576b9f4754e18",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "d8de109b4ac51d5a27d48a739298f1dda75c5ee16b0759ee27fa62c24bf95ab7",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "retirement_and_reactivation",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "6555402b68002b1bdb8303d7d692f1cd1523f33e57bcefa56fd060686bee4755",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "8d930e303425aaef59cf73e2f69814253df7719ce046435b4956ee78d61261e9",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "high_voltage_adoption",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "7fd4bf23ee7903fea1180751db01fc544214c7417085a7042487bab06f21a879",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "5f3837f784298bae8628825c7f112595bf67cb0f6d3680dc55d39fd4a9172524",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_release",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "4e0db874f45d93524ce013cbed68e128390b6a5cf5e4feef96a576b9f4754e18",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "d8de109b4ac51d5a27d48a739298f1dda75c5ee16b0759ee27fa62c24bf95ab7",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "retirement_and_reactivation",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "6555402b68002b1bdb8303d7d692f1cd1523f33e57bcefa56fd060686bee4755",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "8d930e303425aaef59cf73e2f69814253df7719ce046435b4956ee78d61261e9",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "high_voltage_adoption",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "7fd4bf23ee7903fea1180751db01fc544214c7417085a7042487bab06f21a879",
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "passed": true,
+  "total_frames": 147456
+}

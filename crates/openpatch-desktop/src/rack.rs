@@ -2285,6 +2285,9 @@ impl Rack {
             if node.kind == "poly_sum" {
                 self.sum_panel(ui, node, rect);
             }
+            if node.kind == "poly_viz" {
+                self.viz_panel(ui, node, rect);
+            }
             if node.kind == "mid_side" {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
@@ -3215,6 +3218,70 @@ impl Rack {
                 self.zoom,
             );
         }
+    }
+
+    /// VIZ keeps channel activity separate from signed indicator release tails.
+    fn viz_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
+        let zoom = self.zoom;
+        let painter = ui.painter();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let state = self
+            .module_lights
+            .get(&node.id)
+            .filter(|s| s.count == 16 && s.input_channels.is_some_and(|c| c <= 16));
+        painter.text(
+            point(90.0, 91.0),
+            Align2::CENTER_CENTER,
+            state.map_or_else(
+                || "TELEMETRY UNAVAILABLE".to_owned(),
+                |s| format!("{} / 16 CHANNELS", s.input_channels.unwrap()),
+            ),
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+            MUTED,
+        );
+        for channel in 0..16 {
+            let x = if channel < 8 { 32.0 } else { 112.0 };
+            let y = 120.0 + (channel % 8) as f32 * 24.0;
+            let active = state.is_some_and(|s| channel < s.input_channels.unwrap() as usize);
+            painter.text(
+                point(x, y),
+                Align2::CENTER_CENTER,
+                format!("{:02}", channel + 1),
+                FontId::monospace(12.0 * zoom),
+                if active { INK } else { Color32::from_gray(155) },
+            );
+            for (polarity, color) in [
+                Color32::from_rgb(65, 174, 102),
+                Color32::from_rgb(216, 75, 65),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let center = point(x + 28.0 + if polarity == 0 { -5.0 } else { 5.0 }, y);
+                // Retired voices can retain a fading light after their number dims.
+                let value = state.map_or(0.0, |s| s.brightness[channel][polarity].clamp(0.0, 1.0));
+                painter.circle_filled(center, 4.0 * zoom, Color32::from_gray(70));
+                painter.circle_filled(
+                    center,
+                    3.0 * zoom,
+                    if state.is_none() {
+                        Color32::from_gray(100)
+                    } else {
+                        color.gamma_multiply(0.15 + value * 0.85)
+                    },
+                );
+            }
+        }
+        painter.text(
+            point(90.0, 313.0),
+            Align2::CENTER_CENTER,
+            "+ GREEN   − RED",
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+            MUTED,
+        );
+        ui.interact(Rect::from_min_max(point(20.0, 106.0), point(158.0, 302.0)),
+            ui.id().with((&node.id, "viz-meter")), Sense::hover()).on_hover_text(
+                "Sixteen input voices. Bright numbers identify active channels, including silent voices. Green shows positive voltage; red shows negative voltage. Gray indicators mean telemetry is unavailable.");
     }
 
     /// SUM's telemetry is post-attenuator; absent publication stays visibly unavailable.
@@ -5508,6 +5575,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "poly_viz" => return pos2(width * 0.5, 367.0),
         "poly_sum" => return pos2(if input { 45.0 } else { 105.0 }, 367.0),
         "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
             return pos2(
@@ -6348,6 +6416,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
+        "poly_viz" => HP * 12.0,
         "quantizer" => HP * 16.0,
         "white_noise" | "attenuverter" | "crossfade" => HP * 12.0,
         "sample_hold" => HP * 10.0,
@@ -6388,6 +6457,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "poly_split" => "SPLIT",
         "poly_merge" => "MERGE",
         "poly_sum" => "SUM",
+        "poly_viz" => "VIZ",
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
         "sample_hold" => "S&H",
@@ -7303,6 +7373,9 @@ fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: 
 
 #[cfg(test)]
 mod tests {
+    mod viz_ui_tests {
+        include!("viz_ui_tests.rs");
+    }
     mod sum_ui_tests {
         include!("sum_ui_tests.rs");
     }
@@ -7461,7 +7534,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            51,
+            52,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -7554,6 +7627,7 @@ mod tests {
         }
         let catalog = openpatch_core::catalog();
         for kind in [
+            "poly_viz",
             "score_sequencer",
             "drum_voice",
             "svf_filter",

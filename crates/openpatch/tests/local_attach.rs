@@ -7,18 +7,35 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc::{self, Receiver},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 struct Workspace(PathBuf);
 impl Workspace {
     fn new() -> Self {
-        Self(std::env::temp_dir().join(format!(
-            "openpatch-attach-integration-{}-{}",
-            std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
-        )))
+        // Wall-clock resolution can give concurrent tests the same timestamp.
+        // Reserve the directory atomically so one fixture cannot delete another.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        loop {
+            let path = std::env::temp_dir().join(format!(
+                "openpatch-attach-integration-{}-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed),
+            ));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("reserve test workspace: {error}"),
+            }
+        }
     }
 }
 impl Drop for Workspace {

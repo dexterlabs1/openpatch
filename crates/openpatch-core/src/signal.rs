@@ -4,7 +4,7 @@ use crate::{
 };
 use serde_json::{json, Value};
 
-pub const MAX_MODULE_LIGHTS: usize = 10;
+pub const MAX_MODULE_LIGHTS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct ModuleControlState {
@@ -14,7 +14,7 @@ pub struct ModuleControlState {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
-    /// SUM input channel count, refreshed together with its six meter bands.
+    /// Input channel count for SUM and VIZ, latched with their published lights.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
     pub count: u8,

@@ -922,6 +922,37 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("redo", {})
         self.assertEqual(self.patch_snapshot()["patch"], attenuated["patch"])
 
+    def test_poly_viz_has_no_outputs_and_invalid_edits_are_atomic(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog", {}))
+        module = next(m for m in catalog["modules"] if m["kind"] == "poly_viz")
+        self.assertEqual(module["outputs"], [])
+        self.assertEqual(module["params"], {})
+        self.assertEqual(len(module["light_names"]), 16)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 1, "v1": 2}}],
+            "output": "source"}})
+        self.require_tool_success("add_module", {"id": "viz", "kind": "poly_viz"})
+        self.require_tool_success("connect", {"from": "source", "to": "viz", "input": "signal"})
+        before = self.patch_snapshot()
+        for tool, args in [
+            ("set_output", {"id": "viz"}),
+            ("connect", {"from": "viz", "to": "viz", "input": "signal", "mode": "stack"}),
+            ("set_parameter", {"id": "viz", "parameter": "level", "value": 1}),
+            ("analyze_signal", {"id": "viz", "seconds": 0.001}),
+            ("capture_signal", {"id": "viz", "seconds": 0.001})]:
+            self.require_tool_error(tool, args)
+            self.assertEqual(self.patch_snapshot(), before)
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "source", "seconds": 0.001}))
+        self.assertEqual(measured["channels"][0]["peak"], 2)
+        self.require_tool_success("save_patch", {"filename": "viz.json"})
+        saved = json.loads((self.workspace / "viz.json").read_text())
+        self.assertEqual(saved["nodes"][1]["kind"], "poly_viz")
+        self.require_tool_success("remove_module", {"id": "viz"})
+        self.require_tool_success("undo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo", {})
+        self.assertEqual(len(self.patch_snapshot()["patch"]["nodes"]), 1)
+
     def test_stereo_render_preserves_channels_and_normalization(self) -> None:
         patch = {"version": 2, "sample_rate": 48000, "nodes": [
             {"id": "left", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": 3}},

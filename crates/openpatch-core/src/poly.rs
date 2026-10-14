@@ -74,6 +74,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "poly_split"
                 | "poly_merge"
                 | "poly_sum"
+                | "poly_viz"
                 | "midi_cv"
                 | "audio_stereo"
                 | "multi_lfo"
@@ -126,12 +127,15 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
             "right" => Some(1),
             _ => None,
         },
-        "poly_split" | "poly_sum" if name == "signal" => Some(0),
+        "poly_split" | "poly_sum" | "poly_viz" if name == "signal" => Some(0),
         "poly_merge" => numbered_port(name, "in"),
         _ => template.and_then(|dsp| dsp.port(name)),
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "poly_viz" {
+        return None;
+    }
     if kind == "score_sequencer" {
         return score::OUTPUTS.iter().position(|p| *p == name);
     }
@@ -186,7 +190,7 @@ fn integer(node: &Node, name: &str, default: f32) -> Result<u8, String> {
     Ok(value as u8)
 }
 
-pub(crate) fn catalog() -> [Value; 6] {
+pub(crate) fn catalog() -> [Value; 7] {
     let values: serde_json::Map<String, Value> = (1..=16)
         .map(|i| {
             (
@@ -203,6 +207,7 @@ pub(crate) fn catalog() -> [Value; 6] {
         constants,
         json!({"kind":"poly_split","title":"SPLIT","model":"functional","description":"Split channels 1–16 into named mono outputs out1..out16. Missing channels produce mono zero.","inputs":["signal"],"params":{}}),
         json!({"kind":"poly_merge","title":"MERGE","model":"functional","description":"Take channel zero of in1..in16 into one polyphonic output. channels=0 auto uses the highest nonzero-channel input; holes are preserved as zero. Override 1–16 forces channel count.","inputs":(1..=16).map(|i|format!("in{i}")).collect::<Vec<_>>(),"params":{"channels":{"default":0.0,"min":0.0,"max":16.0,"step":1.0}}}),
+        json!({"kind":"poly_viz","title":"VIZ","model":"functional","description":"Sixteen paired polarity lights visualize polyphonic signal voltages. Samples and publishes every 16 frames with immediate attack and 30/s Euler release; bypass freezes lights and channel count.","inputs":["signal"],"params":{}}),
         json!({"kind":"poly_sum","title":"SUM","model":"functional","description":"Sum all active signal channels with a master level into one mono output. Empty signal produces mono zero; final arithmetic bound ±1,000,000 V. Six post-level peak meter bands relative to 10 V, with instant attack and 0.1-second Euler release. Meter samples every 16 frames; channel count and lights publish every 512 frames and freeze while bypassed.","inputs":["signal"],"params":{"level":{"default":1.0,"min":0.0,"max":1.0}}}),
     ]
 }
@@ -277,6 +282,8 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "poly_viz" {
+        Vec::new()
     } else if kind == "poly_split" {
         (1..=16).map(|i| format!("out{i}")).collect::<Vec<_>>()
     } else {
@@ -292,6 +299,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         "poly_merge" => {
             "auto highest occupied input or explicit count; channel zero of each input; holes zero"
         }
+        "poly_viz" => "input-only visualization of 0–16 independent channels",
         "poly_sum" => "mono sum of active channels with master level",
         _ => match voice_policy(&kind) {
             VoicePolicy::Generator => "one generated voice",
@@ -329,6 +337,12 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         module["configuration_state"] = json!("voices, channel, allocation edits reset MIDI state; clock division edits preserve held notes");
         module["clock_div_phase"] =
             json!("first clock after reset/start, then every clock_div clocks");
+    }
+    if kind == "poly_viz" {
+        module["light_names"] = json!((1..=16).map(|i| format!("Channel {i}")).collect::<Vec<_>>());
+        module["light_policy"] = json!({"colors":["green","red"],"source":"independent active input channels, voltage / 10","reference_voltage":10,"meter_sample_frames":16,"publication_frames":16,"release_method":"f32 Euler immediate attack; decay += (target - current) * 30 * (16 / sample_rate)","input_channels":"Some(0..16), initially 0; latched with lights every 16 frames","bypass":"no outputs; lights, count, divider freeze","state_adoption":"same identity, kind, and sample rate preserve state; fresh incarnation and sample rate change reset","inactive_channels":"zero target with smooth decay"});
+        module["polyphony"]["primary_input"] = json!("signal");
+        module["polyphony"]["retired_voices"] = json!("inactive channel lights decay toward zero");
     }
     if kind == "poly_sum" {
         module["light_names"] = json!(["0 dB", "-3 dB", "-6 dB", "-12 dB", "-24 dB", "-36 dB"]);
@@ -418,6 +432,7 @@ enum Model {
     Split,
     Merge(u8),
     Sum(crate::sum::Sum),
+    Viz(crate::viz::Viz),
     Midi(Box<MidiCv>),
     Stereo(StereoOutput),
     Routing(Routing),
@@ -495,7 +510,7 @@ impl Model {
                     .collect::<Vec<_>>(),
             ),
             "poly_merge" => Some(vec!["channels".into()]),
-            "poly_split" => Some(Vec::new()),
+            "poly_split" | "poly_viz" => Some(Vec::new()),
             "poly_sum" => Some(vec!["level".to_string()]),
             _ => None,
         };
@@ -523,6 +538,7 @@ impl Model {
                 }
                 "poly_split" => Self::Split,
                 "poly_merge" => Self::Merge(integer(node, "channels", 0.0)?),
+                "poly_viz" => Self::Viz(crate::viz::Viz::new(rate)),
                 "poly_sum" => Self::Sum(crate::sum::Sum::build(node, rate)?),
                 _ => unreachable!(),
             });
@@ -640,6 +656,7 @@ impl PolyEngine {
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::Sum(s)) => Some(s.lights()),
+            Some(Model::Viz(v)) => Some(v.lights()),
             _ => None,
         }
     }
@@ -951,6 +968,7 @@ impl PolyEngine {
                 ports.len()
             } else {
                 match node.kind.as_str() {
+                    "poly_viz" => 0,
                     "poly_split" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
@@ -1461,6 +1479,7 @@ impl PolyEngine {
                     frame.values[frame.channels as usize..].fill(0.0);
                     self.outputs[node.output_start] = frame;
                 }
+                Model::Viz(v) => v.process(a),
                 Model::Sum(s) => {
                     self.outputs[node.output_start] = s.process(a);
                 }
@@ -1575,6 +1594,7 @@ impl PolyEngine {
             match (&mut node.model, &previous.model) {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
+                (Model::Viz(v), Model::Viz(old)) => v.adopt(old),
                 (Model::Score(s), Model::Score(old)) => {
                     s.adopt(old);
                     s.reset_input_detectors(score_inputs_changed[0], score_inputs_changed[1]);

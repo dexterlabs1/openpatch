@@ -100,7 +100,7 @@ impl Category {
             "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "poly_sum"
             | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" => Self::InputOutput,
-            "pulses" | "push" | "gates" => Self::Utilities,
+            "pulses" | "push" | "gates" | "poly_viz" => Self::Utilities,
             _ => Self::Utilities,
         }
     }
@@ -873,6 +873,7 @@ mod tests {
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
         assert_eq!(Category::of_kind("push"), Category::Utilities);
+        assert_eq!(Category::of_kind("poly_viz"), Category::Utilities);
         library.set_favorites(&["analog_vco".into(), "removed_plugin".into()], &catalog);
         assert_eq!(library.favorites(), vec!["analog_vco"]);
         assert!(!library.take_favorites_changed());

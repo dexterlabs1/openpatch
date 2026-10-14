@@ -43,7 +43,7 @@ fn catalog_twenty_mono_ports_no_saved_buttons_and_version_two_only() {
     assert_eq!(m["min_patch_version"], 2);
     assert_eq!(m["runtime_actions"], json!(&MODULE_ACTION_NAMES[7..27]));
     assert_eq!(m["light_names"].as_array().unwrap().len(), 10);
-    assert_eq!(MAX_MODULE_LIGHTS, 10);
+    assert_eq!(MAX_MODULE_LIGHTS, 16);
     for metadata in m["output_metadata"].as_array().unwrap() {
         assert_eq!(metadata["maximum_channels"], 1);
         assert_eq!(metadata["units"], "V");

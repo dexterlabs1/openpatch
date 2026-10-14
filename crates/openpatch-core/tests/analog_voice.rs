@@ -29,8 +29,8 @@ fn catalog_defaults_compile_and_invalid_reference_parameters_fail() {
         let patch = Patch {
             version: module["min_patch_version"].as_u64().unwrap() as u32,
             nodes: vec![node("test", kind, &[])],
-            output: Some("test".into()),
-            output_port: module["outputs"][0].as_str().unwrap().into(),
+            output: module["outputs"][0].as_str().map(|_| "test".into()),
+            output_port: module["outputs"][0].as_str().unwrap_or("out").into(),
             ..Patch::default()
         };
         assert!(patch.compile().is_ok(), "{kind}");

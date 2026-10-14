@@ -223,7 +223,9 @@ Select `audio_stereo.out` for explicit L/R playback and stereo WAV export. Each
 input sums its voices and converts 10 V to digital full scale; unpatched Right
 follows Left. All other selected outputs retain channel-0 mono monitoring.
 `poly_sum` explicitly mixes voices to mono, and `poly_split` / `poly_merge`
-provide individual channel routing. See [MIDI and audio](MIDI_AUDIO.md).
+provide individual channel routing. `poly_viz` observes a polyphonic input and has
+no outputs: it cannot be selected for monitoring or used as a source/tap. See
+[MIDI and audio](MIDI_AUDIO.md) and [VIZ](POLYPHONIC_VIZ.md).
 
 `render_audio`, `analyze_signal`, and `capture_signal` accept optional sample-timed
 `midi_events` and `module_events`, allowing reproducible performances from reset
@@ -378,15 +380,18 @@ not proof that audio has processed it. No live backend means these requests are
 unsupported; offline event traces remain available.
 
 `inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, the four signal processors, VCA Mix, Pulses, and Push. Each entry has
+sequencer, sequential switches, the four signal processors, VCA Mix, SUM, VIZ, Pulses, Push, and Gates. Each entry has
 `kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
 `state`, `controls`, and `lights`. Sequence state retains step/running/length. Push state reports `holding`.
-Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9; Push uses bit 0 for PUSH and bit 1 for HOLD); indicator `lights` provides `count`, ten
-fixed-capacity brightness pairs, and a `manual` flag. Signal processors use
+Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9; Push uses bit 0 for PUSH and bit 1 for HOLD); indicator `lights` provides `count`, sixteen
+fixed-capacity brightness pairs, and a `manual` flag. SUM and VIZ also supply
+`input_channels`, latched with their light state; other kinds omit that field. Signal processors use
 mono/poly pairs; VCA Mix uses the first value for each channel meter and leaves
 the second value zero. Pulses uses one entry per row; Push exposes final gate and HOLD. Only the first
 `count` pairs are meaningful; names and interpretation come from the catalog's
-`light_names` and `light_policy`. Unsupported fields are null.
+`light_names` and `light_policy`. VIZ uses all sixteen pairs for signed green/red
+brightness; retain raw signed values and clamp only for display. Unsupported
+fields are null.
 
 The desktop snapshot reports global `coherent` and a common `frame`. It uses a
 bounded read retry around callback publication; contention returns unavailable
