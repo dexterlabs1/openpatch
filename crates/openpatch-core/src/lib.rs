@@ -117,6 +117,10 @@ fn is_false(value: &bool) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
+    /// Optional persisted RGB bytes. Pure presentation metadata: not part of
+    /// route identity or DSP state adoption. Omitted colors use the UI palette.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
     /// Stable identity in the cable namespace; older patches may omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -1360,6 +1364,7 @@ pub fn demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        color: None,
         id: None,
         from: from.into(),
         to: to.into(),
@@ -1405,6 +1410,7 @@ pub fn analog_demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        color: None,
         id: None,
         from: from.into(),
         to: to.into(),

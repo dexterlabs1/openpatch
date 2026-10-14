@@ -10,15 +10,19 @@ Choose **File → Stacked pitch voice** for a three-note chord with a shared
 transpose control and gentle vibrato. All three control sources meet at the
 VCO's pitch input. The mono transpose and vibrato signals apply to every voice.
 
-- Hold **Cmd** (Ctrl on Windows/Linux) when pressing an occupied output to
-  start another cable; an ordinary drag moves its top output plug instead.
-- Hold **Shift** when finishing a cable to add it to an occupied input.
-- An ordinary drop replaces the destination's existing cables in one undo step.
-- Dragging a connected input moves its top cable. Right-click the input to
-  choose a particular cable by ID and source, move it, or remove only that cable.
-- Use **Remove all** in the input menu to clear the whole stack.
-- **Esc**, an invalid drop, or a patch revision change cancels the pending
-  gesture without changing the original cables.
+- Hold **Cmd** (Ctrl on Windows/Linux) when pressing either jack to start
+  another cable. An ordinary drag moves its top plug to the same jack type.
+- Valid drops onto occupied version-2 inputs keep every existing cable.
+- **Cmd/Ctrl+Shift-drag** clones the top cable, retaining its color.
+- **Shift-click** deletes only the top cable immediately on press.
+- Add **Shift at drop**, after starting without Shift, to permit an identical
+  route. The input menu's **Stack new cable here** also permits this extension.
+- Right-click an input to choose, move, or remove one cable by ID and source;
+  **Remove all** clears the whole stack.
+- Dropping a moved cable on empty space, a wrong-type jack, or a duplicate route
+  deletes that cable. Fresh and cloned drafts disappear without altering originals.
+- **Esc**, focus loss, modal interruption, stale revisions, and unsupported
+  graph edits cancel without changing originals. See [cable gestures](RACK_EDITING.md#cable-gestures).
 
 The jack badge shows the cable count. Separate cable curves and colors help
 distinguish stacked routes; the menu also distinguishes two cables with exactly
@@ -43,6 +47,7 @@ or omit it for an automatically assigned ID:
   "input": "pitch",
   "mode": "stack",
   "cable_id": "transpose-pitch",
+  "color": [230, 70, 60],
   "expected_revision": 12
 }
 ```
@@ -51,6 +56,14 @@ Use the actual observed revision instead of the example number. Call
 `disconnect` with `{"cable_id":"transpose-pitch"}` to remove that one cable.
 The older `{"to":"vco","input":"pitch"}` selector removes all cables at
 that input. Do not combine the two selector forms.
+
+Optional `color` is an RGB array of exactly three integers from 0 through 255.
+Omitting it uses the rack's default palette. Invalid colors reject the whole
+operation before IDs or history change. Colors persist in patch JSON, native
+projects, recovery snapshots, undo/redo, and module duplicates. When moving a
+cable through MCP, pass its observed color to the replacement `connect` call.
+Color is presentation metadata and does not identify a DSP route or reset its
+delayed frame when only the color changes.
 
 To move a cable, put its disconnect and new connect into one `apply_edits`
 transaction, reusing its ID after removal. Preview the same edits with

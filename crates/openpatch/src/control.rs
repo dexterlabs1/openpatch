@@ -7,6 +7,8 @@ mod running;
 pub use project_capture::{ProjectPatchSnapshot, ProjectRunningSnapshot};
 use running::EditEffects;
 #[cfg(test)]
+mod cable_color_tests;
+#[cfg(test)]
 mod duplicate_tests;
 #[cfg(test)]
 mod parameter_action_tests;
@@ -1107,6 +1109,16 @@ fn apply_edit(
             }
         }
         "connect" => {
+            // Parse strict RGB bytes before changing the candidate or assigning
+            // IDs. A present null is not an RGB color; omission uses the palette.
+            let color = args
+                .get("color")
+                .map(|value| {
+                    serde_json::from_value::<[u8; 3]>(value.clone()).map_err(|_| {
+                        "color must be an array of exactly 3 integers in 0..255".to_string()
+                    })
+                })
+                .transpose()?;
             let mode = optional_string(args, "mode", "reject")?;
             if !matches!(mode, "reject" | "stack") {
                 return Err("mode must be reject or stack".into());
@@ -1137,6 +1149,7 @@ fn apply_edit(
                 return Err("cable_id already exists".into());
             }
             candidate.cables.push(Cable {
+                color,
                 id,
                 from: string(args, "from")?.into(),
                 output: optional_string(args, "output", "out")?.into(),
@@ -1434,7 +1447,7 @@ pub fn tools() -> Value {
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run and Push HOLD are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"expected_revision":rev}),&["from","to","input"],false),
+        tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),
         disconnect_tool(&s, &module_id, &rev),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),

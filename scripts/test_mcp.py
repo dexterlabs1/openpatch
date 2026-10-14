@@ -265,6 +265,62 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(redone["patch"], committed["patch"])
         self.assertEqual(redone["revision"], committed["revision"] + 2)
 
+    def test_cable_rgb_schema_persistence_and_malformed_color_rollback(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "connect")
+        self.assertEqual(schema["properties"]["color"], {
+            "type": "array", "minItems": 3, "maxItems": 3,
+            "items": {"type": "integer", "minimum": 0, "maximum": 255},
+        })
+        self.assertNotIn("color", schema["required"])
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "source", "kind": "constant", "params": {"value": 0.25}},
+                {"id": "sink", "kind": "gain"},
+            ], "output": "sink",
+        }})
+        before = self.patch_snapshot()
+        arguments = {"from": "source", "to": "sink", "input": "signal",
+                     "color": [0, 128, 255], "expected_revision": before["revision"]}
+        committed = self.payload(self.require_tool_success("connect", arguments))
+        self.assertEqual(self.patch_snapshot(), committed)
+        cable = committed["patch"]["cables"][0]
+        self.assertEqual(cable["color"], [0, 128, 255])
+        self.assertEqual(cable["id"], "cable_1")
+        self.require_tool_success("save_patch", {"filename": "colored.json"})
+        saved = json.loads((self.workspace / "colored.json").read_text())
+        self.assertEqual(saved, committed["patch"])
+        self.assertEqual(self.patch_snapshot(), committed, "saving must preserve history")
+
+        undone = self.payload(self.require_tool_success("undo", {
+            "expected_revision": committed["revision"],
+        }))
+        self.assertEqual(undone["patch"], before["patch"])
+        self.assertEqual(undone["history"]["redo_steps"], 1)
+        for color in (None, False, "#0080ff", {}, [], [0, 1], [0, 1, 2, 3],
+                      [-1, 0, 0], [0, 256, 0], [0, 0.5, 0], [0, True, 0], [0, "1", 0]):
+            with self.subTest(color=color):
+                self.require_tool_error("connect", {
+                    **arguments, "color": color, "expected_revision": undone["revision"],
+                })
+                self.assertEqual(self.patch_snapshot(), undone,
+                                 "invalid RGB must preserve patch, revision, undo and redo")
+        self.require_tool_error("apply_edits", {"expected_revision": undone["revision"], "edits": [
+            {"tool": "connect", "arguments": {
+                "from": "source", "to": "sink", "input": "cv", "color": [255, 0, 0],
+            }},
+            {"tool": "connect", "arguments": {
+                "from": "source", "to": "sink", "input": "signal", "color": [0, 256, 0],
+            }},
+        ]})
+        self.assertEqual(self.patch_snapshot(), undone, "a malformed RGB must roll back the batch")
+        redone = self.payload(self.require_tool_success("redo", {
+            "expected_revision": undone["revision"],
+        }))
+        self.assertEqual(redone["patch"], committed["patch"])
+        self.assertEqual(self.patch_snapshot()["patch"]["cables"][0], cable)
+        self.assertEqual(json.loads((self.workspace / "colored.json").read_text()), saved)
+
     def test_clear_cables_schema_empty_noop_stale_guard_and_redo_preservation(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "clear_cables")

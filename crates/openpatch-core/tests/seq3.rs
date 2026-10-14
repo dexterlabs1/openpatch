@@ -35,6 +35,7 @@ fn action(e: &mut Engine, h: ModuleHandle, a: ModuleAction) -> f32 {
 }
 fn cable(from: &str, output: &str, to: &str, input: &str) -> Cable {
     Cable {
+        color: None,
         id: None,
         from: from.into(),
         output: output.into(),

@@ -57,8 +57,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Open the library | **Enter**, the library toolbar icon, **Edit → Add module**, or right-click empty rack space |
 | Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
 | Patch / unplug | Drag or click between jacks; an occupied output picks its top plug for moving to another output; right-click an input to unplug |
-| Add another output cable | Hold **Cmd** when pressing an occupied output, for dragging or click-to-connect; release it after pressing |
-| Stack signals at an input | Hold **Shift** when finishing a cable; right-click the input to move or remove a particular cable |
+| Add / clone a cable | **Cmd-drag** either jack adds a cable; **Cmd-Shift-drag** clones its top cable |
+| Stack / remove cables | Drop onto a version-2 input to add a signal; **Shift-click** a jack deletes its top cable |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value or expression | Right-click a knob, or double-click its displayed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
 | Blend and synchronize audio waveforms | **File → Synced waveform voice** |
@@ -85,7 +85,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
-Compatible jacks glow and snap during patching. An ordinary drop onto an occupied input replaces its cables atomically; hold **Shift** to add a signal to the stack. **Esc** or an invalid drop keeps the existing connections. The quantizer’s piano keys toggle scale notes. One knob drag or completed single/group module move is one undo step. Module drag previews stay out of saves and recovery. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
+Compatible jacks glow and snap during patching. Valid drops onto occupied version-2 inputs preserve existing cables. Dropping a moved plug on empty space, a wrong-type jack, or an identical route deletes that cable; **Esc** cancels. Add **Shift at drop** to permit an identical route. [Cable gestures →](docs/RACK_EDITING.md#cable-gestures) The quantizer’s piano keys toggle scale notes. One knob drag or completed single/group module move is one undo step. Module drag previews stay out of saves and recovery. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through SUM.
 
 Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
 

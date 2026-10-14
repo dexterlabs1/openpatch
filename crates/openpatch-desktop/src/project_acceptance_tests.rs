@@ -115,6 +115,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             ]);
             original_patch.cables.extend([
                 Cable {
+                    color: None,
                     id: None,
                     from: "dc".into(),
                     output: "out".into(),
@@ -122,6 +123,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
                     input: "signal".into(),
                 },
                 Cable {
+                    color: None,
                     id: None,
                     from: "a".into(),
                     output: "out8".into(),
@@ -664,11 +666,11 @@ fn idless_project_migration_is_clean_and_preserves_original_disk_tokens() {
 }
 
 #[test]
-fn stacked_cable_ids_order_and_multiplicity_survive_native_save_and_recovery() {
+fn stacked_cable_ids_colors_order_and_multiplicity_survive_native_save_and_recovery() {
     let (directory, store) = store();
     let patch: Patch = serde_json::from_value(json!({"version":2,
         "nodes":[{"id":"dc","kind":"poly_constant","params":{"channels":2,"v1":1,"v2":2}}, {"id":"sum","kind":"poly_sum"}],
-        "cables":[{"id":"second","from":"dc","to":"sum","input":"signal"},{"id":"first","from":"dc","to":"sum","input":"signal"}],"output":"sum"})).unwrap();
+        "cables":[{"id":"second","from":"dc","to":"sum","input":"signal","color":[17,201,94]},{"id":"first","from":"dc","to":"sum","input":"signal"}],"output":"sum"})).unwrap();
     let original = Document::new(patch, layout()).unwrap();
     store.save_new("stack.openpatch", &original).unwrap();
     assert!(original.equivalent(&store.load("stack.openpatch").unwrap().document));

@@ -111,31 +111,42 @@ and [Edit menu](https://vcvrack.com/manual/MenuBar).
 
 ## Cable gestures
 
-Drag an empty output to an input to connect it. At an occupied output, an
-ordinary drag picks up the top cable's output plug; drop it on another output
-to change the source while retaining its destination and ID. Other cables on
-either jack stay connected. The preview remains anchored at the destination,
-and only the picked-up cable fades during the gesture. Click-to-connect uses
-the same rules: click an occupied output to pick up its top plug, then click
-another output to move it.
+| Gesture | Result |
+|---|---|
+| Drag an empty jack | Start a new cable; connect to the opposite jack type. |
+| Drag an occupied jack | Move its top plug to another jack of the same type, retaining the other endpoint and cable ID. |
+| Cmd/Ctrl-drag from either jack | Start another cable, keeping the clicked jack fixed and every existing cable. |
+| Cmd/Ctrl+Shift-drag an occupied jack | Clone the top cable and move its clicked end. The original stays; the clone receives a fresh ID and the same rendered RGB color. An empty jack starts a new cable. |
+| Shift-click a jack | Delete its top cable immediately on press. An empty jack does nothing. |
+| Drop a moved plug on empty space, the wrong jack type, or an existing identical route | Delete only the picked cable in one undo step. Fresh/clone drafts are discarded without changing originals. |
+| Return a moved plug to its original jack | No change and no history entry. |
 
-Hold **Cmd** (or **Ctrl**) when pressing an output to start an additional cable.
-This also applies to click-to-connect. You can release the modifier after
-pressing. This works in both engine versions;
-it does not request input summing. An ordinary drop on an occupied input replaces
-its cables. Hold **Shift** on drop to add to that input's stack in version 2.
+Press modifiers are latched, so releasing them before the drag threshold does
+not change the operation. In version 2, a valid new connection to an occupied
+input preserves its existing cables. Exact duplicate routes are rejected by
+ordinary gestures. OpenPatch additionally allows them when **Shift is added
+at drop** after starting without Shift, or through the input menu's **Stack new
+cable here**. The Shift used to start a clone does not enable duplicates.
 
-A connected input still lets you move its top cable to another input, or change
-its source by selecting an output. Right-click an input to choose a particular
-cable from its stack. Cable moves preserve identity and form one revision-checked
-undo action. Saved projects retain the new routing without moving modules.
+**Esc**, focus loss, a modal interruption, loss of the pointer without an actual
+release, and a newer patch revision cancel the gesture. Version-1 stacking or
+feedback, cable-capacity limits, and failed transactions also preserve originals.
+A real release outside the rack is an empty-space drop and deletes a moved cable.
+The live graph stays unchanged during previews; a successful move, clone, or
+deletion is one guarded undo action. Native Save, recovery, and MCP retain the
+resulting cable IDs and explicit colors.
 
-**Esc**, focus loss, a modal dialog, an invalid or empty drop, and a newer patch
-revision cancel the gesture and retain the original connection. Moving a picked
-output plug onto an input is invalid. These cancellation rules are OpenPatch's
-current behavior; Rack's drop-to-delete, Shift-click deletion, and Cmd-Shift
-cloning gestures remain separate work. The target for output pickup and Cmd/Ctrl
-creation is the pinned [Rack port interaction implementation](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/PortWidget.cpp#L392).
+Click-to-connect remains an OpenPatch extension using the same endpoint rules;
+Escape or an empty-rack click cancels its draft. Right-click an input to choose
+an individual cable by ID, move it, remove it, or clear its stack. Top currently
+means the last matching cable in patch order. Independent per-end plug ordering,
+Rack's move-all menu, and a native cable-color chooser remain parity work.
+
+These gestures are independently implemented against the pinned
+[Rack port interaction source](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/PortWidget.cpp#L398).
+Earlier OpenPatch builds replaced destination groups on ordinary drops and used
+Shift-press on an input to start a stack. The Rack gestures above replace those
+behaviors; use Cmd/Ctrl to start an additional cable.
 
 ## Exact parameter values
 
