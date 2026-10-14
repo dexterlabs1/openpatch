@@ -41,7 +41,7 @@ def main():
     report = {"reference": {"commit": PIN, "url": URL, "sha256": hashlib.sha256(source).hexdigest(),
         "sdk_path": str(args.sdk), "headers": {name: digest(args.sdk / "include" / name) for name in ["dsp/digital.hpp", "engine/Port.hpp"]}},
         "production_sha256": digest(ROOT / "crates/openpatch-core/src/scope.rs"),
-        "method": "Independent C++ bin driver with genuine SDK Input and SchmittTrigger versus production scope.rs with minimal Rust Node/parameter/PortFrame host. Exact bin widths use binary-exact literal seconds at 65536 Hz. Per-frame comparison includes indices, output widths and FNV-1a-style u32-word hash of every min/max bin plus all passthrough voltages.",
+        "method": "Independent C++ bin driver with genuine SDK Input and SchmittTrigger versus production scope.rs with minimal Rust Node/parameter/PortFrame host. Exact bin widths use binary-exact literal seconds at 65536 Hz. Per-frame comparison includes indices, output widths, X/Y/external-trigger input channel metadata and FNV-1a-style u32-word hash of every min/max bin plus all passthrough voltages.",
         "limitations": ["Does not execute upstream Scope module or GUI; no upstream source vendored", "Does not compare exponential TIME mapping/approximation, graph latency, physical SDK output bookkeeping, bypass, route-edit reset or nonfinite samples", "Hash comparison has theoretical collisions; regression tests independently inspect exact bins", "Display-edit adoption compared to uninterrupted SDK driver; reset differences deliberately excluded"],
         "cases": []}
     with tempfile.TemporaryDirectory(prefix="openpatch-scope-reference-") as directory:

@@ -38,6 +38,8 @@ fn main() {
         let mut hash = 14695981039346656037u64;
         for axis in [&s.x, &s.y] { for lane in axis { for point in lane { hash_float(&mut hash, point.min); hash_float(&mut hash, point.max); } } }
         for output in outputs { for value in output.values { hash_float(&mut hash, value); } }
-        println!("{} {} {} {} {}", s.buffer_index, s.sample_index, outputs[0].channels, outputs[1].channels, hash);
+        println!("{} {} {} {} {} {} {} {}", s.buffer_index, s.sample_index,
+            outputs[0].channels, outputs[1].channels, s.x_channels, s.y_channels,
+            s.trigger_input_channels, hash);
     }
 }

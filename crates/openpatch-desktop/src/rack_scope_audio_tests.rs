@@ -66,6 +66,21 @@ fn rack_scope_callback_and_mcp_publish_real_polyphonic_bins_without_heap_activit
     );
     assert!(inspected["scope"]["x"][64].is_null());
     assert_eq!(inspected["scope"]["units"], "V");
+    assert_eq!(inspected["scope"]["display"]["x_volts_per_screen"], 20.0);
+    assert_eq!(inspected["scope"]["trigger_source"], "x");
+    assert_eq!(inspected["scope"]["trigger_input_channels"], 0);
+    assert_eq!(
+        inspected["scope"]["measurements"]["basis"],
+        "completed_display_bins"
+    );
+    assert_eq!(
+        inspected["scope"]["measurements"]["selected_voice"]["x"],
+        serde_json::json!({"min":8.0,"max":8.0,"peak_to_peak":0.0,"observations":63})
+    );
+    assert_eq!(
+        inspected["scope"]["measurements"]["all_active_voices"]["x"],
+        serde_json::json!({"min":-7.0,"max":8.0,"peak_to_peak":15.0,"observations":1008})
+    );
     assert_eq!(session.snapshot(), unchanged);
     let cached = callback.performance.scope_frame("scope").unwrap();
     assert!(Arc::ptr_eq(&cached.snapshot, &published.snapshot));
@@ -117,6 +132,58 @@ fn rack_scope_publication_is_round_robin_bounded_and_throttled() {
 }
 
 #[test]
+fn rack_scope_mcp_reports_actual_trigger_normaling_and_empty_axes() {
+    for channels in [None, Some(0), Some(1), Some(16)] {
+        let mut patch = rack_scope_patch(false);
+        patch.cables.retain(|cable| cable.input == "x");
+        if let Some(channels) = channels {
+            patch.nodes.push(serde_json::from_value(serde_json::json!({"id":"trigger","kind":"poly_constant","params":{"channels":channels}})).unwrap());
+            patch.cables.push(
+                serde_json::from_value(
+                    serde_json::json!({"from":"trigger","to":"scope","input":"trigger"}),
+                )
+                .unwrap(),
+            );
+        }
+        patch.assign_missing_cable_ids().unwrap();
+        let (mut callback, _, _retired) = sequence_callback(&patch);
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
+        let actual = session
+            .execute(
+                "inspect_scope",
+                serde_json::json!({"id":"scope","channel":16}),
+            )
+            .unwrap();
+        assert_eq!(
+            actual["scope"]["trigger_input_channels"],
+            channels.unwrap_or(0)
+        );
+        assert_eq!(
+            actual["scope"]["trigger_source"],
+            if channels.unwrap_or(0) > 0 {
+                "external"
+            } else {
+                "x"
+            }
+        );
+        assert!(actual["scope"]["measurements"]["selected_voice"]["y"].is_null());
+        assert!(actual["scope"]["measurements"]["all_active_voices"]["y"].is_null());
+        assert_eq!(
+            actual["scope"]["measurements"]["selected_voice"]["x"]["peak_to_peak"],
+            0.0
+        );
+        assert!(!actual["scope"]["measurements"]["selected_voice"]["x"]
+            .as_object()
+            .unwrap()
+            .contains_key("rms"));
+    }
+}
+
+#[test]
 fn rack_scope_revisions_reincarnation_and_retirement_never_publish_stale_capture() {
     let patch = rack_scope_patch(false);
     let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
@@ -161,6 +228,11 @@ fn rack_scope_revisions_reincarnation_and_retirement_never_publish_stale_capture
     let edited = callback.performance.scope_frame("scope").unwrap();
     assert_eq!((edited.revision, edited.token), (2, first.token));
     assert_eq!(edited.snapshot.x_offset, 2.0);
+    let measured = edited.snapshot.measurements().x.unwrap();
+    assert_eq!(
+        (measured.min, measured.max, measured.peak_to_peak),
+        (-7.0, 8.0, 15.0)
+    );
     assert_eq!(edited.frame, 1664);
     drop(stale);
     while retired.pop().is_ok() {}

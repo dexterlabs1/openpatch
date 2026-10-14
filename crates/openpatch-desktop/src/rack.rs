@@ -4571,30 +4571,124 @@ impl Rack {
         let display = Rect::from_min_max(point(30.0, 70.0), point(600.0, 250.0));
         painter.rect_filled(display.expand(3.0 * zoom), 3.0 * zoom, INK);
         painter.rect_filled(display, 1.0, Color32::from_rgb(14, 24, 27));
+        let plot = Rect::from_min_max(point(40.0, 101.0), point(590.0, 213.0));
         for i in 1..10 {
-            let x = display.left() + display.width() * i as f32 / 10.0;
+            let x = plot.left() + plot.width() * i as f32 / 10.0;
             painter.line_segment(
-                [pos2(x, display.top()), pos2(x, display.bottom())],
+                [pos2(x, plot.top()), pos2(x, plot.bottom())],
                 Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
             );
         }
         for i in 1..6 {
-            let y = display.top() + display.height() * i as f32 / 6.0;
+            let y = plot.top() + plot.height() * i as f32 / 6.0;
             painter.line_segment(
-                [pos2(display.left(), y), pos2(display.right(), y)],
+                [pos2(plot.left(), y), pos2(plot.right(), y)],
                 Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
             );
         }
-        let trace = painter.with_clip_rect(display.shrink(1.0));
+        let trace = painter.with_clip_rect(plot.shrink(1.0));
         if let Some(state) = self.scope_states.get(&node.id) {
             let colors = [
                 Color32::from_rgb(86, 215, 222),
                 Color32::from_rgb(250, 185, 80),
             ];
             let voltage_y = |v: f32, scale: u8, offset: f32| {
-                display.center().y
-                    - (v + offset) * display.height() / (20.0 / 2.0_f32.powi(i32::from(scale)))
+                (f64::from(plot.center().y)
+                    - (f64::from(v) + f64::from(offset)) * f64::from(plot.height())
+                        / f64::from(scope_volts_per_screen(scale))) as f32
             };
+            let zero_stroke = |color: Color32| Stroke::new(0.8 * zoom, color.gamma_multiply(0.55));
+            if state.xy {
+                let x_zero = plot.center().x
+                    + state.x_offset * plot.width() / scope_volts_per_screen(state.x_scale);
+                if plot.x_range().contains(x_zero) {
+                    trace.line_segment(
+                        [pos2(x_zero, plot.top()), pos2(x_zero, plot.bottom())],
+                        zero_stroke(colors[0]),
+                    );
+                    trace.text(
+                        pos2(x_zero + 3.0 * zoom, plot.bottom() - 3.0 * zoom),
+                        Align2::LEFT_BOTTOM,
+                        "X 0 V",
+                        FontId::monospace(8.0 * zoom),
+                        colors[0],
+                    );
+                }
+            }
+            for (scale, offset, color, label) in [
+                (state.x_scale, state.x_offset, colors[0], "X 0 V"),
+                (state.y_scale, state.y_offset, colors[1], "Y 0 V"),
+            ] {
+                if state.xy && label == "X 0 V" {
+                    continue;
+                }
+                let y_zero = voltage_y(0.0, scale, offset);
+                if plot.y_range().contains(y_zero) {
+                    trace.line_segment(
+                        [pos2(plot.left(), y_zero), pos2(plot.right(), y_zero)],
+                        zero_stroke(color),
+                    );
+                    trace.text(
+                        pos2(
+                            plot.right() - 3.0 * zoom,
+                            y_zero + if label == "X 0 V" { -2.0 } else { 10.0 } * zoom,
+                        ),
+                        Align2::RIGHT_BOTTOM,
+                        label,
+                        FontId::monospace(8.0 * zoom),
+                        color,
+                    );
+                }
+            }
+            if scope_x_trigger_guide(state) {
+                let trigger_y = voltage_y(state.threshold, state.x_scale, state.x_offset);
+                if plot.y_range().contains(trigger_y) {
+                    trace.line_segment(
+                        [pos2(plot.left(), trigger_y), pos2(plot.right(), trigger_y)],
+                        Stroke::new(0.9 * zoom, SCOPE_TRIGGER_COLOR),
+                    );
+                    trace.text(
+                        pos2(plot.left() + 3.0 * zoom, trigger_y - 2.0 * zoom),
+                        Align2::LEFT_BOTTOM,
+                        "X TRIGGER",
+                        FontId::monospace(8.0 * zoom),
+                        SCOPE_TRIGGER_COLOR,
+                    );
+                } else {
+                    let y = trigger_y.clamp(plot.top() + 5.0 * zoom, plot.bottom() - 5.0 * zoom);
+                    trace.text(
+                        pos2(plot.left() + 3.0 * zoom, y),
+                        Align2::LEFT_CENTER,
+                        if trigger_y < plot.top() {
+                            "↑ X TRIGGER ABOVE RANGE"
+                        } else {
+                            "↓ X TRIGGER BELOW RANGE"
+                        },
+                        FontId::monospace(8.0 * zoom),
+                        SCOPE_TRIGGER_COLOR,
+                    );
+                }
+            }
+            painter.text(
+                point(40.0, 91.0),
+                Align2::LEFT_TOP,
+                scope_trigger_status(state),
+                FontId::monospace(8.5 * zoom),
+                Color32::from_gray(180),
+            );
+            let measurements = state.measurements();
+            for (axis, extrema, y, color) in [
+                ("X", measurements.x, 219.0, colors[0]),
+                ("Y", measurements.y, 234.0, colors[1]),
+            ] {
+                painter.text(
+                    point(40.0, y),
+                    Align2::LEFT_TOP,
+                    scope_extrema_label(axis, extrema),
+                    FontId::monospace(9.5 * zoom),
+                    color,
+                );
+            }
             if state.xy {
                 for voice in 0..usize::from(state.x_channels.min(state.y_channels).min(16)) {
                     let mut previous = None;
@@ -4606,11 +4700,17 @@ impl Rack {
                             continue;
                         }
                         let p = pos2(
-                            display.center().x
-                                + ((x.min + x.max) * 0.5 + state.x_offset) * display.width()
-                                    / (20.0 / 2.0_f32.powi(i32::from(state.x_scale))),
-                            voltage_y((y.min + y.max) * 0.5, state.y_scale, state.y_offset),
+                            (f64::from(plot.center().x)
+                                + (f64::from(scope_midpoint(x)) + f64::from(state.x_offset))
+                                    * f64::from(plot.width())
+                                    / f64::from(scope_volts_per_screen(state.x_scale)))
+                                as f32,
+                            voltage_y(scope_midpoint(y), state.y_scale, state.y_offset),
                         );
+                        if !scope_position_finite(p) {
+                            previous = None;
+                            continue;
+                        }
                         if let Some(prev) = previous {
                             trace.line_segment(
                                 [prev, p],
@@ -4646,13 +4746,17 @@ impl Rack {
                                 previous = None;
                                 continue;
                             }
-                            let x = display.left() + display.width() * bin as f32 / 255.0;
+                            let x = plot.left() + plot.width() * bin as f32 / 255.0;
                             let lo = pos2(x, voltage_y(sample.min, scale, offset));
                             let hi = pos2(x, voltage_y(sample.max, scale, offset));
+                            if !scope_position_finite(lo) || !scope_position_finite(hi) {
+                                previous = None;
+                                continue;
+                            }
                             let stroke =
                                 Stroke::new(zoom.max(0.6), scope_voice_color(color, voice));
                             trace.line_segment([lo, hi], stroke);
-                            let mid = pos2(x, (lo.y + hi.y) * 0.5);
+                            let mid = pos2(x, ((f64::from(lo.y) + f64::from(hi.y)) * 0.5) as f32);
                             if let Some(prev) = previous {
                                 trace.line_segment([prev, mid], stroke);
                             }
@@ -4662,26 +4766,21 @@ impl Rack {
                 }
             }
             painter.text(
-                point(40.0, 81.0),
+                point(40.0, 78.0),
                 Align2::LEFT_TOP,
                 format!(
-                    "X {} ch   Y {} ch   {}   {:.3} s requested{}",
+                    "X {} ch   Y {} ch   {}   {:.3} s requested",
                     state.x_channels,
                     state.y_channels,
                     if state.xy { "XY" } else { "TIME" },
-                    state.time,
-                    if state.waiting {
-                        "   WAITING FOR TRIGGER"
-                    } else {
-                        ""
-                    }
+                    state.time
                 ),
                 FontId::monospace(10.0 * zoom),
                 Color32::from_gray(216),
             );
         } else {
             painter.text(
-                display.center(),
+                plot.center(),
                 Align2::CENTER_CENTER,
                 "NO ENGINE CAPTURE · X / Y VOLTS",
                 FontId::monospace(12.0 * zoom),
@@ -4703,7 +4802,9 @@ impl Rack {
                 INK,
             );
             if let Some(spec) = module.and_then(|m| m["params"].get(*name)) {
-                let edit = if matches!(*name, "xy" | "trigger_enabled") {
+                let edit = if matches!(*name, "x_scale" | "y_scale") {
+                    self.choice_parameter(ui, node, name, spec, control, &SCOPE_SCALE_CHOICES)
+                } else if matches!(*name, "xy" | "trigger_enabled") {
                     self.choice_parameter(ui, node, name, spec, control, &["OFF", "ON"])
                 } else {
                     self.compact_parameter(ui, node, name, spec, control, suffix)
@@ -7568,9 +7669,71 @@ fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: 
     painter.circle_filled(point, 2.0 * zoom, Color32::from_rgb(34, 35, 33));
 }
 
+const SCOPE_TRIGGER_COLOR: Color32 = Color32::from_rgb(205, 125, 190);
+fn scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
+    state.trigger_enabled && !state.xy && state.trigger_input_channels == 0 && state.x_channels > 0
+}
+fn scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
+    if state.xy {
+        "XY · continuous capture · trigger ignored".into()
+    } else if !state.trigger_enabled {
+        "FREE RUN · trigger off".into()
+    } else {
+        format!(
+            "{} trigger · level {} V{}",
+            if state.trigger_input_channels > 0 {
+                "EXT"
+            } else {
+                "X"
+            },
+            scope_measurement_number(f64::from(state.threshold)),
+            if state.waiting {
+                " · WAITING FOR TRIGGER"
+            } else {
+                ""
+            }
+        )
+    }
+}
+const SCOPE_SCALE_CHOICES: [&str; 9] = [
+    "20 V/screen",
+    "10 V/screen",
+    "5 V/screen",
+    "2.5 V/screen",
+    "1.25 V/screen",
+    "0.625 V/screen",
+    "0.3125 V/screen",
+    "0.15625 V/screen",
+    "0.078125 V/screen",
+];
+fn scope_volts_per_screen(scale: u8) -> f32 {
+    20.0 / 2.0_f32.powi(i32::from(scale))
+}
+fn scope_extrema_label(axis: &str, extrema: Option<openpatch_core::ScopeExtrema>) -> String {
+    match extrema {
+        Some(e) => format!(
+            "{axis}  MIN {} V   MAX {} V   P-P {} V",
+            scope_measurement_number(e.min),
+            scope_measurement_number(e.max),
+            scope_measurement_number(e.peak_to_peak)
+        ),
+        None => format!("{axis}  MIN —   MAX —   P-P —   NO CAPTURE"),
+    }
+}
+fn scope_measurement_number(value: f64) -> String {
+    if value == 0.0 {
+        return "0".into();
+    }
+    if value.abs() >= 100_000.0 || value.abs() < 0.000001 {
+        format!("{value:.3e}")
+    } else {
+        let text = format!("{value:.6}");
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    }
+}
 const SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
-    ("x_scale", "X SCALE · 20 / 2^n V", ""),
-    ("y_scale", "Y SCALE · 20 / 2^n V", ""),
+    ("x_scale", "X RANGE", ""),
+    ("y_scale", "Y RANGE", ""),
     ("time", "WINDOW", " s"),
     ("xy", "XY MODE", ""),
     ("x_offset", "X OFFSET", " V"),
@@ -7597,6 +7760,12 @@ fn scope_voice_color(base: Color32, voice: usize) -> Color32 {
     )
 }
 
+fn scope_midpoint(point: openpatch_core::ScopePoint) -> f32 {
+    ((f64::from(point.min) + f64::from(point.max)) * 0.5) as f32
+}
+fn scope_position_finite(point: Pos2) -> bool {
+    point.x.is_finite() && point.y.is_finite()
+}
 fn scope_point_valid(point: openpatch_core::ScopePoint) -> bool {
     point.min.is_finite() && point.max.is_finite() && point.min <= point.max
 }

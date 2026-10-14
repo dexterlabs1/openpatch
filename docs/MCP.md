@@ -416,6 +416,20 @@ samples per bin, partial-bin sample count, trigger waiting state, display
 settings, requested seconds and actual rounded window seconds. Parameters are
 saved; captured buffers are runtime observations.
 
+`display.x_volts_per_screen` and `display.y_volts_per_screen` report the
+calibrated ranges. `trigger_input_channels` is the actual external input count;
+`trigger_source` is `external` when positive and `x` otherwise. Trigger enable
+and XY settings remain separate, so a configured source need not be triggering.
+
+`measurements.basis` is `completed_display_bins`. `selected_voice` and
+`all_active_voices` each contain nullable `x`/`y` objects with raw-volt `min`,
+`max`, `peak_to_peak`, and `observations`. Observations count valid lane-bin
+points, not samples. Inactive voices and empty axes are null; a measured DC
+signal has zero peak-to-peak. Extrema exclude display gain/offset and private
+partial bins. Stored bins may mix successive sweeps, so these statistics do
+not imply RMS, frequency, or exact acquisition start/end timestamps. The
+publication frame and nominal full-screen duration describe different facts.
+
 These captures are separate from `inspect_performance`'s common-frame light
 snapshot. Publication is limited to 30 Hz per Scope instance and one roughly
 64 KiB copy per device callback across all Scopes, selected round-robin. Busy

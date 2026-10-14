@@ -68,6 +68,35 @@ in the callback. Graph/generation changes discard stale snapshots.
 selection and nullable min/max bins for empty observations. It does not compile
 or render an offline replacement when live data is unavailable. `capture_signal` remains a separate offline-from-reset inspection path.
 
+## Measurement controls and readouts
+
+X/Y range selectors show the nine exact volts-per-screen choices: 20, 10, 5,
+2.5, 1.25, 0.625, 0.3125, 0.15625 and 0.078125 V. They map to saved scale values
+0–8; the patch format and gain law are unchanged. The scale applies to the plot
+area, excluding its header and measurement footer. Rack and browser use the
+same renderer.
+
+Each axis shows raw-voltage minimum, maximum and peak-to-peak across its current
+active lanes. Display gain and offset do not change these measurements. Only
+finite ordered completed bins count; empty or inactive axes show dashes, and
+MCP returns null. Zero peak-to-peak on a measured DC signal is a real zero.
+Peak-to-peak subtraction uses f64 to keep opposite finite f32 extremes finite.
+
+These are extrema of the stored display bins, which can contain old and new
+sweeps during progressive replacement. They do not establish acquisition
+start/end timestamps, RMS, or frequency. `observations` counts valid lane-bin
+points, not raw samples. MCP exposes the selected voice and all active voices
+separately. The snapshot publication frame identifies observation delivery;
+`window_seconds` is the nominal rounded full-screen duration.
+
+Zero guides use each axis's display offset and range. A time-mode threshold
+guide appears only for enabled X-normalled triggering with active X channels;
+offscreen thresholds are indicated without drawing a false in-range line.
+The external trigger status uses actual input channel count, including a
+connected zero-channel source normaling to X. External triggering has no X-axis
+threshold guide. XY runs continuously and suppresses trigger guides. These
+readouts describe the same published snapshot, including frozen bypass state.
+
 ## Validation and limits
 
 Core tests cover raw independent 0/1/16-channel passthrough, peaks, partial bins,

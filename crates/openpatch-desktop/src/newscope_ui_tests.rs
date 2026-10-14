@@ -291,3 +291,253 @@ fn scope_xy_rotation_starts_at_oldest_bin_and_wraps() {
         "Trace must move -3 → -1 → 2, without closing across capture gap"
     );
 }
+
+fn scope_text_bounds(shape: &egui::Shape, texts: &mut Vec<(String, Rect)>) {
+    match shape {
+        egui::Shape::Text(t) => texts.push((
+            t.galley.text().into(),
+            Rect::from_min_size(t.pos, t.galley.size()),
+        )),
+        egui::Shape::Vec(children) => {
+            for child in children {
+                scope_text_bounds(child, texts);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn scope_range_choices_show_exact_volts_and_emit_native_selection() {
+    for axis in ["x_scale", "y_scale"] {
+        for (index, choice) in SCOPE_SCALE_CHOICES.iter().enumerate() {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let old = if index == 0 { 8 } else { 0 };
+            let patch: Patch = serde_json::from_value(
+                json!({"version":2,"nodes":[{"id":"scope","kind":"scope","params":{axis:old}}]}),
+            )
+            .unwrap();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let target = pos2(24.0, 12.0)
+                + scope_control_rect(usize::from(axis == "y_scale"))
+                    .center()
+                    .to_vec2();
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+            );
+            frame(&ctx, &mut rack, &patch, 1.1, vec![button(target, false)]);
+            let output = frame_output(&ctx, &mut rack, &patch, 1.2, vec![]).1;
+            let mut texts = vec![];
+            for shape in output.shapes {
+                scope_text_bounds(&shape.shape, &mut texts);
+            }
+            let bounds = texts
+                .iter()
+                .find(|(text, bounds)| text == *choice && bounds.center().y > target.y + 15.0)
+                .expect("Full exact voltage option visible")
+                .1;
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![
+                    egui::Event::PointerMoved(bounds.center()),
+                    button(bounds.center(), true),
+                ],
+            );
+            let action = frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![button(bounds.center(), false)],
+            );
+            assert!(
+                matches!(action,Some(RackAction::Command("set_parameter",ref args)) if args["parameter"]==axis && args["value"]==index)
+            );
+            assert_eq!(
+                scope_volts_per_screen(index as u8),
+                20.0 / 2.0_f32.powi(index as i32)
+            );
+        }
+    }
+}
+
+#[test]
+fn scope_stats_are_raw_voltage_and_reserved_outside_plot() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let patch: Patch =
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope"}]}))
+            .unwrap();
+    let mut state = openpatch_core::ScopeSnapshot {
+        x_channels: 1,
+        x_scale: 8,
+        x_offset: 10.0,
+        ..Default::default()
+    };
+    state.x[0][0] = openpatch_core::ScopePoint {
+        min: -2.5,
+        max: 4.25,
+    };
+    rack.set_scope_states(BTreeMap::from([("scope".into(), Arc::new(state))]));
+    let output = frame_output(&ctx, &mut rack, &patch, 1.0, vec![]).1;
+    let mut texts = vec![];
+    for shape in output.shapes {
+        scope_text_bounds(&shape.shape, &mut texts);
+    }
+    let display = Rect::from_min_max(pos2(54.0, 82.0), pos2(624.0, 262.0));
+    let plot = Rect::from_min_max(pos2(64.0, 113.0), pos2(614.0, 225.0));
+    for (text, bounds) in &texts {
+        if text.starts_with("X  MIN") || text.starts_with("Y  MIN") {
+            assert!(display.contains_rect(*bounds), "{text}: {bounds:?}");
+            assert!(!plot.intersects(*bounds));
+        }
+    }
+    assert!(texts
+        .iter()
+        .any(|(text, _)| text == "X  MIN -2.5 V   MAX 4.25 V   P-P 6.75 V"));
+    assert!(texts
+        .iter()
+        .any(|(text, _)| text == "Y  MIN —   MAX —   P-P —   NO CAPTURE"));
+    assert_eq!(scope_measurement_number(0.078125), "0.078125");
+    assert_eq!(scope_measurement_number(0.0), "0");
+}
+
+#[test]
+fn scope_trigger_guide_uses_actual_normalled_x_and_current_plot_scale() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let patch: Patch =
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope"}]}))
+            .unwrap();
+    for (enabled, xy, external, threshold, expected) in [
+        (true, false, 0, 2.0, true),
+        (true, false, 1, 2.0, false),
+        (false, false, 0, 2.0, false),
+        (true, true, 0, 2.0, false),
+        (true, false, 0, 20.0, false),
+    ] {
+        let state = openpatch_core::ScopeSnapshot {
+            x_channels: 1,
+            y_channels: 1,
+            trigger_enabled: enabled,
+            xy,
+            trigger_input_channels: external,
+            threshold,
+            ..Default::default()
+        };
+        let status = scope_trigger_status(&state);
+        if xy {
+            assert!(status.contains("trigger ignored"));
+        } else if external > 0 {
+            assert!(status.starts_with("EXT trigger"));
+        }
+        rack.set_scope_states(BTreeMap::from([("scope".into(), Arc::new(state))]));
+        let output = frame_output(&ctx, &mut rack, &patch, 1.0, vec![]).1;
+        let lines: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|s| {
+                if let egui::Shape::LineSegment { points, stroke } = &s.shape {
+                    (stroke.color == SCOPE_TRIGGER_COLOR).then_some(*points)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(lines.len(), usize::from(expected));
+        if expected {
+            assert!((lines[0][0].y - 157.8).abs() < 0.01);
+            assert_eq!(lines[0][0].x, 64.0);
+            assert_eq!(lines[0][1].x, 614.0);
+        }
+        if threshold == 20.0 {
+            let mut texts = vec![];
+            for shape in output.shapes {
+                scope_text_bounds(&shape.shape, &mut texts);
+            }
+            assert!(texts.iter().any(|(t, _)| t.contains("TRIGGER ABOVE RANGE")));
+        }
+    }
+}
+
+#[test]
+fn scope_extreme_finite_bins_never_emit_infinite_trace_positions() {
+    fn inspect(shape: &egui::Shape, texts: &mut Vec<String>) {
+        match shape {
+            egui::Shape::LineSegment { points, .. } => {
+                assert!(points.iter().all(|p| scope_position_finite(*p)))
+            }
+            egui::Shape::Text(t) => {
+                assert!(scope_position_finite(t.pos));
+                texts.push(t.galley.text().into());
+            }
+            egui::Shape::Vec(children) => {
+                for child in children {
+                    inspect(child, texts);
+                }
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        scope_midpoint(openpatch_core::ScopePoint {
+            min: f32::MAX,
+            max: f32::MAX
+        }),
+        f32::MAX
+    );
+    assert_eq!(
+        scope_midpoint(openpatch_core::ScopePoint {
+            min: -f32::MAX,
+            max: f32::MAX
+        }),
+        0.0
+    );
+    assert_eq!(scope_measurement_number(1e-9), "1.000e-9");
+    assert_eq!(scope_measurement_number(-1e-9), "-1.000e-9");
+    assert_eq!(scope_measurement_number(-0.0), "0");
+    for xy in [false, true] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let patch: Patch =
+            serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope"}]}))
+                .unwrap();
+        let mut state = openpatch_core::ScopeSnapshot {
+            x_channels: 1,
+            y_channels: 1,
+            x_scale: 8,
+            y_scale: 8,
+            xy,
+            ..Default::default()
+        };
+        for axis in [&mut state.x, &mut state.y] {
+            axis[0][0] = openpatch_core::ScopePoint { min: 0.0, max: 0.0 };
+            axis[0][1] = openpatch_core::ScopePoint {
+                min: -f32::MAX,
+                max: f32::MAX,
+            };
+            axis[0][2] = openpatch_core::ScopePoint {
+                min: f32::MAX,
+                max: f32::MAX,
+            };
+            axis[0][3] = openpatch_core::ScopePoint { min: 0.0, max: 0.0 };
+        }
+        rack.set_scope_states(BTreeMap::from([("scope".into(), Arc::new(state))]));
+        let output = frame_output(&ctx, &mut rack, &patch, 1.0, vec![]).1;
+        let mut texts = vec![];
+        for shape in output.shapes {
+            inspect(&shape.shape, &mut texts);
+        }
+        assert!(texts.iter().any(|t| t.starts_with("X  MIN -3.403e38 V")
+            && t.contains("MAX 3.403e38 V")
+            && t.contains("P-P 6.806e38 V")));
+    }
+}

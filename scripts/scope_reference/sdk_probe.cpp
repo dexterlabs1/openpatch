@@ -66,6 +66,8 @@ int main(int argc, char** argv) {
         for (int axis = 0; axis < 2; ++axis)
             for (int lane = 0; lane < 16; ++lane) hash_float(hash, inputs[axis].getVoltage(lane));
         std::cout << index << ' ' << samples << ' ' << inputs[0].getChannels()
-                  << ' ' << inputs[1].getChannels() << ' ' << hash << '\n';
+                  << ' ' << inputs[1].getChannels() << ' ' << inputs[0].getChannels()
+                  << ' ' << inputs[1].getChannels() << ' ' << inputs[2].getChannels()
+                  << ' ' << hash << '\n';
     }
 }

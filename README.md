@@ -123,6 +123,11 @@ these images do not demonstrate live audio-device qualification.</sub>
 
 [Scope dock controls and sampling contract →](docs/SCOPE.md) · [Rack Scope module →](docs/RACK_SCOPE.md)
 
+Add a rack **Scope** to keep two polyphonic signals in view. Choose ranges in
+volts per screen, read minimum/maximum/peak-to-peak voltage, and see whether
+triggering follows X or an external input. MCP can inspect the same live
+capture, including individual voices. Empty captures remain visibly unavailable.
+
 </details>
 
 <details>

@@ -21,6 +21,8 @@ pub struct ScopeSnapshot {
     pub y: [[ScopePoint; SCOPE_BINS]; 16],
     pub x_channels: u8,
     pub y_channels: u8,
+    /// Actual external trigger width; zero means trigger normals to X.
+    pub trigger_input_channels: u8,
     pub buffer_index: usize,
     pub samples_per_bin: u32,
     pub sample_index: u32,
@@ -41,6 +43,7 @@ impl Default for ScopeSnapshot {
             y: [[ScopePoint::default(); 256]; 16],
             x_channels: 0,
             y_channels: 0,
+            trigger_input_channels: 0,
             buffer_index: 0,
             samples_per_bin: 1,
             sample_index: 0,
@@ -116,6 +119,7 @@ impl Scope {
                 y: [[ScopePoint::default(); 256]; 16],
                 x_channels: 0,
                 y_channels: 0,
+                trigger_input_channels: 0,
                 buffer_index: 0,
                 samples_per_bin: (time as f64 * rate as f64 / 256.0).ceil().max(1.0) as u32,
                 sample_index: 0,
@@ -138,6 +142,7 @@ impl Scope {
         self.snapshot.y.fill([ScopePoint::default(); 256]);
         self.snapshot.x_channels = 0;
         self.snapshot.y_channels = 0;
+        self.snapshot.trigger_input_channels = 0;
         self.snapshot.buffer_index = 0;
         self.snapshot.sample_index = 0;
         self.snapshot.waiting = false;
@@ -159,6 +164,7 @@ impl Scope {
         s.y = o.y;
         s.x_channels = o.x_channels;
         s.y_channels = o.y_channels;
+        s.trigger_input_channels = o.trigger_input_channels;
         s.buffer_index = o.buffer_index;
         s.sample_index = o.sample_index;
         s.waiting = o.waiting;
@@ -171,6 +177,7 @@ impl Scope {
         let s = &mut self.snapshot;
         s.x_channels = inputs[0].channels;
         s.y_channels = inputs[1].channels;
+        s.trigger_input_channels = inputs[2].channels;
         if s.buffer_index == 256 {
             s.waiting = s.trigger_enabled && !s.xy;
             if s.waiting {
@@ -385,6 +392,50 @@ mod tests {
         );
         assert!(!s.snapshot.waiting);
         assert_eq!(s.snapshot.x[0][0].max, 6.0);
+    }
+    #[test]
+    fn trigger_width_metadata_is_actual_and_adopted_or_reset() {
+        let mut s = scope(&[], 48000);
+        for channels in [0, 1, 16] {
+            tick(
+                &mut s,
+                PortFrame::mono(1.0),
+                PortFrame::default(),
+                PortFrame {
+                    channels,
+                    ..Default::default()
+                },
+            );
+            assert_eq!(s.snapshot.trigger_input_channels, channels);
+        }
+        let mut next = scope(&[("x_scale", 1.0)], 48000);
+        next.adopt(&s, true);
+        assert_eq!(next.snapshot.trigger_input_channels, 16);
+        next.reset();
+        assert_eq!(next.snapshot.trigger_input_channels, 0);
+        let mut next = scope(&[("time", 1.0)], 48000);
+        next.adopt(&s, true);
+        assert_eq!(next.snapshot.trigger_input_channels, 0);
+    }
+    #[test]
+    fn trigger_metadata_freezes_through_bypass_and_clears_on_initialize() {
+        let patch:crate::Patch=serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[{"id":"t","kind":"poly_constant","params":{"channels":16}},{"id":"s","kind":"scope"}],"cables":[{"from":"t","to":"s","input":"trigger"}]})).unwrap();
+        let mut old = patch.compile().unwrap();
+        let mut frames = [PortFrame::default(); 2];
+        old.process_poly_block(&mut frames);
+        let h = old.resolve_module_scope("s").unwrap();
+        assert_eq!(old.module_scope(h).unwrap().trigger_input_channels, 16);
+        let mut patch = patch;
+        patch.nodes[1].bypassed = true;
+        let mut next = patch.compile().unwrap();
+        next.adopt_state_from(&old);
+        let h = next.resolve_module_scope("s").unwrap();
+        next.process_poly_block(&mut frames);
+        assert_eq!(next.module_scope(h).unwrap().trigger_input_channels, 16);
+        assert!(next.initialize_module_state(h));
+        assert_eq!(next.module_scope(h).unwrap().trigger_input_channels, 0);
+        next.process_poly_block(&mut frames);
+        assert_eq!(next.module_scope(h).unwrap().trigger_input_channels, 0);
     }
     #[test]
     fn raw_independent_widths_and_minmax() {

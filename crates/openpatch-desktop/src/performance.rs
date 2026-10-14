@@ -812,6 +812,15 @@ impl LiveModuleEvents for Performance {
             return Ok(json!({"available":false,"source":"live_rack_scope","id":id}));
         };
         let s = &frame.snapshot;
+        let measurements = |value: openpatch_core::ScopeMeasurements| {
+            let extrema = |value: Option<openpatch_core::ScopeExtrema>| {
+                value.map(|value| {
+                    json!({"min":value.min,"max":value.max,
+                    "peak_to_peak":value.peak_to_peak,"observations":value.observations})
+                })
+            };
+            json!({"x":extrema(value.x),"y":extrema(value.y)})
+        };
         let bins =
             |axis: &[[openpatch_core::ScopePoint; openpatch_core::SCOPE_BINS]; 16]| -> Vec<Value> {
                 axis[channel]
@@ -834,6 +843,13 @@ impl LiveModuleEvents for Performance {
             "window_seconds":f64::from(s.samples_per_bin)*256.0/f64::from(self.rate),
             "x_scale":s.x_scale,"y_scale":s.y_scale,"x_offset":s.x_offset,"y_offset":s.y_offset,
             "trigger_enabled":s.trigger_enabled,"threshold":s.threshold,"units":"V",
+            "trigger_input_channels":s.trigger_input_channels,
+            "trigger_source":if s.trigger_input_channels > 0 {"external"} else {"x"},
+            "display":{"x_volts_per_screen":20.0 / 2.0_f64.powi(i32::from(s.x_scale)),
+                "y_volts_per_screen":20.0 / 2.0_f64.powi(i32::from(s.y_scale))},
+            "measurements":{"basis":"completed_display_bins",
+                "selected_voice":measurements(s.voice_measurements(channel)),
+                "all_active_voices":measurements(s.measurements())},
             "publication":{"maximum_hz":30,"budget":"one Scope snapshot per device callback, round-robin; busy racks reduce refresh cadence"},
             "x":bins(&s.x),"y":bins(&s.y)}))
     }
