@@ -3839,9 +3839,9 @@ impl OpenPatch {
                     {"id":"offset","kind":"constant","params":{"value":0.5}},
                     {"id":"sum","kind":"mixer"}, {"id":"out","kind":"output"}
                 ], "cables":[
-                    {"id":"lead-a","from":"pitch","to":"sum","input":"a","color":[211,101,83]},
-                    {"id":"lead-b","from":"pitch","to":"sum","input":"b","color":[75,139,189]},
-                    {"id":"lead-c","from":"offset","to":"sum","input":"a","color":[72,171,167]},
+                    {"id":"lead-a","from":"pitch","to":"sum","input":"a","color":[211,101,83],"input_order":2,"output_order":1},
+                    {"id":"lead-b","from":"pitch","to":"sum","input":"a","color":[75,139,189],"input_order":1,"output_order":2},
+                    {"id":"lead-c","from":"offset","to":"sum","input":"b","color":[72,171,167]},
                     {"id":"lead-out","from":"sum","to":"out","input":"signal"}
                 ], "output":"out"
             }))
@@ -3857,8 +3857,7 @@ impl OpenPatch {
                 .request_cable_menu_for_smoke("pitch", "out", false);
             self.title = "Cable bundles · output menu".into();
             self.status =
-                "Move, clone, colour or delete cables from either end · One shared undo history"
-                    .into();
+                "Independent plug stacks · Blue on top at source, coral on top at input".into();
         }
         if frame == 654 {
             egui::Popup::close_all(ctx);

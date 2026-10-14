@@ -10,6 +10,8 @@ fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
 }
 fn cable(from: &str, output: &str, to: &str, input: &str) -> Cable {
     Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: from.into(),

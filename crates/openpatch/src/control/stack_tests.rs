@@ -193,6 +193,7 @@ fn strict_selectors_modes_ids_and_failed_batches_leave_live_history_untouched() 
 #[test]
 fn reusing_ids_retires_only_after_commit_and_document_replacement_retires_all() {
     let mut session = make_session(2);
+    openpatch_core::assign_new_cable_orders(&mut session.patch.cables, &[0]).unwrap();
     let live = Arc::new(Live::default());
     session.set_live_module_events(Some(live.clone()));
     let before = session.snapshot();
@@ -221,6 +222,7 @@ fn reusing_ids_retires_only_after_commit_and_document_replacement_retires_all() 
 #[test]
 fn history_replays_identity_resets_for_byte_identical_cable_module_and_document_transitions() {
     let mut session = make_session(2);
+    openpatch_core::assign_new_cable_orders(&mut session.patch.cables, &[0]).unwrap();
     let live = Arc::new(Live::default());
     session.set_live_module_events(Some(live.clone()));
     let original = session.snapshot()["patch"].clone();
@@ -355,6 +357,7 @@ fn clear_cables_retires_exact_ids_once_and_preserves_modules_in_both_versions() 
 #[test]
 fn clear_and_reconnect_identical_ids_replays_retirement_for_each_history_transition() {
     let mut session = make_session(2);
+    openpatch_core::assign_new_cable_orders(&mut session.patch.cables, &[0]).unwrap();
     session
         .execute(
             "connect",

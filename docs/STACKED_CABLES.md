@@ -33,6 +33,12 @@ VCO's pitch input. The mono transpose and vibrato signals apply to every voice.
 - **Esc**, focus loss, modal interruption, stale revisions, and unsupported
   graph edits cancel without changing originals. See [cable gestures](RACK_EDITING.md#cable-gestures).
 
+Input and output plugs have independent saved ordering. A different cable can
+be on top at each end of the same stack. Picking up a selected non-top plug and
+returning it to its jack raises only that end, with one undo step. Escape or
+focus loss cancels provisional ordering as well as routing. Already-top returns
+remain no-ops. Save/reload and undo/redo preserve both orders.
+
 The jack badge shows the cable count. Separate cable curves and colors help
 distinguish stacked routes; the menu also distinguishes two cables with exactly
 the same endpoints. Shift-click on module headers still changes the module
@@ -101,8 +107,8 @@ Move one or more exact cable ends with `move_cables`:
 `end` selects the `input` or `output` endpoint. The destination module and port
 must exist and match that direction, even when a conflict would otherwise
 discard every selected cable. IDs and colors are retained. Moved and untouched
-cables retain their saved array positions; no independent plug ordering is
-stored. The `cable_ids` array accepts 1–1,024 unique existing IDs and controls
+cables retain their saved array positions. Moving an end promotes it at its
+destination; the opposite end retains its order. The `cable_ids` array accepts 1–1,024 unique existing IDs and controls
 collision evaluation order. The native rack supplies saved cable order.
 
 The default `duplicate_mode`, `reject`, fails the entire operation on an
@@ -111,10 +117,11 @@ unselected routes or earlier accepted moves; other selected members move and
 existing destination cables stay intact. `stack` allows identical routes in
 version 2. Selected cables whose requested endpoint is already unchanged stay
 intact, including intentional identical stacks. A direct all-unchanged move
-validates the request and revision, then preserves revision, history, and redo.
+validates the request and revision, then preserves revision, history, and redo
+unless `promote: true` requests a change to the selected plug order.
 Version 1 still rejects occupied inputs and cycles during final validation.
 
-These three tools support `preview_edits` and `apply_edits`; batch no-ops retain
+These cable tools support `preview_edits` and `apply_edits`; batch no-ops retain
 ordinary transaction history semantics. Failure publishes no partial color
 changes, moves, removals, history entries, or runtime resets. Changed or deleted
 selected cable frames reset; source modules and untouched sibling frames
@@ -126,6 +133,41 @@ copied cable. Its existing `none`, `internal`, and `inputs` policies are unchang
 The `all` policy also copies external outgoing connections to their existing
 destinations. Single-module **Duplicate with cables** uses it; selected-group
 shortcuts retain the inputs-only policy. See [rack editing](RACK_EDITING.md).
+
+## Independent plug order
+
+Optional `input_order` and `output_order` fields are unsigned integers in
+0–65,535. At each jack, lower ranks paint first; missing ranks behave as zero,
+and ties keep saved cable-array order. Old patches remain valid. The resolver
+never reorders the cable array or changes audio accumulation order.
+
+Use `promote_cables` to raise selected plugs at one end:
+
+```json
+{"cable_ids":["transpose-pitch"],"end":"input","expected_revision":12}
+```
+
+Selection retains its existing bottom-to-top order at each jack. Promotion
+normalizes ranks only when effective stacking changes, with bounded dense ranks
+and untouched opposite-end metadata. A direct already-top call validates its
+arguments and revision, then preserves history and redo. A real promotion
+changes saved content and revision, with no DSP route retirement or signal reset.
+
+`move_cables` accepts `plug_order`, an exact permutation of its selected IDs in
+bottom-to-top order, independently of `cable_ids` collision evaluation order.
+The native rack supplies both. Set `promote: true` to apply promotion even when
+the requested route is unchanged. New connections and clones append at both
+ends; module duplicates receive fresh ranks rather than conflicting copied ranks.
+Recoloring leaves ordering intact. Preview reports rank metadata separately in
+`changes.changed_cable_order`; `changes.cable_order_changed` continues to mean
+actual array reordering, which can affect floating-point summation.
+
+This strengthens Rack history intentionally: OpenPatch cancels provisional
+promotion on Escape/focus loss and restores exact ranks on undo/redo. The pinned
+[Rack save code](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/RackWidget.cpp)
+stores independent endpoint ranks, but its
+[cable history actions](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/history.cpp)
+recreate plugs without those ranks.
 
 ## Signal and identity contract
 

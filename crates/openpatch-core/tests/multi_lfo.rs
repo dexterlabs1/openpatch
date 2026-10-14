@@ -19,6 +19,8 @@ fn source(id: &str, values: &[f32]) -> Node {
 }
 fn wire(from: &str, output: &str, to: &str, input: &str) -> Cable {
     Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: from.into(),

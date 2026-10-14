@@ -478,10 +478,21 @@ mod rack_gesture_acceptance {
                         .iter()
                         .filter(|cable| cable["id"] != "two")
                     {
-                        assert!(session.snapshot()["patch"]["cables"]
+                        let current = session.snapshot();
+                        let mut actual = current["patch"]["cables"]
                             .as_array()
                             .unwrap()
-                            .contains(old));
+                            .iter()
+                            .find(|cable| cable["id"] == old["id"])
+                            .unwrap()
+                            .clone();
+                        let mut expected = old.clone();
+                        // Promotion may densely normalize the grabbed endpoint
+                        // family; sibling routes/colors and opposite ranks stay exact.
+                        let field = if input { "input_order" } else { "output_order" };
+                        actual.as_object_mut().unwrap().remove(field);
+                        expected.as_object_mut().unwrap().remove(field);
+                        assert_eq!(actual, expected);
                     }
                     let moved = session
                         .patch()

@@ -1,6 +1,38 @@
 //! Exact-ID cable edits. All validation and routing preparation run on the
 //! control thread; endpoint/color metadata never changes a cable's saved ID.
 use super::*;
+use openpatch_core::{promote_cable_endpoints, CableEndpoint};
+
+fn endpoint(args: &Value) -> Result<CableEndpoint, String> {
+    match string(args, "end")? {
+        "input" => Ok(CableEndpoint::Input),
+        "output" => Ok(CableEndpoint::Output),
+        _ => Err("end must be input or output".into()),
+    }
+}
+
+fn existing_plug_order(
+    candidate: &Patch,
+    end: CableEndpoint,
+    mut indices: Vec<usize>,
+) -> Vec<usize> {
+    indices.sort_by_key(|&index| {
+        let rank = match end {
+            CableEndpoint::Input => candidate.cables[index].input_order,
+            CableEndpoint::Output => candidate.cables[index].output_order,
+        };
+        (rank.unwrap_or(0), index)
+    });
+    indices
+}
+
+pub(super) fn promote(candidate: &mut Patch, args: &Value) -> Result<(), String> {
+    let indices = selected_indices(candidate, args)?;
+    let end = endpoint(args)?;
+    let order = existing_plug_order(candidate, end, indices);
+    promote_cable_endpoints(&mut candidate.cables, end, &order)?;
+    Ok(())
+}
 
 pub(super) fn rgb(value: &Value) -> Result<[u8; 3], String> {
     serde_json::from_value(value.clone())
@@ -83,9 +115,26 @@ pub(super) fn move_endpoints(
 ) -> Result<(), String> {
     let indices = selected_indices(candidate, args)?;
     let end = string(args, "end")?;
-    if !matches!(end, "input" | "output") {
-        return Err("end must be input or output".into());
-    }
+    let endpoint = endpoint(args)?;
+    let promote = args
+        .get("promote")
+        .map(|value| value.as_bool().ok_or("promote must be a boolean"))
+        .transpose()?
+        .unwrap_or(false);
+    // Explicit plug order must be a full selected-ID permutation. Duplicate
+    // resolution still uses cable_ids order, independent of this visual order.
+    let plug_order = if let Some(order) = args.get("plug_order") {
+        let order_args = json!({"cable_ids":order});
+        let ordered = selected_indices(candidate, &order_args)?;
+        if ordered.iter().copied().collect::<BTreeSet<_>>()
+            != indices.iter().copied().collect::<BTreeSet<_>>()
+        {
+            return Err("plug_order must be a permutation of cable_ids".into());
+        }
+        ordered
+    } else {
+        existing_plug_order(candidate, endpoint, indices.clone())
+    };
     let mode = optional_string(args, "duplicate_mode", "reject")?;
     if !matches!(mode, "reject" | "discard" | "stack") {
         return Err("duplicate_mode must be reject, discard, or stack".into());
@@ -123,6 +172,11 @@ pub(super) fn move_endpoints(
         .iter()
         .copied()
         .filter(|&index| !endpoint_matches(&candidate.cables[index], end, node, port))
+        .collect();
+    let should_promote = promote || !changed.is_empty();
+    let plug_ids: Vec<_> = plug_order
+        .iter()
+        .filter_map(|&index| candidate.cables[index].id.clone())
         .collect();
     let mut accepted: Vec<Cable> = candidate
         .cables
@@ -172,5 +226,19 @@ pub(super) fn move_endpoints(
             None => true,
         }
     });
+    if should_promote {
+        let retained: Vec<_> = plug_ids
+            .iter()
+            .filter_map(|id| {
+                candidate
+                    .cables
+                    .iter()
+                    .position(|cable| cable.id.as_ref() == Some(id))
+            })
+            .collect();
+        if !retained.is_empty() {
+            promote_cable_endpoints(&mut candidate.cables, endpoint, &retained)?;
+        }
+    }
     Ok(())
 }

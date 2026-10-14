@@ -169,7 +169,11 @@ fn moves_preserve_positions_ids_colors_and_only_retire_changed_members() {
         assert_eq!(moved["patch"], preview["patch"]);
         assert_eq!(ids(&session), ["first", "second"]);
         assert_eq!(session.patch.cables[0].color, Some([1, 2, 3]));
-        assert_eq!(moved["patch"]["cables"][1], before["patch"]["cables"][1]);
+        let mut expected_sibling = before["patch"]["cables"][1].clone();
+        if end == "output" {
+            expected_sibling["output_order"] = moved["patch"]["cables"][1]["output_order"].clone();
+        }
+        assert_eq!(moved["patch"]["cables"][1], expected_sibling);
         assert_eq!(*live.retired.lock().unwrap(), ["first"]);
         assert!(live.modules.lock().unwrap().is_empty());
         session.execute("undo", json!({})).unwrap();
@@ -214,6 +218,10 @@ fn moved_edge_resets_but_unselected_delayed_route_and_source_state_continue() {
 #[test]
 fn transient_moves_reset_only_selected_delay_even_when_final_routes_match() {
     let mut session = make_session(2);
+    // Pre-existing ranks keep the selected plug top at the temporary origin,
+    // so this test isolates retirement from any independent order edit.
+    session.patch.cables[0].output_order = Some(2);
+    session.patch.cables[1].output_order = Some(1);
     let original = session.snapshot()["patch"].clone();
     let mut old = session.patch.compile().unwrap();
     old.process_block(&mut [0.0; 379]);

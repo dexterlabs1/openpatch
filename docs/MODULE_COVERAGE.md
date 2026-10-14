@@ -10,7 +10,7 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 
 There are **45 built-in kinds**: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
-utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, a ten-row manual trigger/gate source, and a manual/CV gate source with a persistent HOLD latch. This count is not a count of completed VCV equivalents.
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, a ten-row manual trigger/gate source, a manual/CV gate source with a persistent HOLD latch, and a six-output gate/trigger processor. This count is not a count of completed VCV equivalents.
 
 The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 

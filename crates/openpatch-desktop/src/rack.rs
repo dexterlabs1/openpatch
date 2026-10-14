@@ -180,14 +180,12 @@ impl PendingCable {
     }
 
     fn at_revision(origin: CableEnd, patch: &Patch, revision: u64) -> Self {
-        let original = match &origin {
-            CableEnd::Input { node, port } => patch
-                .cables
-                .iter()
-                .rev()
-                .find(|cable| cable.to == *node && cable.input == *port)
-                .cloned(),
-            CableEnd::Output { .. } => None,
+        let original = if matches!(origin, CableEnd::Input { .. }) {
+            ordered_endpoint_cables(patch, &origin)
+                .last()
+                .map(|cable| (*cable).clone())
+        } else {
+            None
         };
         Self {
             origin,
@@ -1413,13 +1411,12 @@ impl Rack {
                 } else {
                     1.0
                 });
-                paint_cable(
+                paint_cable_curves(
                     &painter,
                     from,
                     to,
                     color,
                     self.zoom,
-                    true,
                     configured_bus(patch, catalog, &cable.from),
                     {
                         let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
@@ -1431,8 +1428,70 @@ impl Rack {
                         }
                     },
                 );
-                if traced && !picked_up {
-                    paint_jack_light(&painter, to, self.zoom, cable_instance_color(cable));
+            }
+        }
+        // Curves retain native array order. Caps and their top lights use each
+        // endpoint's independent order, with pickup promotion still provisional.
+        let provisional = self
+            .pending
+            .as_ref()
+            .filter(|pending| pending.operation == CableOperation::Move)
+            .map(|pending| {
+                let mut candidate = patch.clone();
+                pending_promotion(&mut candidate, pending);
+                candidate
+            });
+        let ordered_patch = provisional.as_ref().unwrap_or(patch);
+        for output in [true, false] {
+            let locations = if output { &outputs } else { &inputs };
+            let end = if output {
+                openpatch_core::CableEndpoint::Output
+            } else {
+                openpatch_core::CableEndpoint::Input
+            };
+            for ((node, port), &point) in locations {
+                let order =
+                    openpatch_core::cable_endpoint_order(&ordered_patch.cables, end, node, port);
+                for (ordinal, index) in order.iter().enumerate() {
+                    let cable = &ordered_patch.cables[*index];
+                    let picked_up = self
+                        .pending
+                        .as_ref()
+                        .filter(|pending| pending.operation == CableOperation::Move)
+                        .is_some_and(|pending| {
+                            pending
+                                .original
+                                .iter()
+                                .chain(&pending.companions)
+                                .any(|old| same_cable(old, cable))
+                        });
+                    let route_traced = nearest.is_some_and(|(target, _)| match target {
+                        CableEnd::Output { node, port } => {
+                            *node == cable.from && *port == cable.output
+                        }
+                        CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
+                    });
+                    let color = cable_instance_color(cable).gamma_multiply(if picked_up {
+                        0.24
+                    } else if nearest.is_some() && !route_traced && self.pending.is_none() {
+                        0.48
+                    } else {
+                        1.0
+                    });
+                    paint_cable_plug(&painter, point, color, self.zoom);
+                    let traced = nearest.is_some_and(|(target, _)| match target {
+                        CableEnd::Output {
+                            node: target_node,
+                            port: target_port,
+                        } => output && target_node == node && target_port == port,
+                        CableEnd::Input {
+                            node: target_node,
+                            port: target_port,
+                        } => !output && target_node == node && target_port == port,
+                    });
+                    if ordinal + 1 == order.len() && traced && !picked_up {
+                        paint_jack_light(&painter, point, self.zoom, cable_instance_color(cable));
+                    }
                 }
             }
         }
@@ -1496,10 +1555,14 @@ impl Rack {
                             .as_ref()
                             .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
                     };
-                    paint_cable(
-                        &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
-                    );
-                    paint_jack_light(&painter, anchor, self.zoom, color);
+                    if pending.operation == CableOperation::Move {
+                        paint_cable_curves(&painter, anchor, endpoint, color, self.zoom, bus, 0.0);
+                    } else {
+                        paint_cable(
+                            &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
+                        );
+                        paint_jack_light(&painter, anchor, self.zoom, color);
+                    }
                 }
                 for cable in &pending.companions {
                     let anchor = match pending.origin {
@@ -1513,17 +1576,15 @@ impl Rack {
                     if let Some(&anchor) = anchor {
                         let endpoint = nearest.map_or(pointer, |(_, point)| *point);
                         let color = cable_instance_color(cable);
-                        paint_cable(
+                        paint_cable_curves(
                             &painter,
                             anchor,
                             endpoint,
                             color,
                             self.zoom,
-                            false,
                             configured_bus(patch, catalog, &cable.from),
                             0.0,
                         );
-                        paint_jack_light(&painter, anchor, self.zoom, color);
                     }
                 }
                 if let Some((_, target)) = nearest {
@@ -2875,7 +2936,11 @@ impl Rack {
                         "Drag moves the top IN plug. Shift-click deletes it. Adding another cable to an occupied input requires engine v2."
                     }
                 );
-                for cable in cables.iter().take(8) {
+                for cable in ordered_endpoint_cables(patch, &end)
+                    .into_iter()
+                    .rev()
+                    .take(8)
+                {
                     details.push_str(&format!(
                         "\n{}: {}.{}",
                         cable.id.as_deref().unwrap_or("legacy"),
@@ -4318,13 +4383,10 @@ impl Rack {
     ) -> PendingCable {
         let mut pending = PendingCable::at_revision(end, patch, self.observed_revision);
         pending.shift_at_press = shift;
-        if let CableEnd::Output { node, port } = &pending.origin {
-            pending.original = patch
-                .cables
-                .iter()
-                .rev()
-                .find(|c| c.from == *node && c.output == *port)
-                .cloned();
+        if matches!(pending.origin, CableEnd::Output { .. }) {
+            pending.original = ordered_endpoint_cables(patch, &pending.origin)
+                .last()
+                .map(|cable| (*cable).clone());
         }
         if command && !shift {
             pending.original = None;
@@ -4453,7 +4515,7 @@ impl Rack {
         if response.clicked() {
             let pressed = self.cable_press.take();
             if let Some(pending) = self.pending.take() {
-                if pending.origin != end {
+                if pending.origin != end || pending.operation == CableOperation::Move {
                     if cable_plan(&pending, &end).is_some() {
                         *action = cable_action_mode(
                             patch,
@@ -4959,6 +5021,57 @@ pub(crate) fn duplicate_all_supported(patch: &Patch, ids: &[String]) -> bool {
                 .any(|cable| cable.from == ids[0] && cable.to != ids[0]))
 }
 
+fn cable_endpoint(end: &CableEnd) -> openpatch_core::CableEndpoint {
+    match end {
+        CableEnd::Input { .. } => openpatch_core::CableEndpoint::Input,
+        CableEnd::Output { .. } => openpatch_core::CableEndpoint::Output,
+    }
+}
+
+fn ordered_endpoint_cables<'a>(patch: &'a Patch, end: &CableEnd) -> Vec<&'a Cable> {
+    let (node, port) = match end {
+        CableEnd::Input { node, port } | CableEnd::Output { node, port } => (node, port),
+    };
+    openpatch_core::cable_endpoint_order(&patch.cables, cable_endpoint(end), node, port)
+        .into_iter()
+        .map(|index| &patch.cables[index])
+        .collect()
+}
+
+fn pending_promotion(patch: &mut Patch, pending: &PendingCable) -> bool {
+    let selected: Vec<_> = pending
+        .original
+        .iter()
+        .chain(&pending.companions)
+        .filter_map(|old| patch.cables.iter().position(|cable| same_cable(old, cable)))
+        .collect();
+    openpatch_core::promote_cable_endpoints(
+        &mut patch.cables,
+        cable_endpoint(&pending.origin),
+        &selected,
+    )
+    .unwrap_or(false)
+}
+
+fn cable_promotion_action(patch: &Patch, pending: &PendingCable) -> Option<RackAction> {
+    let mut candidate = patch.clone();
+    if !pending_promotion(&mut candidate, pending) {
+        return None;
+    }
+    let ids: Vec<_> = pending
+        .original
+        .iter()
+        .chain(&pending.companions)
+        .filter_map(|cable| cable.id.clone())
+        .collect();
+    Some(RackAction::Command(
+        "promote_cables",
+        json!({"cable_ids":ids,
+        "end":if matches!(pending.origin, CableEnd::Input { .. }) { "input" } else { "output" },
+        "expected_revision":pending.revision}),
+    ))
+}
+
 fn same_route(a: &Cable, b: &Cable) -> bool {
     a.from == b.from && a.output == b.output && a.to == b.to && a.input == b.input
 }
@@ -5380,6 +5493,8 @@ fn cable_plan<'a>(
             },
             CableOperation::Create,
         ) => Cable {
+            input_order: None,
+            output_order: None,
             color: pending.color,
             id: None,
             from: from.clone(),
@@ -5413,6 +5528,8 @@ fn cable_plan<'a>(
         let color = cable_instance_color(pending.original.as_ref()?);
         cable.color = Some([color.r(), color.g(), color.b()]);
         cable.id = None;
+        cable.input_order = None;
+        cable.output_order = None;
     }
     Some((cable, pending.moved_original()))
 }
@@ -5576,7 +5693,13 @@ fn cable_action_mode(
     catalog: &Value,
     shift_stack: bool,
 ) -> Option<RackAction> {
-    if !pending.companions.is_empty() {
+    if pending.operation == CableOperation::Move
+        && (!pending.companions.is_empty()
+            || pending
+                .original
+                .as_ref()
+                .is_some_and(|cable| cable.id.is_some()))
+    {
         return cable_group_action(patch, pending, target, catalog, shift_stack);
     }
     let (cable, old) = cable_plan(pending, target)?;
@@ -5630,14 +5753,38 @@ fn cable_group_action(
     catalog: &Value,
     shift: bool,
 ) -> Option<RackAction> {
-    if pending.operation != CableOperation::Move || pending.origin == *target {
+    if pending.operation != CableOperation::Move {
         return None;
     }
     cable_plan(pending, target)?;
-    let originals: Vec<_> = pending.original.iter().chain(&pending.companions).collect();
+    if pending.origin == *target {
+        return cable_promotion_action(patch, pending);
+    }
+    let plug_order = pending
+        .original
+        .iter()
+        .chain(&pending.companions)
+        .map(|cable| cable.id.clone())
+        .collect::<Option<Vec<_>>>()?;
+    // Backend collision winners always follow native array order, independently
+    // of the selected bundle's displayed bottom-to-top plug order.
+    let originals: Vec<_> = patch
+        .cables
+        .iter()
+        .filter(|cable| {
+            pending
+                .original
+                .iter()
+                .chain(&pending.companions)
+                .any(|old| same_cable(old, cable))
+        })
+        .collect();
+    if originals.len() != plug_order.len() {
+        return None;
+    }
     let ids = originals
         .iter()
-        .map(|c| c.id.clone())
+        .map(|cable| cable.id.clone())
         .collect::<Option<Vec<_>>>()?;
     let allow_duplicate = pending.allow_duplicate(shift);
     if allow_duplicate && patch.version < 2 {
@@ -5680,7 +5827,8 @@ fn cable_group_action(
     Some(RackAction::Command(
         "move_cables",
         json!({"cable_ids":ids,"end":end,"node":node,"port":port,
-        "duplicate_mode":if allow_duplicate {"stack"} else {"discard"},"expected_revision":pending.revision}),
+        "duplicate_mode":if allow_duplicate {"stack"} else {"discard"},
+        "promote":true,"plug_order":plug_order,"expected_revision":pending.revision}),
     ))
 }
 
@@ -6737,6 +6885,22 @@ fn paint_cable(
     bus: bool,
     fan: f32,
 ) {
+    paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+    paint_cable_plug(painter, from, color, zoom);
+    if plugged {
+        paint_cable_plug(painter, to, color, zoom);
+    }
+}
+
+fn paint_cable_curves(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    fan: f32,
+) {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
     let points = [
         from,
@@ -6767,29 +6931,27 @@ fn paint_cable(
         (if bus { 3.6 } else { 2.6 }) * zoom,
         color.gamma_multiply(1.13),
     ));
-    for (index, point) in [from, to].iter().enumerate() {
-        if index == 1 && !plugged {
-            continue;
-        }
-        painter.circle_filled(
-            *point + vec2(0.5, 1.8) * zoom,
-            7.5 * zoom,
-            Color32::from_black_alpha(125),
-        );
-        painter.rect_filled(
-            Rect::from_center_size(*point + vec2(0.0, 5.0) * zoom, vec2(7.0, 12.0) * zoom),
-            2.0 * zoom,
-            color.gamma_multiply(0.52),
-        );
-        painter.circle_filled(*point, 7.2 * zoom, Color32::from_rgb(82, 81, 75));
-        painter.circle_filled(*point, 6.1 * zoom, color.gamma_multiply(0.58));
-        painter.circle_stroke(
-            *point,
-            5.3 * zoom,
-            Stroke::new(1.2 * zoom, color.gamma_multiply(1.16)),
-        );
-        painter.circle_filled(*point, 2.0 * zoom, Color32::from_rgb(34, 35, 33));
-    }
+}
+
+fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: f32) {
+    painter.circle_filled(
+        point + vec2(0.5, 1.8) * zoom,
+        7.5 * zoom,
+        Color32::from_black_alpha(125),
+    );
+    painter.rect_filled(
+        Rect::from_center_size(point + vec2(0.0, 5.0) * zoom, vec2(7.0, 12.0) * zoom),
+        2.0 * zoom,
+        color.gamma_multiply(0.52),
+    );
+    painter.circle_filled(point, 7.2 * zoom, Color32::from_rgb(82, 81, 75));
+    painter.circle_filled(point, 6.1 * zoom, color.gamma_multiply(0.58));
+    painter.circle_stroke(
+        point,
+        5.3 * zoom,
+        Stroke::new(1.2 * zoom, color.gamma_multiply(1.16)),
+    );
+    painter.circle_filled(point, 2.0 * zoom, Color32::from_rgb(34, 35, 33));
 }
 
 #[cfg(test)]
@@ -7545,11 +7707,11 @@ mod tests {
             )
             .0
             .unwrap();
-            let RackAction::Command("apply_edits", ref args) = action else {
+            let RackAction::Command("move_cables", ref args) = action else {
                 panic!("picked move must be atomic")
             };
-            assert_eq!(args["edits"][0]["arguments"]["cable_id"], "two");
-            assert_eq!(args["edits"][1]["arguments"]["cable_id"], "two");
+            assert_eq!(args["cable_ids"], json!(["two"]));
+            assert_eq!(args["promote"], true);
             run_cable_action(&mut session, action);
             assert_eq!(session.patch().cables.len(), 2);
             assert!(same_cable(
@@ -10258,6 +10420,8 @@ mod tests {
         let node = patch.nodes[0].clone();
         assert_eq!(utility_source_row(&patch, &node, 7), None);
         patch.cables.push(Cable {
+            input_order: None,
+            output_order: None,
             color: None,
             id: None,
             from: "zero".into(),
@@ -10504,15 +10668,15 @@ mod tests {
             node: "filter".into(),
             port: "signal".into(),
         };
-        let Some(RackAction::Command("apply_edits", mut args)) =
+        let Some(RackAction::Command("move_cables", mut args)) =
             cable_action(&patch, &pending, &target, &openpatch_core::catalog())
         else {
             panic!("occupied replug must be an edit transaction")
         };
-        assert_eq!(args["edits"].as_array().unwrap().len(), 2);
+        assert_eq!(args["cable_ids"].as_array().unwrap().len(), 1);
         let before = session.snapshot();
         args["expected_revision"] = json!(session.revision());
-        session.execute("apply_edits", args.clone()).unwrap();
+        session.execute("move_cables", args.clone()).unwrap();
         let committed = session.snapshot();
         assert_eq!(
             committed["history"]["undo_steps"].as_u64().unwrap(),
@@ -10532,7 +10696,7 @@ mod tests {
             node: "out".into(),
             port: "signal".into(),
         };
-        let Some(RackAction::Command("apply_edits", mut invalid)) = cable_action(
+        let Some(RackAction::Command("move_cables", mut invalid)) = cable_action(
             session.patch(),
             &moving,
             &occupied,
@@ -10543,13 +10707,12 @@ mod tests {
         let mut stale = invalid.clone();
         stale["expected_revision"] = args["expected_revision"].clone();
         invalid["expected_revision"] = json!(session.revision());
-        let last = invalid["edits"].as_array_mut().unwrap().last_mut().unwrap();
-        last["arguments"]["output"] = json!("missing-output");
-        assert!(session.execute("apply_edits", invalid).is_err());
+        invalid["port"] = json!("missing-input");
+        assert!(session.execute("move_cables", invalid).is_err());
         assert_eq!(session.snapshot(), committed);
         assert!(
             session
-                .execute("apply_edits", stale)
+                .execute("move_cables", stale)
                 .unwrap_err()
                 .contains("revision"),
             "App.command's revision guard must reject an otherwise valid stale replug"
@@ -10893,6 +11056,8 @@ mod tests {
             matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "split" && args["output"] == "out16" && args["to"] == "a")
         );
         patch.cables.push(Cable {
+            input_order: None,
+            output_order: None,
             color: None,
             id: None,
             from: "split".into(),
@@ -11080,6 +11245,8 @@ mod tests {
             .unwrap();
             if clocked {
                 patch.cables.push(Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: None,
                     from: "clock".into(),
@@ -12878,6 +13045,8 @@ mod tests {
             .unwrap();
             if clocked {
                 patch.cables.push(Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: None,
                     from: "clock".into(),
@@ -13050,12 +13219,12 @@ mod tests {
         )
         .0
         .unwrap();
-        let RackAction::Command("apply_edits", ref args) = action else {
+        let RackAction::Command("move_cables", ref args) = action else {
             panic!("atomic move")
         };
         assert_eq!(args["expected_revision"], revision);
-        assert_eq!(args["edits"][0]["arguments"]["cable_id"], "two");
-        assert_eq!(args["edits"][1]["arguments"]["cable_id"], "two");
+        assert_eq!(args["cable_ids"], json!(["two"]));
+        assert_eq!(args["promote"], true);
         run_cable_action(&mut session, action);
         assert_eq!(session.patch().cables.len(), 2);
         assert!(same_cable(&session.patch().cables[0], &before.cables[0]));
@@ -13425,9 +13594,8 @@ mod tests {
         )
         .0
         .unwrap();
-        assert!(matches!(action, RackAction::Command("apply_edits", args)
-            if args["edits"][0]["arguments"]["cable_id"] == "one"
-            && args["edits"][1]["arguments"]["cable_id"] == "one"));
+        assert!(matches!(action, RackAction::Command("move_cables", args)
+            if args["cable_ids"] == json!(["one"]) && args["promote"] == true));
     }
     include!("cable_gesture_tests.rs");
     include!("cable_menu_tests.rs");

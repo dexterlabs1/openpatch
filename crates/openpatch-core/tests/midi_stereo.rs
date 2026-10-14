@@ -292,6 +292,8 @@ fn stereo(right: bool, channels: f32) -> Patch {
         ..Patch::new_v2()
     };
     p.cables.push(Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: "l".into(),
@@ -301,6 +303,8 @@ fn stereo(right: bool, channels: f32) -> Patch {
     });
     if right {
         p.cables.push(Cable {
+            input_order: None,
+            output_order: None,
             color: None,
             id: None,
             from: "r".into(),
@@ -454,6 +458,8 @@ fn released_midi_voices_keep_downstream_adsr_tail_and_configuration_reset_clears
             node("e", "adsr", &[("attack", 0.001), ("release", 0.1)]),
         ],
         cables: vec![Cable {
+            input_order: None,
+            output_order: None,
             color: None,
             id: None,
             from: "m".into(),

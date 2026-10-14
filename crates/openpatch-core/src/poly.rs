@@ -1611,6 +1611,8 @@ mod tests {
             ],
             cables: vec![
                 crate::Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: Some("a_route".into()),
                     from: "a".into(),
@@ -1619,6 +1621,8 @@ mod tests {
                     input: "signal".into(),
                 },
                 crate::Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: Some("b_route".into()),
                     from: "b".into(),
@@ -1657,6 +1661,8 @@ mod tests {
             ],
             cables: vec![
                 crate::Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: Some("a".into()),
                     from: "source".into(),
@@ -1665,6 +1671,8 @@ mod tests {
                     input: "signal".into(),
                 },
                 crate::Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: Some("b".into()),
                     from: "source".into(),
@@ -1732,6 +1740,8 @@ mod tests {
                 },
             ],
             cables: vec![crate::Cable {
+                input_order: None,
+                output_order: None,
                 color: None,
                 id: None,
                 from: "source".into(),

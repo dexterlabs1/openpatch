@@ -154,8 +154,9 @@ another jack of the same type to move the bundle; existing destination siblings
 remain. Cables that would create duplicate routes are deleted, while other
 members move. Winners follow saved cable order. Adding Shift at drop permits
 identical routes in version 2. Empty-space or wrong-type drops delete the picked
-bundle. Returning to the original jack does nothing, including for an intentional
-identical stack. **Delete all cables** removes only that port's bundle.
+bundle. Returning a picked non-top plug to its original jack brings that end to
+the top without changing the route; returning an already-top plug does nothing.
+**Delete all cables** removes only that port's bundle.
 
 A bundle operation is one undo step, including mixed move/delete results. Undo
 and redo restore exact IDs, endpoints, colours, and array order. Escape, focus
@@ -169,9 +170,21 @@ so even a reused cable ID cannot silently retarget an old menu action.
 
 *Native Linux CI captures; macOS is the primary design target.*
 
-Top currently means the last matching cable in saved patch order. Independent
-per-end plug ordering, editable palette presets, next-colour cycling, and physical
-native input qualification remain open.
+Each jack has an independent bottom-to-top plug order. Picking up a cable only
+raises the clicked end; its other end keeps its place. Menus, plug colors,
+ordinary pickup, cloning, and Shift-delete use that jack's order. Move-all keeps
+the picked plugs' relative order at the destination; duplicate-route winners
+still follow saved cable-array order, which also determines DSP accumulation.
+
+Promotion remains provisional during pickup. A successful drop saves routing
+and ordering together; returning a non-top plug to its origin creates one
+metadata-only undo step. Canceling discards both. Undo/redo, save/reload, and
+recovery restore exact endpoint ranks. This deliberately adds atomic cancellation
+and exact ordering history to Rack's pickup behavior. Rack promotes on pickup
+and does not store plug ranks in its cable history actions.
+
+Editable palette presets, next-colour cycling, and physical native input
+qualification remain open.
 
 
 These gestures are independently implemented against the pinned

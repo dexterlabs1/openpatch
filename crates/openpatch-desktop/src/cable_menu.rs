@@ -75,13 +75,8 @@ impl Rack {
         self.pending = None;
         self.cable_press = None;
         self.dragging_cable = false;
-        let cables = patch
-            .cables
-            .iter()
-            .filter(|c| match &origin {
-                CableEnd::Input { node, port } => c.to == *node && c.input == *port,
-                CableEnd::Output { node, port } => c.from == *node && c.output == *port,
-            })
+        let cables = ordered_endpoint_cables(patch, &origin)
+            .into_iter()
             .cloned()
             .collect();
         self.cable_menu = Some(CableMenu {

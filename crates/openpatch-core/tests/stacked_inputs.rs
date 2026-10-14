@@ -14,6 +14,8 @@ fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
 
 fn cable(id: Option<&str>, from: &str, to: &str, input: &str) -> Cable {
     Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: id.map(str::to_string),
         from: from.into(),

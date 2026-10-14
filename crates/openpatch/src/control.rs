@@ -12,6 +12,8 @@ mod cable_color_tests;
 #[cfg(test)]
 mod cable_edit_tests;
 #[cfg(test)]
+mod cable_order_tests;
+#[cfg(test)]
 mod duplicate_tests;
 #[cfg(test)]
 mod parameter_action_tests;
@@ -96,6 +98,7 @@ const EDIT_TOOLS: &[&str] = &[
     "disconnect",
     "disconnect_cables",
     "move_cables",
+    "promote_cables",
     "set_cable_color",
     "clear_cables",
     "set_parameter",
@@ -788,7 +791,7 @@ impl Session {
         // Transaction boundary: failed edits never change the patch or revision.
         // Direct equal-color/same-endpoint edits are validated no-ops. Batched
         // no-ops intentionally retain the ordinary transaction history contract.
-        if matches!(name, "set_cable_color" | "move_cables")
+        if matches!(name, "set_cable_color" | "move_cables" | "promote_cables")
             && serde_json::to_value(&candidate).map_err(|error| error.to_string())?
                 == serde_json::to_value(&self.patch).map_err(|error| error.to_string())?
         {
@@ -1058,6 +1061,12 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
                 .then(|| json!({"id":id,"before":previous,"after":cable}))
         })
         .collect();
+    let changed_cable_order: Vec<_> = after.cables.iter().filter_map(|cable| {
+        let id = cable.id.as_ref()?;
+        let previous = before.cables.iter().find(|old| old.id.as_ref() == Some(id))?;
+        (previous.input_order != cable.input_order || previous.output_order != cable.output_order)
+            .then(|| json!({"id":id,"before":{"input_order":previous.input_order,"output_order":previous.output_order},"after":{"input_order":cable.input_order,"output_order":cable.output_order}}))
+    }).collect();
     // Add/remove/endpoint changes already appear above. This flag specifically
     // identifies a pure routing-order change of the same cable multiset.
     let cable_order_changed = added_cables.is_empty()
@@ -1068,7 +1077,7 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
             .map(&signature)
             .eq(after.cables.iter().map(&signature));
     json!({"added_modules":added,"removed_modules":removed,"changed_modules":changed,
-        "added_cables":added_cables,"removed_cables":removed_cables,"changed_cables":changed_cables,"cable_order_changed":cable_order_changed,
+        "added_cables":added_cables,"removed_cables":removed_cables,"changed_cables":changed_cables,"changed_cable_order":changed_cable_order,"cable_order_changed":cable_order_changed,
         "output":{"before":{"node":before.output,"port":before.output_port},"after":{"node":after.output,"port":after.output_port}}})
 }
 
@@ -1120,6 +1129,7 @@ fn apply_edit(
         "set_cable_color" => cable_edits::set_color(candidate, args)?,
         "disconnect_cables" => cable_edits::disconnect(candidate, args, retired_cables)?,
         "move_cables" => cable_edits::move_endpoints(candidate, args, retired_cables)?,
+        "promote_cables" => cable_edits::promote(candidate, args)?,
         "remove_module" => {
             let id = string(args, "id")?;
             if !candidate.nodes.iter().any(|n| n.id == id) {
@@ -1173,6 +1183,8 @@ fn apply_edit(
                 return Err("cable_id already exists".into());
             }
             candidate.cables.push(Cable {
+                input_order: None,
+                output_order: None,
                 color,
                 id,
                 from: string(args, "from")?.into(),
@@ -1180,6 +1192,8 @@ fn apply_edit(
                 to: to.into(),
                 input: input.into(),
             });
+            let index = candidate.cables.len() - 1;
+            openpatch_core::assign_new_cable_orders(&mut candidate.cables, &[index])?;
             candidate.assign_missing_cable_ids()?;
         }
         "clear_cables" => {
@@ -1403,6 +1417,8 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
             }
             let mut cable = original.clone();
             cable.id = None;
+            cable.input_order = None;
+            cable.output_order = None;
             if let Some(destination) = destination {
                 cable.to = (*destination).to_owned();
             }
@@ -1413,7 +1429,12 @@ fn duplicate_modules(candidate: &mut Patch, args: &Value) -> Result<(), String> 
         })
         .collect();
     candidate.nodes.extend(clones);
+    let first_new = candidate.cables.len();
     candidate.cables.extend(cables);
+    let fresh: Vec<_> = (first_new..candidate.cables.len()).collect();
+    if !fresh.is_empty() {
+        openpatch_core::assign_new_cable_orders(&mut candidate.cables, &fresh)?;
+    }
     candidate.assign_missing_cable_ids()?;
     Ok(())
 }
@@ -1477,7 +1498,8 @@ pub fn tools() -> Value {
         disconnect_tool(&s, &module_id, &rev),
         tool("set_cable_color","Set one existing cable's persisted RGB bytes without changing its ID, route or DSP state. A direct equal-color call validates revision and arguments but preserves history and redo. Supports preview and atomic batches.",json!({"cable_id":module_id,"color":color,"expected_revision":rev}),&["cable_id","color"],false),
         tool("disconnect_cables","Atomically remove 1..1024 unique existing cable IDs in one revision and undo step. Every ID must exist; invalid/stale requests change nothing. Untouched cable IDs, colors, order and runtime state are preserved.",json!({"cable_ids":cable_ids,"expected_revision":rev}),&["cable_ids"],false),
-        tool("move_cables","Move the input or output endpoint of 1..1024 unique existing cable IDs to a named port of the matching direction. Keeps IDs/colors and saved array positions; collision evaluation follows supplied ID order against unaffected routes and earlier accepted moves. duplicate_mode reject fails on identical routes; discard deletes only conflicting selected members; stack permits identical routes in version 2. Unchanged endpoints are retained even in identical stacks; a direct all-unchanged request is a validated no-op preserving redo. Destination validation and final graph validation are atomic; version 1 still rejects occupied inputs/cycles. Changed/deleted selected cable delay frames reset; source module and untouched cable state continue.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"node":module_id,"port":s,"duplicate_mode":{"type":"string","enum":["reject","discard","stack"],"default":"reject"},"expected_revision":rev}),&["cable_ids","end","node","port"],false),
+        tool("move_cables","Move the input or output endpoint of 1..1024 unique existing cable IDs to a named port of the matching direction. Keeps IDs/colors and saved array positions; collision evaluation follows supplied ID order against unaffected routes and earlier accepted moves. duplicate_mode reject fails on identical routes; discard deletes only conflicting selected members; stack permits identical routes in version 2. Moved ends promote independently of the opposite plug ranks. Optional plug_order is a selected-ID permutation controlling bottom-to-top bundle order independently of collision winners. Unchanged endpoints are retained even in identical stacks; promote true applies order promotion even on same-origin return. A direct all-unchanged request without effective promotion is a validated no-op preserving redo. Destination validation and final graph validation are atomic; version 1 still rejects occupied inputs/cycles. Changed/deleted selected cable delay frames reset; source module and untouched cable state continue.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"node":module_id,"port":s,"duplicate_mode":{"type":"string","enum":["reject","discard","stack"],"default":"reject"},"promote":{"type":"boolean","default":false},"plug_order":cable_ids,"expected_revision":rev}),&["cable_ids","end","node","port"],false),
+        tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),

@@ -115,6 +115,8 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             ]);
             original_patch.cables.extend([
                 Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: None,
                     from: "dc".into(),
@@ -123,6 +125,8 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
                     input: "signal".into(),
                 },
                 Cable {
+                    input_order: None,
+                    output_order: None,
                     color: None,
                     id: None,
                     from: "a".into(),
@@ -695,4 +699,104 @@ fn stacked_cable_ids_colors_order_and_multiplicity_survive_native_save_and_recov
             .collect::<Vec<_>>(),
         ["second", "first"]
     );
+}
+
+#[test]
+fn independent_plug_order_survives_native_template_export_recovery_and_dirty_tracking() {
+    use openpatch_core::{cable_endpoint_order, promote_cable_endpoints, CableEndpoint};
+    let (directory, store) = store();
+    let patch: Patch = serde_json::from_value(json!({"version":2,
+        "nodes":[{"id":"dc","kind":"constant","params":{"value":1}},
+                 {"id":"sum","kind":"poly_sum"}],
+        "cables":[
+            {"id":"a","from":"dc","to":"sum","input":"signal","input_order":20,"output_order":1},
+            {"id":"b","from":"dc","to":"sum","input":"signal","input_order":10,"output_order":2}
+        ],"output":"sum"}))
+    .unwrap();
+    let mut rack = crate::rack::Rack::default();
+    rack.reconcile(&patch, &openpatch_core::catalog());
+    let original = Document::new(patch.clone(), rack.layout()).unwrap();
+    let mut state = crate::document_state::DocumentState::new(&patch, 1, &rack);
+    assert!(!state.dirty());
+    assert_eq!(
+        cable_endpoint_order(&patch.cables, CableEndpoint::Input, "sum", "signal"),
+        [1, 0]
+    );
+    assert_eq!(
+        cable_endpoint_order(&patch.cables, CableEndpoint::Output, "dc", "out"),
+        [0, 1]
+    );
+    store.save_new("ordered.openpatch", &original).unwrap();
+    store.save_template(&original, None).unwrap();
+    fs::write(
+        directory.path().join("exported.json"),
+        serde_json::to_vec(&patch).unwrap(),
+    )
+    .unwrap();
+    for loaded in [
+        store.load("ordered.openpatch").unwrap().document,
+        store.load_template().unwrap().unwrap(),
+        store.load("exported.json").unwrap().document,
+    ] {
+        assert_eq!(
+            serde_json::to_value(&loaded.patch).unwrap(),
+            serde_json::to_value(&patch).unwrap()
+        );
+        assert_eq!(
+            cable_endpoint_order(&loaded.patch.cables, CableEndpoint::Input, "sum", "signal"),
+            [1, 0]
+        );
+        assert_eq!(
+            cable_endpoint_order(&loaded.patch.cables, CableEndpoint::Output, "dc", "out"),
+            [0, 1]
+        );
+    }
+    let mut promoted = patch.clone();
+    assert!(promote_cable_endpoints(&mut promoted.cables, CableEndpoint::Input, &[1]).unwrap());
+    assert!(state.observe(&promoted, 2, &rack));
+    assert!(
+        state.dirty(),
+        "a same-route plug promotion is a saved document edit"
+    );
+    assert_eq!(
+        promoted
+            .cables
+            .iter()
+            .map(|c| c.id.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("a"), Some("b")]
+    );
+    assert_eq!(
+        promoted
+            .cables
+            .iter()
+            .map(|c| c.output_order)
+            .collect::<Vec<_>>(),
+        [Some(1), Some(2)]
+    );
+    let edited = Document::new(promoted.clone(), rack.layout()).unwrap();
+    let encoded = edited.encode().unwrap();
+    assert!(!promote_cable_endpoints(&mut promoted.cables, CableEndpoint::Input, &[1]).unwrap());
+    assert_eq!(
+        Document::new(promoted.clone(), rack.layout())
+            .unwrap()
+            .encode()
+            .unwrap(),
+        encoded
+    );
+    state.mark_saved(&edited);
+    assert!(!state.dirty());
+    state.observe(&patch, 3, &rack);
+    assert!(
+        state.dirty(),
+        "undoing a saved promotion changes document content"
+    );
+    state.observe(&promoted, 4, &rack);
+    assert!(!state.dirty(), "redo returns to saved ordering");
+    store.save_recovery(&original).unwrap();
+    drop(store);
+    let claimant = Store::new(directory.path()).unwrap();
+    let recoveries = claimant.recoveries();
+    assert_eq!(recoveries.len(), 1);
+    assert!(original.equivalent(&claimant.load_recovery(&recoveries[0]).unwrap().document));
 }

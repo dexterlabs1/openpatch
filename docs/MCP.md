@@ -409,7 +409,7 @@ whole transaction commits one revision and one undo step. Temporary disconnected
 or unresolved connections inside the transaction are allowed; the final graph
 must compile. Any failure leaves the live graph, revision, and history unchanged.
 Supported operations include `add_module`, `duplicate_modules`, `remove_module`,
-`connect`, `disconnect`, `disconnect_cables`, `move_cables`, `set_cable_color`,
+`connect`, `disconnect`, `disconnect_cables`, `move_cables`, `promote_cables`, `set_cable_color`,
 `clear_cables`, `set_parameter`, `set_output`,
 `set_bypass`, `invert_mutes`, `initialize_modules`, `randomize_modules`, and
 `apply_module_preset`. Consult `tools/list` for their argument schemas. File I/O,
@@ -419,7 +419,9 @@ nested transactions, and history commands are excluded.
 cable IDs; its default rejects duplicate routes, while explicit `discard` and
 version-2 `stack` modes support bundle gestures. `disconnect_cables` deletes a
 selected group atomically, and `set_cable_color` changes one persisted RGB colour
-without retiring its signal state. All support `expected_revision`, previews,
+without retiring its signal state. `promote_cables` raises selected plugs at one
+end without changing DSP routing; `move_cables` can commit routing and plug order
+together. All support `expected_revision`, previews,
 and transactions. See [cable editing examples and guarantees](STACKED_CABLES.md).
 
 `clear_cables` accepts only optional `expected_revision`. A direct call on an

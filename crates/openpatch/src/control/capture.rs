@@ -205,6 +205,8 @@ mod tests {
     }
     fn wire(from: &str, output: &str, to: &str, input: &str) -> openpatch_core::Cable {
         openpatch_core::Cable {
+            input_order: None,
+            output_order: None,
             color: None,
             id: None,
             from: from.into(),

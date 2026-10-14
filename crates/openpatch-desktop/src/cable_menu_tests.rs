@@ -769,4 +769,268 @@ mod cable_menu_acceptance {
             }
         }
     }
+
+    fn opposite_tops_fixture() -> Patch {
+        let mut encoded = serde_json::to_value(stacked_fixture()).unwrap();
+        encoded["cables"][0]["input_order"] = json!(2);
+        encoded["cables"][0]["output_order"] = json!(1);
+        encoded["cables"][0]["color"] = json!([20, 50, 90]);
+        encoded["cables"][1]["input_order"] = json!(1);
+        encoded["cables"][1]["output_order"] = json!(2);
+        encoded["cables"][1]["color"] = json!([140, 90, 30]);
+        serde_json::from_value(encoded).unwrap()
+    }
+
+    #[test]
+    fn independent_endpoint_tops_drive_shift_delete_menu_delete_and_clone_top() {
+        for input in [false, true] {
+            for operation in ["shift", "delete", "clone"] {
+                let mut host = Host::new(opposite_tops_fixture());
+                let before = host.session.snapshot();
+                let top_id = if input { "one" } else { "two" };
+                let from = host.jack(
+                    if input { "target" } else { "src" },
+                    if input { "signal" } else { "out" },
+                    input,
+                );
+                let action = if operation == "shift" {
+                    host.frame(vec![
+                        egui::Event::PointerMoved(from),
+                        egui::Event::PointerButton {
+                            pos: from,
+                            button: PointerButton::Primary,
+                            pressed: true,
+                            modifiers: egui::Modifiers::SHIFT,
+                        },
+                    ])
+                    .0
+                } else {
+                    let menu = host.open(input);
+                    let (action, _) = host.click(
+                        &menu,
+                        if operation == "clone" {
+                            "Clone top"
+                        } else {
+                            "Delete top"
+                        },
+                    );
+                    if operation == "clone" {
+                        assert!(action.is_none());
+                        let to = host.jack(
+                            if input { "dest" } else { "alt" },
+                            if input { "signal" } else { "out" },
+                            input,
+                        );
+                        host.drop_at(to)
+                    } else {
+                        action
+                    }
+                };
+                run_cable_action(
+                    &mut host.session,
+                    action.expect("endpoint-specific top operation"),
+                );
+                if operation == "clone" {
+                    assert_eq!(host.session.patch().cables.len(), 3);
+                    assert_eq!(
+                        host.session.snapshot()["patch"]["cables"][0],
+                        before["patch"]["cables"][0]
+                    );
+                    assert_eq!(
+                        host.session.snapshot()["patch"]["cables"][1],
+                        before["patch"]["cables"][1]
+                    );
+                    let source = before["patch"]["cables"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|c| c["id"] == top_id)
+                        .unwrap();
+                    assert_eq!(
+                        host.session.snapshot()["patch"]["cables"][2]["color"],
+                        source["color"]
+                    );
+                } else {
+                    assert_eq!(host.session.patch().cables.len(), 1);
+                    assert_ne!(host.session.patch().cables[0].id.as_deref(), Some(top_id));
+                }
+                host.assert_undo(&before);
+            }
+        }
+    }
+
+    #[test]
+    fn selected_non_top_same_origin_promotes_only_clicked_end_and_cancel_discards_provisional_order(
+    ) {
+        for cancel in [false, true] {
+            let mut host = Host::new(opposite_tops_fixture());
+            let before = host.session.snapshot();
+            let menu = host.open(false);
+            let (_, submenu) = host.click(&menu, "one · ");
+            assert!(host.click(&submenu, "Move this cable").0.is_none());
+            assert_eq!(
+                host.session.snapshot(),
+                before,
+                "pickup promotion is provisional"
+            );
+            let from = host.jack("src", "out", false);
+            if cancel {
+                assert!(host
+                    .frame(vec![egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE
+                    }])
+                    .0
+                    .is_none());
+                assert!(host.rack.pending.is_none());
+                assert_eq!(host.session.snapshot(), before);
+            } else {
+                let action = host
+                    .drop_at(from)
+                    .expect("non-top same-origin return commits only plug promotion");
+                assert!(
+                    matches!(&action, RackAction::Command("promote_cables", args) if args["end"] == "output" && args["cable_ids"] == json!(["one"]))
+                );
+                run_cable_action(&mut host.session, action);
+                let after = host.session.snapshot();
+                assert_eq!(after["patch"]["cables"][0]["id"], "one");
+                assert_eq!(after["patch"]["cables"][1]["id"], "two");
+                for index in 0..2 {
+                    assert_eq!(
+                        after["patch"]["cables"][index]["input_order"],
+                        before["patch"]["cables"][index]["input_order"]
+                    );
+                }
+                let end = CableEnd::Output {
+                    node: "src".into(),
+                    port: "out".into(),
+                };
+                assert_eq!(
+                    ordered_endpoint_cables(host.session.patch(), &end)
+                        .last()
+                        .unwrap()
+                        .id
+                        .as_deref(),
+                    Some("one")
+                );
+                host.assert_undo(&before);
+            }
+        }
+        let mut host = Host::new(opposite_tops_fixture());
+        let before = host.session.snapshot();
+        let menu = host.open(false);
+        let (_, submenu) = host.click(&menu, "two · ");
+        assert!(host.click(&submenu, "Move this cable").0.is_none());
+        let from = host.jack("src", "out", false);
+        assert!(
+            host.drop_at(from).is_none(),
+            "returning an already-top plug is a true no-op"
+        );
+        assert_eq!(host.session.snapshot(), before);
+    }
+
+    #[test]
+    fn move_all_endpoint_plug_order_does_not_change_native_array_duplicate_winner() {
+        let mut host = Host::new(opposite_tops_fixture());
+        let before = host.session.snapshot();
+        let menu = host.open(true);
+        assert!(host.click(&menu, "Move all").0.is_none());
+        let to = host.jack("dest", "signal", true);
+        let action = host.drop_at(to).expect("ordered bundle move");
+        assert!(matches!(&action, RackAction::Command("move_cables", args)
+            if args["cable_ids"] == json!(["one", "two"]) && args["plug_order"] == json!(["two", "one"])));
+        run_cable_action(&mut host.session, action);
+        assert_eq!(host.session.patch().cables.len(), 1);
+        assert_eq!(host.session.patch().cables[0].id.as_deref(), Some("one"));
+        assert_eq!(host.session.patch().cables[0].to, "dest");
+        assert_eq!(host.session.patch().cables[0].output_order, Some(1));
+        host.assert_undo(&before);
+    }
+
+    #[test]
+    fn independently_ordered_caps_keep_curves_in_array_order_and_move_preview_preserves_opposite_top(
+    ) {
+        fn cap_color(output: &egui::FullOutput, point: Pos2) -> Color32 {
+            output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Circle(circle)
+                        if circle.center == point && (circle.radius - 6.1).abs() < 0.001 =>
+                    {
+                        Some(circle.fill)
+                    }
+                    _ => None,
+                })
+                .next_back()
+                .expect("cable cap fill")
+        }
+        let mut host = Host::new(opposite_tops_fixture());
+        let input = host.jack("target", "signal", true);
+        let output = host.jack("src", "out", false);
+        let one = cable_instance_color(&host.session.patch().cables[0]);
+        let two = cable_instance_color(&host.session.patch().cables[1]);
+        let (_, rendered) = host.frame(vec![egui::Event::PointerMoved(pos2(1000.0, 600.0))]);
+        assert_eq!(cap_color(&rendered, input), one.gamma_multiply(0.58));
+        assert_eq!(cap_color(&rendered, output), two.gamma_multiply(0.58));
+        let curves: Vec<_> = rendered
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::CubicBezier(curve)
+                    if curve.points[0] == output
+                        && curve.points[3] == input
+                        && (curve.stroke.width - 6.0).abs() < 0.001 =>
+                {
+                    Some(curve.stroke.color.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            curves,
+            vec![
+                egui::epaint::ColorMode::Solid(one.gamma_multiply(0.64)),
+                egui::epaint::ColorMode::Solid(two.gamma_multiply(0.64))
+            ]
+        );
+        for (point, expected) in [(input, one), (output, two)] {
+            let (_, hovered) = host.frame(vec![egui::Event::PointerMoved(point)]);
+            let light = hovered
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Circle(circle)
+                        if circle.center == point && (circle.radius - 11.4).abs() < 0.001 =>
+                    {
+                        Some(circle.stroke.color)
+                    }
+                    _ => None,
+                })
+                .next_back()
+                .expect("top plug light");
+            assert_eq!(light, expected);
+        }
+        let before = host.session.snapshot();
+        // The grabbed IN plug is one; its fixed OUT plug is below two and must
+        // not be repainted over it by the moving cable's preview.
+        assert!(host
+            .frame(vec![egui::Event::PointerMoved(input), button(input, true)])
+            .0
+            .is_none());
+        let (_, preview) = host.frame(vec![egui::Event::PointerMoved(pos2(900.0, 550.0))]);
+        assert_eq!(cap_color(&preview, output), two.gamma_multiply(0.58));
+        assert_eq!(host.session.snapshot(), before);
+        host.frame(vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(host.session.snapshot(), before);
+    }
 }

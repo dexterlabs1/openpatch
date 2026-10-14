@@ -3127,6 +3127,10 @@ mod tests {
     #[test]
     fn same_batch_identical_replacement_retires_actions_and_clears_incoming_high_clock() {
         let mut patch = sequence_patch();
+        // Match fresh-connection presentation ranks so replacement remains
+        // byte-identical while runtime incarnation effects are exercised.
+        patch.cables[0].input_order = Some(1);
+        patch.cables[0].output_order = Some(1);
         patch.nodes[1].params.insert("value".into(), 10.0);
         // Keep the replacement at its original position so the committed graph
         // is byte-equivalent even though its sequencer identity has changed.
@@ -4752,6 +4756,63 @@ mod tests {
     }
 
     #[test]
+    fn plug_promotion_and_history_preserve_callback_phase_delay_and_tokens() {
+        let patch = stacked_history_patch();
+        let (mut callback, mut updates, mut disposal) = sequence_callback(&patch);
+        let mut packets = callback.scope_packets.take().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        session.set_live_module_events(Some(callback.performance.clone()));
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
+        let nodes = callback
+            .graphs
+            .active
+            .modules
+            .states
+            .map(|binding| binding.map(|binding| binding.token));
+        let cables: Vec<_> = callback
+            .graphs
+            .active
+            .modules
+            .cables
+            .iter()
+            .map(|binding| binding.map(|binding| binding.token))
+            .collect();
+        let mut reference = oscillator_reference();
+        let mut warmup = [[0.0; 2]; 80];
+        reference.process_audio_block(&mut warmup);
+        let mut preceding = warmup[79][0];
+        for (index, (tool, args)) in [
+            ("promote_cables", serde_json::json!({"cable_ids":["route_a"],"end":"input"})),
+            ("undo", serde_json::json!({})),
+            ("redo", serde_json::json!({})),
+            ("move_cables", serde_json::json!({"cable_ids":["route_b"],"end":"input","node":"sum","port":"signal","promote":true})),
+        ].into_iter().enumerate() {
+            session.execute(tool, args).unwrap();
+            let graph = scoped_route_graph(&callback, session.patch(), session.revision(), index as u64 + 2);
+            assert_eq!(graph.modules.states.map(|binding| binding.map(|binding| binding.token)), nodes);
+            assert_eq!(graph.modules.cables.iter().map(|binding| binding.map(|binding| binding.token)).collect::<Vec<_>>(), cables);
+            assert!(updates.push(graph).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+            let mut expected = [[0.0; 2]; 256];
+            reference.process_audio_block(&mut expected);
+            for packet_index in 0..256 / SCOPE_PACKET_SIZE {
+                let packet = packets.pop().unwrap();
+                for sample in 0..SCOPE_PACKET_SIZE {
+                    let frame = packet_index * SCOPE_PACKET_SIZE + sample;
+                    let delayed = if frame == 0 { preceding } else { expected[frame - 1][0] };
+                    assert_eq!(packet.y[sample], expected[frame][0], "{tool}: oscillator phase");
+                    assert_eq!(packet.x[sample], delayed + 3.0, "{tool}: summed delayed frame");
+                }
+            }
+            preceding = expected[255][0];
+            while packets.pop().is_ok() {}
+            while disposal.pop().is_ok() {}
+        }
+    }
+
+    #[test]
     fn outgoing_duplicate_preserves_original_phase_and_delays_and_restarts_only_copy_on_redo() {
         for source in ["b", "osc"] {
             let patch = stacked_history_patch();
@@ -5054,7 +5115,10 @@ mod tests {
 
     #[test]
     fn undo_redo_of_already_rendered_same_shape_cable_replacement_replays_delay_reset() {
-        let patch = stacked_history_patch();
+        let mut patch = stacked_history_patch();
+        // A recreated route_b receives rank 1 above the legacy unranked route_a.
+        patch.cables[1].input_order = Some(1);
+        patch.cables[1].output_order = Some(1);
         let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
         let mut packets = callback.scope_packets.take().unwrap();
         let workspace = tempfile::tempdir().unwrap();
@@ -5123,6 +5187,10 @@ mod tests {
     #[test]
     fn undo_redo_of_already_rendered_same_shape_module_replacement_replays_dsp_reset() {
         let mut patch = sequence_patch();
+        // Match fresh-connection presentation ranks so replacement remains
+        // byte-identical while runtime incarnation effects are exercised.
+        patch.cables[0].input_order = Some(1);
+        patch.cables[0].output_order = Some(1);
         patch.nodes.swap(0, 1);
         let parameters = patch.nodes[1].params.clone();
         let (mut callback, mut updates, _disposal) = sequence_callback(&patch);

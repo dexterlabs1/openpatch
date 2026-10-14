@@ -367,7 +367,9 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(moved["patch"], preview["patch"])
         self.assertEqual([c["id"] for c in moved["patch"]["cables"]], ["first", "second", "existing"])
         self.assertEqual(moved["patch"]["cables"][1]["color"], [0, 128, 255])
-        self.assertEqual(moved["patch"]["cables"][2], before["patch"]["cables"][2])
+        expected_sibling = dict(before["patch"]["cables"][2])
+        expected_sibling["input_order"] = moved["patch"]["cables"][2]["input_order"]
+        self.assertEqual(moved["patch"]["cables"][2], expected_sibling)
         self.require_tool_success("save_patch", {"filename": "cable-edits.json"})
         self.assertEqual(json.loads((self.workspace / "cable-edits.json").read_text()), moved["patch"])
         self.require_tool_success("undo")
@@ -406,6 +408,84 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(self.patch_snapshot()["patch"], discarded["patch"])
         self.require_tool_success("redo")
         self.assertEqual(self.patch_snapshot()["patch"], cleared["patch"])
+
+    def test_independent_endpoint_order_promote_persistence_and_noop_redo(self) -> None:
+        schemas = {tool["name"]: tool["inputSchema"]
+                   for tool in self.client.request("tools/list")["result"]["tools"]}
+        self.assertEqual(schemas["promote_cables"]["properties"]["cable_ids"]["maxItems"], 1024)
+        self.assertEqual(schemas["promote_cables"]["properties"]["end"]["enum"], ["input", "output"])
+        self.assertEqual(schemas["move_cables"]["properties"]["promote"], {"type": "boolean", "default": False})
+        self.assertEqual(schemas["move_cables"]["properties"]["plug_order"],
+                         schemas["promote_cables"]["properties"]["cable_ids"])
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [{"id": "source", "kind": "constant", "params": {"value": 1}},
+                                     {"id": "sink", "kind": "gain"}], "cables": [
+                {"id": "first", "from": "source", "to": "sink", "input": "signal",
+                 "input_order": 65535, "output_order": 0},
+                {"id": "second", "from": "source", "to": "sink", "input": "signal",
+                 "input_order": 0, "output_order": 65535},
+            ], "output": "sink",
+        }})
+        before = self.patch_snapshot()
+        edits = [{"tool": "promote_cables", "arguments": {"cable_ids": ["first"], "end": "output"}}]
+        preview = self.payload(self.require_tool_success("preview_edits", {"edits": edits}))
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(preview["changes"]["added_cables"], [])
+        self.assertEqual(preview["changes"]["removed_cables"], [])
+        self.assertEqual(preview["changes"]["changed_cables"], [])
+        self.assertFalse(preview["changes"]["cable_order_changed"])
+        self.assertTrue(preview["changes"]["changed_cable_order"])
+        promoted = self.payload(self.require_tool_success("apply_edits", {"edits": edits}))
+        self.assertEqual(promoted["patch"], preview["patch"])
+        self.assertEqual([c["id"] for c in promoted["patch"]["cables"]], ["first", "second"])
+        self.assertEqual([c["input_order"] for c in promoted["patch"]["cables"]], [65535, 0])
+        self.assertGreater(promoted["patch"]["cables"][0]["output_order"],
+                           promoted["patch"]["cables"][1]["output_order"])
+        self.require_tool_success("save_patch", {"filename": "plug-order.json"})
+        self.assertEqual(json.loads((self.workspace / "plug-order.json").read_text()), promoted["patch"])
+        capture = self.payload(self.require_tool_success("capture_signal", {"id": "sink", "seconds": 0.002}))
+        self.assertEqual(capture["bins"][-1]["mean"], 2)
+        self.require_tool_success("undo")
+        undone = self.patch_snapshot()
+        self.assertEqual(undone["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("promote_cables", {
+            "cable_ids": ["second"], "end": "output", "expected_revision": undone["revision"],
+        })), undone)
+        self.assertEqual(undone["history"]["redo_steps"], 1)
+        for args in ({"cable_ids": ["first", "first"], "end": "output"},
+                     {"cable_ids": ["first", "missing"], "end": "output"},
+                     {"cable_ids": ["first"], "end": "output", "expected_revision": 0}):
+            self.require_tool_error("promote_cables", args)
+            self.assertEqual(self.patch_snapshot(), undone)
+        self.require_tool_error("move_cables", {"cable_ids": ["first", "second"], "end": "output",
+            "node": "source", "port": "out", "promote": True, "plug_order": ["first"]})
+        self.assertEqual(self.patch_snapshot(), undone)
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], promoted["patch"])
+        self.require_tool_success("load_patch", {"filename": "plug-order.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], promoted["patch"])
+        # A successful same-origin move explicitly chooses visual bundle order
+        # without changing routes or the independent input-end order.
+        loaded = self.patch_snapshot()
+        move = {"cable_ids": ["second", "first"], "end": "output", "node": "source",
+                "port": "out", "promote": True, "plug_order": ["first", "second"]}
+        preview = self.payload(self.require_tool_success("preview_edits", {
+            "edits": [{"tool": "move_cables", "arguments": move}],
+        }))
+        self.assertTrue(preview["changes"]["changed_cable_order"])
+        self.assertEqual(preview["changes"]["added_cables"], [])
+        self.assertEqual(preview["changes"]["removed_cables"], [])
+        moved = self.payload(self.require_tool_success("move_cables", {
+            **move, "expected_revision": loaded["revision"],
+        }))
+        self.assertEqual(moved["patch"], preview["patch"])
+        self.assertEqual([c["input_order"] for c in moved["patch"]["cables"]], [65535, 0])
+        self.assertLess(moved["patch"]["cables"][0]["output_order"],
+                        moved["patch"]["cables"][1]["output_order"])
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], loaded["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], moved["patch"])
 
     def test_clear_cables_schema_empty_noop_stale_guard_and_redo_preservation(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]

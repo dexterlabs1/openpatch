@@ -9,6 +9,10 @@
 //! ±1,000,000 safety bound on arithmetic modules; WAV export clips to ±1.
 
 use serde::{Deserialize, Serialize};
+mod cable_order;
+pub use cable_order::{
+    assign_new_cable_orders, cable_endpoint_order, promote_cable_endpoints, CableEndpoint,
+};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::TAU;
@@ -117,6 +121,12 @@ fn is_false(value: &bool) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
+    /// Independent visual plug ranks. Absent ranks sort as zero with stable
+    /// cable-array ties; neither field participates in DSP routing identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_order: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_order: Option<u16>,
     /// Optional persisted RGB bytes. Pure presentation metadata: not part of
     /// route identity or DSP state adoption. Omitted colors use the UI palette.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1364,6 +1374,8 @@ pub fn demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: from.into(),
@@ -1410,6 +1422,8 @@ pub fn analog_demo_patch() -> Patch {
             .collect(),
     };
     let cable = |from: &str, to: &str, input: &str| Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: from.into(),

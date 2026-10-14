@@ -41,6 +41,8 @@ fn target(kind: &str, bypassed: bool, edited: bool) -> Node {
 
 fn cable(from: &str, input: &str) -> Cable {
     Cable {
+        input_order: None,
+        output_order: None,
         color: None,
         id: None,
         from: from.into(),
