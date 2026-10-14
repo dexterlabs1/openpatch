@@ -28,6 +28,7 @@
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
+- **Build longer arrangements.** Use SCORE through MCP for chords, ratchets and automation, then shape the mix with native drums, stereo delay, reverb and sidechain compression. [Scores and studio modules →](docs/SCORE_AND_STUDIO.md)
 - **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
@@ -138,6 +139,25 @@ a performance at specified sample frames.
 engine fixture; this screenshot does not demonstrate live audio-device testing.</sub>
 
 [Sequencer controls, timing, and remaining parity →](docs/SEQUENCER.md)
+
+</details>
+
+<details>
+<summary><strong>Arrange patterns and stereo effects</strong></summary>
+
+![Native SCORE, DRUM, state-variable filter, stereo delay, SPACE reverb and DUCK compressor panels](docs/images/openpatch-score-studio.png)
+
+SCORE stores four note tracks and up to sixteen automation lanes. Use MCP to
+edit scores, connect voices and export an arrangement of up to five minutes.
+The panel exposes tempo, swing, run state and track outputs; a graphical note
+editor remains future work.
+
+These are original functional algorithms. Their documented limits include
+SVF drive aliasing and differences from third-party VCV plugins.
+[Module behavior, MCP examples and fidelity limits →](docs/SCORE_AND_STUDIO.md)
+
+<sub>Native Linux / Mesa CI render. This fixture illustrates the panels and
+connections; it does not demonstrate macOS device playback.</sub>
 
 </details>
 
