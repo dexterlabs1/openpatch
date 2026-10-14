@@ -48,7 +48,7 @@ Validation includes an independent nearest-note search over all 4,095 nonempty m
 | `poly_constant` | 0–16 configured constant-voltage channels, `v1`…`v16`, with explicit zero-channel output; default count 3. | Original source/testing utility; not a claimed stock VCV equivalent. |
 | `poly_split` | `signal` to 16 independently named mono outputs `out1`…`out16`; missing input channels emit mono 0 V. | Native channel-count indicators and direct VCV behavior/UI comparison remain open. |
 | `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; 1–16 forces count. Empty automatic input gives zero channels. | The zero setting selects automatic mode, not forced zero; native channel indicators and full VCV configuration parity remain open. |
-| `poly_sum` | Unity sum of active channels to one mono output; empty input gives mono zero; arithmetic safety bound ±1,000,000 V. | No OUT level control, level meter or channel-count indicators. |
+| `poly_sum` | Active-channel sum with 0–1 level, mono output, six post-level meter bands and actual input-channel count; empty input gives mono zero. | Native device qualification and Rack import remain open; [SUM contract](POLYPHONIC_SUM.md). |
 
 Independent tests exercise sparse Merge/Split routing, all 16 channels, zero
 channels, explicit source-port selection, mono-adapter versus summed output,
@@ -148,7 +148,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
 | Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
 | Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
-| Sum | Polyphony | Partial: `poly_sum`, unity mono reduction and empty-input behavior tested | OUT level control, level/channel indicators and headroom behavior |
+| Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
 | Viz | Measurement | Planned; engine channel frames now available | Per-channel voltage display calibration |
 | Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
 | Noise | Source | Partial: seeded Gaussian `white_noise` with RMS control | Colored outputs, spectral-density budget and VCV level calibration |

@@ -43,6 +43,7 @@ mod poly;
 mod pulses;
 mod push;
 mod saved_state;
+mod sum;
 pub use saved_state::SavedModuleState;
 mod routing;
 mod sequence;

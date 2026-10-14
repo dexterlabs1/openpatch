@@ -36,6 +36,7 @@ enum ModuleKind {
     Process,
     Rescale,
     VcaMix,
+    Sum,
     Pulses,
     Push,
     Gates,
@@ -51,6 +52,7 @@ impl ModuleKind {
             "process" => Some(Self::Process),
             "rescale" => Some(Self::Rescale),
             "vca_mix" => Some(Self::VcaMix),
+            "poly_sum" => Some(Self::Sum),
             "pulses" => Some(Self::Pulses),
             "push" => Some(Self::Push),
             "gates" => Some(Self::Gates),
@@ -67,6 +69,7 @@ impl ModuleKind {
             Self::Process => "process",
             Self::Rescale => "rescale",
             Self::VcaMix => "vca_mix",
+            Self::Sum => "poly_sum",
             Self::Pulses => "pulses",
             Self::Push => "push",
             Self::Gates => "gates",
@@ -186,6 +189,7 @@ struct Meter {
     value: AtomicU32,
     flags: AtomicU32,
     saved_state: AtomicU32,
+    input_channels: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -198,6 +202,7 @@ impl Meter {
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
             saved_state: AtomicU32::new(0),
+            input_channels: AtomicU32::new(u32::MAX),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -230,6 +235,10 @@ impl Meter {
         }
         if let Some(lights) = snapshot.lights {
             flags |= 4 | (u32::from(lights.manual) << 4) | (u32::from(lights.count) << 8);
+            self.input_channels.store(
+                lights.input_channels.map(u32::from).unwrap_or(u32::MAX),
+                Ordering::SeqCst,
+            );
             for (index, value) in lights.brightness.iter().flatten().enumerate() {
                 self.brightness[index].store(value.to_bits(), Ordering::SeqCst);
             }
@@ -249,6 +258,7 @@ impl Meter {
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
             let saved_state = self.saved_state.load(Ordering::SeqCst);
+            let input_channels = self.input_channels.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -280,6 +290,7 @@ impl Meter {
                         count: (flags >> 8) as u8,
                         brightness,
                         manual: flags & 16 != 0,
+                        input_channels: (input_channels <= 16).then_some(input_channels as u8),
                     }),
                 },
             );
@@ -1255,6 +1266,7 @@ mod tests {
                                 lights: (slot == 1).then_some(ModuleLightState {
                                     count: 2,
                                     manual: true,
+                                    input_channels: Some((frame % 17) as u8),
                                     ..ModuleLightState::default()
                                 }),
                             },
@@ -1283,6 +1295,10 @@ mod tests {
                 );
                 assert_eq!(snapshot["modules"]["second"]["controls"]["pressed_mask"], 3);
                 assert_eq!(snapshot["modules"]["second"]["lights"]["count"], 2);
+                assert_eq!(
+                    snapshot["modules"]["second"]["lights"]["input_channels"],
+                    frame % 17
+                );
             }
         }
         writer.join().unwrap();

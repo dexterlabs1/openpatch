@@ -4366,7 +4366,12 @@ mod tests {
 
     #[test]
     fn read_only_signal_module_lights_are_published_without_sequence_state() {
-        for (kind, count) in [("compare", 4), ("rescale", 2), ("vca_mix", 4)] {
+        for (kind, count) in [
+            ("compare", 4),
+            ("rescale", 2),
+            ("vca_mix", 4),
+            ("poly_sum", 6),
+        ] {
             let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
                 "nodes":[{"id":"meter","kind":kind}],"output":"meter",
                 "output_port":match kind {"compare" => "max", "vca_mix" => "mix", _ => "out"}}))
@@ -4389,6 +4394,8 @@ mod tests {
             );
         }
     }
+
+    include!("sum_audio_tests.rs");
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

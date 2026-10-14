@@ -131,7 +131,7 @@ panels or configuration menus. They require version 2.
 | `poly_constant` | `out`; integer `channels` 0–16 (default 3); `v1`…`v16` | Configured voltage per active channel; channels may explicitly be zero. |
 | `poly_split` | `signal`; `out1`…`out16` | Every output is mono; indices beyond the input count produce 0 V. |
 | `poly_merge` | `in1`…`in16`; `out`; integer `channels` 0–16 | `channels=0` selects automatic highest occupied input index; 1–16 forces the count. Holes remain zero; each input contributes channel 0. No connected signals in automatic mode produces zero channels. |
-| `poly_sum` | `signal`; `out` | One-channel unity sum of all active input channels; empty input produces mono zero. No automatic averaging. |
+| `poly_sum` | `signal`; `out` | One-channel sum of all active input channels with `level` 0–1 (default unity); empty input produces mono zero. No automatic averaging. [Meter and state contract](POLYPHONIC_SUM.md). |
 
 Merge's zero setting means automatic, not forced zero. Use a zero-channel
 `poly_constant` when explicit virtual unpatching is required. This difference

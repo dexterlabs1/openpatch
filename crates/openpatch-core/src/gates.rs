@@ -255,6 +255,7 @@ impl Gates {
     }
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
+            input_channels: None,
             count: 6,
             brightness: self.lights.map(|pair| pair.map(|value| value as f32)),
             manual: self.pressed,

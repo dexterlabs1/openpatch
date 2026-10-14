@@ -1,0 +1,225 @@
+{
+  "reference": {
+    "fundamental_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Sum.cpp",
+    "source_sha256": "6c69ef21bf867c991985dba12b579b5778fe06275422044edc8151ab78767560",
+    "sdk_path": "/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
+    "sdk_header_sha256": {
+      "dsp/vumeter.hpp": "58fc6a7fedd9419f152ef9a0c1c2572d3fa68b3bb7e029261593a1947d2dd377",
+      "dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+      "dsp/common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "math.hpp": "154bf143e14071e782b28c54c5c4a0782290d5ef0428e113583cef2ba9f209de"
+    }
+  },
+  "method": "Production sum.rs compiled directly with minimal host types versus actual Rack SDK Input, VuMeter2, ClockDivider; independent C++ driver follows pinned Sum scheduling. Upstream Sum.cpp is fetched and hashed, not compiled or vendored.",
+  "coverage": [
+    "finite signed sums over 0..16 active lanes",
+    "post-level gain and cancellation",
+    "16-frame sampling and 512-frame held indicators",
+    "six VU bands and sampled impulse behavior",
+    "release at 44100/48000/96000 Hz",
+    "level edits retain meter phase and state via production adopt"
+  ],
+  "limitations": [
+    "Not a full Rack module/plugin or GUI execution",
+    "Minimal Rust host adapters bypass parameter validation, graph/cable delay, telemetry publication, UI and MCP",
+    "Inputs remain below OpenPatch safety bound; unrestricted headroom, nonfinite values and clipping differences are not parity claims",
+    "No bypass or sample-rate-change lifecycle validation"
+  ],
+  "tolerances": {
+    "output_absolute": 1e-06,
+    "output_relative": 1e-06,
+    "brightness_absolute": 3e-06,
+    "channel_count": "exact"
+  },
+  "production_source_sha256": "073863b84ce94971a4c48b13033d8ba42b565fbaf48957da853ca0f988a23335",
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)"
+  },
+  "cases": [
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "b6cb069eced9a8aedda13ff5e94877b7cb5d9af5d62ff7a7f51a5c5de429e8ba",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "post_level_release",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "43e1dbc47a6d95b7df041f7ea21a16f58960ec1b0300cca7092dbda24bf1417c",
+      "max_output_error": 0.0,
+      "max_brightness_error": 2.980232238769531e-07,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "cb46b78b72350f20882d3edf94a484121b61816b980157b3fb597925f3e3fa45",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "meter_thresholds",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "c5b43102b24e92aa36be8bb2393bba543e71e5b4b99c0533936cc49a47ed9b3f",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "02d9050ffcd4b7b4752ef4aaa0ed77b79ea2cfcf2f6d20414f6faab0f6b0614e",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cancellation_headroom",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "input_sha256": "8afb93eb323de8c03aebb4ca738bc3d525ba57a23746528cdee0a9c95a35b426",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "b6cb069eced9a8aedda13ff5e94877b7cb5d9af5d62ff7a7f51a5c5de429e8ba",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "post_level_release",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "43e1dbc47a6d95b7df041f7ea21a16f58960ec1b0300cca7092dbda24bf1417c",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "cb46b78b72350f20882d3edf94a484121b61816b980157b3fb597925f3e3fa45",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "meter_thresholds",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "c5b43102b24e92aa36be8bb2393bba543e71e5b4b99c0533936cc49a47ed9b3f",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "02d9050ffcd4b7b4752ef4aaa0ed77b79ea2cfcf2f6d20414f6faab0f6b0614e",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cancellation_headroom",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "input_sha256": "8afb93eb323de8c03aebb4ca738bc3d525ba57a23746528cdee0a9c95a35b426",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "count_and_polarity",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "b6cb069eced9a8aedda13ff5e94877b7cb5d9af5d62ff7a7f51a5c5de429e8ba",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "post_level_release",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "43e1dbc47a6d95b7df041f7ea21a16f58960ec1b0300cca7092dbda24bf1417c",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sampled_impulses",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "cb46b78b72350f20882d3edf94a484121b61816b980157b3fb597925f3e3fa45",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "meter_thresholds",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "c5b43102b24e92aa36be8bb2393bba543e71e5b4b99c0533936cc49a47ed9b3f",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "random_polyphony",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "02d9050ffcd4b7b4752ef4aaa0ed77b79ea2cfcf2f6d20414f6faab0f6b0614e",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cancellation_headroom",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "input_sha256": "8afb93eb323de8c03aebb4ca738bc3d525ba57a23746528cdee0a9c95a35b426",
+      "max_output_error": 0.0,
+      "max_brightness_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "passed": true,
+  "total_frames": 147456
+}

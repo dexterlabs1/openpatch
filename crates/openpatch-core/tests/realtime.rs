@@ -52,3 +52,31 @@ fn process_block_allocates_nothing_even_on_first_callback() {
     assert_eq!(ALLOCATIONS.with(Cell::get), 0, "audio callback allocated");
     assert!(samples.iter().all(|value| value.is_finite()));
 }
+
+#[test]
+fn sum_meter_and_channel_telemetry_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame};
+    let patch: Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"source","kind":"poly_constant","params":{"channels":16}},
+                 {"id":"sum","kind":"poly_sum","params":{"level":0.5}}],
+        "cables":[{"from":"source","to":"sum","input":"signal","output":"out"}],
+        "output":"sum","output_port":"out"
+    }))
+    .unwrap();
+    let mut engine = patch.compile().unwrap();
+    let handle = engine.resolve_module_lights("sum").unwrap();
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for _ in 0..20 {
+        engine.process_poly_block(&mut frames);
+        std::hint::black_box(engine.module_lights(handle));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(
+        engine.module_lights(handle).unwrap().input_channels,
+        Some(16)
+    );
+}

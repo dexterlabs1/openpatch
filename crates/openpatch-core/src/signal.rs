@@ -14,6 +14,9 @@ pub struct ModuleControlState {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
+    /// SUM input channel count, refreshed together with its six meter bands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_channels: Option<u8>,
     pub count: u8,
     pub brightness: [[f32; 2]; MAX_MODULE_LIGHTS],
     pub manual: bool,
@@ -503,6 +506,7 @@ impl Signal {
     }
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
+            input_channels: None,
             count: self.light_count,
             brightness: self.lights.map(|row| row.map(|v| v as f32)),
             manual: self.dsp.controls().is_some_and(|m| m.pressed),

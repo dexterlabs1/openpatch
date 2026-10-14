@@ -18,6 +18,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "analog_vca"
         | "mixer"
         | "mix6"
+        | "poly_sum"
         | "cv_mix"
         | "vca_mix"
         | "fade"

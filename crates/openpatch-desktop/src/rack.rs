@@ -2283,13 +2283,7 @@ impl Rack {
                 );
             }
             if node.kind == "poly_sum" {
-                painter.text(
-                    point(width * 0.5, 183.0),
-                    Align2::CENTER_CENTER,
-                    "SUM CHANNELS",
-                    crate::panel_skin::print_font(painter.ctx(), 12.0 * self.zoom),
-                    MUTED,
-                );
+                self.sum_panel(ui, node, rect);
             }
             if node.kind == "mid_side" {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
@@ -2589,6 +2583,8 @@ impl Rack {
                         pos2(120.0, if *name == "position" { 121.0 } else { 236.0 }),
                         if *name == "position" { 31.0 } else { 24.0 },
                     )
+                } else if node.kind == "poly_sum" {
+                    (pos2(width * 0.5, 145.0), 29.0)
                 } else if node.kind == "compare" {
                     (pos2(width * 0.5, 125.0), 27.0)
                 } else if node.kind == "process" {
@@ -3219,6 +3215,76 @@ impl Rack {
                 self.zoom,
             );
         }
+    }
+
+    /// SUM's telemetry is post-attenuator; absent publication stays visibly unavailable.
+    fn sum_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
+        let zoom = self.zoom;
+        let painter = ui.painter();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let state = self
+            .module_lights
+            .get(&node.id)
+            .filter(|state| state.count >= 6 && state.input_channels.is_some());
+        painter.text(
+            point(75.0, 211.0),
+            Align2::CENTER_CENTER,
+            "INPUT CHANNELS",
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+            MUTED,
+        );
+        painter.text(
+            point(75.0, 233.0),
+            Align2::CENTER_CENTER,
+            state.map_or_else(
+                || "— / 16".to_owned(),
+                |s| format!("{} / 16", s.input_channels.unwrap().min(16)),
+            ),
+            FontId::monospace(18.0 * zoom),
+            INK,
+        );
+        painter.text(
+            point(75.0, 266.0),
+            Align2::CENTER_CENTER,
+            "OUT · 10 V = 0 dB",
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+            MUTED,
+        );
+        for (band, db) in [0, -3, -6, -12, -24, -36].into_iter().enumerate() {
+            let y = 284.0 + band as f32 * 13.0;
+            let brightness = state.map_or(0.0, |s| s.brightness[band][0]).clamp(0.0, 1.0);
+            let color = if band == 0 {
+                Color32::from_rgb(218, 141, 53)
+            } else {
+                Color32::from_rgb(76, 163, 112)
+            };
+            painter.rect_filled(
+                Rect::from_min_size(point(41.0, y - 4.0), vec2(55.0, 8.0) * zoom),
+                1.0,
+                color.gamma_multiply(0.14 + brightness * 0.86),
+            );
+            painter.text(
+                point(105.0, y),
+                Align2::LEFT_CENTER,
+                format!("{db}"),
+                FontId::monospace(9.0 * zoom),
+                MUTED,
+            );
+        }
+        painter.text(
+            point(75.0, 373.0),
+            Align2::CENTER_CENTER,
+            if state.is_some() {
+                "POST-LEVEL"
+            } else {
+                "METER UNAVAILABLE"
+            },
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
+            MUTED,
+        );
+        ui.interact(Rect::from_min_max(point(24.0, 204.0), point(130.0, 380.0)),
+            ui.id().with((&node.id, "sum-meter")), Sense::hover()).on_hover_text(
+                "Active input channels: 0–16. Output meter measures the signed channel sum after LEVEL, relative to 10 V. Opposite voices can cancel. No published telemetry is shown as unavailable.");
     }
 
     fn mixing_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
@@ -7236,6 +7302,9 @@ fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: 
 
 #[cfg(test)]
 mod tests {
+    mod sum_ui_tests {
+        include!("sum_ui_tests.rs");
+    }
     use super::*;
 
     fn frame(
