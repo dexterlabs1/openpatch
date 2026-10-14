@@ -265,8 +265,9 @@ sixteen full circuit voices still exceed realtime CPU capacity in the
 
 ![Native MIDI voice with a performance keyboard and independent envelope voices](docs/images/openpatch-midi.png)
 
-Choose **File → MIDI keyboard voice**, then **Play**. Use `A W S E D F T G Y H U J K`
-or click the piano keys. **Audio / MIDI** selects your output device and hardware
+Choose **File → MIDI keyboard voice**, then **Play**. Play 32 pitches with the
+`ZXCVB` and `QWERTY` rows or click the piano keys. Backtick and `1` shift octaves;
+held notes retain their pitch. **Audio / MIDI** selects your output device and hardware
 controller. Sustain, velocity, pitch wheel, clock, and polyphonic voice allocation
 are available through the MIDI TO CV panel. The keyboard's **All notes off**
 button releases held notes.

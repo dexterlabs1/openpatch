@@ -647,10 +647,10 @@ impl OpenPatch {
             audio.panic_midi();
         }
     }
-    fn performance_keyboard(&mut self, ctx: &egui::Context) {
-        let enabled = self.keyboard_open
+    fn performance_keyboard_enabled(&self, ctx: &egui::Context, playing: bool) -> bool {
+        self.keyboard_open
             && !egui::Popup::is_any_open(ctx)
-            && self.audio.as_ref().is_some_and(Audio::is_playing)
+            && playing
             && !ctx.wants_keyboard_input()
             && ctx.input(|i| i.focused)
             && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
@@ -662,9 +662,25 @@ impl OpenPatch {
             && !self.audio_performance_open
             && !self.recovery_open
             && !self.confirm_engine_upgrade
-            && self.confirm_discard.is_none();
-        let events = self.keyboard.update(ctx, enabled);
+            && self.confirm_discard.is_none()
+            && !self.allow_close
+    }
+    fn update_performance_keyboard(
+        &mut self,
+        ctx: &egui::Context,
+        playing: bool,
+    ) -> Vec<openpatch_core::MidiEvent> {
+        let enabled = self.performance_keyboard_enabled(ctx, playing);
+        self.keyboard.update(ctx, enabled)
+    }
+    fn service_performance_keyboard(&mut self, ctx: &egui::Context) {
+        let playing = self.audio.as_ref().is_some_and(Audio::is_playing);
+        let events = self.update_performance_keyboard(ctx, playing);
         self.send_notes(events);
+    }
+    fn performance_keyboard(&mut self, ctx: &egui::Context) {
+        let enabled = self
+            .performance_keyboard_enabled(ctx, self.audio.as_ref().is_some_and(Audio::is_playing));
         if self.keyboard_open {
             let mut events = Vec::new();
             egui::TopBottomPanel::bottom("performance-keyboard").show(ctx, |ui| {
@@ -4042,6 +4058,9 @@ impl eframe::App for OpenPatch {
                 }
             }
         }
+        // Dock placement happens before the rack, but note events must wait for
+        // every editor/modal to claim keyboard focus in this frame.
+        self.service_performance_keyboard(ctx);
         self.smoke(ctx);
         ctx.request_repaint_after(Duration::from_millis(33));
     }
@@ -7478,5 +7497,231 @@ mod project_workflow_tests {
         session.execute("undo", json!({})).unwrap();
         let (_, restored) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
         assert!(!restored.dirty());
+    }
+
+    fn performance_key(key: egui::Key, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: Some(key),
+            pressed,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    #[test]
+    fn performance_keyboard_guards_release_notes_without_changing_the_document() {
+        use openpatch_core::MidiEvent;
+        for blocked in [
+            "closed",
+            "stopped",
+            "blur",
+            "text",
+            "popup",
+            "file",
+            "settings",
+            "audio-performance",
+            "shader",
+            "recovery",
+            "discard",
+            "preset",
+            "template",
+            "engine",
+            "drag",
+            "closing",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            app.keyboard_open = true;
+            let before = app.shared.lock().unwrap().snapshot();
+            let layout = app.rack.layout();
+            let ctx = egui::Context::default();
+            let mut events = Vec::new();
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: true,
+                    events: vec![performance_key(egui::Key::Z, true, egui::Modifiers::NONE)],
+                    ..Default::default()
+                },
+                |ctx| {
+                    events = app.update_performance_keyboard(ctx, true);
+                },
+            );
+            assert_eq!(
+                events,
+                vec![MidiEvent::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 127
+                }],
+                "{blocked}"
+            );
+            app.keyboard_open = blocked != "closed";
+            app.file_mode = (blocked == "file").then_some(FileMode::Open);
+            app.settings_open = blocked == "settings";
+            app.audio_performance_open = blocked == "audio-performance";
+            app.shader_open = blocked == "shader";
+            app.recovery_open = blocked == "recovery";
+            app.confirm_discard = (blocked == "discard").then_some(PendingAction::Close);
+            app.confirm_engine_upgrade = blocked == "engine";
+            app.allow_close = blocked == "closing";
+            if blocked == "preset" {
+                app.preset_dialog = Some(PresetDialog::new(
+                    "tone".into(),
+                    "oscillator".into(),
+                    app.revision,
+                    PresetMode::Save,
+                ));
+            }
+            if blocked == "template" {
+                app.template_save = Some(TemplateSave {
+                    document: app.capture_document(),
+                    token: None,
+                });
+            }
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: blocked != "blur",
+                    events: vec![performance_key(egui::Key::Q, true, egui::Modifiers::NONE)],
+                    ..Default::default()
+                },
+                |ctx| {
+                    if blocked == "text" {
+                        ctx.memory_mut(|m| m.request_focus(egui::Id::new("keyboard-guard-text")));
+                    }
+                    if blocked == "popup" {
+                        egui::Popup::open_id(ctx, egui::Id::new("keyboard-guard-popup"));
+                    }
+                    if blocked == "drag" {
+                        egui::DragAndDrop::set_payload(
+                            ctx,
+                            LibraryDrag {
+                                kind: "constant".into(),
+                            },
+                        );
+                    }
+                    assert!(
+                        !app.performance_keyboard_enabled(ctx, blocked != "stopped"),
+                        "{blocked}"
+                    );
+                    events = app.update_performance_keyboard(ctx, blocked != "stopped");
+                },
+            );
+            assert_eq!(
+                events,
+                vec![MidiEvent::NoteOff {
+                    channel: 0,
+                    note: 60,
+                    velocity: 127
+                }],
+                "{blocked}"
+            );
+            assert!(app.keyboard.release().is_empty(), "{blocked} released once");
+            assert_eq!(app.shared.lock().unwrap().snapshot(), before, "{blocked}");
+            assert_eq!(app.rack.layout(), layout, "{blocked}");
+        }
+    }
+
+    #[test]
+    fn same_frame_text_focus_prevents_performance_note_after_dock_reserves_space() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.keyboard_open = true;
+        let before = app.shared.lock().unwrap().snapshot();
+        let ctx = egui::Context::default();
+        let mut text = String::new();
+        let _ = ctx.run(
+            egui::RawInput {
+                focused: true,
+                events: vec![performance_key(egui::Key::Z, true, egui::Modifiers::NONE)],
+                ..Default::default()
+            },
+            |ctx| {
+                assert!(app.performance_keyboard_enabled(ctx, true));
+                app.performance_keyboard(ctx);
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut text))
+                        .request_focus();
+                });
+                assert!(ctx.wants_keyboard_input());
+                assert!(app.update_performance_keyboard(ctx, true).is_empty());
+            },
+        );
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert!(app.keyboard.release().is_empty());
+    }
+
+    #[test]
+    fn command_and_control_host_shortcuts_remain_actions_and_never_performance_notes() {
+        for ctrl in [false, true] {
+            for key in [
+                egui::Key::N,
+                egui::Key::O,
+                egui::Key::S,
+                egui::Key::Z,
+                egui::Key::D,
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let mut app = host(dir.path());
+                app.keyboard_open = true;
+                app.rack.select_only("tone".into());
+                let before = app.shared.lock().unwrap().snapshot();
+                assert!(app.patch.nodes.iter().any(|node| node.id == "tone"));
+                assert_eq!(app.rack.selected_ids(), vec!["tone"]);
+                assert!(before["history"]["undo_steps"].as_u64().unwrap() > 0);
+                let count = app.patch.nodes.len();
+                let modifiers = egui::Modifiers {
+                    command: true,
+                    ctrl,
+                    ..Default::default()
+                };
+                let ctx = egui::Context::default();
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1100.0, 800.0),
+                        )),
+                        focused: true,
+                        modifiers,
+                        // Rack duplication intentionally requires the pointer over
+                        // its canvas even when a module is already selected.
+                        events: vec![
+                            egui::Event::PointerMoved(egui::pos2(84.0, 44.0)),
+                            performance_key(key, true, modifiers),
+                        ],
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        app.global_shortcuts(ctx);
+                        app.rack_workspace(ctx, None);
+                        assert!(
+                            app.update_performance_keyboard(ctx, true).is_empty(),
+                            "{key:?}, ctrl={ctrl}"
+                        );
+                    },
+                );
+                match key {
+                    egui::Key::N => {
+                        assert_eq!(app.title, "Untitled");
+                        assert_eq!(
+                            app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
+                            0
+                        );
+                    }
+                    egui::Key::O => assert!(app.file_mode == Some(FileMode::Open)),
+                    egui::Key::S => assert!(app.file_mode == Some(FileMode::Save)),
+                    egui::Key::Z => assert_ne!(app.shared.lock().unwrap().snapshot(), before),
+                    egui::Key::D => assert_eq!(
+                        app.patch.nodes.len(),
+                        count + 1,
+                        "ctrl={ctrl}: {}",
+                        app.status
+                    ),
+                    _ => unreachable!(),
+                }
+                assert!(app.keyboard.release().is_empty());
+            }
+        }
     }
 }

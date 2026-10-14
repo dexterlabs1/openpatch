@@ -1,10 +1,51 @@
 # MIDI performance and stereo audio
 
-Choose **File → MIDI keyboard voice**, then **Play**. Open the performance
-keyboard from **View** to play with the mouse or `A W S E D F T G Y H U J K`.
-The octave buttons release held notes before transposing. Computer-keyboard
-notes use MIDI channel 1 and velocity 100. Text entry, modal windows, focus loss,
-and hiding the keyboard release its notes; OS key repeat does not retrigger.
+Choose **File → MIDI keyboard voice**, then **Play**. Open **View → Performance
+keyboard** to play the on-screen piano or the two computer-keyboard rows.
+The default range is **C4–G6** (MIDI 60–91), with 32 pitches and five overlapping
+key aliases. This replaces the earlier 13-note A-row layout.
+
+## Computer-keyboard performance
+
+The US-position map follows the [pinned Rack 2 keyboard driver](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/keyboard.cpp):
+
+```text
+Semitone offsets  0–16: Z S X D C V G B H N J M , L . ; /
+Semitone offsets 12–31: Q 2 W 3 E R 5 T 6 Y 7 U I 9 O 0 P [ = ]
+```
+
+Backtick lowers the base by an octave; `1` raises it. The buttons provide the
+same shifts. The base ranges from MIDI 0 to 108 in 12-semitone steps; pitches
+above MIDI 127 are unavailable and dimmed. Octave changes affect subsequent
+presses: each held source retains its original pitch until released. Physical
+key positions are used when the platform supplies them, with logical-key
+fallback. Native layout coverage beyond US QWERTY remains unqualified; Rack's
+separate numpad and mouse-position MIDI drivers remain future work.
+
+Notes use MIDI channel 1 and velocity 127. Initial, unmodified key presses are
+processed in event order after the host's editors and dialogs handle input;
+OS repeat does not retrigger notes or octave shifts. Text entry, modal windows,
+focus loss, modifier shortcuts, stopping playback, and hiding the keyboard
+release its notes. Returning focus does not restart a still-held key. If the OS
+omits a key release while another window is focused, the first tap of that key
+re-arms it; the next press plays. This conservative behavior also applies to
+held octave keys, because the current window backend loses OS-repeat identity
+on focus changes. Releases consumed by an editor during continuous focus are
+reconciled without requiring an extra tap.
+
+Overlapping aliases and the mouse share ownership of each pitch. For example,
+holding both comma and Q sounds one C5; releasing only comma sustains Q's note.
+The final owner emits note-off. This deliberately improves on Rack's separate
+on/off events for overlapping aliases. Octave changes preserve that ownership,
+and mouse dragging releases the previous key as it moves to the next. Hardware
+MIDI remains an independent producer; its repeated-note policy is described
+below. **All notes off** resets performance state without editing the patch.
+
+Headless native-input tests cover all 37 bindings, ordered quick taps, aliases,
+physical-key fallback, modifiers, repeats, octave limits and held notes, mouse
+ownership, focus/modal guards, and unchanged patch/history state. Linux native
+screenshots cover the expanded keyboard at the minimum supported window size;
+these checks do not qualify physical keyboard rollover or audio-device latency.
 
 **Audio / MIDI** selects the output device and one hardware MIDI input. Device
 choices are saved separately from patches in `.host-settings.json` in the

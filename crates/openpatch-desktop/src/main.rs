@@ -5,6 +5,8 @@ mod chrome;
 mod document_state;
 mod expression;
 mod keyboard;
+#[cfg(test)]
+mod keyboard_acceptance_tests;
 mod library;
 mod midi;
 mod panel_skin;

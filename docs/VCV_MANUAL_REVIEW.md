@@ -37,7 +37,7 @@ are relative to `crates/openpatch-desktop/src/`.
 | 3 | 25–400% zoom, keyboard zoom/pan, and module-position locking. [Menu bar](https://vcvrack.com/manual/MenuBar), [Key commands](https://vcvrack.com/manual/KeyCommands) | Implemented 25–400% zoom, centered keyboard stepping/100% reset, pointer-anchored wheel/pinch and extra mouse buttons, held-arrow panning with modifier speeds, and a persistent mouse-position lock. Navigation has focus/text/dialog/gesture guards; project and recovery retain the expanded range. Arrow speed is elapsed-time based. See [rack navigation](RACK_EDITING.md#rack-navigation). |
 | 4 | Hovered-module deletion and clearing patch cables. [Key commands](https://vcvrack.com/manual/KeyCommands), [Menu bar](https://vcvrack.com/manual/MenuBar) | Implemented selection-first Delete/Backspace with hovered fallback and OS repeat, plus Edit → Clear cables backed by atomic MCP `clear_cables`. Captured revisions reject stale UI edits; text/focus/gesture guards apply. Tests cover undo, native persistence, full cable capacity, and cable retirement without node-state resets. [Editing contract](RACK_EDITING.md#clear-cables). |
 | 5 | Reusable user template for New. [Menu bar](https://vcvrack.com/manual/MenuBar) | Implemented: File → Save template captures a confirmed native snapshot; New/Cmd-Ctrl-N loads the user template or factory voice, with guarded dirty-work handling, clean untitled identity, and fresh undo history. Startup resolves explicit files before recovery/template and MCP exposure. See [Projects](PROJECTS.md). |
-| 6 | Broader computer-keyboard playing range. [Getting started](https://vcvrack.com/manual/GettingStarted) | `keyboard.rs` currently maps 13 notes. Expand the layout and verify focus loss, octave shifts, held-note release, and shortcut conflicts. |
+| 6 | Broader computer-keyboard playing range. [Getting started](https://vcvrack.com/manual/GettingStarted) | Implemented the pinned 37-key QWERTY map (32 pitches), backtick/1 octave changes, original-pitch releases, modifier/repeat/focus guards, and a 32-note mouse keyboard. Shared alias/mouse ownership avoids premature note-off. Numpad driver and physical-device qualification remain open. [Performance contract](MIDI_AUDIO.md#computer-keyboard-performance). |
 
 Vertical knob dragging, fine/coarse modifiers, double-click reset, module-library
 entry, middle-button panning, and native save/recovery already have implementations.
@@ -91,8 +91,8 @@ parser uses conventional exponent grouping and documents these corrections along
 [Reproducible reference results](benchmarks/parameter-expression-reference.json),
 [pinned dependency tests](https://github.com/codeplea/tinyexpr/blob/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/smoke.c#L575-L594).
 
-Next interaction work includes the remaining cable gestures, broader computer-
-keyboard range, and bounded hardware-input work. Each delivered row
+Next interaction work includes the remaining cable gestures, keyboard-driver/device
+qualification, and bounded hardware-input work. Each delivered row
 needs source changes, focused behavioral tests, shared undo/MCP checks where
 applicable, and native workflow evidence. Keep unresolved or untested behavior
 marked partial. The general manual contains unfinished sections and cannot

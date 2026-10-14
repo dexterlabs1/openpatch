@@ -109,7 +109,7 @@ Names follow the Core library; parenthesized aliases match the manual. The Audio
 | Audio 2 | Device I/O | Partial: selectable output device, stereo sink and voltage conversion | Hardware input, configurable rate/buffer, actual device reconnect and loopback qualification |
 | Audio 8 | Device I/O | Planned | Eight-channel routing and device round trip |
 | Audio 16 | Device I/O | Planned | Sixteen-channel routing and channel isolation |
-| MIDI to CV (MIDI-CV) | MIDI input | Partial: `midi_cv`, 12 outputs, 1–16 voices, hardware and keyboard ingress | Actual MIDI hardware timing/reconnect qualification, complete Rack behavior comparison and remaining configuration parity |
+| MIDI to CV (MIDI-CV) | MIDI input | Partial: `midi_cv`, 12 outputs, 1–16 voices, hardware ingress and 32-pitch QWERTY/mouse performance | Actual MIDI hardware timing/reconnect qualification, complete Rack behavior comparison and remaining configuration parity |
 | MIDI CC to CV (MIDI-CC) | MIDI input | Planned | Controller mapping, endpoints, event timing |
 | MIDI to Gate (MIDI-Gate) | MIDI input | Planned | Note mapping, short notes, held gates |
 | MIDI Map (MIDI-Map) | Parameter control | Planned | Learn/persist mappings; concurrent GUI/MCP edits |
