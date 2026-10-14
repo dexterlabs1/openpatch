@@ -16,7 +16,7 @@ renderer and fits the available screen without stretching the module.
 
 *Native Linux CI capture; macOS is the primary design target.*
 
-The Studio Rack skin uses neutral brushed aluminum, compact printed headings,
+The Studio Rack skin uses neutral brushed aluminum, broad semibold model headings,
 restrained signal-family accent rules, recessed value wells, graphite knobs with
 metal shoulders, crisp beveled panel edges, and machined jack collars. Outputs
 have reversed charcoal labels and dark socket surrounds; inputs use dark print
@@ -26,7 +26,10 @@ their panel width, and value text fits its well. Specialized sequencer and utili
 fields share the same gray readout material as knob values. The analog VCO and ladder VCF have a
 large primary frequency/cutoff knob above a pair of secondary controls. Knobs
 and numeric editors follow that layout in both the rack and browser; parameter
-ranges and cable endpoints are unchanged. Panels scale from shared drawing code; subpixel brushing is omitted
+ranges and cable endpoints are unchanged. Specialized panel labels use the same condensed fine-print family as the common
+controls. Panel edges, knob shoulders, and cast shadows share an upper-left light
+direction. Brushing uses subtle irregular spacing rather than repeated rules.
+Panels scale from shared drawing code; subpixel brushing is omitted
 at small scales to keep thumbnails and zoomed-out panels clear.
 
 Previews show catalog defaults and neutral telemetry. They do not instantiate
@@ -48,5 +51,5 @@ isolation and card click/drag behavior over specialized controls. Native Linux
 CI captures qualify the appearance; macOS device playback is not part of these
 visual checks.
 
-Panel print uses [Barlow Semi Condensed SemiBold](../crates/openpatch-desktop/assets/fonts/README.md),
+Panel print uses [Barlow SemiBold and Semi Condensed SemiBold](../crates/openpatch-desktop/assets/fonts/README.md),
 with its original SIL Open Font License bundled in the Mac application.

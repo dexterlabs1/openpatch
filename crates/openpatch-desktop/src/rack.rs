@@ -2062,7 +2062,7 @@ impl Rack {
                     point(20.0, 93.0),
                     Align2::LEFT_CENTER,
                     "CHANNELS",
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     INK,
                 );
                 if let Some(spec) = module.and_then(|module| module["params"].get("channels")) {
@@ -2121,7 +2121,7 @@ impl Rack {
                     point(width * 0.5, 313.0),
                     Align2::CENTER_CENTER,
                     format!("Configured: {} channels", channels as u32),
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     MUTED,
                 );
             }
@@ -2130,7 +2130,7 @@ impl Rack {
                     point(width * 0.5, 83.0),
                     Align2::CENTER_CENTER,
                     "16 named mono outputs",
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     MUTED,
                 );
             }
@@ -2139,7 +2139,7 @@ impl Rack {
                     point(width * 0.5, 183.0),
                     Align2::CENTER_CENTER,
                     "SUM CHANNELS",
-                    FontId::proportional(12.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 12.0 * self.zoom),
                     MUTED,
                 );
             }
@@ -2149,7 +2149,7 @@ impl Rack {
                         point(x, 78.0),
                         Align2::CENTER_CENTER,
                         label,
-                        FontId::proportional(10.0 * self.zoom),
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                         MUTED,
                     );
                 }
@@ -2161,7 +2161,7 @@ impl Rack {
                     point(width * 0.5, 204.0),
                     Align2::CENTER_CENTER,
                     "L/R  >  M/S  >  L/R",
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     MUTED,
                 );
             }
@@ -2170,7 +2170,7 @@ impl Rack {
                     point(width * 0.5, 143.0),
                     Align2::CENTER_CENTER,
                     "EIGHT IDENTICAL OUTPUTS",
-                    FontId::proportional(10.0 * self.zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     MUTED,
                 );
             }
@@ -2192,7 +2192,7 @@ impl Rack {
                         point(x, y),
                         Align2::LEFT_CENTER,
                         parameter_label(name),
-                        FontId::proportional(10.0 * self.zoom),
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                         INK,
                     );
                     let control_rect = Rect::from_min_size(
@@ -2234,7 +2234,7 @@ impl Rack {
                         point(20.0, 330.0),
                         Align2::LEFT_CENTER,
                         "CHANNELS",
-                        FontId::proportional(10.0 * self.zoom),
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                         INK,
                     );
                     if let Some(edit) = self.compact_parameter(
@@ -2254,7 +2254,7 @@ impl Rack {
                         point(width * 0.5, 305.0),
                         Align2::CENTER_CENTER,
                         "0 = auto from connected inputs",
-                        FontId::proportional(9.0 * self.zoom),
+                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
                         MUTED,
                     );
                     continue;
@@ -2726,7 +2726,7 @@ impl Rack {
                     } else {
                         parameter_label(name)
                     },
-                    crate::panel_skin::print_font(painter.ctx(), 11.0 * self.zoom),
+                    crate::panel_skin::heading_font(painter.ctx(), 11.0 * self.zoom),
                     INK,
                 );
                 let value_offset = if node.kind == "vca_mix" {
@@ -3083,7 +3083,7 @@ impl Rack {
                 } else {
                     "VU UNAVAILABLE"
                 },
-                FontId::proportional(7.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
                 MUTED,
             );
             let channel_exp = node.params.get("channel_exp").copied().unwrap_or(0.0) >= 0.5;
@@ -3096,35 +3096,35 @@ impl Rack {
                 } else {
                     "CHANNEL CV: LINEAR"
                 },
-                FontId::proportional(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
             painter.text(
                 point(345.0, 215.0),
                 Align2::CENTER_CENTER,
                 "SUM",
-                FontId::proportional(10.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
                 MUTED,
             );
             painter.text(
                 point(345.0, 244.0),
                 Align2::CENTER_CENTER,
                 if mix_exp { "EXP CV" } else { "LINEAR CV" },
-                FontId::proportional(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
             painter.text(
                 point(345.0, 182.0),
                 Align2::CENTER_CENTER,
                 "Right-click",
-                FontId::proportional(7.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
                 MUTED,
             );
             painter.text(
                 point(345.0, 194.0),
                 Align2::CENTER_CENTER,
                 "CV response",
-                FontId::proportional(7.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
                 MUTED,
             );
         } else {
@@ -3137,14 +3137,14 @@ impl Rack {
                 } else {
                     "LINEAR LAW"
                 },
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
             painter.text(
                 point(120.0, 177.0),
                 Align2::CENTER_CENTER,
                 "A  <  MORPH  >  B",
-                FontId::proportional(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
         }
@@ -3226,7 +3226,7 @@ impl Rack {
                 button_rect.center() - vec2(5.0, 0.0) * zoom,
                 Align2::CENTER_CENTER,
                 label,
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 if enabled { INK } else { MUTED },
             );
             paint_signal_light(
@@ -3264,7 +3264,7 @@ impl Rack {
                 } else {
                     "LIGHTS UNAVAILABLE"
                 },
-                FontId::proportional(7.5 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 7.5 * zoom),
                 MUTED,
             );
         }
@@ -3287,7 +3287,7 @@ impl Rack {
                     point(x, 311.0),
                     Align2::CENTER_CENTER,
                     if reflect { "REFLECT" } else { "CLIP" },
-                    FontId::proportional(8.0 * zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                     MUTED,
                 );
             }
@@ -3302,7 +3302,7 @@ impl Rack {
                 } else {
                     "Lights unavailable · right-click settings".into()
                 },
-                FontId::proportional(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
         }
@@ -3329,7 +3329,7 @@ impl Rack {
                 point(x, 80.0),
                 Align2::CENTER_CENTER,
                 label,
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
         }
@@ -3391,7 +3391,7 @@ impl Rack {
                 button_rect.center(),
                 Align2::CENTER_CENTER,
                 "PUSH",
-                FontId::proportional(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 if enabled { INK } else { MUTED },
             );
             let brightness = self
@@ -3465,7 +3465,7 @@ impl Rack {
             } else {
                 "TRIGGER / HELD GATE"
             },
-            FontId::proportional(8.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
         action
@@ -3491,7 +3491,7 @@ impl Rack {
                 point(90.0, y),
                 Align2::CENTER_CENTER,
                 label,
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
         }
@@ -3545,7 +3545,7 @@ impl Rack {
                 button_rect.center(),
                 Align2::CENTER_CENTER,
                 label,
-                FontId::proportional(12.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 12.0 * zoom),
                 if enabled { INK } else { MUTED },
             );
             let brightness = lights
@@ -3562,7 +3562,7 @@ impl Rack {
                 point(x, 283.0),
                 Align2::CENTER_CENTER,
                 led_label,
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
             if enabled
@@ -3615,7 +3615,7 @@ impl Rack {
             } else {
                 "HOLD INVERTS GATE"
             },
-            FontId::proportional(8.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
         action
@@ -3661,7 +3661,7 @@ impl Rack {
             point(184.0, 146.0),
             Align2::CENTER_CENTER,
             "MANUAL",
-            FontId::proportional(10.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             INK,
         );
         painter.rect_filled(
@@ -3690,7 +3690,7 @@ impl Rack {
             button_rect.center(),
             Align2::CENTER_CENTER,
             "RESET",
-            FontId::proportional(11.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 11.0 * zoom),
             if enabled { INK } else { MUTED },
         );
         painter.text(
@@ -3705,7 +3705,7 @@ impl Rack {
             } else {
                 "MOMENTARY"
             },
-            FontId::proportional(8.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
         let action = if enabled
@@ -3787,7 +3787,7 @@ impl Rack {
                 point(x, 79.0),
                 Align2::CENTER_CENTER,
                 label,
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
         }
@@ -3838,7 +3838,7 @@ impl Rack {
                     point(181.0, y),
                     Align2::CENTER_CENTER,
                     if muted { "X" } else { ">" },
-                    FontId::proportional(12.0 * zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 12.0 * zoom),
                     if muted {
                         Color32::from_rgb(161, 76, 58)
                     } else {
@@ -3905,7 +3905,7 @@ impl Rack {
             ),
             Align2::CENTER_CENTER,
             footer,
-            FontId::proportional(8.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
         if node.kind == "cv_mix" {
@@ -3913,7 +3913,7 @@ impl Rack {
                 point(width * 0.5, 347.0),
                 Align2::CENTER_CENTER,
                 "SUM OUT",
-                FontId::proportional(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 INK,
             );
         }
@@ -3934,7 +3934,7 @@ impl Rack {
             point(90.0, 80.0),
             Align2::CENTER_CENTER,
             "STEPS",
-            FontId::proportional(10.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             INK,
         );
         for (index, steps) in [2, 3, 4].into_iter().enumerate() {
@@ -4052,7 +4052,7 @@ impl Rack {
                 point(x, y - 12.0),
                 Align2::LEFT_CENTER,
                 label,
-                FontId::proportional(10.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
                 INK,
             );
             if let Some(spec) = specs.and_then(|p| p.get(name)) {
@@ -5773,7 +5773,7 @@ fn scale_keyboard(
         origin + vec2(width * 0.5, 86.0) * zoom,
         Align2::CENTER_CENTER,
         "SCALE",
-        FontId::proportional(10.0 * zoom),
+        crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
         INK,
     );
     for (white_index, (note, label)) in [
@@ -5821,7 +5821,7 @@ fn scale_keyboard(
             rect.center_bottom() - vec2(0.0, 10.0) * zoom,
             Align2::CENTER_CENTER,
             label,
-            FontId::proportional(10.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             INK,
         );
         if response.clicked() {
@@ -5863,7 +5863,7 @@ fn scale_keyboard(
             rect.center_bottom() - vec2(0.0, 10.0) * zoom,
             Align2::CENTER_CENTER,
             label,
-            FontId::proportional(7.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
             Color32::from_gray(236),
         );
         if response.clicked() {
@@ -5897,7 +5897,7 @@ fn scale_keyboard(
             rect.center(),
             Align2::CENTER_CENTER,
             label,
-            FontId::proportional(10.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             INK,
         );
         if response.clicked() {
@@ -5973,7 +5973,7 @@ fn panel_button(
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(10.0 * zoom),
+        crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
         if enabled { INK } else { MUTED },
     );
     let clicked = enabled && response.clicked();
@@ -6527,7 +6527,7 @@ fn paint_panel(
         }
     }
     let label = title(&node.kind);
-    let mut font = crate::panel_skin::print_font(
+    let mut font = crate::panel_skin::heading_font(
         painter.ctx(),
         if width < 140.0 { 18.0 } else { 21.0 } * zoom,
     );
@@ -6646,7 +6646,7 @@ fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32,
             } else {
                 "MONO TO DEVICE"
             },
-            FontId::proportional(9.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
             MUTED,
         );
     }

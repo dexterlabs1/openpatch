@@ -82,12 +82,37 @@ pub(crate) fn install_fonts(ctx: &egui::Context) {
     fonts
         .families
         .insert(egui::FontFamily::Name("Panel Print".into()), panel_fonts);
+    fonts.font_data.insert(
+        "barlow-heading".into(),
+        egui::FontData::from_static(include_bytes!("../assets/fonts/Barlow-SemiBold.ttf")).into(),
+    );
+    let mut heading_fonts = vec!["barlow-heading".into()];
+    heading_fonts.extend(
+        fonts.families[&egui::FontFamily::Proportional]
+            .iter()
+            .cloned(),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("Panel Heading".into()),
+        heading_fonts,
+    );
     ctx.set_fonts(fonts);
 }
 
 pub(crate) fn print_font(ctx: &egui::Context, size: f32) -> FontId {
     let family = egui::FontFamily::Name("Panel Print".into());
     // Standalone headless UI tests may intentionally use egui's default fonts.
+    if ctx.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
+        FontId::new(size, family)
+    } else {
+        FontId::proportional(size)
+    }
+}
+
+/// Broader hardware lettering for the model and primary controls; fine print
+/// keeps the condensed family so dense utility panels remain legible.
+pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
+    let family = egui::FontFamily::Name("Panel Heading".into());
     if ctx.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
         FontId::new(size, family)
     } else {
@@ -111,15 +136,15 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
     painter.rect_filled(
         rect.shrink(1.7 * zoom),
         0.5,
-        Color32::from_rgb(133, 136, 132),
+        Color32::from_rgb(180, 180, 175),
     );
     let face = rect.shrink(3.0 * zoom);
     let mut mesh = egui::epaint::Mesh::default();
     for (fraction, left, right) in [
-        (0.0, [242, 240, 234], [231, 229, 223]),
-        (0.14, [226, 224, 218], [219, 217, 211]),
-        (0.60, [220, 218, 212], [214, 212, 206]),
-        (1.0, [212, 210, 204], [203, 202, 197]),
+        (0.0, [238, 237, 231], [222, 223, 218]),
+        (0.14, [227, 226, 220], [216, 217, 212]),
+        (0.60, [224, 223, 217], [213, 214, 209]),
+        (1.0, [215, 215, 209], [201, 203, 198]),
     ] {
         let y = egui::lerp(face.y_range(), fraction);
         mesh.colored_vertex(
@@ -149,10 +174,11 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
         [face.left_bottom(), face.right_bottom()],
         Stroke::new(0.9 * zoom, Color32::from_black_alpha(65)),
     );
-    // Brushing is deterministic and sparse; omit subpixel texture in thumbnails.
+    // Fixed, irregular brushing avoids a ruled-paper pattern. Omit subpixel
+    // texture at small scales identically in the rack and library.
     if zoom >= 0.65 {
-        for grain in 0..56 {
-            let y = face.top() + (6.0 + grain as f32 * 6.8) * zoom;
+        for grain in 0..180 {
+            let y = face.top() + (2.0 + grain as f32 * 2.2 + (grain * 7 % 5) as f32 * 0.13) * zoom;
             if y >= face.bottom() {
                 break;
             }
@@ -163,8 +189,12 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
                     pos2(face.right() - 3.0 * zoom, y),
                 ],
                 Stroke::new(
-                    0.55 * zoom,
-                    Color32::from_white_alpha(if grain % 3 == 0 { 13 } else { 7 }),
+                    0.45 * zoom,
+                    if grain % 3 == 0 {
+                        Color32::from_black_alpha(5)
+                    } else {
+                        Color32::from_white_alpha(16)
+                    },
                 ),
             );
         }
@@ -240,7 +270,7 @@ pub(crate) fn knob(
             ),
         );
     }
-    for (offset, grow, alpha) in [(vec2(2.0, 4.0), 3.0, 25), (vec2(1.2, 2.8), 1.6, 49)] {
+    for (offset, grow, alpha) in [(vec2(2.0, 4.0), 3.0, 30), (vec2(1.2, 2.8), 1.6, 60)] {
         painter.circle_filled(
             center + offset * zoom,
             radius + grow * zoom,
@@ -274,8 +304,22 @@ pub(crate) fn knob(
             Stroke::new(0.85 * zoom, Color32::from_gray(shade)),
         );
     }
-    // A metal shoulder separates the skirt from the smaller cap.
-    painter.circle_filled(center, radius * 0.83, Color32::from_rgb(94, 98, 98));
+    // The shoulder follows the same upper-left light as the panel and cap.
+    // A directional mesh avoids uniformly bright concentric outlines.
+    let mut shoulder = egui::epaint::Mesh::default();
+    shoulder.colored_vertex(center, Color32::from_gray(105));
+    for segment in 0..40_u32 {
+        let a = segment as f32 * std::f32::consts::TAU / 40.0;
+        let direction = vec2(a.cos(), a.sin());
+        let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
+        let gray = (47.0 + 124.0 * light) as u8;
+        shoulder.colored_vertex(
+            center + direction * radius * 0.83,
+            Color32::from_rgb(gray, gray, gray),
+        );
+        shoulder.add_triangle(0, segment + 1, (segment + 1) % 40 + 1);
+    }
+    painter.add(egui::Shape::mesh(shoulder));
     painter.circle_filled(
         center + vec2(0.0, 0.7) * zoom,
         radius * 0.78,
