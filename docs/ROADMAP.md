@@ -1,12 +1,12 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 53 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 54 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 53 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 53 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 54 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 54 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -202,10 +202,11 @@ claims:
   fine adjustment, keyboard access and matching rack/browser presentation;
   hardware resemblance alone is not an acceptance criterion.
 - **Acoustic physical modeling:** separate excitation, resonance, coupling and
-  damping from analog circuit emulation. A first candidate is a struck resonator
-  with documented equations and units, measurable decay/modes, stable parameter
-  changes, and audio-linked visualization. Validate its governing model and
-  numerical convergence before calling it physically accurate. See Julius O.
+  damping from analog circuit emulation. The first [struck resonator](MODAL_RESONATOR.md) implements a linear
+  string / beam with sixteen modes, explicit impulse/force excitation and a
+  velocity pickup. The shared panel previews its configured modes; live motion,
+  coupled bodies, nonlinear contact and measured hardware calibration remain
+  open. Retained-mode analytical validation is distinct from full-body accuracy. See Julius O.
   Smith's [Physical Audio Signal Processing](https://ccrma.stanford.edu/~jos/pasp/).
 - **Shared audio/visual instruments:** connect CV to visual parameters and show
   how changes affect both sound and image. Keep rendering outside the audio

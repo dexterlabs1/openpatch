@@ -953,6 +953,44 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("redo", {})
         self.assertEqual(len(self.patch_snapshot()["patch"]["nodes"]), 1)
 
+    def test_physical_resonator_catalog_render_edit_and_restore(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        model = modules["modal_resonator"]
+        self.assertEqual(model["inputs"], ["pitch", "strike", "excite"])
+        self.assertEqual(model["outputs"], ["out"])
+        self.assertEqual(model["params"]["decay"]["unit"], "s")
+        patch = json.loads((REPOSITORY / "examples/struck-resonator.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        original = self.patch_snapshot()
+        args = {"id": "body", "seconds": 0.1, "points": 256}
+        response = self.payload(self.require_tool_success("capture_signal", args))
+        self.assertEqual(response["units"], "V")
+        self.assertGreater(response["summary"]["peak"], 0.01)
+        self.assertEqual(self.patch_snapshot(), original)
+        # Physical strike/pickup reciprocity is observable through the public API.
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "body", "parameter": "strike_position", "value": 0.61}},
+            {"tool": "set_parameter", "arguments": {"id": "body", "parameter": "pickup_position", "value": 0.23}},
+        ], "expected_revision": original["revision"]})
+        reciprocal = self.payload(self.require_tool_success("capture_signal", args))
+        for a, b in zip(response["bins"], reciprocal["bins"]):
+            for field in ("min", "max", "mean"):
+                if a[field] is not None:
+                    self.assertAlmostEqual(a[field], b[field], delta=1e-6)
+        self.require_tool_success("undo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        for param, value in [("stiffness", 1.01), ("decay", 0), ("strike_position", 0)]:
+            self.require_tool_error("set_parameter", {"id": "body", "parameter": param, "value": value})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        self.require_tool_success("save_patch", {"filename": "resonator.json"})
+        saved = json.loads((self.workspace / "resonator.json").read_text())
+        self.assertEqual(saved["nodes"][0]["kind"], "modal_resonator")
+        self.require_tool_success("render_audio", {"filename": "resonator.wav", "seconds": 0.1})
+        with wave.open(str(self.workspace / "resonator.wav")) as rendered:
+            samples = self._first_channel_samples(rendered.readframes(4800), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(x) > 100 for x in samples))
+        self.assertLess(max(abs(x) for x in samples), 32767)
+
     def test_rack_scope_contract_and_offline_inspection_boundary(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog", {}))
         module = next(m for m in catalog["modules"] if m["kind"] == "scope")

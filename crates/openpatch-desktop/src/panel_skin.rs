@@ -10,6 +10,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
             Color32::from_rgb(151, 93, 57)
         }
+        "modal_resonator" => Color32::from_rgb(151, 93, 57),
         "lowpass" | "ladder_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
         "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer" => {
             Color32::from_rgb(116, 96, 136)
@@ -73,6 +74,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "poly_merge" => "POLYPHONIC MERGER",
         "poly_sum" => "POLYPHONIC SUMMER",
         "scope" => "POLYPHONIC SIGNAL MONITOR",
+        "modal_resonator" => "STIFF STRING / BEAM · 16 MODES",
         "poly_viz" => "POLYPHONIC VOLTAGE DISPLAY",
         "switch_1to4" | "switch_4to1" => "SEQUENTIAL SWITCH",
         "logic" => "BOOLEAN LOGIC",

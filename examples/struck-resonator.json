@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "body",
+      "kind": "modal_resonator",
+      "params": {
+        "frequency": 164.8138,
+        "stiffness": 0.025,
+        "decay": 3.5,
+        "damping": 0.25,
+        "strike_position": 0.23,
+        "pickup_position": 0.61
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 1.5
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.04,
+        "trigger_enabled": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "square",
+      "to": "body",
+      "input": "strike"
+    },
+    {
+      "from": "body",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "body",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}

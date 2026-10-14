@@ -2302,6 +2302,19 @@ impl Rack {
             if node.kind == "poly_viz" {
                 self.viz_panel(ui, node, rect);
             }
+            if node.kind == "modal_resonator" {
+                if let Some(edit) = self.resonator_panel(
+                    ui,
+                    node,
+                    module,
+                    rect,
+                    device_rate,
+                    patch.sample_rate.min(device_rate),
+                    revision,
+                ) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "mid_side" {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
@@ -2335,6 +2348,7 @@ impl Rack {
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if node.kind == "scope"
+                    || node.kind == "modal_resonator"
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
@@ -3236,6 +3250,280 @@ impl Rack {
     }
 
     /// VIZ keeps channel activity separate from signed indicator release tails.
+    /// Computer-native parameter controls beside an explicitly configured
+    /// modal response. The core helper supplies the same modal coefficients
+    /// used by DSP; no telemetry or simulated signal is drawn here.
+    #[allow(clippy::too_many_arguments)]
+    fn resonator_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+        rate: u32,
+        parameter_rate: u32,
+        revision: u64,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let painter = ui.painter().clone();
+        let mut action = None;
+        painter.line_segment(
+            [point(296.0, 79.0), point(296.0, 316.0)],
+            Stroke::new(0.6 * zoom, Color32::from_rgb(166, 164, 157)),
+        );
+        for (index, (name, spec)) in ordered_parameters(node, module).into_iter().enumerate() {
+            let (slider_local, value_local) = resonator_control_rects(index);
+            let screen = |local: Rect| {
+                Rect::from_min_max(
+                    point(local.min.x, local.min.y),
+                    point(local.max.x, local.max.y),
+                )
+            };
+            let slider_rect = screen(slider_local);
+            let value_rect = screen(value_local);
+            let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
+            let mut max = spec["max"].as_f64().unwrap_or(1.0) as f32;
+            if let Some(ratio) = spec["sample_rate_max_ratio"].as_f64() {
+                max = max.min(parameter_rate as f32 * ratio as f32);
+            }
+            let default = (spec["default"].as_f64().unwrap_or(0.0) as f32).clamp(min, max);
+            let value = node
+                .params
+                .get(name)
+                .copied()
+                .unwrap_or(default)
+                .clamp(min, max);
+            let step = spec["step"].as_f64().filter(|s| *s > 0.0).map(|s| s as f32);
+            let percent = matches!(
+                name,
+                "stiffness" | "damping" | "strike_position" | "pickup_position"
+            );
+            let scale = if percent { 100.0 } else { 1.0 };
+            let display = if percent {
+                format!("{:.1}%", value * scale)
+            } else if matches!(name, "strike_strength" | "level") {
+                format!("{value:.2}×")
+            } else {
+                parameter_value(name, value, spec)
+            };
+            let make_edit = |surface| ParameterEdit {
+                id: node.id.clone(),
+                kind: node.kind.clone(),
+                parameter: name.into(),
+                revision,
+                surface,
+                menu_popup: None,
+                stale: false,
+                text: (value * scale).to_string(),
+                min: min * scale,
+                max: max * scale,
+                step: step.map(|s| s * scale),
+                display_scale: scale,
+                display_unit: if percent {
+                    "%"
+                } else {
+                    spec["unit"].as_str().unwrap_or("")
+                }
+                .into(),
+                slew_min: None,
+                gain_power: None,
+                raw_max: max,
+                focus: true,
+            };
+            painter.text(
+                point(20.0, slider_local.center().y),
+                Align2::LEFT_CENTER,
+                parameter_label(name),
+                crate::panel_skin::print_font(ui.ctx(), 10.0 * zoom),
+                INK,
+            );
+            let mut next = value;
+            let slider = ui
+                .scope_builder(
+                    egui::UiBuilder::new().max_rect(slider_rect).id_salt((
+                        "resonator-slider",
+                        &node.id,
+                        name,
+                    )),
+                    |ui| {
+                        crate::panel_skin::control_style(ui, zoom);
+                        // Slider's thickness also follows Body font height;
+                        // scale it so miniature previews retain exact geometry.
+                        ui.style_mut()
+                            .text_styles
+                            .insert(egui::TextStyle::Body, FontId::proportional(10.0 * zoom));
+                        ui.spacing_mut().slider_width = slider_rect.width();
+                        ui.spacing_mut().interact_size.y = slider_rect.height();
+                        ui.spacing_mut().slider_rail_height = 4.0 * zoom;
+                        ui.style_mut().visuals.handle_shape =
+                            egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
+                        ui.add(
+                            egui::Slider::new(&mut next, min..=max)
+                                .show_value(false)
+                                .logarithmic(matches!(name, "frequency" | "decay"))
+                                .smart_aim(false),
+                        )
+                    },
+                )
+                .inner;
+            // Preserve Slider's changed flag while adding click/reset/menu
+            // semantics to its native drag and keyboard response.
+            let slider = slider.union(slider.interact(Sense::click_and_drag()));
+            slider.widget_info(|| {
+                egui::WidgetInfo::slider(
+                    ui.is_enabled(),
+                    value as f64,
+                    format!("{} {}", node.id, name),
+                )
+            });
+            if slider.drag_started()
+                || (slider.is_pointer_button_down_on()
+                    && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
+            {
+                self.select_primary(node.id.clone());
+                slider.request_focus();
+                if ui.data(|d| d.get_temp::<String>(slider.id)).is_none() {
+                    self.gesture = self.gesture.wrapping_add(1);
+                    ui.data_mut(|d| {
+                        d.insert_temp(slider.id, format!("rack-slider-{}", self.gesture))
+                    });
+                }
+            }
+            if slider.double_clicked() {
+                next = default;
+            }
+            if (slider.changed() || slider.double_clicked()) && next != value {
+                self.select_primary(node.id.clone());
+                let mut args =
+                    json!({"id":node.id,"parameter":name,"value":quantize(next,min,max,step)});
+                if (slider.dragged() || slider.is_pointer_button_down_on())
+                    && !slider.double_clicked()
+                {
+                    if let Some(group) = ui.data(|d| d.get_temp::<String>(slider.id)) {
+                        args["history_group"] = json!(group);
+                    }
+                }
+                action = Some(RackAction::Command("set_parameter", args));
+            }
+            if slider.drag_stopped()
+                || ui.input(|i| i.pointer.button_released(PointerButton::Primary))
+            {
+                ui.data_mut(|d| d.remove::<String>(slider.id));
+            }
+            if self
+                .requested_parameter_menu
+                .as_ref()
+                .is_some_and(|(id, parameter)| id == &node.id && parameter == name)
+            {
+                egui::Popup::open_id(ui.ctx(), slider.id.with("popup"));
+                self.requested_parameter_menu = None;
+            }
+            let mut popup = egui::Popup::context_menu(&slider)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+            if !slider.secondary_clicked()
+                && egui::Popup::position_of_id(ui.ctx(), slider.id.with("popup")).is_none()
+            {
+                popup = popup.anchor(egui::PopupAnchor::Position(slider.rect.right_bottom()));
+            }
+            popup.show(|ui| {
+                if !self.editing.as_ref().is_some_and(|edit| {
+                    edit.surface == ParameterEditSurface::KnobMenu
+                        && edit.id == node.id
+                        && edit.parameter == name
+                }) {
+                    self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                }
+                self.editing.as_mut().unwrap().menu_popup = Some(slider.id.with("popup"));
+                ui.set_min_width(244.0);
+                ui.strong(parameter_label(name));
+                ui.label(format!("Current: {display}"));
+                match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
+                    ParameterEditOutcome::Keep => {}
+                    ParameterEditOutcome::Apply(raw) => {
+                        action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
+                        ui.close();
+                    }
+                    ParameterEditOutcome::Cancel => {
+                        self.editing = None;
+                        ui.close();
+                    }
+                }
+            });
+            slider.on_hover_text(format!(
+                "{}\nDrag or use arrow keys; double-click to reset. Click the value to type.\n{}",
+                display,
+                resonator_parameter_help(name)
+            ));
+            crate::panel_skin::readout(
+                &painter,
+                value_rect.center(),
+                &display,
+                value_rect.width(),
+                zoom,
+            );
+            let readout = ui.interact(
+                value_rect,
+                ui.id().with(("resonator-value", &node.id, name)),
+                Sense::click(),
+            );
+            readout.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    format!("Edit {} {} value, {}", node.id, name, display),
+                )
+            });
+            if readout.clicked() {
+                self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            readout.on_hover_text("Click to type a value or expression");
+        }
+        paint_resonator_configuration(&painter, node, rect.min, zoom, rate);
+        painter.text(
+            point(20.0, 316.0),
+            Align2::LEFT_CENTER,
+            "STRIKE / PICKUP",
+            crate::panel_skin::print_font(ui.ctx(), 8.0 * zoom),
+            MUTED,
+        );
+        painter.line_segment(
+            [point(105.0, 315.0), point(282.0, 315.0)],
+            Stroke::new(1.0 * zoom, MUTED),
+        );
+        let strike = node.params.get("strike_position").copied().unwrap_or(0.23);
+        let pickup = node.params.get("pickup_position").copied().unwrap_or(0.61);
+        painter.rect_filled(
+            Rect::from_center_size(point(105.0 + strike * 177.0, 315.0), vec2(6.0, 6.0) * zoom),
+            0.0,
+            Color32::from_rgb(151, 93, 57),
+        );
+        painter.circle_filled(
+            point(105.0 + pickup * 177.0, 315.0),
+            3.0 * zoom,
+            Color32::from_rgb(68, 113, 121),
+        );
+        painter.line_segment(
+            [point(20.0, 325.0), point(460.0, 325.0)],
+            Stroke::new(0.6 * zoom, Color32::from_rgb(166, 164, 157)),
+        );
+        painter.text(
+            point(155.0, 387.0),
+            Align2::CENTER_CENTER,
+            "PITCH · GATE STRIKE · AUDIO FORCE",
+            crate::panel_skin::print_font(ui.ctx(), 8.0 * zoom),
+            MUTED,
+        );
+        painter.text(
+            point(410.0, 387.0),
+            Align2::CENTER_CENTER,
+            "VELOCITY PICKUP",
+            crate::panel_skin::print_font(ui.ctx(), 8.0 * zoom),
+            MUTED,
+        );
+        action
+    }
+
     fn viz_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
         let zoom = self.zoom;
         let painter = ui.painter();
@@ -5861,6 +6149,16 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "modal_resonator" => {
+            return pos2(
+                if input {
+                    60.0 + index as f32 * 95.0
+                } else {
+                    410.0
+                },
+                363.0,
+            )
+        }
         "scope" => {
             return pos2(
                 if input {
@@ -6695,6 +6993,7 @@ fn panel_button(
 
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "modal_resonator" => HP * 32.0,
         "scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
@@ -6730,6 +7029,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
 }
 pub(crate) fn title(kind: &str) -> &str {
     match kind {
+        "modal_resonator" => "MODAL RESONATOR",
         "scope" => "SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
@@ -6818,6 +7118,10 @@ pub(crate) fn parameter_label(name: &str) -> &str {
         "cutoff_cv_amount" => "CV DEPTH",
 
         "position" => "POSITION",
+        "stiffness" => "STIFFNESS",
+        "strike_position" => "STRIKE POS",
+        "pickup_position" => "PICKUP POS",
+        "strike_strength" => "STRENGTH",
         "cv_amount" => "CV DEPTH",
         "b_offset" => "B OFFSET",
         "slew" => "SLEW",
@@ -6895,6 +7199,16 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "modal_resonator" => &[
+            "frequency",
+            "stiffness",
+            "decay",
+            "damping",
+            "strike_position",
+            "pickup_position",
+            "strike_strength",
+            "level",
+        ],
         "score_sequencer" => &["tempo", "swing", "running"],
         "drum_voice" => &["mode", "pitch", "decay", "tone", "drive", "level"],
         "stereo_delay" => &[
@@ -6990,6 +7304,155 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
 }
 // A large tuning control above a matched pair of secondary controls. Keep this
 // geometry shared by rack rendering, previews, and the parameter hit regions.
+fn resonator_control_rects(index: usize) -> (Rect, Rect) {
+    let y = 85.0 + index as f32 * 29.0;
+    (
+        Rect::from_min_size(pos2(102.0, y), vec2(103.0, 20.0)),
+        Rect::from_min_size(pos2(213.0, y), vec2(71.0, 20.0)),
+    )
+}
+
+fn resonator_parameter_help(name: &str) -> &'static str {
+    match name {
+        "frequency" => "Undamped natural fundamental at zero pitch CV; damping can lower the ringing frequency. PITCH transposes at 1 V/octave.",
+        "stiffness" => "Moves natural modes from harmonic string spacing toward a stiff beam. No material presets.",
+        "decay" => "Fundamental RT60: time to lose 60 dB. Higher modes also follow DAMPING.",
+        "damping" => "Adds loss to higher modes, shortening their RT60.",
+        "strike_position" => "Force position along the string/beam, from one fixed end to the other. Shapes mode excitation.",
+        "pickup_position" => "Velocity pickup position along the string/beam. Mode nodes can cancel individual partials.",
+        "strike_strength" => "Impulse = 0.01 × strength N·s on each rising STRIKE edge. EXCITE applies continuous audio force.",
+        "level" => "Output level after the velocity pickup.",
+        _ => "",
+    }
+}
+
+fn paint_resonator_configuration(
+    painter: &egui::Painter,
+    node: &Node,
+    origin: Pos2,
+    zoom: f32,
+    rate: u32,
+) {
+    let point = |x, y| origin + vec2(x, y) * zoom;
+    let print = |x, y, text: String, size, color| {
+        painter.text(
+            point(x, y),
+            Align2::LEFT_CENTER,
+            text,
+            crate::panel_skin::print_font(painter.ctx(), size * zoom),
+            color,
+        );
+    };
+    let copper = Color32::from_rgb(151, 93, 57);
+    let teal = Color32::from_rgb(68, 113, 121);
+    print(311.0, 83.0, "NATURAL MODES".into(), 11.0, INK);
+    print(
+        311.0,
+        99.0,
+        format!("CONFIG · {} kHz · ZERO CV", rate as f32 / 1000.0),
+        8.0,
+        MUTED,
+    );
+    let Ok(modes) = openpatch_core::modal_resonator_modes(node, rate) else {
+        print(311.0, 164.0, "Configuration unavailable".into(), 9.0, MUTED);
+        return;
+    };
+    let plot = Rect::from_min_max(point(313.0, 118.0), point(456.0, 210.0));
+    painter.rect_filled(
+        plot.expand(7.0 * zoom),
+        2.0 * zoom,
+        Color32::from_rgb(207, 207, 195),
+    );
+    let ceiling = f64::from(rate) * 0.45;
+    let x = |frequency: f64| {
+        plot.left()
+            + ((frequency.max(20.0) / 20.0).ln() / (ceiling / 20.0).ln()).clamp(0.0, 1.0) as f32
+                * plot.width()
+    };
+    for (hz, label) in [
+        (20.0, "20"),
+        (200.0, "200"),
+        (2000.0, "2k"),
+        (20000.0, "20k"),
+    ] {
+        if hz > ceiling {
+            continue;
+        }
+        let axis_x = x(hz);
+        painter.line_segment(
+            [pos2(axis_x, plot.top()), pos2(axis_x, plot.bottom())],
+            Stroke::new(0.5 * zoom, Color32::from_rgb(182, 183, 170)),
+        );
+        painter.text(
+            pos2(axis_x, plot.bottom() + 11.0 * zoom),
+            Align2::CENTER_CENTER,
+            label,
+            FontId::monospace(8.0 * zoom),
+            MUTED,
+        );
+    }
+    let baseline = plot.center().y;
+    painter.line_segment(
+        [pos2(plot.left(), baseline), pos2(plot.right(), baseline)],
+        Stroke::new(0.8 * zoom, Color32::from_rgb(128, 132, 120)),
+    );
+    for mode in &modes {
+        if !mode.active {
+            continue;
+        }
+        let foot = pos2(x(mode.frequency_hz), baseline);
+        let tip = foot - vec2(0.0, mode.coupling as f32 * plot.height() * 0.45);
+        let color = if mode.coupling >= 0.0 { copper } else { teal };
+        painter.line_segment([foot, tip], Stroke::new(1.6 * zoom, color));
+        painter.circle_filled(tip, 1.8 * zoom, color);
+    }
+    print(
+        311.0,
+        238.0,
+        format!(
+            "{} / {} modes below {:.1} kHz",
+            modes.iter().filter(|mode| mode.active).count(),
+            modes.len(),
+            ceiling / 1000.0
+        ),
+        8.0,
+        MUTED,
+    );
+    print(311.0, 253.0, "± FORCE × PICKUP · LOG Hz".into(), 8.0, MUTED);
+    print(
+        311.0,
+        270.0,
+        format!(
+            "RT60  {:.2} → {:.2} s",
+            modes[0].decay_seconds,
+            modes[modes.len() - 1].decay_seconds
+        ),
+        9.0,
+        INK,
+    );
+    // A static decay profile indexed by mode, independent of audio energy.
+    for (index, mode) in modes.iter().enumerate() {
+        let left = 313.0 + index as f32 * 9.0;
+        let height = (mode.decay_seconds / modes[0].decay_seconds).clamp(0.0, 1.0) as f32 * 17.0;
+        painter.rect_filled(
+            Rect::from_min_max(point(left, 299.0 - height), point(left + 5.0, 299.0)),
+            0.5 * zoom,
+            if mode.active {
+                copper
+            } else {
+                Color32::from_rgb(178, 178, 162)
+            },
+        );
+    }
+    print(
+        311.0,
+        312.0,
+        format!("MODE 1 → {} · DECAY PROFILE", modes.len()),
+        8.0,
+        MUTED,
+    );
+}
+
 fn voice_parameter_position(index: usize, width: f32) -> (Pos2, f32) {
     if index == 0 {
         (pos2(width * 0.5, 138.0), 38.0)
@@ -7356,7 +7819,10 @@ fn paint_panel(
         [point(22.0, 65.0), point(width - 22.0, 65.0)],
         Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
     );
-    if !matches!(node.kind.as_str(), "pulses" | "svf_filter" | "audio_stereo") {
+    if !matches!(
+        node.kind.as_str(),
+        "pulses" | "svf_filter" | "audio_stereo" | "modal_resonator"
+    ) {
         let studio_footer = matches!(
             node.kind.as_str(),
             "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
@@ -7786,6 +8252,9 @@ mod tests {
     mod sum_ui_tests {
         include!("sum_ui_tests.rs");
     }
+    mod resonator_ui_tests {
+        include!("resonator_ui_tests.rs");
+    }
     use super::*;
 
     fn frame(
@@ -7941,7 +8410,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            53,
+            54,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -8042,6 +8511,7 @@ mod tests {
             "stereo_reverb",
             "sidechain_compressor",
             "audio_stereo",
+            "modal_resonator",
         ] {
             let module = catalog["modules"]
                 .as_array()

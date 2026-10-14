@@ -2281,6 +2281,15 @@ impl OpenPatch {
                                 ui.close();
                                 self.replace_from_menu(patch, "Manual push voice");
                             }
+                            if ui.button("Struck resonator").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/struck-resonator.json"
+                                ))
+                                .expect("valid bundled physical resonator");
+                                ui.close();
+                                self.replace_from_menu(patch, "Struck resonator");
+                                self.rack.set_zoom(0.75);
+                            }
                             if ui.button("Manual pulses voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/manual-pulses-voice.json"
@@ -4083,6 +4092,30 @@ impl OpenPatch {
             );
             self.status = "Offline DSP capture · 16 voices per input · sine X / triangle Y · no live audio stream".into();
         }
+        if frame == 794 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/struck-resonator.json"))
+                    .expect("resonator smoke patch");
+            let mut engine = patch.compile().expect("resonator smoke engine");
+            engine.process_block(&mut vec![0.0; 2500]);
+            let handle = engine.resolve_module_scope("scope").unwrap();
+            let snapshot = engine.module_scope(handle).unwrap().clone();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+                    "body":[0,0],"scope":[480,0],"clock":[0,420],"out":[360,420]
+                }}))
+                .unwrap();
+            self.rack.set_scope_states(BTreeMap::from([(
+                "scope".into(),
+                std::sync::Arc::new(snapshot),
+            )]));
+            self.title = "Struck resonator · physical modal model".into();
+            self.status = "Offline DSP snapshot · 16-mode string / beam · configuration preview is not live motion".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -4132,6 +4165,7 @@ impl OpenPatch {
                 | 732
                 | 760
                 | 788
+                | 816
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4191,7 +4225,8 @@ impl OpenPatch {
                 38 => path.with_file_name("rack-score-studio.png"),
                 39 => path.with_file_name("rack-scope-time.png"),
                 40 => path.with_file_name("rack-scope-xy.png"),
-                _ => path.with_file_name("rack-scope-external.png"),
+                41 => path.with_file_name("rack-scope-external.png"),
+                _ => path.with_file_name("rack-modal-resonator.png"),
             };
             image::save_buffer(
                 &target,
@@ -4202,18 +4237,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/42 at frame {frame}: {}",
+                "Native smoke: capture {}/43 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 42 {
+            if captures == 43 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 822, "Native screenshot timeout");
+        assert!(frame < 850, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4483,6 +4518,27 @@ mod project_workflow_tests {
         app.rack.select_only("tone".into());
         app.observe_document();
         app
+    }
+
+    #[test]
+    fn struck_resonator_example_drives_audio_and_scope_without_devices() {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/struck-resonator.json")).unwrap();
+        let restored: Patch =
+            serde_json::from_str(&serde_json::to_string(&patch).unwrap()).unwrap();
+        let mut engine = restored.compile().unwrap();
+        let mut audio = vec![0.0; 2500];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|x| x.is_finite() && x.abs() < 1.0));
+        assert!(audio.iter().any(|x| x.abs() > 0.01));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap();
+        assert_eq!(scope.x_channels, 1);
+        assert_eq!(scope.y_channels, 0);
+        let extrema = scope.measurements().x.unwrap();
+        assert!(extrema.min < 0.0 && extrema.max > 0.0);
+        assert_eq!(extrema.observations, openpatch_core::SCOPE_BINS);
     }
 
     #[test]

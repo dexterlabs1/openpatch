@@ -1,0 +1,69 @@
+{
+  "cases": [
+    {
+      "audio_seconds_per_trial": 1,
+      "block_frames": 128,
+      "checksum": -3.9455039182212204,
+      "final_block_peak_v": 1.2095322608947754,
+      "max_seconds": 0.023144083,
+      "median_realtime_factor": 170.54052307165995,
+      "median_seconds": 0.005863709,
+      "min_seconds": 0.00498175,
+      "modulation": "fixed 0 V",
+      "pitch": "1 V/oct",
+      "trials": 5,
+      "voices": 1
+    },
+    {
+      "audio_seconds_per_trial": 1,
+      "block_frames": 128,
+      "checksum": -101.57470274163643,
+      "final_block_peak_v": 1.1813040971755981,
+      "max_seconds": 0.024301416,
+      "median_realtime_factor": 46.30165528417641,
+      "median_seconds": 0.0215975,
+      "min_seconds": 0.021410667,
+      "modulation": "80 Hz sine, +/-0.1 V, mono broadcasts",
+      "pitch": "1 V/oct",
+      "trials": 5,
+      "voices": 1
+    },
+    {
+      "audio_seconds_per_trial": 1,
+      "block_frames": 128,
+      "checksum": -63.128062691539526,
+      "final_block_peak_v": 1.2095322608947754,
+      "max_seconds": 0.046066209,
+      "median_realtime_factor": 21.782083282444944,
+      "median_seconds": 0.045909291,
+      "min_seconds": 0.044642375,
+      "modulation": "fixed 0 V",
+      "pitch": "1 V/oct",
+      "trials": 5,
+      "voices": 16
+    },
+    {
+      "audio_seconds_per_trial": 1,
+      "block_frames": 128,
+      "checksum": -1625.1952438661829,
+      "final_block_peak_v": 1.1813040971755981,
+      "max_seconds": 0.273243666,
+      "median_realtime_factor": 3.6664216274878965,
+      "median_seconds": 0.2727455,
+      "min_seconds": 0.269959916,
+      "modulation": "80 Hz sine, +/-0.1 V, mono broadcasts",
+      "pitch": "1 V/oct",
+      "trials": 5,
+      "voices": 16
+    }
+  ],
+  "sample_rate": 48000,
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "production_sha256": "028cddd9fcc70398c18f5501f2f28212927aef013a029ddb6fe25cc10c9df323",
+  "method": "Whole-engine sequential offline throughput; 5 trials per case; compile and first 128 frames excluded; no realtime scheduling, devices, graphics, concurrent clients, graph swaps or callback-tail guarantee.",
+  "limitations": [
+    "Coherent pitches across voices; not worst-case independent polyphonic modulation.",
+    "Measures this original model only; no Rack comparison or hardware equivalence."
+  ]
+}

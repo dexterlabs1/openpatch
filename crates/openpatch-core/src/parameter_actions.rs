@@ -51,6 +51,12 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("multi_vco" | "multi_lfo", "pulse_width") => Linear,
         ("multi_vco" | "multi_lfo", "fm_amount" | "pwm_amount") => Disabled,
         ("multi_vco", "linear_fm" | "soft_sync") | ("multi_lfo", "unipolar" | "invert") => Enum,
+        ("modal_resonator", "frequency" | "decay") => Log2,
+        (
+            "modal_resonator",
+            "stiffness" | "damping" | "strike_position" | "pickup_position" | "strike_strength"
+            | "level",
+        ) => Linear,
         ("lowpass", "cutoff")
         | ("analog_vco", "frequency")
         | ("ladder_vcf", "cutoff")

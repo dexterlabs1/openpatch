@@ -4,6 +4,7 @@
 use crate::gates::{self, Gates};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::mixing::{self, Mixing};
+use crate::modal_resonator::{self, ModalResonator};
 use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
@@ -62,6 +63,7 @@ impl PortFrame {
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
     kind == "score_sequencer"
+        || kind == "modal_resonator"
         || studio_fx::input_names(kind).is_some()
         || voice_tools::input_names(kind).is_some()
         || routing::input_names(kind).is_some()
@@ -96,6 +98,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if kind == "modal_resonator" {
+        return modal_resonator::INPUTS.iter().position(|p| *p == name);
+    }
     if kind == "score_sequencer" {
         return score::INPUTS.iter().position(|p| *p == name);
     }
@@ -138,6 +143,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
 fn output_port(kind: &str, name: &str) -> Option<usize> {
     if kind == "poly_viz" {
         return None;
+    }
+    if kind == "modal_resonator" {
+        return modal_resonator::OUTPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::OUTPUTS.iter().position(|p| *p == name);
@@ -227,7 +235,7 @@ fn voice_policy(kind: &str) -> VoicePolicy {
     match kind {
         "constant" | "gate" | "white_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
-        "mixer" | "crossfade" => VoicePolicy::Maximum,
+        "mixer" | "crossfade" | "modal_resonator" => VoicePolicy::Maximum,
         _ => VoicePolicy::Primary(0),
     }
 }
@@ -413,6 +421,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "multi_vco" {
         multi_vco::annotate(module);
     }
+    if kind == "modal_resonator" {
+        modal_resonator::annotate(module);
+    }
     if kind == "seq3" {
         sequence::annotate(module);
     }
@@ -434,6 +445,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 enum Model {
     Score(Box<ScoreSequencer>),
     StudioFx(Box<StudioFx>),
+    ModalResonator(Box<ModalResonator>),
     VoiceTools(Box<VoiceTools>),
     Voices {
         template: Dsp,
@@ -463,6 +475,9 @@ enum Model {
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if node.kind == "modal_resonator" {
+            return ModalResonator::build(node, rate).map(|s| Self::ModalResonator(Box::new(s)));
+        }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
         }
@@ -832,6 +847,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::ModalResonator(s) => {
+                s.reset_state();
+                node.output_count
+            }
             Model::StudioFx(s) => {
                 s.reset_state();
                 node.output_count
@@ -892,6 +911,7 @@ impl PolyEngine {
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
             Model::Scope(s) => s.reset(),
+            Model::ModalResonator(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
@@ -1223,7 +1243,10 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
-                Model::Score(_) | Model::StudioFx(_) | Model::VoiceTools(_) => {
+                Model::Score(_)
+                | Model::StudioFx(_)
+                | Model::VoiceTools(_)
+                | Model::ModalResonator(_) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
@@ -1241,6 +1264,7 @@ impl PolyEngine {
                             }
                             s.process(&inputs, outputs);
                         }
+                        Model::ModalResonator(s) => s.process(&inputs, outputs),
                         Model::StudioFx(s) => s.process(&inputs, outputs),
                         Model::VoiceTools(s) => s.process(&inputs, outputs),
                         _ => unreachable!(),
@@ -1647,6 +1671,8 @@ impl PolyEngine {
             } else {
                 true
             };
+            let strike_unchanged = self.nodes[*index].kind != "modal_resonator"
+                || self.input_unchanged(*index, old, *old_index, 1);
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
@@ -1661,6 +1687,9 @@ impl PolyEngine {
                 (Model::Score(s), Model::Score(old)) => {
                     s.adopt(old);
                     s.reset_input_detectors(score_inputs_changed[0], score_inputs_changed[1]);
+                }
+                (Model::ModalResonator(s), Model::ModalResonator(old)) => {
+                    s.adopt(old, strike_unchanged)
                 }
                 (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
                 (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),

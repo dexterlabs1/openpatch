@@ -33,8 +33,10 @@ mod gates;
 pub mod ladder;
 pub mod midi;
 mod mixing;
+mod modal_resonator;
 mod multi_lfo;
 mod multi_vco;
+pub use modal_resonator::{modal_resonator_modes, ModalResonatorMode, MODAL_RESONATOR_MODES};
 mod parameter_actions;
 mod svf_resampler;
 mod voice_tools;
@@ -303,6 +305,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(voice_tools::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(modal_resonator::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -311,7 +317,7 @@ pub fn catalog() -> Value {
         bypass::annotate(module);
         parameter_actions::annotate_catalog(module);
     }
-    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","pitch":"1 V/oct for analog_vco.pitch and ladder_vcf.cutoff_cv"});
+    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","physical_modules":"volts; modal_resonator excite uses 1 N/V and out is a velocity pickup at 25 V*s/m before level", "pitch":"1 V/oct for analog_vco.pitch, ladder_vcf.cutoff_cv and modal_resonator.pitch"});
     result
 }
 

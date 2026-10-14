@@ -14,6 +14,8 @@ VIZ adds a dedicated input-only 16-channel polarity display, bringing the total
 to 52 kinds; [signal and validation contract](POLYPHONIC_VIZ.md). Rack Scope adds
 independent polyphonic X/Y acquisition and passthrough, bringing the catalog to
 53 kinds; [Scope contract and bounded reference](RACK_SCOPE.md).
+The original [physical modal resonator](MODAL_RESONATOR.md) brings the catalog to
+54 kinds. It is an additional acoustic model, not completion of a stock VCV target.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
