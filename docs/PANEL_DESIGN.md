@@ -7,6 +7,9 @@ passive lights, typography, and hardware materials. Wide sequencers retain
 their real proportions rather than being rearranged into a generic miniature.
 The card's title, favorite star, category, and availability overlay belong to
 the browser and sit outside the module artwork.
+Cards reserve more height for the hardware. Hover a card to inspect an enlarged
+default panel alongside its description; the inspection view uses the same
+renderer and fits the available screen without stretching the module.
 
 ![The module library uses actual default module panels](images/openpatch-library.png)
 
@@ -14,11 +17,12 @@ the browser and sit outside the module artwork.
 
 The Studio Rack skin uses neutral brushed aluminum, compact printed headings,
 restrained signal-family accent rules, recessed value wells, graphite knobs with
-metal edges, and machined jack collars. Outputs have reversed charcoal labels;
+metal shoulders, crisp beveled panel edges, and machined jack collars. Outputs have reversed charcoal labels;
 inputs use dark print directly on the panel. Long instance names truncate within
-the header and value text fits its well. Control
-centers, parameter ranges, cable endpoints, and hit areas retain their existing
-behavior. Panels scale from shared drawing code; subpixel brushing is omitted
+the header and value text fits its well. The analog VCO and ladder VCF have a
+large primary frequency/cutoff knob above a pair of secondary controls. Knobs
+and numeric editors follow that layout in both the rack and browser; parameter
+ranges and cable endpoints are unchanged. Panels scale from shared drawing code; subpixel brushing is omitted
 at small scales to keep thumbnails and zoomed-out panels clear.
 
 Previews show catalog defaults and neutral telemetry. They do not instantiate

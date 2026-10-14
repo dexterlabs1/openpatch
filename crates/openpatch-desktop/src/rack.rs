@@ -265,6 +265,10 @@ impl ModulePreview {
         &self.source == module
     }
 
+    pub(crate) fn size(&self) -> Vec2 {
+        vec2(panel_width(&self.patch.nodes[0].kind), PANEL_HEIGHT)
+    }
+
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, bounds: Rect, catalog: &Value) {
         if !bounds.is_positive()
             || !bounds.min.is_finite()
@@ -273,7 +277,7 @@ impl ModulePreview {
         {
             return;
         }
-        let size = vec2(panel_width(&self.patch.nodes[0].kind), PANEL_HEIGHT);
+        let size = self.size();
         let scale = (bounds.width() / size.x).min(bounds.height() / size.y);
         let rect = Rect::from_center_size(bounds.center(), size * scale);
         self.renderer.zoom = scale;
@@ -2281,6 +2285,8 @@ impl Rack {
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if node.kind == "mix6" {
                     (pos2(width * 0.5, 125.0), 32.0)
+                } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf") {
+                    voice_parameter_position(index, width)
                 } else {
                     parameter_position(count, index, width)
                 };
@@ -2576,7 +2582,10 @@ impl Rack {
                     54.0
                 } else if node.kind == "gates" {
                     110.0
-                } else if count >= 4 || node.kind == "mid_side" {
+                } else if count >= 4
+                    || node.kind == "mid_side"
+                    || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
+                {
                     width * 0.5 - 12.0
                 } else {
                     width - 20.0
@@ -2590,23 +2599,7 @@ impl Rack {
                 );
                 if mode.is_interactive() {
                     let value_response = ui.interact(
-                        Rect::from_center_size(
-                            value_center,
-                            vec2(
-                                if node.kind == "vca_mix" {
-                                    70.0
-                                } else if node.kind == "seq3" {
-                                    54.0
-                                } else if node.kind == "gates" {
-                                    110.0
-                                } else if count >= 4 || node.kind == "mid_side" {
-                                    width * 0.5 - 12.0
-                                } else {
-                                    width - 20.0
-                                },
-                                19.0,
-                            ) * self.zoom,
-                        ),
+                        Rect::from_center_size(value_center, vec2(readout_width, 19.0) * self.zoom),
                         ui.id().with(("value", &node.id, name)),
                         Sense::click(),
                     );
@@ -5909,6 +5902,19 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     );
     ordered
 }
+// A large tuning control above a matched pair of secondary controls. Keep this
+// geometry shared by rack rendering, previews, and the parameter hit regions.
+fn voice_parameter_position(index: usize, width: f32) -> (Pos2, f32) {
+    if index == 0 {
+        (pos2(width * 0.5, 138.0), 38.0)
+    } else {
+        (
+            pos2(width * if index == 1 { 0.25 } else { 0.75 }, 252.0),
+            23.0,
+        )
+    }
+}
+
 fn parameter_position(count: usize, index: usize, width: f32) -> (Pos2, f32) {
     match count {
         1 => (pos2(width * 0.5, 183.0), 42.0),
@@ -11063,6 +11069,56 @@ mod tests {
     }
 
     #[test]
+    fn analog_voice_primary_and_secondary_controls_have_independent_edit_targets() {
+        for (kind, parameters) in [
+            ("analog_vco", ["frequency", "waveform", "pulse_width"]),
+            ("ladder_vcf", ["cutoff", "resonance", "drive"]),
+        ] {
+            // Actual pointer input verifies both the knobs and numeric wells.
+            for (index, parameter, readout) in
+                parameters
+                    .into_iter()
+                    .enumerate()
+                    .flat_map(|(index, parameter)| {
+                        [false, true].map(|readout| (index, parameter, readout))
+                    })
+            {
+                let ctx = egui::Context::default();
+                let mut rack = Rack::default();
+                let patch: Patch = serde_json::from_value(json!({"version":2,
+                    "nodes":[{"id":"voice","kind":kind}]}))
+                .unwrap();
+                frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
+                let target = [pos2(129.0, 150.0), pos2(76.5, 264.0), pos2(181.5, 264.0)][index];
+                if readout {
+                    let target = target + vec2(0.0, if index == 0 { 47.0 } else { 32.0 });
+                    for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)]
+                    {
+                        frame_revision_state(
+                            &ctx,
+                            &mut rack,
+                            &patch,
+                            time,
+                            vec![egui::Event::PointerMoved(target), button(target, pressed)],
+                            true,
+                            true,
+                            17,
+                        );
+                    }
+                } else {
+                    right_click_parameter(&ctx, &mut rack, &patch, 17, target, 1.0);
+                }
+                let edit = rack
+                    .editing
+                    .as_ref()
+                    .expect("each knob and readout opens its own editor");
+                assert_eq!(edit.parameter, parameter, "{kind}");
+                assert_eq!(edit.id, "voice");
+            }
+        }
+    }
+
+    #[test]
     fn waveform_drag_accumulates_small_movements_and_emits_only_valid_steps() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
@@ -11076,7 +11132,7 @@ mod tests {
             ..Patch::default()
         };
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let knob = pos2(129.0, 204.0);
+        let knob = pos2(76.5, 264.0);
         frame(
             &ctx,
             &mut rack,
@@ -12380,7 +12436,7 @@ mod tests {
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
             let target = if step.is_some() {
-                pos2(129.0, 204.0)
+                pos2(76.5, 264.0)
             } else {
                 pos2(99.0, 137.0)
             };

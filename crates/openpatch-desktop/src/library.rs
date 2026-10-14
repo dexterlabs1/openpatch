@@ -537,7 +537,7 @@ impl ModuleLibrary {
             .as_str()
             .unwrap_or_else(|| crate::rack::title(kind));
         let supported = available(module, patch_version);
-        let (_, rect) = ui.allocate_space(vec2(width, 217.0));
+        let (_, rect) = ui.allocate_space(vec2(width, 261.0));
         let id = ui.make_persistent_id(("module-library-tile", kind));
         let response = ui.interact(rect, id, Sense::click_and_drag());
         if self.scroll_to_kind.as_deref() == Some(kind) {
@@ -638,9 +638,36 @@ impl ModuleLibrary {
                 "\nRequires engine v2"
             },
         );
-        response.on_hover_text(tooltip);
+        response.on_hover_ui(|ui| {
+            // Reuse the exact cached rack renderer. This inspection view is
+            // disabled hardware, just like the tile, and never owns input.
+            if let Some(preview) = self.previews.get_mut(kind) {
+                let viewport = ui.ctx().content_rect();
+                let size = inspection_preview_size(preview.size(), viewport.size());
+                ui.set_width(size.x.max(260.0).min((viewport.width() - 32.0).max(1.0)));
+                egui::ScrollArea::vertical()
+                    .max_height((viewport.height() - 32.0).max(1.0))
+                    .show(ui, |ui| {
+                        ui.label(&tooltip);
+                        ui.separator();
+                        let (bounds, _) = ui.allocate_exact_size(size, Sense::hover());
+                        preview.show(ui, bounds, catalog);
+                    });
+            }
+        });
         (action, id, star.id)
     }
+}
+
+fn inspection_preview_size(natural: Vec2, viewport: Vec2) -> Vec2 {
+    let available = vec2(
+        (viewport.x - 32.0).clamp(1.0, 760.0),
+        (viewport.y - 200.0).clamp(1.0, 396.0),
+    );
+    natural
+        * (available.x / natural.x)
+            .min(available.y / natural.y)
+            .min(1.0)
 }
 
 fn modules(catalog: &Value) -> impl Iterator<Item = &Value> {
@@ -1298,5 +1325,112 @@ mod tests {
                 enabled,
             );
         }
+    }
+
+    #[test]
+    fn hover_inspection_reuses_actual_wide_preview_without_focus_or_library_actions() {
+        fn bpm_text(shapes: &[egui::epaint::ClippedShape]) -> Vec<(Rect, String)> {
+            fn collect(shape: &egui::Shape, found: &mut Vec<(Rect, String)>) {
+                match shape {
+                    egui::Shape::Text(text) if text.galley.text().ends_with(" BPM") => {
+                        found.push((
+                            Rect::from_min_size(text.pos, text.galley.size()),
+                            text.galley.text().to_owned(),
+                        ));
+                    }
+                    egui::Shape::Vec(children) => {
+                        for child in children {
+                            collect(child, found);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut found = Vec::new();
+            for shape in shapes {
+                collect(&shape.shape, &mut found);
+            }
+            found
+        }
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "seq3")
+            .unwrap();
+        let original = module.clone();
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let mut library = ModuleLibrary::default();
+        let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(940.0, 680.0));
+        let mut render = |time: f64, hover: bool| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    time: Some(time),
+                    focused: true,
+                    events: if hover {
+                        vec![egui::Event::PointerMoved(pos2(75.0, 90.0))]
+                    } else {
+                        vec![]
+                    },
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let (action, _, _) = library.tile(ui, module, &catalog, 150.0, 2);
+                        assert!(action.is_none());
+                    });
+                },
+            )
+        };
+        let initial = render(0.0, false);
+        let tile_height = bpm_text(&initial.shapes)
+            .iter()
+            .map(|(rect, _)| rect.height())
+            .fold(0.0_f32, f32::max);
+        assert!(
+            tile_height > 0.0,
+            "actual tile contains the native tempo display"
+        );
+        render(1.0, true);
+        render(2.0, true);
+        let enlarged = render(3.0, true);
+        let labels = bpm_text(&enlarged.shapes);
+        fn has_metadata(shape: &egui::Shape, description: &str) -> bool {
+            match shape {
+                egui::Shape::Text(text) => {
+                    text.galley.text().contains("Implementation:")
+                        && text.galley.text().contains(description)
+                }
+                egui::Shape::Vec(children) => children
+                    .iter()
+                    .any(|shape| has_metadata(shape, description)),
+                _ => false,
+            }
+        }
+        assert!(enlarged
+            .shapes
+            .iter()
+            .any(|shape| has_metadata(&shape.shape, module["description"].as_str().unwrap())));
+        assert!(
+            labels
+                .iter()
+                .any(|(rect, _)| rect.height() > tile_height * 2.0),
+            "hover paints a larger actual tempo display"
+        );
+        assert!(labels.iter().all(|(rect, _)| viewport.contains_rect(*rect)));
+        assert!(ctx.memory(|memory| memory.focused()).is_none());
+        assert!(!egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(&ctx));
+        assert!(library.favorites().is_empty());
+        assert!(library.highlighted.is_none());
+        assert_eq!(library.previews.len(), 1);
+        let preview = library.previews.get("seq3").unwrap();
+        assert!(preview.matches(&original));
+        let size = inspection_preview_size(preview.size(), viewport.size());
+        assert!((size.x / size.y - preview.size().x / preview.size().y).abs() < 0.0001);
+        assert!(size.x <= viewport.width() - 32.0 && size.y <= viewport.height() - 200.0);
+        assert_eq!(module, &original);
     }
 }

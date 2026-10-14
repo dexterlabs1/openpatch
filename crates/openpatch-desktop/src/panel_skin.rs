@@ -55,8 +55,19 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
         1.0,
         Color32::from_black_alpha(115),
     );
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(90, 90, 87));
-    let face = rect.shrink(1.5 * zoom);
+    // The rolled perimeter catches light independently of the brushed face.
+    painter.rect_filled(rect, 1.0, Color32::from_rgb(78, 80, 79));
+    painter.rect_filled(
+        rect.shrink(0.8 * zoom),
+        1.0,
+        Color32::from_rgb(213, 214, 208),
+    );
+    painter.rect_filled(
+        rect.shrink(1.7 * zoom),
+        0.5,
+        Color32::from_rgb(133, 136, 132),
+    );
+    let face = rect.shrink(3.0 * zoom);
     let mut mesh = egui::epaint::Mesh::default();
     for (fraction, left, right) in [
         (0.0, [242, 240, 234], [231, 229, 223]),
@@ -80,6 +91,18 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
         mesh.add_triangle(i + 1, i + 3, i + 2);
     }
     painter.add(egui::Shape::mesh(mesh));
+    painter.line_segment(
+        [face.left_top(), face.right_top()],
+        Stroke::new(0.8 * zoom, Color32::from_rgb(255, 254, 246)),
+    );
+    painter.line_segment(
+        [face.left_top(), face.left_bottom()],
+        Stroke::new(0.8 * zoom, Color32::from_white_alpha(155)),
+    );
+    painter.line_segment(
+        [face.left_bottom(), face.right_bottom()],
+        Stroke::new(0.9 * zoom, Color32::from_black_alpha(65)),
+    );
     // Brushing is deterministic and sparse; omit subpixel texture in thumbnails.
     if zoom >= 0.65 {
         for grain in 0..56 {
@@ -126,19 +149,19 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
     }
 }
 
-/// A smooth, directional cap rather than overlapping flat circles.
+/// A nearly flat graphite crown, distinct from the knurled skirt below it.
 fn shaded_disc(painter: &egui::Painter, center: Pos2, radius: f32) {
     let mut mesh = egui::epaint::Mesh::default();
     mesh.colored_vertex(
-        center - vec2(radius * 0.18, radius * 0.24),
-        Color32::from_rgb(76, 79, 80),
+        center - vec2(radius * 0.14, radius * 0.20),
+        Color32::from_rgb(53, 57, 59),
     );
     const SEGMENTS: u32 = 40;
     for segment in 0..SEGMENTS {
         let angle = segment as f32 * std::f32::consts::TAU / SEGMENTS as f32;
         let direction = vec2(angle.cos(), angle.sin());
         let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
-        let gray = (24.0 + 29.0 * light) as u8;
+        let gray = (28.0 + 22.0 * light) as u8;
         mesh.colored_vertex(
             center + direction * radius,
             Color32::from_rgb(gray, gray + 1, gray + 2),
@@ -205,23 +228,30 @@ pub(crate) fn knob(
             Stroke::new(0.85 * zoom, Color32::from_gray(shade)),
         );
     }
-    shaded_disc(painter, center, radius * 0.81);
+    // A metal shoulder separates the skirt from the smaller cap.
+    painter.circle_filled(center, radius * 0.83, Color32::from_rgb(94, 98, 98));
+    painter.circle_filled(
+        center + vec2(0.0, 0.7) * zoom,
+        radius * 0.78,
+        Color32::from_rgb(10, 13, 14),
+    );
+    shaded_disc(painter, center, radius * 0.74);
     painter.circle_stroke(
         center,
-        radius * 0.82,
+        radius * 0.75,
         Stroke::new(0.8 * zoom, Color32::from_rgb(13, 17, 16)),
     );
     let arc: Vec<_> = (0..=20)
         .map(|i| {
             let a = (-175.0 + i as f32 * 6.4).to_radians();
-            center + vec2(a.cos(), a.sin()) * radius * 0.85
+            center + vec2(a.cos(), a.sin()) * radius * 0.79
         })
         .collect();
     painter.add(egui::Shape::line(
         arc,
         Stroke::new(
             0.85 * zoom,
-            Color32::from_rgba_unmultiplied(214, 217, 218, 150),
+            Color32::from_rgba_unmultiplied(233, 235, 230, 195),
         ),
     ));
     if active {
