@@ -3407,11 +3407,27 @@ impl OpenPatch {
             };
             let patch: Patch =
                 serde_json::from_str(source).expect("valid bundled polyphonic patch");
+            let sum_lights = (frame == 52).then(|| {
+                let mut engine = patch.compile().expect("routing meter fixture compiles");
+                engine.process_block(&mut [0.0; 1024]);
+                let handle = engine
+                    .resolve_module_lights("sum")
+                    .expect("SUM meter handle");
+                let state = engine.module_lights(handle).expect("SUM meter snapshot");
+                assert_eq!(state.input_channels, Some(16));
+                assert_eq!(state.brightness[0][0], 1.0);
+                state
+            });
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("polyphonic patch compiles");
             self.rack = Rack::default();
             self.rack.set_zoom(zoom);
             self.title = title.into();
+            if let Some(lights) = sum_lights {
+                self.rack
+                    .set_module_states(BTreeMap::from([("sum".into(), lights)]), BTreeMap::new());
+                self.title.push_str(" · offline DSP snapshot");
+            }
         }
         if frame == 64 {
             let patch: Patch =

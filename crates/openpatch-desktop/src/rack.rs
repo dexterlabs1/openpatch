@@ -3244,14 +3244,14 @@ impl Rack {
             INK,
         );
         painter.text(
-            point(75.0, 266.0),
+            point(75.0, 254.0),
             Align2::CENTER_CENTER,
             "OUT · 10 V = 0 dB",
             crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
             MUTED,
         );
         for (band, db) in [0, -3, -6, -12, -24, -36].into_iter().enumerate() {
-            let y = 284.0 + band as f32 * 13.0;
+            let y = 268.0 + band as f32 * 10.0;
             let brightness = state.map_or(0.0, |s| s.brightness[band][0]).clamp(0.0, 1.0);
             let color = if band == 0 {
                 Color32::from_rgb(218, 141, 53)
@@ -3272,7 +3272,7 @@ impl Rack {
             );
         }
         painter.text(
-            point(75.0, 373.0),
+            point(75.0, 333.0),
             Align2::CENTER_CENTER,
             if state.is_some() {
                 "POST-LEVEL"
@@ -3282,7 +3282,7 @@ impl Rack {
             crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
-        ui.interact(Rect::from_min_max(point(24.0, 204.0), point(130.0, 380.0)),
+        ui.interact(Rect::from_min_max(point(24.0, 204.0), point(130.0, 338.0)),
             ui.id().with((&node.id, "sum-meter")), Sense::hover()).on_hover_text(
                 "Active input channels: 0–16. Output meter measures the signed channel sum after LEVEL, relative to 10 V. Opposite voices can cancel. No published telemetry is shown as unavailable.");
     }
@@ -5508,6 +5508,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "poly_sum" => return pos2(if input { 45.0 } else { 105.0 }, 367.0),
         "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,

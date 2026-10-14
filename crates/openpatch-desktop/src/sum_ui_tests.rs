@@ -86,3 +86,63 @@ fn sum_unpublished_and_live_channel_displays_are_distinct() {
     }
     assert_eq!(panel_width("poly_sum"), 150.0);
 }
+
+#[test]
+fn sum_ports_patch_independently_below_the_meter() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+        {"id":"sum","kind":"poly_sum"},
+        {"id":"source","kind":"constant"},
+        {"id":"sink","kind":"audio_out"}
+    ]}))
+    .unwrap();
+    frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+    let input = fixture_jack(&rack, &patch, "sum", "signal", true);
+    let output = fixture_jack(&rack, &patch, "sum", "out", false);
+    assert_eq!(input, pos2(69.0, 379.0));
+    assert_eq!(output, pos2(129.0, 379.0));
+    // Verify painted meter text remains above both socket hit regions.
+    let painted = frame_revision_state(&ctx, &mut rack, &patch, 0.1, vec![], true, true, 7).1;
+    fn assert_meter_clear(shape: &egui::Shape, input: Pos2, output: Pos2) {
+        match shape {
+            egui::Shape::Text(text)
+                if text.galley.text() == "METER UNAVAILABLE"
+                    || text.galley.text() == "OUT · 10 V = 0 dB"
+                    || ["0", "-3", "-6", "-12", "-24", "-36"].contains(&text.galley.text()) =>
+            {
+                let bounds = Rect::from_min_size(text.pos, text.galley.size());
+                for socket in [input, output] {
+                    assert!(
+                        !bounds.intersects(Rect::from_center_size(socket, vec2(36.0, 36.0))),
+                        "meter text {} overlaps socket",
+                        text.galley.text()
+                    );
+                }
+            }
+            egui::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    assert_meter_clear(shape, input, output);
+                }
+            }
+            _ => {}
+        }
+    }
+    for shape in &painted.shapes {
+        assert_meter_clear(&shape.shape, input, output);
+    }
+    assert!(input.distance(output) > 2.0 * 18.0);
+    let source = fixture_jack(&rack, &patch, "source", "out", false);
+    let sink = fixture_jack(&rack, &patch, "sink", "signal", true);
+    let action = drag(&ctx, &mut rack, &patch, 1.0, source, input);
+    assert!(
+        matches!(action, Some(RackAction::Command("connect", ref args))
+        if args["from"] == "source" && args["to"] == "sum" && args["input"] == "signal")
+    );
+    let action = drag(&ctx, &mut rack, &patch, 3.0, output, sink);
+    assert!(
+        matches!(action, Some(RackAction::Command("connect", ref args))
+        if args["from"] == "sum" && args["to"] == "sink" && args["output"] == "out")
+    );
+    assert!(rack.editing.is_none());
+}
