@@ -1035,7 +1035,7 @@ impl OpenPatch {
     }
     fn sync(&mut self) {
         if let Ok(s) = self.shared.try_lock() {
-            self.construction.observe(s.construction_snapshot());
+            let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
             if s.revision() != self.revision {
@@ -1052,10 +1052,19 @@ impl OpenPatch {
                 }
                 let retained: BTreeSet<_> = s.history_state_ids().collect();
                 self.history_layouts.retain(|id, _| retained.contains(id));
+                self.rack.observe_construction_transition(
+                    &self.patch,
+                    s.patch(),
+                    self.revision,
+                    s.revision(),
+                    &construction,
+                    self.construction.animate_cables(),
+                );
                 self.patch = s.patch().clone();
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
             }
+            self.construction.observe(construction);
         }
         if let Some(midi) = &mut self.midi {
             if let Some(error) = midi.poll() {
@@ -1851,6 +1860,7 @@ impl OpenPatch {
         if !patch.nodes.iter().any(|node| node.id == id) {
             return Err("add receipt is missing the new module".into());
         }
+        self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
         self.patch = patch;
         self.revision = revision;
@@ -1946,6 +1956,7 @@ impl OpenPatch {
             .ok_or("move receipt has no state identity")?;
         // No Session read here: newer MCP commits must not acquire this move's geometry.
         self.rack.apply_module_move(movement)?;
+        self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
         self.patch = patch;
         self.revision = revision;
@@ -2061,6 +2072,7 @@ impl OpenPatch {
         let state_id = receipt["state_id"]
             .as_u64()
             .ok_or("duplicate receipt has no state identity")?;
+        self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
         self.patch = patch;
         self.revision = revision;
@@ -4132,6 +4144,9 @@ impl eframe::App for OpenPatch {
                 Err(error) => error,
             };
             self.sync();
+        }
+        if !self.construction.animate_cables() {
+            self.rack.clear_construction_animation();
         }
         self.footer(ctx);
         let library_action = self.browser(ctx);
@@ -7525,6 +7540,57 @@ mod project_workflow_tests {
             json!({"plan_id": plan["plan_id"]}),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn human_receipt_installation_clears_construction_reveals_even_without_sync_revision_change() {
+        for action in ["add", "duplicate", "move", "replace"] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            let cable = app.patch.cables[0].clone();
+            let mut before = app.patch.clone();
+            before.cables.clear();
+            let now = Instant::now();
+            app.rack.observe_construction_transition(
+                &before,
+                &app.patch,
+                app.revision - 1,
+                app.revision,
+                &json!({"last_revision":app.revision}),
+                true,
+            );
+            assert!(
+                app.rack.construction_progress_at(&cable, now).is_some(),
+                "{action}"
+            );
+            let id = app.patch.nodes[0].id.clone();
+            match action {
+                "add" => assert!(app.add_module("constant", None)),
+                "duplicate" => assert!(app.duplicate_modules(
+                    &[id],
+                    DuplicateCableMode::None,
+                    app.revision,
+                    true
+                )),
+                "move" => {
+                    let layout = app.rack.layout();
+                    let p = &layout["positions"][&id];
+                    let position =
+                        egui::pos2(p[0].as_f64().unwrap() as f32, p[1].as_f64().unwrap() as f32);
+                    assert!(app.move_modules(ModuleMove {
+                        revision: app.revision,
+                        before: BTreeMap::from([(id.clone(), position)]),
+                        after: BTreeMap::from([(id, position + egui::vec2(6000.0, 4200.0))]),
+                    }));
+                }
+                "replace" => app.replace_now(app.patch.clone(), "Replaced"),
+                _ => unreachable!(),
+            }
+            assert!(
+                app.rack.construction_progress_at(&cable, now).is_none(),
+                "{action}"
+            );
+        }
     }
 
     #[test]

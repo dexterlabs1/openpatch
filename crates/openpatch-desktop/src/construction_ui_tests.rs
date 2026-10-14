@@ -218,3 +218,35 @@ fn idle_session_snapshot_draws_no_panel_and_emits_no_patch_work() {
     }
     assert_eq!(session.snapshot(), before);
 }
+
+#[test]
+fn animate_cables_pointer_toggle_is_local_and_survives_plan_observation_and_dismissal() {
+    let mut host = Host::new(snapshot("running", 211));
+    assert!(host.panel.animate_cables(), "animation defaults on");
+    assert!(host.click("Animate cables").is_none());
+    assert!(!host.panel.animate_cables());
+
+    host.panel.observe(snapshot("paused", 211));
+    assert!(!host.panel.animate_cables());
+    assert!(host.frame(vec![]).0.is_none());
+
+    host.panel.observe(snapshot("completed", 211));
+    assert!(host.click("Dismiss").is_none());
+    assert!(!host.panel.animate_cables());
+    host.panel.observe(snapshot("completed", 211));
+    let (action, dismissed) = host.frame(vec![]);
+    assert!(action.is_none());
+    assert!(text_rect(&dismissed, "Animate cables").is_none());
+    assert!(!host.panel.animate_cables());
+
+    host.panel.observe(snapshot("running", 212));
+    assert!(
+        !host.panel.animate_cables(),
+        "a new plan keeps the window preference"
+    );
+    assert!(host.click("Animate cables").is_none());
+    assert!(host.panel.animate_cables());
+    host.panel.observe(snapshot("paused", 212));
+    assert!(host.panel.animate_cables());
+    assert!(host.frame(vec![]).0.is_none());
+}

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app;
 mod audio;
+mod cable_animation;
 mod chrome;
 mod construction_ui;
 mod document_state;

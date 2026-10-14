@@ -5,6 +5,12 @@ the current step count and **Pause**, **Resume**, and **Cancel** controls. Each
 completed step is a graph revision and one ordinary Undo entry. This operates on
 existing module kinds; it does not generate new DSP modules.
 
+New construction cables briefly reveal along their actual rack curves. Both
+plugs and a faint full route appear immediately because the connection is
+already committed. Hover and pickup show the normal cable without the reveal;
+editing remains available throughout. **Animate cables** disables this effect
+immediately and remembers the choice for the current window.
+
 ## Submit a plan
 
 Read `inspect_patch` first, then send `start_construction` with that revision.
@@ -87,10 +93,21 @@ reopening. Offline renders and cloned sessions do not inherit construction.
 Progress reports **committed graph edits**, not confirmation that the audio
 callback has applied them. The control worker advances independently of GUI
 repaints. A stalled or hidden window can miss intermediate frames; this is not
-a guarantee that every step was displayed. Speaker playback remains a local
-user action. Cable animation, audio-application acknowledgements, subscriptions,
-and creating new DSP modules are separate future work.
+a guarantee that every step was displayed. The cable reveal is edit feedback,
+not an indication of signal propagation or audio timing. It runs for 280 ms and
+tracks at most 128 new cables simultaneously. Larger batches display remaining
+cables normally; they are never queued for later animation.
+
+Only a single consecutive construction revision observed by the UI can start
+a reveal. Skipped revisions, human edits, project replacement and Undo/Redo
+clear active reveals and show the current graph immediately. Moving, recoloring
+or promoting an existing cable does not start another reveal. A hidden window
+does not replay expired effects. Turning animation back on affects future
+commits only. Speaker playback remains a local user action. Audio-application
+acknowledgements, subscriptions and creating new DSP modules remain future work.
 
 Headless tests cover real MCP dispatch, transport disconnect, transaction
 preflight, history, conflicts, lifecycle and rendered panel button interaction.
+Cable tests cover curve subdivision, unchanged static rendering, revision
+eligibility, bounded lifetime, stacked identities and connected-jack pickup.
 Native macOS window/input and device-playback qualification remain outstanding.

@@ -6,10 +6,20 @@ use serde_json::{json, Value};
 #[path = "construction_ui_tests.rs"]
 mod tests;
 
-#[derive(Default)]
 pub struct Panel {
     snapshot: Value,
     dismissed: Option<u64>,
+    animate_cables: bool,
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self {
+            snapshot: Value::Null,
+            dismissed: None,
+            animate_cables: true,
+        }
+    }
 }
 
 pub struct Action {
@@ -18,6 +28,10 @@ pub struct Action {
 }
 
 impl Panel {
+    pub fn animate_cables(&self) -> bool {
+        self.animate_cables
+    }
+
     pub fn observe(&mut self, snapshot: Value) {
         self.snapshot = snapshot;
     }
@@ -92,6 +106,8 @@ impl Panel {
                     if !active && ui.small_button("Dismiss").clicked() {
                         self.dismissed = Some(plan_id);
                     }
+                    ui.checkbox(&mut self.animate_cables, "Animate cables")
+                        .on_hover_text("Briefly reveal newly committed construction cables. This is edit feedback, not signal flow or audio timing. Turning this off shows all connections immediately. Remembered for this window only.");
                 });
                 if let Some(error) = self.snapshot["error"].as_str() {
                     ui.label(RichText::new(error).color(ui.visuals().warn_fg_color));

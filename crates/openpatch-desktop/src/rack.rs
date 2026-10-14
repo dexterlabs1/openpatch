@@ -370,6 +370,7 @@ pub struct Rack {
     module_lights: BTreeMap<String, ModuleLightState>,
     module_controls: BTreeMap<String, ModuleControlState>,
     held_manual: Option<HeldManual>,
+    construction_animation: crate::cable_animation::Tracker,
 }
 
 impl Default for Rack {
@@ -403,11 +404,47 @@ impl Default for Rack {
             module_lights: BTreeMap::new(),
             module_controls: BTreeMap::new(),
             held_manual: None,
+            construction_animation: crate::cable_animation::Tracker::default(),
         }
     }
 }
 
 impl Rack {
+    pub(crate) fn clear_construction_animation(&mut self) {
+        self.construction_animation.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn construction_progress_at(
+        &self,
+        cable: &Cable,
+        now: std::time::Instant,
+    ) -> Option<f32> {
+        self.construction_animation.progress(cable, now)
+    }
+
+    pub(crate) fn observe_construction_transition(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        previous_revision: u64,
+        revision: u64,
+        construction: &Value,
+        enabled: bool,
+    ) {
+        // Only an exact, observed construction commit gets visual feedback.
+        // Gaps, human edits and history traversal show the current graph directly.
+        if enabled
+            && previous_revision.checked_add(1) == Some(revision)
+            && construction["last_revision"].as_u64() == Some(revision)
+        {
+            self.construction_animation
+                .observe(before, after, std::time::Instant::now());
+        } else {
+            self.construction_animation.clear();
+        }
+    }
+
     /// Open a real knob context menu on the next paint for the native smoke fixture.
     pub(crate) fn request_cable_menu_for_smoke(&mut self, node: &str, port: &str, input: bool) {
         self.requested_cable_menu = Some(if input {
@@ -988,6 +1025,11 @@ impl Rack {
         device_rate: u32,
         revision: u64,
     ) -> Option<RackAction> {
+        let animation_now = std::time::Instant::now();
+        if self.construction_animation.tick(animation_now) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        }
         let navigation_idle_at_frame_start = self.navigation_idle();
         if self.observed_revision != revision {
             self.cancel_module_drag();
@@ -1412,7 +1454,12 @@ impl Rack {
                 } else {
                     1.0
                 });
-                paint_cable_curves(
+                let progress = if picked_up || traced {
+                    None
+                } else {
+                    self.construction_animation.progress(cable, animation_now)
+                };
+                paint_committed_cable_curves(
                     &painter,
                     from,
                     to,
@@ -1428,6 +1475,7 @@ impl Rack {
                             0.0
                         }
                     },
+                    progress,
                 );
             }
         }
@@ -7075,13 +7123,71 @@ fn paint_cable_curves(
     bus: bool,
     fan: f32,
 ) {
+    paint_cable_segment(
+        painter,
+        cable_curve_points(from, to, zoom, fan),
+        color,
+        zoom,
+        bus,
+        112,
+    );
+}
+
+fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32) -> [Pos2; 4] {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
-    let points = [
+    [
         from,
         from + vec2(fan * zoom, sag),
         to + vec2(fan * zoom, sag),
         to,
-    ];
+    ]
+}
+
+// De Casteljau subdivision preserves the original curve, including stacked
+// fan-out and polyphonic width. No independent easing of endpoint geometry.
+fn cable_curve_prefix(points: [Pos2; 4], progress: f32) -> [Pos2; 4] {
+    let a = points[0].lerp(points[1], progress);
+    let b = points[1].lerp(points[2], progress);
+    let c = points[2].lerp(points[3], progress);
+    let d = a.lerp(b, progress);
+    let e = b.lerp(c, progress);
+    [points[0], a, d, d.lerp(e, progress)]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_committed_cable_curves(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    fan: f32,
+    progress: Option<f32>,
+) {
+    let Some(progress) = progress else {
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        return;
+    };
+    let points = cable_curve_points(from, to, zoom, fan);
+    // The entire committed route remains visible; this flourish never represents
+    // a pending connection or delays its electrical/hit-test state.
+    paint_cable_segment(painter, points, color.gamma_multiply(0.28), zoom, bus, 32);
+    if progress > 0.0 {
+        let prefix = cable_curve_prefix(points, progress);
+        paint_cable_segment(painter, prefix, color, zoom, bus, 112);
+        painter.circle_stroke(prefix[3], 4.2 * zoom, Stroke::new(1.2 * zoom, color));
+    }
+}
+
+fn paint_cable_segment(
+    painter: &egui::Painter,
+    points: [Pos2; 4],
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    shadow_alpha: u8,
+) {
     let curve = |points, width, color| {
         egui::epaint::CubicBezierShape::from_points_stroke(
             points,
@@ -7093,7 +7199,7 @@ fn paint_cable_curves(
     painter.add(curve(
         points.map(|point| point + vec2(1.4, 3.2) * zoom),
         (if bus { 10.0 } else { 8.0 }) * zoom,
-        Color32::from_black_alpha(112),
+        Color32::from_black_alpha(shadow_alpha),
     ));
     painter.add(curve(
         points,
@@ -13871,4 +13977,5 @@ mod tests {
     }
     include!("cable_gesture_tests.rs");
     include!("cable_menu_tests.rs");
+    include!("cable_animation_render_tests.rs");
 }
