@@ -29,6 +29,8 @@ mod stream_render;
 mod studio_fx;
 pub use stream_render::{render_wav_stream, RenderStats};
 mod bypass;
+mod colored_noise;
+pub use colored_noise::colored_noise_response_db;
 mod gates;
 pub mod ladder;
 pub mod midi;
@@ -309,6 +311,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(modal_resonator::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(colored_noise::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -317,7 +323,7 @@ pub fn catalog() -> Value {
         bypass::annotate(module);
         parameter_actions::annotate_catalog(module);
     }
-    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; seeded noise level is RMS volts; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","physical_modules":"volts; modal_resonator excite uses 1 N/V and out is a velocity pickup at 25 V*s/m before level", "pitch":"1 V/oct for analog_vco.pitch, ladder_vcf.cutoff_cv and modal_resonator.pitch"});
+    result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; white_noise.level is RMS volts; colored_noise.level is a multiplier of normalized color voltages; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","physical_modules":"volts; modal_resonator excite uses 1 N/V and out is a velocity pickup at 25 V*s/m before level", "pitch":"1 V/oct for analog_vco.pitch, ladder_vcf.cutoff_cv and modal_resonator.pitch"});
     result
 }
 

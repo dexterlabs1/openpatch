@@ -126,3 +126,34 @@ fn scope_capture_clone_adoption_and_initialization_allocate_nothing() {
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     assert_eq!(new.module_scope(handle).unwrap().buffer_index, 0);
 }
+
+#[test]
+fn colored_noise_first_callback_adoption_initialize_and_bypass_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame};
+    let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"n","kind":"colored_noise"}],"output":"n","output_port":"gray"})).unwrap();
+    let mut old = patch.compile().unwrap();
+    let mut new = patch.compile().unwrap();
+    let mut bypass = patch.clone();
+    bypass.nodes[0].bypassed = true;
+    let mut paused = bypass.compile().unwrap();
+    let handle = new.resolve_module_state("n").unwrap();
+    let mut samples = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACKING.with(|c| c.set(true));
+    for _ in 0..8 {
+        old.process_poly_block(&mut samples);
+        new.adopt_state_from(&old);
+        new.process_poly_block(&mut samples);
+        paused.adopt_state_from(&new);
+        paused.process_poly_block(&mut samples);
+        new.adopt_state_from(&paused);
+        assert!(new.initialize_module_state(handle));
+        assert!(new.reset_module_state(handle));
+        new.process_poly_block(&mut samples);
+    }
+    TRACKING.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(samples
+        .iter()
+        .all(|f| f.channels == 1 && f.values.iter().all(|v| v.is_finite())));
+}

@@ -73,7 +73,7 @@ fn policy(kind: &str, name: &str) -> Randomization {
         | ("gate", "duty")
         | ("quantizer", "offset")
         | ("sample_hold", "initial")
-        | ("white_noise", "level")
+        | ("white_noise" | "colored_noise", "level")
         | ("attenuverter", "gain" | "offset")
         | ("crossfade", "mix")
         | ("audio_stereo", "gain")
@@ -95,7 +95,7 @@ fn policy(kind: &str, name: &str) -> Randomization {
         | ("fade", "law")
         | ("rescale", "multiplier" | "reflect_min" | "reflect_max")
         | ("poly_merge", "channels") => Disabled,
-        ("white_noise", "seed") | ("midi_cv", _) => Disabled,
+        ("white_noise" | "colored_noise", "seed") | ("midi_cv", _) => Disabled,
         ("poly_constant", name) if numbered(name, "v", 16) => Linear,
         ("attenuverter8", name) if numbered(name, "gain", 8) => Linear,
         ("mutes10", name) if numbered(name, "mute", 10) => Enum,

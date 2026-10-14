@@ -2281,6 +2281,15 @@ impl OpenPatch {
                                 ui.close();
                                 self.replace_from_menu(patch, "Manual push voice");
                             }
+                            if ui.button("Noise colors").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/noise-colors.json"
+                                ))
+                                .expect("valid bundled noise colors");
+                                ui.close();
+                                self.replace_from_menu(patch, "Noise colors");
+                                self.rack.set_zoom(0.85);
+                            }
                             if ui.button("Struck resonator").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/struck-resonator.json"
@@ -4116,6 +4125,32 @@ impl OpenPatch {
             self.title = "Struck resonator · physical modal model".into();
             self.status = "Offline DSP snapshot · 16-mode string / beam · configuration preview is not live motion".into();
         }
+        if frame == 822 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/noise-colors.json"))
+                    .expect("noise smoke patch");
+            let mut engine = patch.compile().expect("noise smoke engine");
+            engine.process_block(&mut vec![0.0; 48000]);
+            let handle = engine.resolve_module_scope("scope").unwrap();
+            let snapshot = engine.module_scope(handle).unwrap().clone();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+                    "noise":[0,0],"scope":[270,0],"out":[0,420]
+                }}))
+                .unwrap();
+            self.rack.set_scope_states(BTreeMap::from([(
+                "scope".into(),
+                std::sync::Arc::new(snapshot),
+            )]));
+            self.title = "Noise colors · seven simultaneous outputs".into();
+            self.status =
+                "Offline DSP capture · white X / pink Y · panel curves show filter configuration"
+                    .into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -4166,6 +4201,7 @@ impl OpenPatch {
                 | 760
                 | 788
                 | 816
+                | 844
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4226,7 +4262,8 @@ impl OpenPatch {
                 39 => path.with_file_name("rack-scope-time.png"),
                 40 => path.with_file_name("rack-scope-xy.png"),
                 41 => path.with_file_name("rack-scope-external.png"),
-                _ => path.with_file_name("rack-modal-resonator.png"),
+                42 => path.with_file_name("rack-modal-resonator.png"),
+                _ => path.with_file_name("rack-colored-noise.png"),
             };
             image::save_buffer(
                 &target,
@@ -4237,18 +4274,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/43 at frame {frame}: {}",
+                "Native smoke: capture {}/44 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 43 {
+            if captures == 44 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 850, "Native screenshot timeout");
+        assert!(frame < 878, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {

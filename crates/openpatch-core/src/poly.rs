@@ -1,6 +1,7 @@
 //! Version-2 reference scheduler: all modules read last sample's cable frames,
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
+use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::mixing::{self, Mixing};
@@ -62,7 +63,8 @@ impl PortFrame {
 }
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
-    kind == "score_sequencer"
+    kind == "colored_noise"
+        || kind == "score_sequencer"
         || kind == "modal_resonator"
         || studio_fx::input_names(kind).is_some()
         || voice_tools::input_names(kind).is_some()
@@ -129,7 +131,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
-        "poly_constant" | "midi_cv" | "pulses" => None,
+        "poly_constant" | "midi_cv" | "pulses" | "colored_noise" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
             "right" => Some(1),
@@ -141,6 +143,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "colored_noise" {
+        return colored_noise::OUTPUTS.iter().position(|p| *p == name);
+    }
     if kind == "poly_viz" {
         return None;
     }
@@ -233,7 +238,7 @@ enum VoicePolicy {
 }
 fn voice_policy(kind: &str) -> VoicePolicy {
     match kind {
-        "constant" | "gate" | "white_noise" => VoicePolicy::Generator,
+        "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
         "mixer" | "crossfade" | "modal_resonator" => VoicePolicy::Maximum,
         _ => VoicePolicy::Primary(0),
@@ -241,7 +246,12 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if kind == "score_sequencer" {
+    let outputs = if kind == "colored_noise" {
+        colored_noise::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "score_sequencer" {
         score::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -410,6 +420,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             });
         }
     }
+    if kind == "colored_noise" {
+        colored_noise::annotate(module);
+    }
     routing::annotate(module);
     switch::annotate(module);
     utility_bank::annotate(module);
@@ -443,6 +456,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 
 #[derive(Debug)]
 enum Model {
+    ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
@@ -475,6 +489,9 @@ enum Model {
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if node.kind == "colored_noise" {
+            return ColoredNoise::build(node, rate).map(|s| Self::ColoredNoise(Box::new(s)));
+        }
         if node.kind == "modal_resonator" {
             return ModalResonator::build(node, rate).map(|s| Self::ModalResonator(Box::new(s)));
         }
@@ -839,6 +856,10 @@ impl PolyEngine {
             return false;
         };
         let count = match &mut node.model {
+            Model::ColoredNoise(s) => {
+                s.reset_state();
+                colored_noise::OUTPUTS.len()
+            }
             Model::Stereo(s) => {
                 s.reset_state();
                 node.output_count
@@ -906,6 +927,7 @@ impl PolyEngine {
             return false;
         };
         match &mut node.model {
+            Model::ColoredNoise(s) => s.reset_state(),
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
@@ -1008,7 +1030,9 @@ impl PolyEngine {
                 bypassed: node.bypassed,
                 bypass_inputs: [None; MAX_PORTS],
             });
-            let count = if node.kind == "score_sequencer" {
+            let count = if node.kind == "colored_noise" {
+                colored_noise::OUTPUTS.len()
+            } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
             } else if let Some(ports) = studio_fx::output_names(&node.kind)
                 .or_else(|| voice_tools::output_names(&node.kind))
@@ -1491,6 +1515,12 @@ impl PolyEngine {
                             [node.output_start..node.output_start + sequence::OUTPUTS.len()],
                     );
                 }
+                Model::ColoredNoise(s) => {
+                    s.process(
+                        &mut self.outputs
+                            [node.output_start..node.output_start + colored_noise::OUTPUTS.len()],
+                    );
+                }
                 Model::MultiLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -1680,6 +1710,7 @@ impl PolyEngine {
             }
             let bypass_changed = node.bypassed != previous.bypassed;
             match (&mut node.model, &previous.model) {
+                (Model::ColoredNoise(s), Model::ColoredNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
                 (Model::Viz(v), Model::Viz(old)) => v.adopt(old),

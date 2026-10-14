@@ -953,6 +953,47 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("redo", {})
         self.assertEqual(len(self.patch_snapshot()["patch"]["nodes"]), 1)
 
+    def test_noise_colors_named_outputs_seed_history_and_persistence(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        colors = ["white", "pink", "red", "violet", "blue", "gray", "black"]
+        self.assertEqual(modules["colored_noise"]["inputs"], [])
+        self.assertEqual(modules["colored_noise"]["outputs"], colors)
+        patch = json.loads((REPOSITORY / "examples/noise-colors.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": patch})
+        original = self.patch_snapshot()
+        captures = {}
+        for color in colors:
+            args = {"id": "noise", "port": color, "seconds": 0.05, "points": 64}
+            response = self.payload(self.require_tool_success("capture_signal", args))
+            captures[color] = response["bins"]
+            self.assertGreater(response["summary"]["rms"], 0.01)
+            self.assertTrue(all(math.isfinite(response["summary"][key]) for key in ("rms", "dc", "peak")))
+            self.assertEqual(response["bins"], self.payload(self.require_tool_success("capture_signal", args))["bins"])
+            if color == "black":
+                self.assertLessEqual(response["summary"]["peak"], 1.0)
+        self.assertEqual(self.patch_snapshot(), original)
+        self.require_tool_success("set_parameter", {"id": "noise", "parameter": "seed", "value": 42})
+        changed = self.payload(self.require_tool_success("capture_signal", {
+            "id": "noise", "port": "white", "seconds": 0.05, "points": 64}))
+        self.assertNotEqual(changed["bins"], captures["white"])
+        self.require_tool_success("undo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        for param, value in [("seed", -1), ("seed", 0.5), ("seed", 16777216), ("level", 2.01)]:
+            self.require_tool_error("set_parameter", {"id": "noise", "parameter": param, "value": value})
+        self.require_tool_error("set_output", {"id": "noise", "port": "missing"})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        self.require_tool_success("set_output", {"id": "noise", "port": "gray"})
+        self.require_tool_success("save_patch", {"filename": "noise.json"})
+        saved = json.loads((self.workspace / "noise.json").read_text())
+        self.assertEqual(saved["output_port"], "gray")
+        self.assertEqual(saved["nodes"][0]["params"]["seed"], 1)
+        self.require_tool_success("undo", {})
+        self.require_tool_success("render_audio", {"filename": "noise.wav", "seconds": 0.1})
+        with wave.open(str(self.workspace / "noise.wav")) as rendered:
+            samples = self._first_channel_samples(rendered.readframes(4800), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(x) > 100 for x in samples))
+        self.assertLess(max(abs(x) for x in samples), 32767)
+
     def test_physical_resonator_catalog_render_edit_and_restore(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         model = modules["modal_resonator"]

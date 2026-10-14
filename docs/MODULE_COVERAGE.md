@@ -16,6 +16,8 @@ independent polyphonic X/Y acquisition and passthrough, bringing the catalog to
 53 kinds; [Scope contract and bounded reference](RACK_SCOPE.md).
 The original [physical modal resonator](MODAL_RESONATOR.md) brings the catalog to
 54 kinds. It is an additional acoustic model, not completion of a stock VCV target.
+[Seven-color Noise](COLORED_NOISE.md) brings the current catalog to 55 kinds,
+with original filters and explicitly bounded spectral qualification.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -158,7 +160,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
 | Viz | Measurement | Implemented signal/display role: `poly_viz`, input-only, 16 paired indicators, channel activity and sampled signed smoothing | Full upstream host comparison, Rack import and native device qualification remain; [contract](POLYPHONIC_VIZ.md) |
 | Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
-| Noise | Source | Partial: seeded Gaussian `white_noise` with RMS control | Colored outputs, spectral-density budget and VCV level calibration |
+| Noise | Source | Seven-output `colored_noise`: white, pink, red, violet, blue, inverse-A gray and uniform black; deterministic seed and level; [contract](COLORED_NOISE.md) | Original filters with declared spectral and voltage budgets; source waveform/filter equivalence and native device qualification remain open. Legacy `white_noise` retained. |
 | Random | Modulation | Planned | Trigger timing, distribution and repeatability |
 | CV Mix | Mixing | Implemented signal role: `cv_mix`, three bipolar gains and independent 10 V normals | Direct reference traces, Rack import and native qualification; [contract](VOLTAGE_UTILITIES.md) |
 | Fade | Mixing | Implemented signal role: `fade`, bipolar CV depth, complementary outputs, linear/square-root laws and independent bypass routes; legacy `crossfade` remains unchanged | Direct reference traces, Rack state mapping and native qualification; [contract](VOLTAGE_MIXING.md) |

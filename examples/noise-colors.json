@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "noise",
+      "kind": "colored_noise",
+      "params": {
+        "seed": 1,
+        "level": 0.2
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.02,
+        "trigger_enabled": 0,
+        "x_scale": 2,
+        "y_scale": 2
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "noise",
+      "output": "white",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "noise",
+      "output": "pink",
+      "to": "scope",
+      "input": "y"
+    },
+    {
+      "from": "noise",
+      "output": "pink",
+      "to": "out",
+      "input": "signal"
+    }
+  ],
+  "output": "out"
+}

@@ -2315,6 +2315,12 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "colored_noise" {
+                if let Some(edit) = self.noise_panel(ui, node, module, rect, device_rate, revision)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "mid_side" {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
@@ -2349,6 +2355,7 @@ impl Rack {
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if node.kind == "scope"
                     || node.kind == "modal_resonator"
+                    || node.kind == "colored_noise"
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
@@ -3114,12 +3121,13 @@ impl Rack {
                         false,
                         true,
                         self.zoom,
-                        is_voltage_utility(&node.kind) || node.kind == "pulses",
+                        is_voltage_utility(&node.kind)
+                            || matches!(node.kind.as_str(), "pulses" | "colored_noise"),
                     );
                     self.paint_output_signal_light(&painter, node, port_index, output_point);
                     continue;
                 }
-                let jack = jack(
+                let jack = jack_with_minimum_target(
                     ui,
                     &painter,
                     output_point,
@@ -3128,7 +3136,13 @@ impl Rack {
                     connected,
                     true,
                     self.zoom,
-                    is_voltage_utility(&node.kind) || node.kind == "pulses",
+                    is_voltage_utility(&node.kind)
+                        || matches!(node.kind.as_str(), "pulses" | "colored_noise"),
+                    if node.kind == "colored_noise" {
+                        12.0
+                    } else {
+                        18.0
+                    },
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -3247,6 +3261,240 @@ impl Rack {
                 self.zoom,
             );
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn noise_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+        rate: u32,
+        revision: u64,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let painter = ui.painter().clone();
+        let mut action = None;
+        for (index, (name, spec)) in ordered_parameters(node, module).into_iter().enumerate() {
+            let (slider_local, value_local) = noise_control_rects(index);
+            let screen = |local: Rect| {
+                Rect::from_min_max(
+                    point(local.min.x, local.min.y),
+                    point(local.max.x, local.max.y),
+                )
+            };
+            let slider_rect = screen(slider_local);
+            let value_rect = screen(value_local);
+            let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
+            let mut max = spec["max"].as_f64().unwrap_or(1.0) as f32;
+            if let Some(ratio) = spec["sample_rate_max_ratio"].as_f64() {
+                max = max.min(rate as f32 * ratio as f32);
+            }
+            let default = (spec["default"].as_f64().unwrap_or(0.0) as f32).clamp(min, max);
+            let value = node
+                .params
+                .get(name)
+                .copied()
+                .unwrap_or(default)
+                .clamp(min, max);
+            let step = spec["step"].as_f64().filter(|s| *s > 0.0).map(|s| s as f32);
+            let scale = 1.0;
+            let display = if name == "level" {
+                format!("{value:.2}×")
+            } else {
+                parameter_value(name, value, spec)
+            };
+            let make_edit = |surface| ParameterEdit {
+                id: node.id.clone(),
+                kind: node.kind.clone(),
+                parameter: name.into(),
+                revision,
+                surface,
+                menu_popup: None,
+                stale: false,
+                text: (value * scale).to_string(),
+                min: min * scale,
+                max: max * scale,
+                step: step.map(|s| s * scale),
+                display_scale: scale,
+                display_unit: spec["unit"].as_str().unwrap_or("").into(),
+                slew_min: None,
+                gain_power: None,
+                raw_max: max,
+                focus: true,
+            };
+            painter.text(
+                point(20.0, slider_local.center().y),
+                Align2::LEFT_CENTER,
+                parameter_label(name),
+                crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
+                INK,
+            );
+            let mut next = value;
+            let slider = if name == "level" {
+                ui.scope_builder(
+                    egui::UiBuilder::new().max_rect(slider_rect).id_salt((
+                        "noise-slider",
+                        &node.id,
+                        name,
+                    )),
+                    |ui| {
+                        crate::panel_skin::control_style(ui, zoom);
+                        // Slider's thickness also follows Body font height;
+                        // scale it so miniature previews retain exact geometry.
+                        ui.style_mut()
+                            .text_styles
+                            .insert(egui::TextStyle::Body, FontId::proportional(11.0 * zoom));
+                        ui.spacing_mut().slider_width = slider_rect.width();
+                        ui.spacing_mut().interact_size.y = slider_rect.height();
+                        ui.spacing_mut().slider_rail_height = 4.0 * zoom;
+                        ui.style_mut().visuals.handle_shape =
+                            egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
+                        ui.add(
+                            egui::Slider::new(&mut next, min..=max)
+                                .show_value(false)
+                                .logarithmic(matches!(name, "frequency" | "decay"))
+                                .smart_aim(false),
+                        )
+                    },
+                )
+                .inner
+            } else {
+                painter.text(
+                    slider_rect.center(),
+                    Align2::CENTER_CENTER,
+                    "24-BIT",
+                    crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
+                    MUTED,
+                );
+                ui.interact(
+                    slider_rect,
+                    ui.id().with(("noise-slider", &node.id, name)),
+                    Sense::click(),
+                )
+            };
+            // Preserve Slider's changed flag while adding click/reset/menu
+            // semantics to its native drag and keyboard response.
+            let slider = slider.union(slider.interact(Sense::click_and_drag()));
+            slider.widget_info(|| {
+                egui::WidgetInfo::slider(
+                    ui.is_enabled(),
+                    value as f64,
+                    format!("{} {}", node.id, name),
+                )
+            });
+            if slider.drag_started()
+                || (slider.is_pointer_button_down_on()
+                    && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
+            {
+                self.select_primary(node.id.clone());
+                slider.request_focus();
+                if ui.data(|d| d.get_temp::<String>(slider.id)).is_none() {
+                    self.gesture = self.gesture.wrapping_add(1);
+                    ui.data_mut(|d| {
+                        d.insert_temp(slider.id, format!("rack-slider-{}", self.gesture))
+                    });
+                }
+            }
+            if slider.double_clicked() {
+                next = default;
+            }
+            if (slider.changed() || slider.double_clicked()) && next != value {
+                self.select_primary(node.id.clone());
+                let mut args =
+                    json!({"id":node.id,"parameter":name,"value":quantize(next,min,max,step)});
+                if (slider.dragged() || slider.is_pointer_button_down_on())
+                    && !slider.double_clicked()
+                {
+                    if let Some(group) = ui.data(|d| d.get_temp::<String>(slider.id)) {
+                        args["history_group"] = json!(group);
+                    }
+                }
+                action = Some(RackAction::Command("set_parameter", args));
+            }
+            if slider.drag_stopped()
+                || ui.input(|i| i.pointer.button_released(PointerButton::Primary))
+            {
+                ui.data_mut(|d| d.remove::<String>(slider.id));
+            }
+            if self
+                .requested_parameter_menu
+                .as_ref()
+                .is_some_and(|(id, parameter)| id == &node.id && parameter == name)
+            {
+                egui::Popup::open_id(ui.ctx(), slider.id.with("popup"));
+                self.requested_parameter_menu = None;
+            }
+            let mut popup = egui::Popup::context_menu(&slider)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+            if !slider.secondary_clicked()
+                && egui::Popup::position_of_id(ui.ctx(), slider.id.with("popup")).is_none()
+            {
+                popup = popup.anchor(egui::PopupAnchor::Position(slider.rect.right_bottom()));
+            }
+            popup.show(|ui| {
+                if !self.editing.as_ref().is_some_and(|edit| {
+                    edit.surface == ParameterEditSurface::KnobMenu
+                        && edit.id == node.id
+                        && edit.parameter == name
+                }) {
+                    self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                }
+                self.editing.as_mut().unwrap().menu_popup = Some(slider.id.with("popup"));
+                ui.set_min_width(244.0);
+                ui.strong(parameter_label(name));
+                ui.label(format!("Current: {display}"));
+                match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
+                    ParameterEditOutcome::Keep => {}
+                    ParameterEditOutcome::Apply(raw) => {
+                        action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
+                        ui.close();
+                    }
+                    ParameterEditOutcome::Cancel => {
+                        self.editing = None;
+                        ui.close();
+                    }
+                }
+            });
+            if name == "seed" && slider.clicked() {
+                self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            slider.on_hover_text(format!(
+                "{}\nLevel: drag or use arrow keys; double-click to reset. Click the value to type.\n{}",
+                display,
+                noise_parameter_help(name)
+            ));
+            crate::panel_skin::readout(
+                &painter,
+                value_rect.center(),
+                &display,
+                value_rect.width(),
+                zoom,
+            );
+            let readout = ui.interact(
+                value_rect,
+                ui.id().with(("noise-value", &node.id, name)),
+                Sense::click(),
+            );
+            readout.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    format!("Edit {} {} value, {}", node.id, name, display),
+                )
+            });
+            if readout.clicked() {
+                self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            readout.on_hover_text("Click to type a value or expression");
+        }
+        paint_noise_spectra(&painter, rect.min, zoom, rate);
+        let spectra = Rect::from_min_max(point(18.0, 146.0), point(194.0, 389.0));
+        ui.interact(spectra, ui.id().with(("noise-spectra", &node.id)), Sense::hover())
+            .on_hover_text(format!("Static spectral/filter shapes at {} Hz; no live signal is displayed.\nSlopes describe power density per octave. Gray uses a fixed inverse A-weighting filter; black is uniform random voltage. All outputs are mono.", rate));
+        action
     }
 
     /// VIZ keeps channel activity separate from signed indicator release tails.
@@ -5264,9 +5512,15 @@ impl Rack {
                             )
                             .to_vec2())
                             * self.zoom;
-                    let hit =
-                        Rect::from_center_size(center, Vec2::splat((29.0 * self.zoom).max(18.0)))
-                            .intersect(clip);
+                    let hit = Rect::from_center_size(
+                        center,
+                        Vec2::splat((29.0 * self.zoom).max(if node.kind == "colored_noise" {
+                            12.0
+                        } else {
+                            18.0
+                        })),
+                    )
+                    .intersect(clip);
                     let distance = center.distance_sq(pos);
                     if hit.contains(pos) && nearest.as_ref().is_none_or(|(old, _)| distance < *old)
                     {
@@ -6149,6 +6403,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "colored_noise" if !input => return pos2(width - 25.0, noise_row_y(index)),
         "modal_resonator" => {
             return pos2(
                 if input {
@@ -6993,6 +7248,7 @@ fn panel_button(
 
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "colored_noise" => HP * 16.0,
         "modal_resonator" => HP * 32.0,
         "scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
@@ -7058,6 +7314,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "poly_viz" => "VIZ",
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
+        "colored_noise" => "NOISE",
         "sample_hold" => "S&H",
         "attenuverter8" => "8VERT",
         "mutes10" => "MUTES 10",
@@ -7259,7 +7516,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "mid_side" => &["encode_width", "decode_width"],
         "mix6" => &["level", "average", "invert"],
         "octave" => &["octaves"],
-        "white_noise" => &["level", "seed"],
+        "white_noise" | "colored_noise" => &["level", "seed"],
         "attenuverter" => &["gain", "offset"],
         "crossfade" => &["mix", "law"],
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
@@ -7302,6 +7559,112 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     );
     ordered
 }
+// The row geometry is shared by real sockets, previews, labels, and picking.
+const NOISE_OUTPUTS: [&str; 7] = ["white", "pink", "red", "violet", "blue", "gray", "black"];
+fn noise_row_y(index: usize) -> f32 {
+    175.0 + index as f32 * 31.0
+}
+fn noise_control_rects(index: usize) -> (Rect, Rect) {
+    let y = 79.0 + index as f32 * 30.0;
+    (
+        Rect::from_min_size(pos2(73.0, y), vec2(61.0, 20.0)),
+        Rect::from_min_size(pos2(142.0, y), vec2(80.0, 20.0)),
+    )
+}
+fn noise_parameter_help(name: &str) -> &'static str {
+    match name {
+        "seed" => "Integer seed, 0–16,777,215. The same seed and sample rate reproduce the same sequence when the graph restarts. Changing the seed restarts this generator; level changes preserve its sequence.",
+        "level" => "Shared output gain from 0× to 2×. The six Gaussian colors have nominal 3.536 V RMS at 1×; black is uniform ±5 V, with 2.887 V RMS.",
+        _ => "",
+    }
+}
+fn paint_noise_spectra(painter: &egui::Painter, origin: Pos2, zoom: f32, rate: u32) {
+    let point = |x, y| origin + vec2(x, y) * zoom;
+    painter.text(
+        point(20.0, 147.0),
+        Align2::LEFT_CENTER,
+        "STATIC SPECTRA · LOG Hz",
+        crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+        MUTED,
+    );
+    let colors = [
+        Color32::from_rgb(111, 113, 109),
+        Color32::from_rgb(178, 86, 124),
+        Color32::from_rgb(170, 75, 61),
+        Color32::from_rgb(123, 89, 171),
+        Color32::from_rgb(65, 116, 173),
+        Color32::from_rgb(115, 124, 129),
+        Color32::from_rgb(54, 61, 57),
+    ];
+    let descriptions = [
+        "0 dB/oct",
+        "−3 dB/oct",
+        "−6 dB/oct",
+        "+6 dB/oct",
+        "+3 dB/oct",
+        "Inverse A",
+        "Uniform ±5 V",
+    ];
+    let ceiling = (f64::from(rate) * 0.45).clamp(21.0, 20_000.0);
+    for (index, port) in NOISE_OUTPUTS.iter().enumerate() {
+        let y = noise_row_y(index);
+        let color = colors[index];
+        painter.line_segment(
+            [point(18.0, y - 9.0), point(18.0, y + 11.0)],
+            Stroke::new(3.0 * zoom, color),
+        );
+        painter.text(
+            point(26.0, y - 5.5),
+            Align2::LEFT_CENTER,
+            port.to_uppercase(),
+            crate::panel_skin::print_font(painter.ctx(), 13.0 * zoom),
+            INK,
+        );
+        painter.text(
+            point(26.0, y + 10.0),
+            Align2::LEFT_CENTER,
+            descriptions[index],
+            crate::panel_skin::print_font(painter.ctx(), 9.5 * zoom),
+            MUTED,
+        );
+        let plot = Rect::from_min_max(point(124.0, y - 8.0), point(186.0, y + 8.0));
+        painter.rect_filled(
+            plot.expand(2.0 * zoom),
+            1.0 * zoom,
+            Color32::from_rgb(216, 218, 210),
+        );
+        painter.line_segment(
+            [
+                pos2(plot.left(), plot.center().y),
+                pos2(plot.right(), plot.center().y),
+            ],
+            Stroke::new(0.5 * zoom, Color32::from_rgb(172, 177, 167)),
+        );
+        // This is a fixed filter response, normalized at 1 kHz. It never reads
+        // runtime sample history, level, seed, or wall-clock animation time.
+        let reference =
+            openpatch_core::colored_noise_response_db(port, 1000.0, rate).unwrap_or(0.0);
+        let points = (0..33)
+            .filter_map(|i| {
+                let t = i as f64 / 32.0;
+                let hz = 20.0 * (ceiling / 20.0).powf(t);
+                openpatch_core::colored_noise_response_db(port, hz, rate).map(|db| {
+                    pos2(
+                        plot.left() + t as f32 * plot.width(),
+                        plot.center().y
+                            - ((db - reference) / 36.0).clamp(-1.0, 1.0) as f32
+                                * plot.height()
+                                * 0.5,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        if points.len() >= 2 {
+            painter.add(egui::Shape::line(points, Stroke::new(1.5 * zoom, color)));
+        }
+    }
+}
+
 // A large tuning control above a matched pair of secondary controls. Keep this
 // geometry shared by rack rendering, previews, and the parameter hit regions.
 fn resonator_control_rects(index: usize) -> (Rect, Rect) {
@@ -7935,8 +8298,26 @@ fn jack(
     zoom: f32,
     compact: bool,
 ) -> egui::Response {
+    jack_with_minimum_target(
+        ui, painter, center, id, label, connected, output, zoom, compact, 18.0,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn jack_with_minimum_target(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    center: Pos2,
+    id: egui::Id,
+    label: &str,
+    connected: bool,
+    output: bool,
+    zoom: f32,
+    compact: bool,
+    minimum_target: f32,
+) -> egui::Response {
     let response = ui.interact(
-        Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(18.0))),
+        Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(minimum_target))),
         id,
         Sense::click_and_drag(),
     );
@@ -8255,6 +8636,9 @@ mod tests {
     mod resonator_ui_tests {
         include!("resonator_ui_tests.rs");
     }
+    mod noise_ui_tests {
+        include!("noise_ui_tests.rs");
+    }
     use super::*;
 
     fn frame(
@@ -8410,7 +8794,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            54,
+            55,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -8512,6 +8896,7 @@ mod tests {
             "sidechain_compressor",
             "audio_stereo",
             "modal_resonator",
+            "colored_noise",
         ] {
             let module = catalog["modules"]
                 .as_array()

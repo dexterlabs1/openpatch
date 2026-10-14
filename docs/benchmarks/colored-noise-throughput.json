@@ -1,0 +1,48 @@
+{
+  "cases": [
+    {
+      "audio_seconds_per_trial": 2,
+      "block_frames": 128,
+      "checksum": 1175.9396938543068,
+      "max_seconds": 0.014346125,
+      "median_realtime_factor": 156.9761126309887,
+      "median_seconds": 0.012740792,
+      "min_seconds": 0.011823375,
+      "modules": 1,
+      "simultaneous_outputs_per_module": 7,
+      "trials": 5
+    },
+    {
+      "audio_seconds_per_trial": 2,
+      "block_frames": 128,
+      "checksum": 1175.9396938543068,
+      "max_seconds": 0.150960333,
+      "median_realtime_factor": 13.392954301565803,
+      "median_seconds": 0.14933225,
+      "min_seconds": 0.148674542,
+      "modules": 16,
+      "simultaneous_outputs_per_module": 7,
+      "trials": 5
+    },
+    {
+      "audio_seconds_per_trial": 2,
+      "block_frames": 128,
+      "checksum": 1175.9396938543068,
+      "max_seconds": 0.6591125,
+      "median_realtime_factor": 3.037327618957798,
+      "median_seconds": 0.658473583,
+      "min_seconds": 0.655882583,
+      "modules": 64,
+      "simultaneous_outputs_per_module": 7,
+      "trials": 5
+    }
+  ],
+  "sample_rate": 48000,
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "production_sha256": "88f65f8ca82a876dcef1f1c09bdecefd5efed1293998f370c1f8e884be6d62c8",
+  "method": "Whole-engine sequential offline throughput; 5 trials per case; compile and first 128 frames excluded; no realtime scheduling, devices, graphics, concurrent clients, graph swaps or callback-tail guarantee.",
+  "limitations": [
+    "Measures this original model only; no Rack comparison or hardware equivalence."
+  ]
+}
