@@ -26,6 +26,8 @@ Add this with `add_module`, or update its data with `set_score`. Both support at
 
 All buffers are allocated during graph compilation. Callback processing and compatible state adoption use bounded storage. Effects preserve histories across unrelated edits. Their DSP is tested for signal behavior, finite output, and allocation-free processing; this does not establish physical hardware calibration or superiority over Rack.
 
+The SVF drive has a measured aliasing gap, especially at high input frequencies and drive settings; see the [reproducible spectral baseline](benchmarks/svf-spectral/README.md). Its undriven linear path and nonlinear driven path must be assessed separately.
+
 ## Full arrangement export
 
 `render_arrangement` streams 0.001–300 seconds from a reset graph to a new PCM16 WAV in the MCP workspace. It uses fixed audio scratch storage and reports preclip peak/RMS and clipping counts. It never plays speakers, changes the live graph, or overwrites a file. Use `render_audio` for short sample-frame MIDI/module-event traces; the long renderer currently handles autonomous patches and saved scores.

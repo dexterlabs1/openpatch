@@ -1,0 +1,4482 @@
+{
+  "source_commit": "75e0e282b74c9b38bd794ade9e22366a3b238aa3",
+  "numpy": "2.3.3",
+  "method": "Actual v2 Engine oscillator -> gain -> SVF, no device or WAV quantization. Exactly representable coherent sine frequencies; last two of eight 8192-sample periods, FFT on last period. Sum energy outside DC and every in-band harmonic bin; Parseval weighting. Lower bound on alias energy: aliases coinciding with legitimate harmonics are excluded. Not a total harmonic distortion, hardware fidelity, modulation, or Rack comparison.",
+  "ports": [
+    "low",
+    "band",
+    "high"
+  ],
+  "calibration": {
+    "parseval": "passed all 144 cases",
+    "known_off_harmonic_injection": "passed",
+    "linear_off_harmonic_max_db_relative_5v_peak": -151.56790111036588,
+    "max_period_difference_v": 0.0
+  },
+  "results": [
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-0.f32",
+      "trace_sha256": "494d6c75d44bbedcde23e5f3ca6dc7bb30d34d50892c5d6671dc0ccdc59455e8",
+      "unwanted_rms_v": [
+        2.3284529663092867e-09,
+        8.967225161372862e-10,
+        1.4173588502960486e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.6380506905929,
+        -194.92623859158815,
+        -190.94980368906943
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.07070636952974653,
+        0.0010143825097311703,
+        1.4552746662415668e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-1.f32",
+      "trace_sha256": "d580c5e76594cc0adcd98c6422520f7c8e58daafd8f5988682e375d2811cf502",
+      "unwanted_rms_v": [
+        4.429674153500128e-09,
+        1.703600565174238e-09,
+        2.692154739328311e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -181.0519644721532,
+        -189.35204457711757,
+        -185.3773997148714
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13437836963003744,
+        0.0019278471707710053,
+        2.7657696195847028e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-2.f32",
+      "trace_sha256": "9d236dfbded4375c277aa16bed060af77d547ef81e0eca90103cce9ddee2a1c8",
+      "unwanted_rms_v": [
+        1.0472449234227725e-08,
+        4.454879091644592e-09,
+        7.039035375031458e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.5784348112798,
+        -181.0026816568344,
+        -177.02913713116413
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.35268309749561083,
+        0.005059750027662021,
+        7.259105427555334e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-3.f32",
+      "trace_sha256": "d149c90be329c317969671d891d0f60072ab7ed39df26e28ca48173b0f443355",
+      "unwanted_rms_v": [
+        1.9623068753533564e-08,
+        7.896119986926654e-09,
+        1.2477741686675543e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.12406157679993,
+        -176.031125304471,
+        -172.05668027364422
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6312601495620718,
+        0.00905657644913653,
+        0.00012996297253921053
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-4.f32",
+      "trace_sha256": "54dd4deaee2d840672e59ea88e63640511eb0b7d7dc711ba88ce0cf3779b4628",
+      "unwanted_rms_v": [
+        1.7797104780692623e-08,
+        5.94951808106062e-09,
+        9.380821538743392e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.9724129394618,
+        -178.48976431235928,
+        -174.53458260673125
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.7070636836817111,
+        0.010143824940504151,
+        0.00014552746379695506
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-5.f32",
+      "trace_sha256": "3743539a9319280c63ef25d0df14091f0e49df92f1caaa5dc38581ce1e711990",
+      "unwanted_rms_v": [
+        3.344579765299954e-08,
+        1.040994907067795e-08,
+        1.638790394009765e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -163.49256892761184,
+        -173.6304279909912,
+        -169.68893189445905
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3025365354200589,
+        0.018694909634024714,
+        0.00026926209536346694
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-6.f32",
+      "trace_sha256": "40e3ef00dc1437d62efeede126be25375e95be8cb6a10cfe19e238d59c29822d",
+      "unwanted_rms_v": [
+        6.699697754142628e-08,
+        1.7431525880859047e-08,
+        2.7165615715071302e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.45829587350644,
+        -169.15269198579176,
+        -165.29900902936237
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.876232652016423,
+        0.04200682637648499,
+        0.0006944953981239146
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-7.f32",
+      "trace_sha256": "bca2b9f6095081c0e00d110bb143138a773c0e435914a7a91c0f9ec15f92cece",
+      "unwanted_rms_v": [
+        1.1213263573560385e-07,
+        1.5491269477621023e-08,
+        2.3951563928669253e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.9847594749434,
+        -170.17765991160724,
+        -166.39272256392906
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.8738045017928915,
+        0.06090836878172151,
+        0.0014791521021932945
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-8.f32",
+      "trace_sha256": "5cae55cba43d04ec48b7b701a5965716dcb8115192d5cd79b0dc819e13835f40",
+      "unwanted_rms_v": [
+        1.290326343953405e-07,
+        4.97634106290443e-08,
+        7.826130625175974e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.76540880393145,
+        -160.04119732886352,
+        -156.1084582388882
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.535318422691869,
+        0.05071912472053255,
+        0.0007276373228078701
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-9.f32",
+      "trace_sha256": "8ac5a3d748d7f8fb7c81ab569a1c81cced334c3d4da205c115a14e880cc23a82",
+      "unwanted_rms_v": [
+        1.20412494477406e-07,
+        2.377452598710891e-08,
+        3.709638837617028e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.36596901920524,
+        -166.4571627507544,
+        -162.59276749261392
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.0914446396356965,
+        0.06433035514178351,
+        0.0015622546197896555
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-10.f32",
+      "trace_sha256": "5040b9060e48f88b235c4412e31af7603acfa6a3776038ff691a381c5738ccd9",
+      "unwanted_rms_v": [
+        1.2779108691955004e-07,
+        1.3285436710892827e-08,
+        2.0503532491914787e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.8493888063049,
+        -171.51188338975652,
+        -167.7428262708911
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.664149960641106,
+        0.10421157593613066,
+        0.006765868972528059
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 231.48193359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-11.f32",
+      "trace_sha256": "d57f9a31fbbef7b3c5d6aac8c5430621d21b72a43d4b9e4ff357a4179149f6db",
+      "unwanted_rms_v": [
+        1.1393277962449834e-07,
+        1.3800909611688606e-08,
+        1.0636012787686438e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.84642622639925,
+        -171.18124585678504,
+        -153.44382307047164
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.817716840940225,
+        0.14025859969845572,
+        0.01662191095764096
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-12.f32",
+      "trace_sha256": "36f8cb7121c35540e3e96a228d23f30f4756b8f935f9e7ccade635bffa37b500",
+      "unwanted_rms_v": [
+        2.347042356268516e-09,
+        9.455512136603153e-10,
+        1.4003484529314273e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.5689815420625,
+        -194.46569895863124,
+        -191.05467776807473
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.07064208070191712,
+        0.004035693362046045,
+        0.00023055409318338495
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-13.f32",
+      "trace_sha256": "d67a0e9d05fc03143180cde7b052e5ed3308f7518d78522a46689d8379b5a62b",
+      "unwanted_rms_v": [
+        4.5451502550020805e-09,
+        1.7994488557721932e-09,
+        2.65946355936393e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -180.8284351899516,
+        -188.87660993520035,
+        -185.48351920900924
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13425618811644088,
+        0.007669887786971211,
+        0.00043817124689219343
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-14.f32",
+      "trace_sha256": "4684ead7f39359f4f52da1ef8a00cb6264a449006a7706cd1d24d461a300c631",
+      "unwanted_rms_v": [
+        1.0612933712742326e-08,
+        4.680926307733212e-09,
+        6.9564779950915075e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.46269105310185,
+        -180.5727640058795,
+        -177.13161177278528
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.3523624235348649,
+        0.020130078919608396,
+        0.001150035684965306
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-15.f32",
+      "trace_sha256": "0ab248d37b363fdcca025a8fa7f89788e9ef433c76d099d173362641687791d5",
+      "unwanted_rms_v": [
+        2.0045737415012926e-08,
+        8.328576033134706e-09,
+        1.2330562239139767e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -167.93895934455267,
+        -175.56798498971506,
+        -172.15974249350984
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6306861504392541,
+        0.0360313513653664,
+        0.002058974986421935
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-16.f32",
+      "trace_sha256": "f4ba4334a7ef606031f35c69381a52847bd902168420aaa4a7ed425e30ff059f",
+      "unwanted_rms_v": [
+        1.7976941514650215e-08,
+        6.1249337702997135e-09,
+        9.28744491736062e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.88508397648133,
+        -178.23737214712818,
+        -174.62147506608747
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.7064207959844804,
+        0.040356932948061926,
+        0.0023055408974726353
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-17.f32",
+      "trace_sha256": "d2fa752c11674892f16b165c362894ae9580ef57ec89d9a4effc41ae3437e7db",
+      "unwanted_rms_v": [
+        3.437313030157708e-08,
+        1.0737930337418909e-08,
+        1.6233715226267316e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -163.25501839899633,
+        -173.36098844391097,
+        -169.77104162165494
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3013511214523668,
+        0.07437741641665782,
+        0.004266357269626988
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-18.f32",
+      "trace_sha256": "01e9540aea4427c05e2b81904350f57dcba50ec1601ee4594db620d09ec4cade",
+      "unwanted_rms_v": [
+        6.68257432018314e-08,
+        1.8338378924607755e-08,
+        2.7052883183552824e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.4805241375774,
+        -168.71218124108051,
+        -165.33512894261506
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.873516304529159,
+        0.16714364352565866,
+        0.011050017554636443
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-19.f32",
+      "trace_sha256": "cab6cc100aac8d5ffe035d46c81175e6921b9770cf0a5b1be8d864b416c90187",
+      "unwanted_rms_v": [
+        1.1368325817199612e-07,
+        1.711897237151837e-08,
+        2.9321127809621854e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.86546984641768,
+        -169.30984626631584,
+        -164.63578666633214
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.8695193414425515,
+        0.24247749240262614,
+        0.023819943275566857
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-20.f32",
+      "trace_sha256": "fc13174c773447a7251dde0c31b32118653d6aac8aee190c366850ad11627e4f",
+      "unwanted_rms_v": [
+        1.314034346549631e-07,
+        5.2273127243807335e-08,
+        7.735458924044884e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.60726574538015,
+        -159.6138304352139,
+        -156.2096784001743
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.5321039841433834,
+        0.20178466489827035,
+        0.011527704496158461
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-21.f32",
+      "trace_sha256": "5bf69d098b1b9038e9cd0ec2d7665739a959a3ca448e1bd9a8df979e5060029e",
+      "unwanted_rms_v": [
+        1.2078569774076964e-07,
+        2.5532842500372362e-08,
+        4.047857211309999e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.33908983810323,
+        -165.83741676086004,
+        -161.8348964005691
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.0869187336411885,
+        0.25610049177163724,
+        0.025158208087213738
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-22.f32",
+      "trace_sha256": "8d01feab83485644d9cb003d8cf4a13cbf2f58de154018fdf40eece414d9ea9b",
+      "unwanted_rms_v": [
+        0.00010331158243459497,
+        0.00024556768350620056,
+        0.0013908375501359663
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -93.69641981209762,
+        -86.17597581766185,
+        -71.11387193978469
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.6525644919271105,
+        0.41382567876872567,
+        0.11408922559879496
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 920.54443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-23.f32",
+      "trace_sha256": "505629e6b5509a9331550d1a028816215ea8eba85b12359c2bbdb986e83b0e90",
+      "unwanted_rms_v": [
+        0.0051347141265055095,
+        0.0075485453506673825,
+        0.02740480775732043
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -59.769074698598594,
+        -56.42213471518288,
+        -45.22286488920935
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.794602425545397,
+        0.5345257496436354,
+        0.2548214065181627
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-24.f32",
+      "trace_sha256": "6955d8f1725d3689a5a36e7aa54bff375b91f4498348e8f8ede7d8507a41e116",
+      "unwanted_rms_v": [
+        2.347905431189516e-09,
+        1.0233730303301516e-09,
+        1.4773999205628846e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.56578807796578,
+        -193.77872073634606,
+        -190.58943866004554
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.06949940364986087,
+        0.016208059008077282,
+        0.003779905482927361
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-25.f32",
+      "trace_sha256": "1ced9d9e1cb4b51161cd75890d3772d90bc7de0d615af509a715aec7454e637a",
+      "unwanted_rms_v": [
+        4.42368533193379e-09,
+        1.9560233790955886e-09,
+        2.805282907915358e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -181.06371554838748,
+        -188.15191926018844,
+        -185.01986677380057
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.1320845151034985,
+        0.030803626880403882,
+        0.007183763365888909
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-26.f32",
+      "trace_sha256": "b80bc66cb1bb7985b844fd619e8e1f32db5f93983e3cd84f41f0c777c9d69fd6",
+      "unwanted_rms_v": [
+        1.0544585351062074e-08,
+        4.980319919374264e-09,
+        7.363798492079698e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.51880995719944,
+        -180.0342552606172,
+        -176.63736217333786
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.3466626981415059,
+        0.08084590681157053,
+        0.01885479461728274
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-27.f32",
+      "trace_sha256": "60322149e861a001cc7f8d23a7de6117c4940821141549ae7a956f645e0e608f",
+      "unwanted_rms_v": [
+        1.964730071264225e-08,
+        1.0452173316459748e-08,
+        2.2305537700520314e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.11334224046027,
+        -173.59526803622688,
+        -167.01114614933113
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6204833810371381,
+        0.14470728479032063,
+        0.03375856198667615
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-28.f32",
+      "trace_sha256": "56d94dedfbb7b41552bfea58ef08b74c9db7613569d33768da39061f08e4af03",
+      "unwanted_rms_v": [
+        1.7850068498419018e-08,
+        7.127564729860692e-09,
+        9.632749419547413e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.9466023461838,
+        -176.92057668475115,
+        -174.30439482747954
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6949940251750674,
+        0.1620805874344622,
+        0.037799054166555345
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-29.f32",
+      "trace_sha256": "24c08c9d4303dc859c3035f32155315fd8db0f22c540b92db680e63c22036db4",
+      "unwanted_rms_v": [
+        2.0688810331151113e-07,
+        6.584983074319329e-07,
+        2.1295728541267215e-06
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -147.66468972383683,
+        -137.60830682647173,
+        -127.41355004328673
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.2802679330836706,
+        0.2986813006212253,
+        0.07000651388270757
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-30.f32",
+      "trace_sha256": "c4201bdf9b5d867127a5e9d4b410ac75c59d2c6ec7348e999c16662021e22e43",
+      "unwanted_rms_v": [
+        0.00014932034096121652,
+        0.0004109666058613011,
+        0.0013113408482240587
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -90.49702062806875,
+        -81.70326941461911,
+        -71.62508829314494
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.824026584390637,
+        0.668253941121134,
+        0.18499529263532957
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-31.f32",
+      "trace_sha256": "891e1ccec74e44b8b06b7afe70cf85b4ed7b763a92a380e3329d9eb4f282c151",
+      "unwanted_rms_v": [
+        0.004222353453384945,
+        0.007725536775423459,
+        0.023163622004004694
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -61.46830838066684,
+        -56.220826802438275,
+        -46.68327070118832
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.7852569771442406,
+        0.9467994370494072,
+        0.38679964363028196
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-32.f32",
+      "trace_sha256": "aa0c08303186e78a4a08ef17503f85b9bd1cf507c5a8eb6e3c3d83ce4af205c1",
+      "unwanted_rms_v": [
+        1.3200030929456958e-07,
+        5.6612848445675454e-08,
+        7.914583516813196e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.56790111036588,
+        -158.92109995206783,
+        -156.01083876177705
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.474970127771404,
+        0.8104029376044445,
+        0.18899527115251963
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-33.f32",
+      "trace_sha256": "fd1878bafdf64a31ebff4dd8401198414f6ee82ce7c43bc95f88dc81c7e6f70e",
+      "unwanted_rms_v": [
+        0.00445957790364997,
+        0.008159577708038532,
+        0.024465012857102352
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -60.99352498777198,
+        -55.746046430796014,
+        -46.208491120102984
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.9979222940856545,
+        0.9999930266180947,
+        0.4085310286835224
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-34.f32",
+      "trace_sha256": "55ee56505f9c4acc0032dadb7503feb7bf91465114cd9f75cc9ec951cec713bd",
+      "unwanted_rms_v": [
+        0.15923654040676746,
+        0.1426286096973764,
+        0.31946719793116735
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -29.93854541716693,
+        -30.895267109719704,
+        -23.89087463581934
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.446101270317165,
+        1.3068664931907021,
+        0.9908111689489905
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 3676.79443359375,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-35.f32",
+      "trace_sha256": "66dad9f754d412985f9ee7fd20c3405f348ddfc52701f5f687d96b8e199f8727",
+      "unwanted_rms_v": [
+        0.3845135636363053,
+        0.2779934122325427,
+        0.5357028123947466
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -22.28116680560958,
+        -25.098710000369948,
+        -19.40092155895282
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.532532253728768,
+        1.3987439970898174,
+        1.2328976415965058
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-36.f32",
+      "trace_sha256": "99653cc03f8f0b736a9af7e515e52cbb64d682ebbecf94dcadb7b512d07f9194",
+      "unwanted_rms_v": [
+        2.236351354611735e-09,
+        1.2676052030936928e-09,
+        1.5349914037526522e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.98859934946685,
+        -191.91971982362173,
+        -190.25728113297407
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.0622513409847508,
+        0.03514191964157421,
+        0.019838199395800084
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-37.f32",
+      "trace_sha256": "2718b5a020cf5ec8eceb27416d471b3917758df5197796443e2728c198fa252c",
+      "unwanted_rms_v": [
+        4.700081363251633e-07,
+        2.5981685172278303e-06,
+        1.4362943180435875e-05
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -140.5372925650045,
+        -125.68605376684798,
+        -110.83453123838333
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.1183094779285956,
+        0.06678767244357568,
+        0.03770275709181199
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-38.f32",
+      "trace_sha256": "c5e65f50f903ca6937ae3c663fd0451817681a550ed0cd8907be76dfa28e5509",
+      "unwanted_rms_v": [
+        9.501789721228632e-06,
+        5.250208425513846e-05,
+        0.0002902354777304677
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -114.42329178547459,
+        -99.5758691947772,
+        -84.72439011622099
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.31050934082731474,
+        0.1752877064243401,
+        0.09895325332809744
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-39.f32",
+      "trace_sha256": "4167491f2ae3d2023124593859ca0051189e6f78b2df60783191d6f54386912d",
+      "unwanted_rms_v": [
+        5.503160736520168e-05,
+        0.00030278180681830375,
+        0.0016737874964567962
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -99.16715612900978,
+        -84.35680456155947,
+        -69.50539370144233
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.5557724214404545,
+        0.3137429406682751,
+        0.17712094611335463
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-40.f32",
+      "trace_sha256": "5c8ed88d5ec27a3bf7cdb7c95095c531638f5b22cfc8d05f5d58c29c6a2554c6",
+      "unwanted_rms_v": [
+        1.7335646611615436e-08,
+        9.451367038607554e-09,
+        1.1084490281538931e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.20059918115618,
+        -174.46950750513665,
+        -173.0850855477322
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6225133994137327,
+        0.35141919052203247,
+        0.19838199083395644
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-41.f32",
+      "trace_sha256": "e454349296e6626d843bdf427a7c01df938864975bd285e5be4d2f58dddb2952",
+      "unwanted_rms_v": [
+        0.00047266912709852045,
+        0.0024405336505226014,
+        0.013489681192585338
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -80.48825535052545,
+        -66.22970408341514,
+        -51.37936636820751
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.146717334909502,
+        0.6473455955935733,
+        0.36568367694036885
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-42.f32",
+      "trace_sha256": "833c561b9f3680de190423a62adcf7f334346f4eff8dc38ac5b2323dc823bc5c",
+      "unwanted_rms_v": [
+        0.016897046302336103,
+        0.03455422707745224,
+        0.1898781545980997
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -49.42318420356901,
+        -43.20937642784486,
+        -28.40990004245253
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.5266808573420736,
+        1.426740061965383,
+        0.8272679418035906
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-43.f32",
+      "trace_sha256": "6972e43a666c7a7d092e265011504f9b6173077d401c69aba34c884e8d6f9799",
+      "unwanted_rms_v": [
+        0.11588690796259006,
+        0.10780513569203519,
+        0.5718249157011563
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -32.698712578968994,
+        -33.32661107572006,
+        -18.83413859423553
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.3729190278126846,
+        1.9059960576868578,
+        1.2169568885542155
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-44.f32",
+      "trace_sha256": "f200a7e9ff94d61a209604a67a5eb475ffff2561e20fe6b3226c082c88b87622",
+      "unwanted_rms_v": [
+        1.2304413444152168e-07,
+        7.011914777078841e-08,
+        8.311016377860882e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.17818177558178,
+        -157.06266750608134,
+        -155.58631732390234
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.1125670016876965,
+        1.7570959540559346,
+        0.9919099547662871
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-45.f32",
+      "trace_sha256": "1a2827af03b4ce72c075b4b794c5cad61811b7db7647d14f1a5ad6726bd8670f",
+      "unwanted_rms_v": [
+        0.12239772904950734,
+        0.11386190232974372,
+        0.6039514913303471
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -32.223932885826436,
+        -32.851831377868706,
+        -18.35935892666768
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.562418154971916,
+        2.013079738909183,
+        1.2853286083111295
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-46.f32",
+      "trace_sha256": "29623ab96b6893965e53f835fd3b94c93fc3c64dd0f7d1edf066cebf222a4d53",
+      "unwanted_rms_v": [
+        0.6368128112119187,
+        0.34575707215897794,
+        1.3061210927602263
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -17.89916425020989,
+        -23.203978646988848,
+        -11.659731226658447
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.947121599590066,
+        2.2260413514286337,
+        1.8019413298895879
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8080.33447265625,
+      "rate": 44100,
+      "resonance": 0.2,
+      "trace": "case-47.f32",
+      "trace_sha256": "9090f0189b409fcc1a92cdc3a3361bddf16c68aaf0c3c7e9ae277b0e0b532a49",
+      "unwanted_rms_v": [
+        0.8821367586207186,
+        0.4882757871821669,
+        1.4987641117254344
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -15.068681696778487,
+        -20.206096309778236,
+        -10.464734381554631
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.0401763306180225,
+        2.2786475387679643,
+        1.9557538299793726
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-48.f32",
+      "trace_sha256": "f9bc8ac57f99ee6ef5bd6bc249c8f7be8b294920a33baf960a3ca92748000859",
+      "unwanted_rms_v": [
+        2.2311599099259915e-09,
+        8.992687707932231e-10,
+        1.4785134031609977e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -187.00878613053095,
+        -194.90160985100258,
+        -190.5828947689639
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.0707049837255467,
+        0.0011660516275664291,
+        1.923027671682276e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-49.f32",
+      "trace_sha256": "dcf1570ae134d93de31025f7834ab280687d4d5e8d6e547e1d17a5e7a5525f36",
+      "unwanted_rms_v": [
+        4.32703157835505e-09,
+        1.7082148538423087e-09,
+        2.8083315298110363e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -181.2555987935372,
+        -189.32855020732134,
+        -185.0104325683591
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13437573592101004,
+        0.002216096300750006,
+        3.6547406677461076e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-50.f32",
+      "trace_sha256": "70a1edd0bbac9fc28bb29082475132775981d040de91e85a2fea4e46cfa2d68a",
+      "unwanted_rms_v": [
+        1.0410712921321236e-08,
+        4.46778265328067e-09,
+        7.342687083716686e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.62979067000754,
+        -180.97755933489822,
+        -176.66229967294078
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.3526761850904727,
+        0.005816277086057241,
+        9.592320150239217e-05
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-51.f32",
+      "trace_sha256": "c5d18f9860fd1a54a720c382fd59c1c8d87ae488c7d2894226672ad362c49b2b",
+      "unwanted_rms_v": [
+        1.9324233946362274e-08,
+        7.911765626308047e-09,
+        1.3016252656744201e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.25735435518422,
+        -176.01393181703284,
+        -171.68968068586275
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6312477764318449,
+        0.010410703553304907,
+        0.0001717355326624441
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-52.f32",
+      "trace_sha256": "d9707102f615f0b96e199680c590ec4df3d2d2445b6d707a165a32ab64846da5",
+      "unwanted_rms_v": [
+        1.7284419949978753e-08,
+        5.961232127496016e-09,
+        9.79478387249474e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.2263038951228,
+        -178.47267941920376,
+        -174.15950293711086
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.707049825493003,
+        0.011660516079716663,
+        0.00019230276375164278
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-53.f32",
+      "trace_sha256": "5084a5e0351dc9d94a804f88712d59103ff803d2ff53594a6845f002be6cd252",
+      "unwanted_rms_v": [
+        3.373792597878994e-08,
+        1.0416959185363178e-08,
+        1.711308438592716e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -163.417032465732,
+        -173.62458083556544,
+        -169.3128342488319
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3025109853292285,
+        0.02149014416588229,
+        0.0003558075671857037
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-54.f32",
+      "trace_sha256": "7e32fab025f0e680dae309276ecf7fed0f300f24b64c2857d0b62f25c94dac59",
+      "unwanted_rms_v": [
+        6.651662257660171e-08,
+        1.7387826912314363e-08,
+        2.8387166387693807e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.52079629609037,
+        -169.1744939198835,
+        -164.91695922007563
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.8761742175885865,
+        0.048287318507049176,
+        0.0009176748753690682
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-55.f32",
+      "trace_sha256": "bd37da4062ab45f039a419d14b8ec9f2167467c051977ba96384e3baee529755",
+      "unwanted_rms_v": [
+        1.1357838392179922e-07,
+        1.5550791191833247e-08,
+        2.505112745010678e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.87348638822695,
+        -170.1443502882657,
+        -166.00285455703326
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.873713192393532,
+        0.07001272225675613,
+        0.0019542028778399114
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-56.f32",
+      "trace_sha256": "61c752d8c7a21f75e926ab87c1abedb8a5ca008da1af9301782b5ac45fd09074",
+      "unwanted_rms_v": [
+        1.2502419679828355e-07,
+        5.004575685625841e-08,
+        8.170220456789919e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.03951862351704,
+        -159.99205485482153,
+        -155.7347245818355
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.53524912822072,
+        0.058302580484888476,
+        0.0009615138223102096
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-57.f32",
+      "trace_sha256": "c02723a20023959c76028931270810246b03a2f6109338465aef546145bcf307",
+      "unwanted_rms_v": [
+        1.2032901075946962e-07,
+        2.3943329485376217e-08,
+        3.876730381368264e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.37199316023504,
+        -166.3957092483658,
+        -162.21008813134637
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.091348203445362,
+        0.07394621441650727,
+        0.00206399495006852
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-58.f32",
+      "trace_sha256": "5f6f0c12793fb0fd386d866d27f88818a9c4e3fdba6bebb4db5edb0b1689c9f0",
+      "unwanted_rms_v": [
+        1.295701634298797e-07,
+        1.326013292327617e-08,
+        2.1409913808748024e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.72929995565437,
+        -171.52844253512507,
+        -167.36710170809968
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.6639255028956175,
+        0.11974517240767993,
+        0.00892611010648963
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 251.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-59.f32",
+      "trace_sha256": "4fb927a40768950584b77dbfc7824e905afd1199f8c9ea8ada2eb83443c68f18",
+      "unwanted_rms_v": [
+        1.1411065520760019e-07,
+        1.3131387685125686e-08,
+        1.0654308705802263e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.8328761060145,
+        -171.61318761801877,
+        -153.42889456272235
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.817312394345326,
+        0.16098625465637334,
+        0.021817944665971412
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-60.f32",
+      "trace_sha256": "83f8b38db3ffde6776d131021873140cfc9f126ac0e5079c62493594cc917f73",
+      "unwanted_rms_v": [
+        2.2812127995912643e-09,
+        9.527223954036263e-10,
+        1.4696088992562483e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.81608409291402,
+        -194.4000726029648,
+        -190.63536462296756
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.07061991315184414,
+        0.004637739972513593,
+        0.0003045689399089572
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-61.f32",
+      "trace_sha256": "01a7ec7e393931f4935843fd74863fd1fb25e8e20ef93aae82392c6865bea190",
+      "unwanted_rms_v": [
+        4.460382299486982e-09,
+        1.8069892972244372e-09,
+        2.7914027675380216e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -180.9919584127368,
+        -188.84028848176774,
+        -185.06294999185147
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13421405818482413,
+        0.008814085212168938,
+        0.0005788374854467268
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-62.f32",
+      "trace_sha256": "702b230897b4cd4377e8764bb0cc052da8672dce79faebacf5f2c0fface73230",
+      "unwanted_rms_v": [
+        1.0515168682888819e-08,
+        4.740821882314464e-09,
+        7.299381000448081e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.5430752073098,
+        -180.462327312259,
+        -176.71367943085346
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.3522518509678409,
+        0.023133093059395857,
+        0.0015192317219127932
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-63.f32",
+      "trace_sha256": "ebc09d7ea60793c4b60f404f04ad078ea4659a8c1790c969235fdbb884e912f9",
+      "unwanted_rms_v": [
+        1.9737247700534337e-08,
+        8.390039890270072e-09,
+        1.294128037386647e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.07366825663127,
+        -175.50411957316666,
+        -171.739855160072
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6304882276938993,
+        0.04140651762057068,
+        0.002719963741933644
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-64.f32",
+      "trace_sha256": "cedb757192a82eba29c05922706687911b67108626c26c90e29e435200fa2b51",
+      "unwanted_rms_v": [
+        1.774934914161597e-08,
+        6.187711028512289e-09,
+        9.718488220157672e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.9957514396161,
+        -178.14879961530414,
+        -174.22742583491674
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.7061991197720009,
+        0.04637739898379221,
+        0.0030456893483984866
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-65.f32",
+      "trace_sha256": "7657c590f8421c93f5cffc472aded3fe1902ed1b9d10b13dc1afd22ca43af077",
+      "unwanted_rms_v": [
+        3.315425871025611e-08,
+        1.0784673668260227e-08,
+        1.6992508056370103e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -163.5686136457377,
+        -173.32325991893757,
+        -169.37425039673965
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3009423608331319,
+        0.08547283594350687,
+        0.005635843278803858
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-66.f32",
+      "trace_sha256": "a24de585a5ad107cf5824133cd022e06b9e50f07ae9b651063115af53968ce61",
+      "unwanted_rms_v": [
+        6.585762480889381e-08,
+        1.851205468558665e-08,
+        2.835071653223058e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.60727881489407,
+        -168.63030759595256,
+        -164.92811929335076
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.8725784551520483,
+        0.19205574478599197,
+        0.014584061711261682
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-67.f32",
+      "trace_sha256": "4d5b2bf3631b53f9fe89f6ee1b3f99f2194c44421acc306cb958bcda6dd9c7f1",
+      "unwanted_rms_v": [
+        1.137407731760715e-07,
+        1.7629705898999803e-08,
+        3.0280198329434235e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.86107656409283,
+        -169.05449873864302,
+        -164.35622577907856
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.868031602588954,
+        0.27845451220375417,
+        0.03133634012085832
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-68.f32",
+      "trace_sha256": "30d0e4a69d98817aed9b186c0044974d505a104cdf72d3b65856fb2d2646f4cb",
+      "unwanted_rms_v": [
+        1.278503098272257e-07,
+        5.229021202388553e-08,
+        8.122102717345706e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.84536439041716,
+        -159.61099203092022,
+        -155.78603053558695
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.5309956019087374,
+        0.23188699528079101,
+        0.015228446756834291
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-69.f32",
+      "trace_sha256": "85faee850919d567ba276bf4f22fc2fb22e828e52f723e166661eea9edf147d9",
+      "unwanted_rms_v": [
+        1.2046180282217693e-07,
+        2.6064801057186144e-08,
+        4.210001953010998e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.36241291669285,
+        -165.65831179733223,
+        -161.49375414064025
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.085347409983726,
+        0.2940987919620925,
+        0.03309689521982699
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-70.f32",
+      "trace_sha256": "4117c6960e60f13135c3f451c78acdf4a93f4f747cec4173f73480e8c9cef654",
+      "unwanted_rms_v": [
+        8.307928914199019e-05,
+        0.00021789107167386943,
+        0.0013949175239499213
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -95.58954464891795,
+        -87.21461138837745,
+        -71.08842948223176
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.648531302616379,
+        0.47097950895590035,
+        0.14348153786638912
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 1001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-71.f32",
+      "trace_sha256": "03ffb2646ce1d95f96f29f0b61a8b5e1a25bff0f1e071d245651b75ce2e203eb",
+      "unwanted_rms_v": [
+        0.004421362233928035,
+        0.006903313807916614,
+        0.027628998969755056
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -61.06827814077835,
+        -57.19824777048571,
+        -45.152097082409036
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.787554184196111,
+        0.5978695505316041,
+        0.29999963852068445
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-72.f32",
+      "trace_sha256": "bc6245680685c77174c6245bd59c715f2f26681b9682fd74639b5c812383b16a",
+      "unwanted_rms_v": [
+        2.2389618151873434e-09,
+        1.0331953028652666e-09,
+        1.5407393788044456e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -186.97846634908205,
+        -193.69575162458352,
+        -190.22481643525248
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.06908161117445417,
+        0.01851982709634478,
+        0.0049649101978826455
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-73.f32",
+      "trace_sha256": "f39f902b91fe6619a704c276a4350848ca6b1493efa50dadde154f5508227cb7",
+      "unwanted_rms_v": [
+        4.428301547799492e-09,
+        1.97186106236217e-09,
+        2.9305821545550854e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -181.05465635168184,
+        -188.08187386219427,
+        -184.64032207282952
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13129049506214524,
+        0.035197171860624925,
+        0.009435880287773205
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-74.f32",
+      "trace_sha256": "963f709806b2d323c868e4d56ccd24a7511509aa6e5c421cc405db0b76890565",
+      "unwanted_rms_v": [
+        1.0116555688191025e-08,
+        5.227014705376718e-09,
+        7.709858802188127e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -173.87874655645436,
+        -179.61432564835832,
+        -176.23847159701657
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.34457873843946657,
+        0.09237697350176328,
+        0.02476561485306982
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-75.f32",
+      "trace_sha256": "90a68d4e3926ee6ab9eab94521d32e7d5bb78988c362a8e4f1d8c711e7d25e2a",
+      "unwanted_rms_v": [
+        1.9293735711961294e-08,
+        1.012332626110003e-08,
+        2.273300211642241e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -168.27107358255842,
+        -173.87293541077526,
+        -166.8462642393547
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6167531343982666,
+        0.16534610431011426,
+        0.04433857428778425
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-76.f32",
+      "trace_sha256": "1c4ea41b647d27f49d09716074979b563016a3bd9383ad77d8cdeb2100621c8d",
+      "unwanted_rms_v": [
+        1.7321422285856585e-08,
+        7.869946431489636e-09,
+        1.0106131654147716e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.20772909344166,
+        -176.05996456174398,
+        -173.88770105550486
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6908161002038307,
+        0.18519826797507172,
+        0.049649101138387254
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-77.f32",
+      "trace_sha256": "2afb492620350c4d54e303bc55db9bdb421f6d67bc063b97be16078c5efc8d5f",
+      "unwanted_rms_v": [
+        1.592845230342497e-07,
+        5.778808433699033e-07,
+        2.14740184069819e-06
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -149.93592849880363,
+        -138.74263412806025,
+        -127.34113366592075
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.2725641355620396,
+        0.34125433904020136,
+        0.09184899913866362
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-78.f32",
+      "trace_sha256": "feca318820011b89511732500f9df69224cfed97b395bf592a24a31f20d0f36a",
+      "unwanted_rms_v": [
+        0.00011964620597635475,
+        0.0003622921721078943,
+        0.0013228309733226465
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -92.42142145600673,
+        -82.79822107630693,
+        -71.54931298442064
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.8063739015030156,
+        0.7610666957466125,
+        0.23466453138795837
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-79.f32",
+      "trace_sha256": "dae4d8e988286eef8bf4b61a19ad95a8e5524e940b146e9334c2dc3005b56d03",
+      "unwanted_rms_v": [
+        0.003628957041970665,
+        0.006950779055510506,
+        0.023408222068232648
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -62.78376354191849,
+        -57.138730410608005,
+        -46.592031509736664
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.7579231403995412,
+        1.0654950785174482,
+        0.4630060760003753
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-80.f32",
+      "trace_sha256": "4e0192da12ed1906489834ed531e64bde93421f7d46802fb9c196eba1fa55bfb",
+      "unwanted_rms_v": [
+        1.2723513549654803e-07,
+        5.7971558160174284e-08,
+        8.337244311318084e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.8872589539949,
+        -158.71510061673072,
+        -155.55894952516712
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.4540805086267765,
+        0.9259913408120406,
+        0.2482455062833947
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-81.f32",
+      "trace_sha256": "22ef27c64462778f37485f87122b825d348b1afa31e74e0c93b41d8a61f04e49",
+      "unwanted_rms_v": [
+        0.003832839077010288,
+        0.007341290019536951,
+        0.024723354985771936
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -62.30898837386687,
+        -56.66395246022503,
+        -46.11725199386912
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.9690527682378125,
+        1.1253572886190728,
+        0.48901893135932567
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-82.f32",
+      "trace_sha256": "a58587aab107db2cc58d54a677c95d5dce3e2f01ffc79b7ba23bbab2cb14cbc8",
+      "unwanted_rms_v": [
+        0.1473804518373174,
+        0.13703829265857664,
+        0.32652760219495625
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -30.610602413842187,
+        -31.24256130321314,
+        -23.7010021034861
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.399309079175841,
+        1.4254004996559038,
+        1.0971971175073232
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 4001.953125,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-83.f32",
+      "trace_sha256": "b9070d8c217e54e4e9625baf765da4e85e470fe4c0a02743bee850dec709fc89",
+      "unwanted_rms_v": [
+        0.3628141735959053,
+        0.2731877715038344,
+        0.5520528956743516
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -22.785715191822838,
+        -25.250174977691962,
+        -19.139786242321478
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.479857985253591,
+        1.511929414480095,
+        1.3415263014702685
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-84.f32",
+      "trace_sha256": "39d94ba2301eccc6605fa9fe947a3c60c46590076410084391b3611d1a727325",
+      "unwanted_rms_v": [
+        2.192072707553318e-09,
+        1.2729737039441729e-09,
+        1.6592128897747785e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -187.16230098859853,
+        -191.88301143784045,
+        -189.58135782828592
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.059199946564862424,
+        0.03841692712330768,
+        0.024930094939299128
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-85.f32",
+      "trace_sha256": "527b9128133e1b661f2b3af76b25f42b528eba2f7b107992d5fc51a5717a7c01",
+      "unwanted_rms_v": [
+        3.566058126721703e-07,
+        2.2659220700155566e-06,
+        1.439950430215319e-05
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -142.93563172884143,
+        -126.87450069765742,
+        -110.81244924835006
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.11251026339682257,
+        0.07301186638665093,
+        0.047379969756999665
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-86.f32",
+      "trace_sha256": "7fff2da7dd3a9a018f7864ac1a54bacf182faebd111ee96ae2c87ad4698b8084",
+      "unwanted_rms_v": [
+        7.211062910516704e-06,
+        4.5788476515939835e-05,
+        0.0002909736721486605
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -116.81941439802004,
+        -100.76427621015097,
+        -84.70232618726534
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.29528900241250533,
+        0.19162342299906396,
+        0.12435151449231177
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-87.f32",
+      "trace_sha256": "2eac094bcedfe19aa79f8725b90646d6c9ae6bb1515bdad117783445d5b493a7",
+      "unwanted_rms_v": [
+        4.189166176719959e-05,
+        0.0002640650915760085,
+        0.0016780441996075955
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -101.53684831897529,
+        -85.54518022903025,
+        -69.48333216791713
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.5285299411129599,
+        0.3429817653628205,
+        0.22257918800756238
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-88.f32",
+      "trace_sha256": "7ef9119c6ce311bf175b985f9b864e129ee6557474a8d203ef52cf8ba951412a",
+      "unwanted_rms_v": [
+        1.706483944500344e-08,
+        1.2351462887102032e-08,
+        1.1843041694963376e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.33735595546688,
+        -172.14503213129052,
+        -172.51013492126953
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.5919994555026059,
+        0.3841692644876126,
+        0.24930094530549823
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-89.f32",
+      "trace_sha256": "51688900d21cd160aba79fdf1601889ae6ee60ed8dce5695499378a07f97f424",
+      "unwanted_rms_v": [
+        0.0003746595814872778,
+        0.0021286504092722374,
+        0.013523990455717998
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -82.50666321357414,
+        -67.41731323456767,
+        -51.35730297473405
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.0905082875345966,
+        0.7076723349226661,
+        0.4594304786220272
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-90.f32",
+      "trace_sha256": "a80b7d191ec0bbac208b3e11c7897e8a3e464cb7e7b3221e9a5c8f441bdfc7b8",
+      "unwanted_rms_v": [
+        0.016308195405296107,
+        0.030260039920679955,
+        0.1903629756384547
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -49.731281955899185,
+        -44.362010154074454,
+        -28.3877503905717
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.4028313252862423,
+        1.559539427799781,
+        1.029600589282767
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-91.f32",
+      "trace_sha256": "b1b13cfd8264729e6c60a126c627003264f3bcd15ab10e3cf16735984df603b4",
+      "unwanted_rms_v": [
+        0.11432343778527633,
+        0.09626142326289049,
+        0.5733571861992749
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -32.81669457639322,
+        -34.31035451465982,
+        -18.810894884152017
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.2077316387261705,
+        2.082513372035947,
+        1.4666839874190327
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-92.f32",
+      "trace_sha256": "2c79b76f90326e7f5d40f352c6e63f971ca0329a9b0b20e487e9cf66922f6804",
+      "unwanted_rms_v": [
+        1.1541690062450629e-07,
+        7.257181460777942e-08,
+        8.69228549809903e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.73401193276175,
+        -156.7640404377414,
+        -155.19672044103837
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.959997279981767,
+        1.92084632730191,
+        1.2465047292379678
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-93.f32",
+      "trace_sha256": "ccebe33e26cd9e71f9cfcc05cb3482b5b7461669901e7bec26e9380c09329495",
+      "unwanted_rms_v": [
+        0.12074642171753769,
+        0.10166963300253874,
+        0.6055698473423894
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -32.34191469805963,
+        -33.83557496902895,
+        -18.336115235705257
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.387950119890375,
+        2.199514242209428,
+        1.5490860077905022
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-94.f32",
+      "trace_sha256": "21d3aefc4042a61710be255decc73b841060f7ce41af0a399160fe8f4b6e712a",
+      "unwanted_rms_v": [
+        0.6243540923600197,
+        0.33049468984870317,
+        1.3144489423309378
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -18.070780833367763,
+        -23.596110367802062,
+        -11.604525660825733
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.756715883542822,
+        2.4265724335286096,
+        2.039956292965065
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8794.921875,
+      "rate": 48000,
+      "resonance": 0.2,
+      "trace": "case-95.f32",
+      "trace_sha256": "c45e1164add0126de529a0c73be8e3212d7ad8c9d071861a8ee0cf7640b5bc76",
+      "unwanted_rms_v": [
+        0.8598321917892451,
+        0.47053500077222066,
+        1.514998142860077
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -15.29112606861836,
+        -20.52756140703941,
+        -10.371158077427365
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.8467629976448374,
+        2.4782209947163394,
+        2.1882196594192167
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-96.f32",
+      "trace_sha256": "c2baca5bb62b804de648c47699bd4a1dfddfba85a6ef228def4a677e512199d2",
+      "unwanted_rms_v": [
+        2.022080112213323e-09,
+        8.320212551856935e-10,
+        1.8144819200009835e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -187.86343293102766,
+        -195.57671166446485,
+        -188.80434718416112
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.07067742921557711,
+        0.0028140005827275764,
+        0.00011203858648328049
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-97.f32",
+      "trace_sha256": "a63042dd31ee1e0d20269aa6626d4d6feaec94641dd4c4f20c324942df995dcc",
+      "unwanted_rms_v": [
+        3.922957702354522e-09,
+        1.581504982688885e-09,
+        3.446402372484534e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -182.10712757558548,
+        -189.99798879588243,
+        -183.23208047504167
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13432336822626045,
+        0.005348044742582949,
+        0.0002129308814344513
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-98.f32",
+      "trace_sha256": "c8727603c711f747eb563d3b541dbaa0fba2e3f2a83edbe8519682bd1df51cf4",
+      "unwanted_rms_v": [
+        8.84153706902187e-09,
+        4.148467955492113e-09,
+        9.011406935948384e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -175.048844644906,
+        -181.6216452913718,
+        -174.8835480477891
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.35253874240116384,
+        0.01403626252935609,
+        0.0005588634075470332
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-99.f32",
+      "trace_sha256": "8042733ce1f4124b54e06dd7574a9568a5bb645fae6e55abb6e6d5462b349564",
+      "unwanted_rms_v": [
+        1.7007149771404667e-08,
+        7.332353162385615e-09,
+        1.5974052990726867e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.3667693609358,
+        -176.67453259544612,
+        -169.91109767104135
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6310017581955466,
+        0.025123861696136052,
+        0.0010005560993772628
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-100.f32",
+      "trace_sha256": "de1b3e3aa5b3a5bf890a075035e3e901f00555f5c2cd793d8176ba11b3264bc1",
+      "unwanted_rms_v": [
+        1.630310754888173e-08,
+        5.40822275340384e-09,
+        1.1979523302787912e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.73399221618718,
+        -179.31830866702137,
+        -172.4106093535139
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.7067742804990075,
+        0.028140005359512266,
+        0.0011203858468308715
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-101.f32",
+      "trace_sha256": "34ce978957affbab2369af1fa87735c33f900b92d7390f95a4ea2a7edebd87e0",
+      "unwanted_rms_v": [
+        3.103181066877948e-08,
+        9.454576863920703e-09,
+        2.0936279132507153e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -164.14325774905103,
+        -174.4665581481684,
+        -167.5614100888685
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3020029285555486,
+        0.05186141587254853,
+        0.002072931956572456
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-102.f32",
+      "trace_sha256": "1ffdb3876cd03f721cb197c653f3dedf45005603f8e2d4ed96cead076dc166c2",
+      "unwanted_rms_v": [
+        6.332034397361345e-08,
+        1.5884506430009555e-08,
+        3.4803558670663836e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.9485347786321,
+        -169.95992559083948,
+        -163.14692702846972
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.8750117899418615,
+        0.1165152492095727,
+        0.005341261609365823
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-103.f32",
+      "trace_sha256": "6e09fea6496825ad8df49c1e4972ca418947bf2538183a98e100426508fefc75",
+      "unwanted_rms_v": [
+        1.1340985555716391e-07,
+        1.434100321661741e-08,
+        3.078490488908647e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.88638414053727,
+        -170.84780942242583,
+        -164.21264376345295
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.8718928054600257,
+        0.168833097852937,
+        0.011340366909570824
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-104.f32",
+      "trace_sha256": "f9098975b1cbb6d2bdc7305766c8b1068e95d03aea6ff988a568df76d6c339be",
+      "unwanted_rms_v": [
+        1.152162766220198e-07,
+        4.567478475543442e-08,
+        1.0062449264586001e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.7491233612621,
+        -160.78586989879477,
+        -153.92532601381728
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.5338714044627464,
+        0.1407000266879729,
+        0.005601929245014731
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-105.f32",
+      "trace_sha256": "13bb7a7855c9df509c3f370d42e2e67140c87db639af4e091d189585c9c5df6d",
+      "unwanted_rms_v": [
+        1.1583296318837186e-07,
+        2.200546263032036e-08,
+        4.7796289329935773e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.70275675836155,
+        -167.128790019622,
+        -160.39151645828002
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.089425546337817,
+        0.17831856875995616,
+        0.011977497469729079
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-106.f32",
+      "trace_sha256": "a02cd0f6144c22767c7c183c04edc69a8b360cebf9700e1e7714a51a501dc7fe",
+      "unwanted_rms_v": [
+        1.2874627482789564e-07,
+        1.3123503361972382e-08,
+        2.6187888207088084e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -151.78470664819858,
+        -171.61840434984342,
+        -165.61739052064925
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.659361378080739,
+        0.2865126617019492,
+        0.05017162704167575
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 43,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 503.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-107.f32",
+      "trace_sha256": "41e2272cdbf6c61d1bbc7d26b69b18f0157763c7ce087063732767d32d2fae46",
+      "unwanted_rms_v": [
+        1.1574983294183998e-07,
+        1.3824740262595407e-08,
+        1.0728369123732206e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.70899262898786,
+        -171.1662604750066,
+        -153.36872593518473
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.808947024340192,
+        0.376434851199203,
+        0.11156163616176501
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-108.f32",
+      "trace_sha256": "8d60132c4c8cae1811ffe547c6db232ed054c7ef2b8671bf62c8225f3246b949",
+      "unwanted_rms_v": [
+        2.0173235139773407e-09,
+        9.032972024037702e-10,
+        1.8406191311359997e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -187.88388907270104,
+        -194.86278678304586,
+        -188.68012145252692
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.07016843053479863,
+        0.011124914042650782,
+        0.001763809046358025
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-109.f32",
+      "trace_sha256": "af1bfa5acbb911e681782b1847ccdc1417056c5f5bc4e29203e120dab01595a3",
+      "unwanted_rms_v": [
+        3.89198437914721e-09,
+        1.7105972837326072e-09,
+        3.4976039848188916e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -182.17597831637573,
+        -189.3164445252221,
+        -183.1039873854918
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.13335600949074664,
+        0.021143043857824246,
+        0.0033521432944092757
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-110.f32",
+      "trace_sha256": "b93cbcfd0cc79347409d5563392b0675e3d03cc703dffe03a351a1b68172f29d",
+      "unwanted_rms_v": [
+        8.986662359941935e-09,
+        4.5672607059021355e-09,
+        9.150236379621795e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -174.90743158643085,
+        -180.7862840371809,
+        -174.7507538184201
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.3499998422918906,
+        0.0554911596698008,
+        0.008798089603164513
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-111.f32",
+      "trace_sha256": "c5d5984bdd4516eb682aac1f70c567c644d8de5d7fba54caecde62ba9940e338",
+      "unwanted_rms_v": [
+        1.7062735124356497e-08,
+        8.142283021017258e-09,
+        1.6215000320849575e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.3384271067078,
+        -175.76447620413865,
+        -169.78106085467104
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.6264571501947793,
+        0.09932468125887325,
+        0.01575115966725602
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-112.f32",
+      "trace_sha256": "06f2bc6adc813aa13ce7ed9b25814bc6d78dfd494eff14cf0a28bb7609503c09",
+      "unwanted_rms_v": [
+        1.6081901132980976e-08,
+        6.275798629624243e-09,
+        1.2038802510108381e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.852652329369,
+        -178.0260200864659,
+        -172.36773428369347
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.7016842935138218,
+        0.11124913871137065,
+        0.017638090170100557
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-113.f32",
+      "trace_sha256": "6548183010acb5bc240bcf78e8ccce7baeee8aac26f17dd1d622bcdc14cdd91e",
+      "unwanted_rms_v": [
+        3.1321476577151746e-08,
+        1.1149934874410585e-08,
+        2.1064582571529257e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -164.0625555335659,
+        -173.03395347225063,
+        -167.5083429405845
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.2926164049943734,
+        0.20501751847529776,
+        0.03261922317557675
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-114.f32",
+      "trace_sha256": "a2e9e2f623ac50adffce6ce08ee6e6de55c2eebdd3f6baf1c2e042f8fb93a9e4",
+      "unwanted_rms_v": [
+        6.299304536983092e-08,
+        1.9734772417327797e-08,
+        3.526576189768155e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.9935479942292,
+        -168.07475763775335,
+        -163.03233466714056
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.8534024604226653,
+        0.4594871455698395,
+        0.08273325589314667
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-115.f32",
+      "trace_sha256": "2e1ea6de07c71e9cefee2100230f9fb696a43e5b04259f608df3b02815cad775",
+      "unwanted_rms_v": [
+        1.109381233933716e-07,
+        2.305227841694782e-08,
+        3.5852478460499106e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -153.07778378335576,
+        -166.72512296291723,
+        -162.8890164155072
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.8372622088906065,
+        0.6578738203198256,
+        0.16649064563697036
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-116.f32",
+      "trace_sha256": "b1b64280192ffd378a5205c928a9a5a9dda9cf278e1fbd1c9cb8436eb818aef6",
+      "unwanted_rms_v": [
+        1.1455401599125286e-07,
+        4.7755555967917084e-08,
+        1.0135055384485057e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.79919370424912,
+        -160.3989219773971,
+        -153.8628775607022
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.5084214732758943,
+        0.5562456934665752,
+        0.0881904509700026
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-117.f32",
+      "trace_sha256": "0561bab3638055ed98e2bb1933946aea16ebaa3fda6b7406bdce79ca73bebefb",
+      "unwanted_rms_v": [
+        1.1687298746403572e-07,
+        2.8796999698662447e-08,
+        5.1390184651630094e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -152.6251171775862,
+        -164.79245524972453,
+        -159.76179652342753
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.052849313028814,
+        0.694834836383112,
+        0.17584451219440217
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-118.f32",
+      "trace_sha256": "751bc5d50042df490e347ec29a7488eab7fdba9e0a80a682d0147ffe7db186cf",
+      "unwanted_rms_v": [
+        1.8355928838200235e-05,
+        9.568045025865795e-05,
+        0.0014053654877628251
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -108.70387277943951,
+        -94.3629358791701,
+        -71.0236144036527
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.573008528320328,
+        0.9956174187022123,
+        0.5113143351707561
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 171,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 2003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-119.f32",
+      "trace_sha256": "6c627c52d1f5e82548995c27388f691d1d4386672942f58361745c76aa0cbd4e",
+      "unwanted_rms_v": [
+        0.0016275633418908035,
+        0.0035131764959818674,
+        0.02830494894944344
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -69.74864209585323,
+        -63.065400715670314,
+        -44.94215256808802
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        4.679423710315609,
+        1.1255287089147143,
+        0.7584408428571511
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-120.f32",
+      "trace_sha256": "9396ff87c055e256e065121bc7373d2349e6eba9dc69adfbf450df33dcfde2d7",
+      "unwanted_rms_v": [
+        1.9058131028458733e-09,
+        1.1933389159587532e-09,
+        1.9863870608764263e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -188.37779391704942,
+        -192.44412401419572,
+        -188.0181225346089
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.059266213869041226,
+        0.03835812220997955,
+        0.02482604247777887
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-121.f32",
+      "trace_sha256": "0d410a553b2549909facc024ddb9a8fb39f180a77bdc801d1ad0dc879ccb2a44",
+      "unwanted_rms_v": [
+        3.6963834915865635e-09,
+        2.3606155488239277e-09,
+        3.80367248391242e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -182.62385964723035,
+        -186.51889481884007,
+        -182.37533778972585
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.1126362054278788,
+        0.07290010718520631,
+        0.04718221648723637
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-122.f32",
+      "trace_sha256": "39e497f89c6258669da234925e4e649e917eb3386152eb441bab602dce31a704",
+      "unwanted_rms_v": [
+        8.68540933591245e-09,
+        6.5842178992602495e-09,
+        9.928440290970901e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -175.20359426286268,
+        -177.60931618552667,
+        -174.04177952009152
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.2956195471665022,
+        0.19133013334175464,
+        0.1238324679381315
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-123.f32",
+      "trace_sha256": "58090953c1d86e1c68ac5b010196d546669028a2a95dd22a245e544a32d1aeb8",
+      "unwanted_rms_v": [
+        1.6124030279889735e-08,
+        1.0575022497771634e-08,
+        2.5814169824657255e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -169.8299279855438,
+        -173.49377408701247,
+        -165.7422368299622
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.5291216355265608,
+        0.34245729340812425,
+        0.2216495980674255
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-124.f32",
+      "trace_sha256": "53d9e47dfb3e4a1912d8b62c710ce2aa02987485e38447a470e05a0db2d58696",
+      "unwanted_rms_v": [
+        1.532301159147639e-08,
+        1.191361152210599e-08,
+        1.3998925154244011e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -170.27251748441506,
+        -172.45853139549672,
+        -171.05750625529967
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.5926621287707781,
+        0.38358121608636814,
+        0.24826042043270918
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-125.f32",
+      "trace_sha256": "00b935972742a15f24492908c4156070adc7230b226c869917ea16e9b3016076",
+      "unwanted_rms_v": [
+        4.049520641717054e-08,
+        2.4510169606188227e-07,
+        2.190340583761322e-06
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -161.83132774577697,
+        -146.1924737565978,
+        -127.16916708537221
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.0917311244502697,
+        0.7066058099815593,
+        0.4574942009292215
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-126.f32",
+      "trace_sha256": "d13f0fe7fb72a18dcf7de1200d0648e00d42f056ac1083a98277e023bff2871d",
+      "unwanted_rms_v": [
+        2.6311826539254566e-05,
+        0.0001566865314055207,
+        0.0013515483656803197
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -105.57638013877666,
+        -90.07876675436903,
+        -71.36276825254808
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.4056640636262716,
+        1.5586490365440675,
+        1.023767580597195
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-127.f32",
+      "trace_sha256": "788a012d24f6e7a6eb0ada4dfdbcfe192bee80c413b6f0364e65096f4797da62",
+      "unwanted_rms_v": [
+        0.0012142142561128552,
+        0.0033063091866954203,
+        0.024119983172127095
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -72.29349353418635,
+        -63.59253081043859,
+        -46.331860077270946
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.21063030907266,
+        2.0892662448580928,
+        1.4546054037625684
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-128.f32",
+      "trace_sha256": "9141acbe109882c6ade3db8b65e56d35523fd2da8b4542266e8fd3adb5c80a87",
+      "unwanted_rms_v": [
+        9.907873373770526e-08,
+        6.890730468233181e-08,
+        1.0639768580832036e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -154.05979113656738,
+        -157.21409483141989,
+        -153.44075644701468
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        2.96331064711672,
+        1.9179060809555077,
+        1.2413021038723437
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-129.f32",
+      "trace_sha256": "20c8d4da6fe8351f03bc92ba93e2d6c7eeac31430c38ba5135940e4d18db5343",
+      "unwanted_rms_v": [
+        0.0012824322750717748,
+        0.0034920654075326694,
+        0.0254751034696869
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -71.81871129859475,
+        -63.11775269495876,
+        -45.85708095446783
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.3910116440966553,
+        2.2066465083984217,
+        1.536328817171134
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-130.f32",
+      "trace_sha256": "b93c7c654c8c79aa396dd0089455ffae8059406edf41f1012f7dfa16275d9faf",
+      "unwanted_rms_v": [
+        0.09033885384235837,
+        0.09333152074951416,
+        0.3551645427646356
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -34.86190856214575,
+        -34.57883324058238,
+        -22.97080804201574
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.715564106238298,
+        2.455140663051439,
+        2.0943600180361157
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 683,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 8003.90625,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-131.f32",
+      "trace_sha256": "841262f81f9d363766e8b392a6896c7393518069e85da038bfefbd89100dc700",
+      "unwanted_rms_v": [
+        0.2492351854265671,
+        0.218366673209376,
+        0.6246871175350135
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -26.04721302216831,
+        -27.195672932227918,
+        -18.066149088694615
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        3.768990195441961,
+        2.503720367070943,
+        2.3033422481323558
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-132.f32",
+      "trace_sha256": "3b7b28e96c944cd6505beeaa15ccda7ddabb7d1cc44dffbb8d488b0c416c8e6c",
+      "unwanted_rms_v": [
+        1.2479126649814789e-09,
+        1.2181149873199716e-09,
+        2.461314474188528e-09
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -192.05571623946892,
+        -192.26563435360023,
+        -186.15605797374056
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.024285586162487733,
+        0.038047452621413944,
+        0.05960772943365309
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-133.f32",
+      "trace_sha256": "f380a9dffb7bddc0ad1737613c9d3d93bd3561ae44c37489ae6ae7c6ee2fa6a5",
+      "unwanted_rms_v": [
+        6.162486686003623e-08,
+        9.445283914983832e-07,
+        1.449069572190461e-05
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -158.18428020677987,
+        -134.47509974922323,
+        -110.75761534357613
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.04615507036187437,
+        0.07230967531292277,
+        0.11328526088772813
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-134.f32",
+      "trace_sha256": "1c0f85d202837481f104c3cbe86dda3ba272e164b67d4c54ec87cf8c407c8720",
+      "unwanted_rms_v": [
+        1.2678629544511995e-06,
+        1.9086965123456302e-05,
+        0.0002928169358317071
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -131.9179538382384,
+        -108.36466248785251,
+        -84.64747625336824
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.12113636808229648,
+        0.18978048190923982,
+        0.29732316521615776
+      ]
+    },
+    {
+      "amplitude_volts_peak": 0.1,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-135.f32",
+      "trace_sha256": "f892b4ed9c2688b47ae677d5dbae830e8b6f03d5d37b85ff17c4185e0685f939",
+      "unwanted_rms_v": [
+        8.49475688767571e-06,
+        0.00011011046086078206,
+        0.001688674946718504
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -115.39638100143426,
+        -93.14282847961918,
+        -69.42847888254013
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.21681876681444012,
+        0.3396830581797628,
+        0.5321732549180038
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-136.f32",
+      "trace_sha256": "45e41527a3b79c48bf5d03f9ec9120b7cc1f1de68d972372de6364dce5c2eb37",
+      "unwanted_rms_v": [
+        9.356448981721392e-09,
+        1.1751620248320083e-08,
+        1.846165000429916e-08
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -174.55717900994307,
+        -172.57744510963965,
+        -168.65398981951097
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.24285585761137793,
+        0.38047451935397475,
+        0.5960772844928003
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-137.f32",
+      "trace_sha256": "a601193a43857fe7dfd51576f76f82357eaadd7c54e6a15c61823a84272ad64f",
+      "unwanted_rms_v": [
+        0.00015496940820208878,
+        0.0008920274808140859,
+        0.013609791632723278
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -90.17448059560968,
+        -74.97183540767155,
+        -51.302370563478384
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.4473590697506525,
+        0.7008636992188236,
+        1.0981042361534021
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-138.f32",
+      "trace_sha256": "f1ce30084eea703f6f97598fcb00c0a4b6546eb7ee487c19d4052c2af27a1651",
+      "unwanted_rms_v": [
+        0.013376912156942061,
+        0.015221436270336801,
+        0.19165088449646134
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -51.45228258335636,
+        -50.33028741273078,
+        -28.32918352818757
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        0.9857812359537165,
+        1.544324810504808,
+        2.4269059499824506
+      ]
+    },
+    {
+      "amplitude_volts_peak": 1.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-139.f32",
+      "trace_sha256": "e705e4955e4d9bad4493a854d2af631d57b29626e618578f7c32117ad9916e8c",
+      "unwanted_rms_v": [
+        0.09665100154748658,
+        0.07367831417518644,
+        0.5785665372294824
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -34.27527291129793,
+        -36.63260648148687,
+        -18.73233385502114
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3186182129525699,
+        2.0615972487946643,
+        3.2792183027672444
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-140.f32",
+      "trace_sha256": "d6720a3488033612a5cf553699d138672e8d508365bcb467a9350068fb2b7fda",
+      "unwanted_rms_v": [
+        6.566805497481159e-08,
+        6.882849105686301e-08,
+        1.2873731513521407e-07
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -157.63231702492956,
+        -157.22403511635218,
+        -151.7853111364447
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.2142792900295158,
+        1.9023726014197708,
+        2.980386425582534
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.1,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-141.f32",
+      "trace_sha256": "0c9c36ef48e0ed481cf03bfd01ff19da2f39b2a6adc686d47956fd23f97930da",
+      "unwanted_rms_v": [
+        0.10208110135266833,
+        0.07781775057678475,
+        0.6110718723124193
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -33.80049314663823,
+        -36.15782663066561,
+        -18.257554215323207
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.3927015214399807,
+        2.1774229992319936,
+        3.4634530843624067
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 0.5,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-142.f32",
+      "trace_sha256": "5432b698b0ac741d38afe896f2899535c1214a4bd2f6a1e2971ae8f69b867326",
+      "unwanted_rms_v": [
+        0.5190216108442856,
+        0.3596667213478654,
+        1.3550976450785697
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -19.67569126212019,
+        -22.861394966913736,
+        -11.339988275635015
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.6058715102425716,
+        2.407854278980958,
+        3.9685126490527605
+      ]
+    },
+    {
+      "amplitude_volts_peak": 5.0,
+      "bin": 1501,
+      "cutoff_hz": 12000,
+      "drive": 1.0,
+      "frequency_hz": 17589.84375,
+      "rate": 96000,
+      "resonance": 0.2,
+      "trace": "case-143.f32",
+      "trace_sha256": "7db15d01d5cd036e704b3780ceb614fb605b1494f0de1ffe2b26d5582b537f50",
+      "unwanted_rms_v": [
+        0.7092124951300495,
+        0.48405754326131145,
+        1.58868035875657
+      ],
+      "unwanted_db_relative_5v_peak": [
+        -16.96387251604386,
+        -20.281460240799497,
+        -9.958669560978743
+      ],
+      "period_difference_peak_v": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "signal_rms_v": [
+        1.6937617436379047,
+        2.4578773195210726,
+        4.095915007054378
+      ]
+    }
+  ]
+}

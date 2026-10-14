@@ -6873,10 +6873,25 @@ fn paint_panel(
         [point(22.0, 65.0), point(width - 22.0, 65.0)],
         Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
     );
-    if node.kind != "pulses" {
+    if !matches!(node.kind.as_str(), "pulses" | "svf_filter" | "audio_stereo") {
+        let studio_footer = matches!(
+            node.kind.as_str(),
+            "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
+        );
         painter.text(
-            point(width * 0.5, PANEL_HEIGHT - 7.0),
-            Align2::CENTER_CENTER,
+            point(
+                if studio_footer {
+                    width - 24.0
+                } else {
+                    width * 0.5
+                },
+                PANEL_HEIGHT - 7.0,
+            ),
+            if studio_footer {
+                Align2::RIGHT_CENTER
+            } else {
+                Align2::CENTER_CENTER
+            },
             "OPENPATCH",
             FontId::proportional(7.0 * zoom),
             MUTED,
@@ -7401,7 +7416,25 @@ mod tests {
                     for shape in &output.shapes {
                         collect(&shape.shape, &mut texts);
                     }
-                    assert!(texts.len() >= 10, "missing panel drawing: {kind}");
+                    for (name, _) in ordered_parameters(&preview.patch.nodes[0], Some(module)) {
+                        assert!(
+                            texts.iter().any(|(text, _)| text == parameter_label(name)),
+                            "{kind}: missing parameter label {name}"
+                        );
+                    }
+                    if let Some((_, footer)) = texts.iter().find(|(text, _)| text == "OPENPATCH") {
+                        for shape in &output.shapes {
+                            if let egui::Shape::Circle(circle) = &shape.shape {
+                                assert!(
+                                    !footer.intersects(Rect::from_center_size(
+                                        circle.center,
+                                        Vec2::splat(circle.radius * 2.0)
+                                    )),
+                                    "{kind} at {scale}: footer intersects a control/socket"
+                                );
+                            }
+                        }
+                    }
                     for (index, (label, bounds)) in texts.iter().enumerate() {
                         for (other, other_bounds) in &texts[index + 1..] {
                             assert!(!bounds.shrink(0.2 * scale).intersects(other_bounds.shrink(0.2 * scale)),
