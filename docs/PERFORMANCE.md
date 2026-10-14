@@ -325,13 +325,13 @@ CI timing is diagnostic: shared runners are noisy. No hard speed threshold or
 speedup claim should be based on one CI run. Broader SIMD work, multicore
 scheduling and feedback optimization remain future work.
 
-## SVF nonlinear-drive candidate screen
+## SVF nonlinear-drive integration and prototype screen
 
 The [SVF antialiasing study](benchmarks/svf-antialias/README.md) compares isolated
-4×/8×/16× drive preprocessing against the current host-rate baseline. The broader
+4×/8×/16× drive preprocessing against a pinned historical host-rate baseline. The broader
 spectral tests reject 4×/8×; unoptimized 16× passes the measured sparse spectral
 matrices but exceeds the 48/96 kHz 128-frame block budget with sixteen voices.
-These prototypes are not shipped. The study retains source hashes, independent
+The study retains source hashes, independent
 spectral references and 589,824 measured actual-engine blocks to guide an
 optimization that preserves sound quality. Offline cost is not device stability
 or a faster-than-Rack result.
@@ -345,4 +345,34 @@ with 76 samples of additional latency instead of 64. Its paired median is about
 3× faster for mono and 3.6× for sixteen voices than the unoptimized 16× prototype.
 The initial 96 kHz/16-voice maximum-drive p99 still exceeds the nominal block
 budget. These are experimental alternatives, with public source and measured
-tails; neither changes the installed filter or establishes callback reliability.
+tails; they do not establish callback reliability or installed-build behavior.
+
+The [SVF source integration](SVF_FILTER.md) uses the original multistage design
+with gain, blend and normalization denominator calculated during graph
+construction and shared across voices. Signal and per-voice cutoff CV receive 76 samples of delay,
+including at zero drive. The host-rate TPT recurrence, ladder/VCA processing
+and graph scheduling remain separate. The tables above measure frozen
+prototypes. A separate integrated-source screen is recorded below; actual
+audio-device behavior remains unqualified.
+
+A [bounded alternating-order repeat](benchmarks/svf-antialias/multistage/tail-repeat.json)
+reused unchanged prototype binaries. Multistage 96 kHz/16-voice maximum-drive
+p99 was .862/.873/.870 ms across three repeats, with 0/2/0 over-budget blocks
+out of 1024 and maximum 1.924 ms. The initial p99 was 1.679 ms against a
+1.333 ms budget; its over-budget samples clustered at indices 439–469.
+Repeats do not establish the cause or erase the initial result. The full cost
+matrix, voice transitions, graph swaps, silence/decay and device deadlines
+remain separate qualification work. No VCV performance superiority is claimed.
+
+The [integrated-source screen](benchmarks/svf-integration-m1max.json) uses the
+same eight-case harness and thin-LTO profile, with the original multistage and
+integrated binaries built before sequential runs. At 16 voices and maximum
+drive, integrated 48/96 kHz p50 was .728/.744 ms and p99 .817/.820 ms. Zero-drive
+16-voice p50 was .450/.458 ms versus .672/.678 ms in the unhoisted comparison.
+Maximum-drive cost is broadly unchanged; the zero-drive identity path avoids
+unneeded nonlinear evaluation while maintaining FIR/CV histories. This is a
+bounded screen with 1024 timed blocks per case, not the earlier full matrix.
+The integrated 96 kHz maximum-drive maximum was 1.692 ms, above the 1.333 ms
+budget. Raw report hashes, source hashes and all summary statistics are retained.
+Numerical, state and allocation tests support integration; device deadlines,
+larger mixed patches and broader hardware remain open.

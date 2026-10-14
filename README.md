@@ -152,8 +152,12 @@ edit scores, connect voices and export an arrangement of up to five minutes.
 The panel exposes tempo, swing, run state and track outputs; a graphical note
 editor remains future work.
 
-These are original functional algorithms. Their documented limits include
-SVF drive aliasing and differences from third-party VCV plugins.
+These are original functional algorithms. The [SVF source integration](docs/SVF_FILTER.md)
+uses 16× oversampled drive with 76 samples of signal/CV delay, including at zero
+drive. The [prototype study](docs/benchmarks/svf-antialias/multistage/README.md)
+passes bounded spectral gates; the integrated filter has state, allocation and
+offline timing checks. Audio-device behavior and third-party VCV equivalence
+remain unqualified.
 [Module behavior, MCP examples and fidelity limits →](docs/SCORE_AND_STUDIO.md)
 
 <sub>Native Linux / Mesa CI render. This fixture illustrates the panels and

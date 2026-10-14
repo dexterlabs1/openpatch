@@ -1206,3 +1206,203 @@ fn score_and_studio_chain_callbacks_and_adoption_use_no_heap() {
     assert!(audio.iter().flatten().all(|x| x.is_finite()));
     assert!(audio.iter().flatten().any(|x| x.abs() > 0.000001));
 }
+
+#[test]
+fn multistage_svf_polyphonic_lifecycle_uses_no_heap_and_preserves_continuation() {
+    for rate in [44100, 48000, 96000] {
+        for drive in [0.0, 0.05, 0.1, 1.0] {
+            let mut signal = node("signal", "poly_constant", &[("channels", 16.0)]);
+            let mut cv = node("cv", "poly_constant", &[("channels", 16.0)]);
+            for lane in 1..=16 {
+                signal.params.insert(format!("v{lane}"), lane as f32 * 0.25);
+                cv.params
+                    .insert(format!("v{lane}"), lane as f32 * 0.03125 - 0.25);
+            }
+            let mut p = patch(
+                vec![
+                    signal,
+                    cv,
+                    node(
+                        "filter",
+                        "svf_filter",
+                        &[
+                            ("cutoff", 1234.0),
+                            ("resonance", 0.8),
+                            ("drive", drive),
+                            ("cutoff_cv_amount", 0.7),
+                        ],
+                    ),
+                ],
+                vec![
+                    cable("signal", "out", "filter", "signal"),
+                    cable("cv", "out", "filter", "cutoff_cv"),
+                ],
+                "filter",
+            );
+            p.sample_rate = rate;
+            p.output_port = "low".into();
+            let mut old = p.compile().unwrap();
+            let mut same = p.compile().unwrap();
+            let mut grown = p.compile().unwrap();
+            let mut resumed = p.compile().unwrap();
+            let mut excluded = p.compile().unwrap();
+            let mut fresh = p.compile().unwrap();
+            p.nodes[0].params.insert("channels".into(), 1.0);
+            let mut mono = p.compile().unwrap();
+            p.nodes[0].params.insert("channels".into(), 0.0);
+            let mut empty = p.compile().unwrap();
+            p.nodes[0].params.insert("channels".into(), 16.0);
+            p.nodes[2].bypassed = true;
+            let mut bypassed = p.compile().unwrap();
+            let handle = resumed.resolve_module_state("filter").unwrap();
+            let excluded_handle = excluded.resolve_module_state("filter").unwrap();
+            let mut expected = [PortFrame::default(); 257];
+            let mut actual = expected;
+            let mut continuation_matches = true;
+            let mut reset_succeeded = false;
+            MEMORY_OPERATIONS.with(|c| c.set(0));
+            TRACK_MEMORY.with(|c| c.set(true));
+            // Include the first callback, several ring wraps, and arbitrary partitions.
+            for length in [0, 1, 3, 64, 128, 257] {
+                old.process_poly_block(&mut actual[..length]);
+                same.adopt_state_from(&old);
+                old.process_poly_block(&mut expected[..length]);
+                same.process_poly_block(&mut actual[..length]);
+                continuation_matches &= actual[..length] == expected[..length];
+            }
+            mono.adopt_state_from(&old);
+            mono.process_poly_block(&mut actual);
+            empty.adopt_state_from(&mono);
+            empty.process_poly_block(&mut actual);
+            grown.adopt_state_from(&empty);
+            grown.process_poly_block(&mut actual);
+            bypassed.adopt_state_from(&grown);
+            bypassed.process_poly_block(&mut actual);
+            resumed.adopt_state_from(&bypassed);
+            resumed.process_poly_block(&mut actual);
+            reset_succeeded |= resumed.reset_module_state(handle);
+            resumed.process_poly_block(&mut actual);
+            excluded.adopt_state_from_excluding(&grown, &[excluded_handle]);
+            excluded.process_poly_block(&mut actual);
+            fresh.process_poly_block(&mut expected);
+            continuation_matches &= actual == expected;
+            TRACK_MEMORY.with(|c| c.set(false));
+            assert_eq!(
+                MEMORY_OPERATIONS.with(Cell::get),
+                0,
+                "rate={rate}, drive={drive}"
+            );
+            assert!(continuation_matches, "rate={rate}, drive={drive}");
+            assert!(reset_succeeded);
+            assert_eq!(actual.last().unwrap().channels, 16);
+            assert!(actual.iter().flat_map(|f| f.values).all(f32::is_finite));
+            assert!(actual.iter().flat_map(|f| f.values).any(|v| v.abs() > 0.01));
+        }
+    }
+}
+
+#[test]
+fn svf_drive_latency_is_explicit_and_bypass_remains_direct() {
+    fn impulse(port: &str, bypassed: bool) -> Vec<f32> {
+        let mut p = patch(
+            vec![
+                node("source", "constant", &[("value", 1.0)]),
+                node(
+                    "filter",
+                    "svf_filter",
+                    &[("drive", 0.0), ("resonance", 0.0)],
+                ),
+            ],
+            vec![cable("source", "out", "filter", "signal")],
+            "filter",
+        );
+        p.output_port = port.into();
+        p.nodes[1].bypassed = bypassed;
+        let mut first = p.compile().unwrap();
+        let mut result = vec![0.0; 513];
+        first.process_block(&mut result[..1]);
+        p.nodes[0].params.insert("value".into(), 0.0);
+        let mut rest = p.compile().unwrap();
+        rest.adopt_state_from(&first);
+        rest.process_block(&mut result[1..]);
+        result
+    }
+    let low = impulse("low", false);
+    let band = impulse("band", false);
+    let high = impulse("high", false);
+    // The SVF's unity decomposition reconstructs its driven input. This
+    // removes the low/band/high filter phase without fitting a measured delay.
+    let drive: Vec<f64> = low
+        .iter()
+        .zip(&band)
+        .zip(&high)
+        .map(|((&l, &b), &h)| f64::from(l) + 2.0 * f64::from(b) + f64::from(h))
+        .collect();
+    let peak = drive
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+        .unwrap()
+        .0;
+    assert_eq!(peak, 1 + 76, "one graph cable plus the declared FIR delay");
+    assert!((drive.iter().sum::<f64>() - 1.0).abs() < 2e-6);
+    for offset in 1..=76 {
+        assert!((drive[peak - offset] - drive[peak + offset]).abs() < 2e-6);
+    }
+    let direct = impulse("low", true);
+    assert_eq!(direct[1], 1.0);
+    assert!(direct.iter().enumerate().all(|(n, v)| n == 1 || *v == 0.0));
+    for port in ["band", "high"] {
+        assert!(impulse(port, true).iter().all(|v| *v == 0.0));
+    }
+    // Parallel dry/filtered paths deliberately retain their relative delay;
+    // no graph compensation is silently inserted by the new preprocessing.
+    assert_eq!(direct.iter().position(|v| *v == 1.0).unwrap() + 76, peak);
+}
+
+#[test]
+fn svf_low_gain_feedback_preserves_partition_order_and_live_rebuild() {
+    let mut p = patch(
+        vec![
+            node("source", "constant", &[("value", 1.0)]),
+            node(
+                "filter",
+                "svf_filter",
+                &[("cutoff", 1600.0), ("resonance", 0.0), ("drive", 0.0)],
+            ),
+            node("feedback", "gain", &[("gain", 0.1)]),
+        ],
+        vec![
+            cable("source", "out", "filter", "signal"),
+            cable("filter", "low", "feedback", "signal"),
+            cable("feedback", "out", "filter", "signal"),
+        ],
+        "filter",
+    );
+    p.output_port = "low".into();
+    for rate in [44100, 48000, 96000] {
+        p.sample_rate = rate;
+        let mut reference = p.compile().unwrap();
+        let mut expected = vec![0.0; 4096];
+        reference.process_block(&mut expected);
+        assert!(expected.iter().all(|v| v.is_finite() && v.abs() < 2.0));
+        // Independent DC loop equation y = 1 + 0.1*y, allowing f32 and FIR error.
+        assert!((f64::from(*expected.last().unwrap()) - 1.0 / 0.9).abs() < 2e-5);
+        let mut reordered = p.clone();
+        reordered.nodes.reverse();
+        reordered.cables.reverse();
+        for partition in [1, 17, 128, 257] {
+            let mut before = p.compile().unwrap();
+            let mut after = reordered.compile().unwrap();
+            let mut actual = vec![0.0; expected.len()];
+            for chunk in actual[..333].chunks_mut(partition) {
+                before.process_block(chunk);
+            }
+            after.adopt_state_from(&before);
+            for chunk in actual[333..].chunks_mut(partition) {
+                after.process_block(chunk);
+            }
+            assert_eq!(actual, expected, "rate={rate}, partition={partition}");
+        }
+    }
+}

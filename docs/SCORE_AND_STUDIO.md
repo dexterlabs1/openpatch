@@ -19,14 +19,14 @@ Add this with `add_module`, or update its data with `set_score`. Both support at
 | Module | Behavior | Limits |
 | --- | --- | --- |
 | DRUM | Triggered sine kick, noise clap, metallic closed hat | Original synthesis, not Kickall/XOX emulation |
-| STATE VARIABLE | Polyphonic low/band/high TPT filtering with cutoff CV | Original two-pole filter, not Surge/VCV VCF identity |
+| STATE VARIABLE | Polyphonic low/band/high TPT filtering with 16× oversampled drive and cutoff CV | 76-sample signal/CV delay, including at zero drive; original two-pole filter |
 | STEREO DELAY | Independent fractional times, crossfeed, filtered feedback and modulation | Mono per L/R port; sum chords before input |
 | SPACE | Stereo feedback-delay-network reverb, independent dry/wet and predelay | Original tank; no Plateau algorithm parity |
 | DUCK | Stereo-linked RMS compressor, external sidechain, soft knee | 5 V detector reference; original dynamics, not Pressor identity |
 
 All buffers are allocated during graph compilation. Callback processing and compatible state adoption use bounded storage. Effects preserve histories across unrelated edits. Their DSP is tested for signal behavior, finite output, and allocation-free processing; this does not establish physical hardware calibration or superiority over Rack.
 
-The SVF drive has a measured aliasing gap, especially at high input frequencies and drive settings; see the [reproducible spectral baseline](benchmarks/svf-spectral/README.md). Its undriven linear path and nonlinear driven path must be assessed separately. An [isolated oversampling study](benchmarks/svf-antialias/README.md) now compares spectral accuracy and CPU cost; those prototypes are not part of the installed filter.
+The [SVF source integration](SVF_FILTER.md) retains the host-rate filter and uses four 2× FIR stages for its drive. Signal and per-voice cutoff CV receive 76 samples of delay, including at zero drive; drive below .1 blends smoothly into the previous static curve. This changes existing patch timing and low-drive sound. Parallel paths and feedback are not delay compensated, and bypass routes an undelayed signal to low while freezing processing histories. The [576-case prototype study](benchmarks/svf-antialias/multistage/README.md) passes bounded single-tone alias/magnitude gates; prototype CPU evidence and remaining qualification are separate from the integrated source and audio-device behavior.
 
 ## Full arrangement export
 
@@ -38,4 +38,4 @@ The SVF drive has a measured aliasing gap, especially at high input frequencies 
 
 The `scripts/rebuild_stiw.py` reconstruction helper accepts an inspected source JSON, translates its saved score automatically (with optional native score overrides), authors the graph through real stdio MCP, then saves a native project and explicit substitution manifest. It preserves the source file. A reconstruction is an editable native rendition, not a transparent `.vcv` import.
 
-The reconstruction uses cascaded native SVFs for its four-pole lowpasses by default; `--circuit-filters` selects the more expensive nonlinear ladder alternative. Both are explicit substitutions. The source Audio-2 DC-filter setting is preserved through the stereo output’s optional `dc_block` control (10 Hz high-pass; defaults off for existing OpenPatch projects). The reference setting is documented by the [Rack 2.6.6 audio source](https://github.com/VCVRack/Rack/blob/v2.6.6/src/core/Audio.cpp).
+The reconstruction uses cascaded native SVFs for its four-pole lowpasses by default; `--circuit-filters` selects the more expensive nonlinear ladder alternative. Both are explicit substitutions. Two cascaded SVFs add 152 samples before cable delays. The source Audio-2 DC-filter setting is preserved through the stereo output’s optional `dc_block` control (10 Hz high-pass; defaults off for existing OpenPatch projects). The reference setting is documented by the [Rack 2.6.6 audio source](https://github.com/VCVRack/Rack/blob/v2.6.6/src/core/Audio.cpp).

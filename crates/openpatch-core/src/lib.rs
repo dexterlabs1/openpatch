@@ -36,6 +36,7 @@ mod mixing;
 mod multi_lfo;
 mod multi_vco;
 mod parameter_actions;
+mod svf_resampler;
 mod voice_tools;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;

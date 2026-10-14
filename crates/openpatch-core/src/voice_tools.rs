@@ -1,5 +1,6 @@
 //! Original reconstruction tools. These are intentionally not Kickall, XOX,
 //! or Surge emulations. Runtime storage is fixed and processing allocates nothing.
+use crate::svf_resampler::{Oversampler, LATENCY_SAMPLES};
 use crate::{parameter, Node, PortFrame, MAX_CHANNELS};
 use serde_json::{json, Value};
 use std::f64::consts::{PI, TAU};
@@ -22,7 +23,7 @@ pub(crate) fn catalog() -> Vec<Value> {
     vec![
         json!({"kind":"drum_voice","title":"DRUM VOICE","model":"functional","inputs":input_names("drum_voice").unwrap(),"description":"Original mono kick, noise clap, or metallic closed hat. Schmitt trigger, deterministic noise, exponential envelope; not source-plugin DSP parity. Accent normal10V, clamped0..10V.","params":{
         "mode":{"default":0.0,"min":0.0,"max":2.0,"step":1.0},"pitch":{"default":48.0,"min":20.0,"max":4000.0,"unit":"Hz"},"decay":{"default":0.2,"min":0.005,"max":4.0,"unit":"s"},"level":{"default":1.0,"min":0.0,"max":2.0},"tone":{"default":0.5,"min":0.0,"max":1.0},"drive":{"default":0.0,"min":0.0,"max":1.0}}}),
-        json!({"kind":"svf_filter","title":"SVF FILTER","model":"functional","inputs":input_names("svf_filter").unwrap(),"description":"Original topology-preserving state-variable low/band/high filter. Signal determines up to16 voices; mono CV broadcasts. Cutoff clamped below Nyquist, finite input sanitization and bounded drive.","params":{
+        json!({"kind":"svf_filter","title":"SVF FILTER","model":"functional","inputs":input_names("svf_filter").unwrap(),"description":"Original topology-preserving state-variable low/band/high filter. Signal determines up to16 voices; mono CV broadcasts. Drive uses 16x multistage antialiasing with 76 samples of signal and cutoff-CV delay, including at zero drive. Cutoff clamped below Nyquist; finite input sanitization and bounded drive.","params":{
         "cutoff":{"default":1000.0,"min":5.0,"max":20000.0,"unit":"Hz"},"resonance":{"default":0.2,"min":0.0,"max":1.0},"drive":{"default":0.0,"min":0.0,"max":1.0},"cutoff_cv_amount":{"default":0.0,"min":-4.0,"max":4.0,"unit":"oct/V"}}}),
     ]
 }
@@ -55,13 +56,50 @@ pub(crate) struct Drum {
     accent: f64,
 }
 #[derive(Clone, Debug)]
+struct DriveLane {
+    oversampler: Oversampler,
+    cv: [f64; LATENCY_SAMPLES],
+    head: usize,
+}
+impl DriveLane {
+    fn new() -> Self {
+        Self {
+            oversampler: Oversampler::new(),
+            cv: [0.0; LATENCY_SAMPLES],
+            head: 0,
+        }
+    }
+    #[inline]
+    fn process(&mut self, x: f64, cv: f64, gain: f64, blend: f64, denom: f64) -> (f64, f64) {
+        let delayed_cv = self.cv[self.head];
+        self.cv[self.head] = cv;
+        self.head = (self.head + 1) % LATENCY_SAMPLES;
+        let x = if blend == 0.0 {
+            self.oversampler.process_pair(x, 0.0, |x, _| x)
+        } else {
+            self.oversampler.process_pair(x, 0.0, |x, _| {
+                x + blend * (5.0 * (x * gain / 5.0).tanh() / denom - x)
+            })
+        };
+        (x, delayed_cv)
+    }
+    fn copy_state_from(&mut self, old: &Self) {
+        self.oversampler.copy_state_from(&old.oversampler);
+        self.cv = old.cv;
+        self.head = old.head;
+    }
+}
+#[derive(Clone, Debug)]
 pub(crate) struct Filter {
     rate: f64,
     cutoff: f64,
     resonance: f64,
-    drive: f64,
+    gain: f64,
+    blend: f64,
+    drive_denom: f64,
     cv: f64,
     states: [[f64; 2]; MAX_CHANNELS],
+    drive_lanes: Box<[DriveLane]>,
     active: usize,
 }
 #[derive(Clone, Debug)]
@@ -111,15 +149,24 @@ impl VoiceTools {
                     accent: 1.0,
                 }))
             }
-            "svf_filter" => Ok(Self::Filter(Filter {
-                rate: rate.into(),
-                cutoff: p("cutoff", 1000.0, 5.0, 20000.0)?,
-                resonance: p("resonance", 0.2, 0.0, 1.0)?,
-                drive: p("drive", 0.0, 0.0, 1.0)?,
-                cv: p("cutoff_cv_amount", 0.0, -4.0, 4.0)?,
-                states: [[0.0; 2]; MAX_CHANNELS],
-                active: 0,
-            })),
+            "svf_filter" => {
+                let drive = p("drive", 0.0, 0.0, 1.0)?;
+                let gain = 1.0 + 8.0 * drive;
+                let t = (drive / 0.1).clamp(0.0, 1.0);
+                let blend = t * t * (3.0 - 2.0 * t);
+                Ok(Self::Filter(Filter {
+                    rate: rate.into(),
+                    cutoff: p("cutoff", 1000.0, 5.0, 20000.0)?,
+                    resonance: p("resonance", 0.2, 0.0, 1.0)?,
+                    gain,
+                    blend,
+                    drive_denom: gain.tanh(),
+                    cv: p("cutoff_cv_amount", 0.0, -4.0, 4.0)?,
+                    states: [[0.0; 2]; MAX_CHANNELS],
+                    drive_lanes: (0..MAX_CHANNELS).map(|_| DriveLane::new()).collect(),
+                    active: 0,
+                }))
+            }
             _ => Err(format!("unknown voice tool {}", node.kind)),
         }
     }
@@ -204,30 +251,28 @@ impl VoiceTools {
                 let signal = input(inputs, 0);
                 let cv = input(inputs, 1);
                 let count = usize::from(signal.channels).clamp(1, MAX_CHANNELS);
-                for lane in count..MAX_CHANNELS {
+                for lane in count.min(f.active)..count.max(f.active) {
                     f.states[lane] = [0.0; 2];
-                }
-                for lane in f.active..count {
-                    f.states[lane] = [0.0; 2];
+                    f.drive_lanes[lane] = DriveLane::new();
                 }
                 f.active = count;
                 for out in outputs.iter_mut().take(3) {
                     out.channels = count as u8;
                 }
                 for lane in 0..count {
-                    let cutoff = (f.cutoff
-                        * 2.0_f64.powf((finite(cv.voice(lane, 0.0)) * f.cv).clamp(-32.0, 32.0)))
-                    .clamp(1.0, f.rate * 0.45);
+                    let raw = finite(signal.voice(lane, 0.0)).clamp(-1e6, 1e6);
+                    let (x, delayed_cv) = f.drive_lanes[lane].process(
+                        raw,
+                        finite(cv.voice(lane, 0.0)),
+                        f.gain,
+                        f.blend,
+                        f.drive_denom,
+                    );
+                    let cutoff = (f.cutoff * 2.0_f64.powf((delayed_cv * f.cv).clamp(-32.0, 32.0)))
+                        .clamp(1.0, f.rate * 0.45);
                     let g = (PI * cutoff / f.rate).tan();
                     let k = 2.0 - 1.95 * f.resonance;
                     let a = 1.0 / (1.0 + g * (g + k));
-                    let x = finite(signal.voice(lane, 0.0)).clamp(-1e6, 1e6);
-                    let x = if f.drive > 0.0 {
-                        let gain = 1.0 + 8.0 * f.drive;
-                        5.0 * (x * gain / 5.0).tanh() / gain.tanh()
-                    } else {
-                        x
-                    };
                     let [s1, s2] = f.states[lane];
                     let band = a * (s1 + g * (x - s2));
                     let low = s2 + g * band;
@@ -257,6 +302,9 @@ impl VoiceTools {
             (Self::Filter(a), Self::Filter(b)) if a.rate == b.rate => {
                 a.states = b.states;
                 a.active = b.active;
+                for (a, b) in a.drive_lanes.iter_mut().zip(&b.drive_lanes) {
+                    a.copy_state_from(b);
+                }
             }
             _ => {}
         }
@@ -275,11 +323,26 @@ impl VoiceTools {
             }
             Self::Filter(f) => {
                 f.states = [[0.0; 2]; MAX_CHANNELS];
+                for lane in f.drive_lanes.iter_mut() {
+                    *lane = DriveLane::new();
+                }
                 f.active = 0;
             }
         }
     }
 }
+
+// Unchanged unhoisted multistage source, retained only for test equivalence.
+#[cfg(test)]
+#[path = "voice_tools/hoisted_tests.rs"]
+mod hoisted_tests;
+#[cfg(test)]
+#[path = "voice_tools/qualification_tests.rs"]
+mod qualification_tests;
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "voice_tools/scalar_reference.rs"]
+mod scalar_reference;
 
 #[cfg(test)]
 mod tests {
