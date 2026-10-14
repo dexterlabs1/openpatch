@@ -138,7 +138,8 @@ callback snapshot, never an unavailable-state guess. See the
 
 ## Named outputs, polyphony, and feedback
 
-New sessions and **New patch** use patch version 2. Each cable has a source
+New sessions and the desktop factory patch use patch version 2. Desktop user
+templates preserve their saved engine version. Each cable has a source
 `output` (default `out`) and destination `input`. `set_output` accepts `port`
 (default `out`); patch JSON stores it as `output_port`. Discover valid names,
 minimum patch versions, and polyphony rules in `catalog`.

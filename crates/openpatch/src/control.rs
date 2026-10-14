@@ -246,6 +246,20 @@ impl Session {
         self.commit(candidate, expected_revision, None, &effects)
     }
 
+    /// Begin a new document without resetting revision identities or the live
+    /// backend. Validation and retirement must succeed before history is erased.
+    pub fn new_document(
+        &mut self,
+        candidate: Patch,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        let revision = self.replace_patch(candidate, expected_revision)?;
+        self.undo.clear();
+        self.redo.clear();
+        self.history_group = None;
+        Ok(revision)
+    }
+
     fn module_ids(&self) -> Vec<String> {
         self.patch
             .nodes
@@ -1791,5 +1805,68 @@ mod tests {
         );
         drop(shared);
         fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn new_document_clears_history_only_after_validated_revision_guarded_commit() {
+        #[derive(Default)]
+        struct Backend {
+            modules: Mutex<Vec<String>>,
+            cables: Mutex<Vec<String>>,
+            revisions: Mutex<Vec<u64>>,
+        }
+        impl LiveModuleEvents for Backend {
+            fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
+                unreachable!()
+            }
+            fn snapshot(&self) -> Value {
+                json!({})
+            }
+            fn retire_modules(&self, ids: &[String]) {
+                self.modules.lock().unwrap().extend_from_slice(ids);
+            }
+            fn retire_cables(&self, ids: &[String]) {
+                self.cables.lock().unwrap().extend_from_slice(ids);
+            }
+            fn sync_patch(&self, _: &Patch, revision: u64) {
+                self.revisions.lock().unwrap().push(revision);
+            }
+        }
+        let mut s = session();
+        s.execute("apply_edits", edits()).unwrap();
+        s.execute(
+            "set_parameter",
+            json!({"id":"source","parameter":"value","value":0.5,"history_group":"gesture"}),
+        )
+        .unwrap();
+        s.execute("undo", json!({})).unwrap();
+        let backend = Arc::new(Backend::default());
+        s.set_live_module_events(Some(backend.clone()));
+        let before = s.snapshot();
+        let revisions = backend.revisions.lock().unwrap().clone();
+        let mut invalid = Patch::new_v2();
+        invalid.output = Some("missing".into());
+        assert!(s.new_document(invalid, Some(s.revision())).is_err());
+        assert!(s.new_document(Patch::new_v2(), Some(0)).is_err());
+        assert_eq!(s.snapshot(), before);
+        assert!(backend.modules.lock().unwrap().is_empty());
+        assert!(backend.cables.lock().unwrap().is_empty());
+        assert_eq!(*backend.revisions.lock().unwrap(), revisions);
+        let old_ids = s.cable_ids();
+        let old_modules = s.module_ids();
+        let revision = s.new_document(Patch::new_v2(), Some(s.revision())).unwrap();
+        assert_eq!(revision, before["revision"].as_u64().unwrap() + 1);
+        assert_eq!(s.state_id(), revision);
+        assert!(!s.can_undo() && !s.can_redo());
+        assert!(s.history_group.is_none());
+        assert_eq!(*backend.modules.lock().unwrap(), old_modules);
+        assert_eq!(*backend.cables.lock().unwrap(), old_ids);
+        assert!(s.live_module_events.is_some());
+        let current = s.snapshot();
+        s.seal_for_close(s.revision()).unwrap();
+        assert!(s
+            .new_document(openpatch_core::demo_patch(), Some(s.revision()))
+            .is_err());
+        assert_eq!(s.snapshot(), current);
     }
 }

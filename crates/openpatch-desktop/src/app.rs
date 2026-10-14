@@ -1,7 +1,7 @@
 use crate::{
     audio::{Audio, AudioTimingSnapshot},
     chrome::{icon_button, Icon},
-    document_state::{apply_document_guarded, DocumentState},
+    document_state::{apply_document_guarded, new_document_guarded, DocumentState},
     keyboard::Keyboard,
     library::{LibraryAction, LibraryDrag, ModuleLibrary},
     midi::{MidiInputManager, MidiPortInfo},
@@ -113,12 +113,18 @@ enum FileMode {
 }
 
 enum PendingAction {
+    NewTemplate,
     Replace(Patch, String),
     Load(String),
     Recover(String),
     Close,
     // Retain explicit Discard permission across a busy session lock.
     DiscardClose,
+}
+
+struct TemplateSave {
+    document: Document,
+    token: Option<FileToken>,
 }
 
 struct PresetDialog {
@@ -305,6 +311,7 @@ pub struct OpenPatch {
     browser_open: bool,
     library: ModuleLibrary,
     preset_dialog: Option<PresetDialog>,
+    template_save: Option<TemplateSave>,
     catalog: Value,
     start: Instant,
     mcp: bool,
@@ -335,6 +342,7 @@ impl OpenPatch {
         shared: SharedSession,
         mcp: bool,
         smoke_test: Option<PathBuf>,
+        startup: crate::startup::Startup,
     ) -> Self {
         crate::panel_skin::install_fonts(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style()).clone();
@@ -389,24 +397,29 @@ impl OpenPatch {
         };
         let audio_revision = None;
         let volume = audio.as_ref().map_or(0.65, Audio::volume);
-        let mut rack = Rack::default();
-        rack.reconcile(&patch, &catalog());
-        let documents = DocumentState::new(&patch, revision, &rack);
-        let (projects, recovery_names, storage_error) =
-            match Store::new(std::path::Path::new(&workspace)) {
-                Ok(store) => {
-                    let recoveries = store.recoveries();
-                    (Some(store), recoveries, None)
-                }
-                Err(error) => (None, Vec::new(), Some(error)),
-            };
-        let recovery_open = !recovery_names.is_empty() && smoke_test.is_none();
+        let (rack, documents) = Self::startup_view(&startup, &patch, revision);
+        let history_layouts = BTreeMap::from([
+            (startup.state_id, startup.document.layout.clone()),
+            (state_id, rack.layout()),
+        ]);
+        let recovery_names = startup
+            .store
+            .as_ref()
+            .map_or_else(Vec::new, Store::recoveries);
+        let recovery_open = startup.offer_recovery;
+        let filename = startup.active_file.clone().unwrap_or_else(|| {
+            if startup.imported {
+                format!("{}.openpatch", startup.title)
+            } else {
+                "my-patch.openpatch".into()
+            }
+        });
         let mut app = Self {
             shared,
             patch,
             revision,
             state_id,
-            history_layouts: BTreeMap::new(),
+            history_layouts,
             audio_revision,
             audio,
             device,
@@ -432,9 +445,11 @@ impl OpenPatch {
             visual_mode: 0,
             scope: Scope::default(),
             volume,
-            status: "Ready — press Play to hear the patch".into(),
-            filename: "my-patch.openpatch".into(),
-            title: "Reference analog voice".into(),
+            status: startup
+                .status
+                .unwrap_or_else(|| "Ready — press Play to hear the patch".into()),
+            filename,
+            title: startup.title,
             files: vec![],
             workspace,
             file_mode: None,
@@ -442,13 +457,14 @@ impl OpenPatch {
             browser_open: false,
             library: ModuleLibrary::default(),
             preset_dialog: None,
+            template_save: None,
             catalog: catalog(),
             start: Instant::now(),
             mcp,
             documents,
-            projects,
-            active_file: None,
-            active_token: None,
+            projects: startup.store,
+            active_file: startup.active_file,
+            active_token: startup.active_token,
             after_save: None,
             deferred_action: None,
             autosave_needed: false,
@@ -466,9 +482,6 @@ impl OpenPatch {
             allow_close: false,
             smoke_test: smoke_test.map(|path| (path, 0, 0)),
         };
-        if let Some(error) = storage_error {
-            app.status = format!("Project storage unavailable: {error}");
-        }
         app.refresh_recovery_list();
         app.apply_host_preferences(&preferences);
         app.refresh_files();
@@ -478,6 +491,23 @@ impl OpenPatch {
         app.attach_live_events();
         app
     }
+    fn startup_view(
+        startup: &crate::startup::Startup,
+        patch: &Patch,
+        revision: u64,
+    ) -> (Rack, DocumentState) {
+        let mut rack = Rack::default();
+        rack.restore_layout(&startup.document.layout)
+            .expect("validated startup layout");
+        rack.reconcile(patch, &catalog());
+        let mut documents = DocumentState::new(patch, revision, &rack);
+        // MCP may already have changed the live graph since startup preparation.
+        // Its edits remain current; the original document is the saved baseline.
+        documents.mark_saved(&startup.document);
+        debug_assert!(revision >= startup.revision);
+        (rack, documents)
+    }
+
     fn attach_live_events(&self) {
         let sender = self.audio.as_ref().map(Audio::module_event_sender);
         if let Ok(mut session) = self.shared.lock() {
@@ -625,6 +655,7 @@ impl OpenPatch {
             && ctx.input(|i| i.focused)
             && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
             && self.preset_dialog.is_none()
+            && self.template_save.is_none()
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.settings_open
@@ -1121,6 +1152,7 @@ impl OpenPatch {
             self.close_if_saved();
         } else {
             match action {
+                PendingAction::NewTemplate => self.new_from_template(true),
                 PendingAction::Replace(patch, title) => {
                     self.replace_now_guarded(patch, &title, true)
                 }
@@ -1130,6 +1162,125 @@ impl OpenPatch {
             }
         }
     }
+    fn new_from_template(&mut self, require_saved: bool) {
+        let (document, warning) = match self.projects.as_ref().map(Store::load_template) {
+            Some(Ok(Some(document))) => (document, None),
+            Some(Ok(None)) => (crate::startup::factory_document(), None),
+            Some(Err(error)) => (
+                crate::startup::factory_document(),
+                Some(format!(
+                    "Template unavailable: {error}. Using the factory patch."
+                )),
+            ),
+            None => (
+                crate::startup::factory_document(),
+                Some("Project storage unavailable; using the factory patch.".into()),
+            ),
+        };
+        let mut changed = false;
+        let result = new_document_guarded(&self.shared, self.revision, &document, |live| {
+            if require_saved {
+                if let Err(error) = self.check_saved_content(live) {
+                    changed = true;
+                    return Err(error);
+                }
+            }
+            Ok(())
+        });
+        match result {
+            Ok(applied) => {
+                let locked = self.rack.positions_locked();
+                self.patch = applied.patch;
+                self.rack = applied.rack;
+                self.rack.set_positions_locked(locked);
+                self.revision = applied.revision;
+                self.state_id = applied.state_id;
+                self.history_layouts.clear();
+                self.history_layouts
+                    .insert(self.state_id, self.rack.layout());
+                self.panic_notes();
+                if let Some(audio) = &self.audio {
+                    audio.set_playing(false);
+                }
+                self.clear_recovery();
+                self.documents = DocumentState::new(&self.patch, self.revision, &self.rack);
+                self.active_file = None;
+                self.active_token = None;
+                self.title = "Untitled".into();
+                self.filename = "my-patch.openpatch".into();
+                self.file_mode = None;
+                self.recovery_open = false;
+                self.autosave_needed = false;
+                self.status = warning
+                    .unwrap_or_else(|| "New patch from template — playback is paused".into());
+                self.sync();
+                self.capture_document();
+            }
+            Err(error) => {
+                self.status = format!("New patch failed: {error}");
+                if changed {
+                    self.confirm_discard = Some(PendingAction::NewTemplate);
+                }
+                self.sync();
+                self.capture_document();
+            }
+        }
+    }
+
+    fn begin_save_template(&mut self) {
+        self.sync();
+        let result = self.capture_persisted_document().and_then(|document| {
+            let token = self
+                .projects
+                .as_ref()
+                .ok_or("Project storage is unavailable")?
+                .template_token()?;
+            Ok(TemplateSave { document, token })
+        });
+        match result {
+            Ok(snapshot) => self.template_save = Some(snapshot),
+            Err(error) => self.status = format!("Template could not be captured: {error}"),
+        }
+    }
+
+    fn save_confirmed_template(&mut self) {
+        let Some(snapshot) = self.template_save.take() else {
+            return;
+        };
+        let result = self
+            .projects
+            .as_ref()
+            .ok_or_else(|| "Project storage is unavailable".to_owned())
+            .and_then(|store| store.save_template(&snapshot.document, snapshot.token.as_ref()));
+        self.status = match result {
+            Ok(token) => token.durability_warning.unwrap_or_else(|| "Template saved. New patches will start from this snapshot.".into()),
+            Err(error) => format!("Template was not saved: {error}. Choose Save template again to review a fresh snapshot."),
+        };
+    }
+
+    fn template_window(&mut self, ctx: &egui::Context) {
+        let Some(snapshot) = &self.template_save else {
+            return;
+        };
+        let mut save = false;
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("save-template")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading("Use this patch as your template?");
+            ui.label(format!("Captured {} modules and {} cables, including layout and saved Run/HOLD settings.", snapshot.document.patch.nodes.len(), snapshot.document.patch.cables.len()));
+            ui.label("This snapshot will replace the template used for New and future launches. Your current project and its saved file stay unchanged.");
+            ui.horizontal(|ui| {
+                cancel = ui.button("Cancel").clicked();
+                save = ui.button("Save template").clicked();
+            });
+        });
+        if cancel || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.template_save = None;
+        } else if save {
+            self.save_confirmed_template();
+        }
+    }
+
     fn replace_from_menu(&mut self, patch: Patch, title: &str) {
         self.request_action(PendingAction::Replace(patch, title.into()));
     }
@@ -1264,6 +1415,7 @@ impl OpenPatch {
     }
     fn perform_action(&mut self, action: PendingAction) {
         match action {
+            PendingAction::NewTemplate => self.new_from_template(false),
             PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
             PendingAction::Load(name) => self.load_document(&name, false),
             PendingAction::Recover(name) => self.load_document(&name, true),
@@ -1862,6 +2014,14 @@ impl OpenPatch {
                 self.save_current();
             }
         }
+        if ctx.input(|i| {
+            i.modifiers.command
+                && !i.modifiers.shift
+                && !i.modifiers.alt
+                && i.key_pressed(egui::Key::N)
+        }) {
+            self.request_action(PendingAction::NewTemplate);
+        }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::O)) {
             self.file_dialog(FileMode::Open);
         }
@@ -1903,8 +2063,12 @@ impl OpenPatch {
                         ui.label(RichText::new("OpenPatch").strong().size(14.0));
                         ui.add_space(6.0);
                         ui.menu_button("File", |ui| {
-                            if ui.button("New patch").clicked() {
-                                self.replace_from_menu(Patch::new_v2(), "Untitled");
+                            if ui.button("New patch     ⌘N").clicked() {
+                                self.request_action(PendingAction::NewTemplate);
+                                ui.close();
+                            }
+                            if ui.button("Save template…").clicked() {
+                                self.begin_save_template();
                                 ui.close();
                             }
                             if ui.button("Open…     ⌘O").clicked() {
@@ -2441,7 +2605,8 @@ impl OpenPatch {
                 && !self.settings_open
                 && !self.audio_performance_open
                 && !self.shader_open
-                && self.preset_dialog.is_none(),
+                && self.preset_dialog.is_none()
+                && self.template_save.is_none(),
         );
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
@@ -2455,6 +2620,7 @@ impl OpenPatch {
                     && !self.recovery_open
                     && !self.confirm_engine_upgrade
                     && self.preset_dialog.is_none()
+                    && self.template_save.is_none()
                     && !self.audio_performance_open
                     && !self.allow_close;
                 let canvas = ui.available_rect_before_wrap();
@@ -2555,6 +2721,7 @@ impl OpenPatch {
             && !self.recovery_open
             && !self.confirm_engine_upgrade
             && self.preset_dialog.is_none()
+            && self.template_save.is_none()
             && !self.settings_open
             && !self.audio_performance_open
             && !self.shader_open
@@ -3845,6 +4012,7 @@ impl eframe::App for OpenPatch {
         self.audio_performance(ctx);
         self.recovery_window(ctx);
         self.unsaved_window(ctx);
+        self.template_window(ctx);
         self.observe_document();
         self.autosave();
         if self.allow_close {
@@ -3946,6 +4114,7 @@ mod project_workflow_tests {
             browser_open: false,
             library: ModuleLibrary::default(),
             preset_dialog: None,
+            template_save: None,
             catalog: catalog(),
             start: Instant::now(),
             mcp: true,
@@ -7177,5 +7346,137 @@ mod project_workflow_tests {
                 .params["frequency"],
             330.0
         );
+    }
+
+    #[test]
+    fn new_template_installs_layout_clears_history_and_preserves_host_preferences() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.save_document("original.openpatch", true);
+        let original_file = std::fs::read(dir.path().join("original.openpatch")).unwrap();
+        edit(&mut app, 330.0);
+        app.shared
+            .lock()
+            .unwrap()
+            .execute("undo", json!({}))
+            .unwrap();
+        app.sync();
+        let mut template = crate::startup::factory_document();
+        template.layout["zoom"] = json!(0.75);
+        app.projects
+            .as_ref()
+            .unwrap()
+            .save_template(&template, None)
+            .unwrap();
+        app.volume = 0.42;
+        app.output_device = Some("chosen output".into());
+        app.midi_device = Some("chosen MIDI".into());
+        app.rack.set_positions_locked(true);
+        let revision = app.revision;
+        app.new_from_template(false);
+        assert!(app.capture_document().equivalent(&template));
+        assert!(app.revision > revision);
+        let snapshot = app.shared.lock().unwrap().snapshot();
+        assert_eq!(snapshot["history"]["undo_steps"], 0);
+        assert_eq!(snapshot["history"]["redo_steps"], 0);
+        assert!(app.active_file.is_none() && app.active_token.is_none());
+        assert_eq!(app.title, "Untitled");
+        assert!(!app.dirty());
+        assert_eq!(app.volume, 0.42);
+        assert_eq!(app.output_device.as_deref(), Some("chosen output"));
+        assert_eq!(app.midi_device.as_deref(), Some("chosen MIDI"));
+        assert!(app.rack.positions_locked());
+        assert_eq!(
+            std::fs::read(dir.path().join("original.openpatch")).unwrap(),
+            original_file
+        );
+    }
+
+    #[test]
+    fn new_template_saved_content_guard_preserves_current_project_and_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut app, telemetry) = sequencer_host(dir.path());
+        app.observe_document();
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let active = app.active_file.clone();
+        set_project_run(&telemetry, false, true, 256);
+        app.new_from_template(true);
+        assert!(matches!(
+            app.confirm_discard,
+            Some(PendingAction::NewTemplate)
+        ));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.active_file, active);
+    }
+
+    #[test]
+    fn save_template_publishes_reviewed_snapshot_without_changing_project_identity_or_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.save_document("working.openpatch", true);
+        let saved_file = std::fs::read(dir.path().join("working.openpatch")).unwrap();
+        edit(&mut app, 330.0);
+        app.rack.set_zoom(0.75);
+        app.begin_save_template();
+        let reviewed = app.template_save.as_ref().unwrap().document.clone();
+        edit(&mut app, 550.0);
+        app.rack.set_zoom(0.85);
+        let live = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let title = app.title.clone();
+        let filename = app.filename.clone();
+        app.save_confirmed_template();
+        let published = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load_template()
+            .unwrap()
+            .unwrap();
+        assert!(published.equivalent(&reviewed));
+        assert_eq!(published.patch.nodes[0].params["frequency"], 330.0);
+        assert_eq!(published.layout["zoom"], 0.75);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), live);
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.active_file.as_deref(), Some("working.openpatch"));
+        assert!(app.active_token.is_some());
+        assert_eq!(app.title, title);
+        assert_eq!(app.filename, filename);
+        assert!(app.dirty());
+        assert_eq!(
+            std::fs::read(dir.path().join("working.openpatch")).unwrap(),
+            saved_file
+        );
+        edit(&mut app, 220.0);
+        app.rack.set_zoom(1.0);
+        app.observe_document();
+        assert!(
+            !app.dirty(),
+            "template publication must retain the original project baseline"
+        );
+    }
+
+    #[test]
+    fn startup_view_keeps_early_mcp_edits_and_marks_them_dirty_against_prepared_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut session, startup) = crate::startup::prepare(dir.path(), None, false).unwrap();
+        let (_, clean) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        assert!(!clean.dirty());
+        session
+            .execute("add_module", json!({"id":"early_mcp","kind":"constant"}))
+            .unwrap();
+        let (rack, dirty) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        assert!(session
+            .patch()
+            .nodes
+            .iter()
+            .any(|node| node.id == "early_mcp"));
+        assert!(rack.layout()["positions"].get("early_mcp").is_some());
+        assert!(dirty.dirty());
+        session.execute("undo", json!({})).unwrap();
+        let (_, restored) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        assert!(!restored.dirty());
     }
 }

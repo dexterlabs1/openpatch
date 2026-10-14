@@ -16,6 +16,7 @@ const MAX_DOCUMENT_BYTES: usize = 2 * 1_048_576;
 const MAX_LEGACY_BYTES: usize = 1_048_576;
 const RECOVERY_PREFIX: &str = ".openpatch-recovery-";
 const EXTENSION: &str = ".openpatch";
+const TEMPLATE_NAME: &str = ".openpatch-template.openpatch";
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -185,6 +186,51 @@ impl Store {
         }
         publish(&self.workspace, name, bytes, true)
     }
+    /// Templates use one dedicated hidden name and the same validated document
+    /// format as projects. Missing is distinct from corrupt or unsafe files.
+    pub fn load_template(&self) -> Result<Option<Document>, String> {
+        self.template_token()?
+            .map(|token| decode(&token.bytes))
+            .transpose()
+    }
+
+    /// Capture bounded raw bytes for an explicit replacement review, including
+    /// corrupt JSON. Decoding is deliberately not required to replace a template.
+    pub fn template_token(&self) -> Result<Option<FileToken>, String> {
+        let path = self.workspace.join(TEMPLATE_NAME);
+        match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.to_string()),
+            Ok(_) => Ok(Some(FileToken {
+                name: TEMPLATE_NAME.into(),
+                bytes: read_regular(&path, MAX_DOCUMENT_BYTES)?,
+                durability_warning: None,
+            })),
+        }
+    }
+
+    /// Publish only the reviewed template version (or a reviewed absence).
+    /// Cooperative writers share a stable companion lock; missing publication
+    /// also uses no-clobber against a late creation by an external writer.
+    pub fn save_template(
+        &self,
+        document: &Document,
+        reviewed: Option<&FileToken>,
+    ) -> Result<FileToken, String> {
+        if reviewed.is_some_and(|token| token.name != TEMPLATE_NAME) {
+            return Err("save token belongs to a different project, not the template".into());
+        }
+        let bytes = document.encode()?;
+        let _lock = companion_lock(&self.workspace, TEMPLATE_NAME)?;
+        let current = self.template_token()?;
+        let replace = match (reviewed, current.as_ref()) {
+            (None, None) => false,
+            (Some(reviewed), Some(current)) if reviewed.bytes == current.bytes => true,
+            _ => return Err("template changed on disk; review it again before saving".into()),
+        };
+        publish(&self.workspace, TEMPLATE_NAME, bytes, replace)
+    }
+
     pub fn save_recovery(&self, document: &Document) -> Result<(), String> {
         let bytes = document.encode()?;
         let path = self.workspace.join(&self.recovery_name);
@@ -454,6 +500,228 @@ mod tests {
         rack.reconcile(&patch, &catalog());
         Document::new(patch, rack.layout()).unwrap()
     }
+    #[test]
+    fn templates_round_trip_both_engines_graph_ids_layout_and_saved_run_hold_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        assert!(store.load_template().unwrap().is_none());
+        assert!(store.template_token().unwrap().is_none());
+        let mut token = None;
+        for version in [1, 2] {
+            let mut patch: Patch =
+                serde_json::from_value(json!({"version":version,"sample_rate":48000,
+                "nodes":[{"id":"pitch","kind":"constant","params":{"value":1.25}},
+                    {"id":"level","kind":"gain","params":{"gain":0.125}}],
+                "cables":[{"id":"retained_cable","from":"pitch","to":"level","input":"signal"}],
+                "output":"level"}))
+                .unwrap();
+            if version == 2 {
+                patch.nodes.extend(serde_json::from_value::<Vec<openpatch_core::Node>>(json!([
+                    {"id":"pattern","kind":"seq3","params":{"running":0.0,"tempo":123.5,"row1_1":0.75}},
+                    {"id":"latch","kind":"push","params":{"holding":1.0}}])).unwrap());
+            }
+            let mut rack = Rack::default();
+            rack.reconcile(&patch, &catalog());
+            let mut layout = rack.layout();
+            layout["zoom"] = json!(4.0);
+            layout["pan"] = json!([-780.5, 431.25]);
+            layout["positions"]["pitch"] = json!([15.0, 420.0]);
+            let original = Document::new(patch, layout).unwrap();
+            token = Some(store.save_template(&original, token.as_ref()).unwrap());
+            let loaded = store.load_template().unwrap().unwrap();
+            assert!(original.equivalent(&loaded));
+            assert_eq!(loaded.patch.cables[0].id.as_deref(), Some("retained_cable"));
+            if version == 2 {
+                assert_eq!(
+                    loaded
+                        .patch
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == "pattern")
+                        .unwrap()
+                        .params["running"],
+                    0.0
+                );
+                assert_eq!(
+                    loaded
+                        .patch
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == "latch")
+                        .unwrap()
+                        .params["holding"],
+                    1.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn corrupt_template_can_be_replaced_only_with_its_reviewed_raw_token() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let path = directory.path().join(TEMPLATE_NAME);
+        fs::write(&path, b"broken template JSON").unwrap();
+        assert!(store.load_template().is_err());
+        let token = store.template_token().unwrap().unwrap();
+        assert_eq!(token.bytes, b"broken template JSON");
+        assert!(store.save_template(&document(2.0), None).is_err());
+        let saved = store.save_template(&document(2.0), Some(&token)).unwrap();
+        assert!(store
+            .load_template()
+            .unwrap()
+            .unwrap()
+            .equivalent(&document(2.0)));
+        assert_eq!(fs::read(&path).unwrap(), saved.bytes);
+        let project = store
+            .save_new("ordinary.openpatch", &document(3.0))
+            .unwrap();
+        assert!(store.save_template(&document(4.0), Some(&project)).is_err());
+        assert_eq!(fs::read(&path).unwrap(), saved.bytes);
+    }
+
+    #[test]
+    fn template_review_conflicts_and_cooperative_lock_never_overwrite_another_writer() {
+        let directory = tempfile::tempdir().unwrap();
+        let a = Store::new(directory.path()).unwrap();
+        let b = Store::new(directory.path()).unwrap();
+        let token = a.save_template(&document(1.0), None).unwrap();
+        let stale = b.template_token().unwrap().unwrap();
+        let lock = companion_lock(directory.path(), TEMPLATE_NAME).unwrap();
+        assert!(b.save_template(&document(2.0), Some(&stale)).is_err());
+        assert_eq!(
+            fs::read(directory.path().join(TEMPLATE_NAME)).unwrap(),
+            token.bytes
+        );
+        drop(lock);
+        let first = a.save_template(&document(3.0), Some(&token)).unwrap();
+        assert!(b.save_template(&document(4.0), Some(&stale)).is_err());
+        assert!(b.save_template(&document(4.0), None).is_err());
+        assert_eq!(
+            fs::read(directory.path().join(TEMPLATE_NAME)).unwrap(),
+            first.bytes
+        );
+        fs::remove_file(directory.path().join(TEMPLATE_NAME)).unwrap();
+        assert!(a.save_template(&document(5.0), Some(&first)).is_err());
+        assert!(!directory.path().join(TEMPLATE_NAME).exists());
+        // A late noncooperating create is still protected by no-clobber publish.
+        let path = directory.path().join(TEMPLATE_NAME);
+        before_next_publish(move || {
+            fs::write(path, b"late external create").unwrap();
+        });
+        assert!(a.save_template(&document(6.0), None).is_err());
+        assert_eq!(
+            fs::read(directory.path().join(TEMPLATE_NAME)).unwrap(),
+            b"late external create"
+        );
+    }
+
+    #[test]
+    fn template_invalid_oversized_and_directory_inputs_are_rejected_without_publication() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let path = directory.path().join(TEMPLATE_NAME);
+        let mut invalid = document(1.0);
+        invalid.layout["extra"] = json!(true);
+        assert!(store.save_template(&invalid, None).is_err());
+        assert!(!path.exists());
+        assert!(!directory
+            .path()
+            .join(format!("{TEMPLATE_NAME}.lock"))
+            .exists());
+        fs::write(&path, vec![b' '; MAX_DOCUMENT_BYTES + 1]).unwrap();
+        assert!(store.load_template().unwrap_err().contains("2 MiB"));
+        assert!(store.template_token().unwrap_err().contains("2 MiB"));
+        assert!(store.save_template(&document(1.0), None).is_err());
+        assert_eq!(
+            fs::metadata(&path).unwrap().len(),
+            (MAX_DOCUMENT_BYTES + 1) as u64
+        );
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(store.load_template().is_err());
+        assert!(store.template_token().is_err());
+        assert!(store.save_template(&document(1.0), None).is_err());
+        assert!(path.is_dir());
+    }
+
+    #[test]
+    fn template_failed_publication_and_durability_warning_follow_project_contract() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let path = directory.path().join(TEMPLATE_NAME);
+        fail_next_publish();
+        assert!(store.save_template(&document(1.0), None).is_err());
+        assert!(!path.exists());
+        let original = store.save_template(&document(1.0), None).unwrap();
+        fail_next_publish();
+        assert!(store
+            .save_template(&document(2.0), Some(&original))
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), original.bytes);
+        FAIL_DIRECTORY_SYNC.with(|flag| flag.set(true));
+        let saved = store
+            .save_template(&document(2.0), Some(&original))
+            .unwrap();
+        assert!(saved.durability_warning.is_some());
+        assert_eq!(fs::read(&path).unwrap(), saved.bytes);
+        assert!(store
+            .save_template(&document(3.0), Some(&original))
+            .is_err());
+        assert!(store.save_template(&document(3.0), Some(&saved)).is_ok());
+    }
+
+    #[test]
+    fn template_is_never_a_recovery_or_accessible_through_ordinary_project_apis() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let token = store.save_template(&document(1.0), None).unwrap();
+        assert!(store.load(TEMPLATE_NAME).is_err());
+        assert!(store.save_new(TEMPLATE_NAME, &document(2.0)).is_err());
+        assert!(store
+            .save_existing(TEMPLATE_NAME, &document(2.0), &token)
+            .is_err());
+        assert!(store.load_recovery(TEMPLATE_NAME).is_err());
+        assert!(store.discard_recovery(TEMPLATE_NAME).is_err());
+        drop(store);
+        let reopened = Store::new(directory.path()).unwrap();
+        assert!(reopened.recoveries().is_empty());
+        assert!(reopened.load_template().unwrap().is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn template_symlinks_dangling_symlinks_and_unsafe_companions_are_rejected() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let outside = directory.path().join("ordinary.openpatch");
+        let original = document(1.0).encode().unwrap();
+        fs::write(&outside, &original).unwrap();
+        let path = directory.path().join(TEMPLATE_NAME);
+        let absent = directory.path().join("absent.openpatch");
+        for target in [&outside, &absent] {
+            symlink(target, &path).unwrap();
+            assert!(store.load_template().is_err());
+            assert!(store.template_token().is_err());
+            assert!(store.save_template(&document(2.0), None).is_err());
+            fs::remove_file(&path).unwrap();
+        }
+        assert_eq!(fs::read(&outside).unwrap(), original);
+        let lock = directory.path().join(format!("{TEMPLATE_NAME}.lock"));
+        // Earlier rejected writes may have reserved a stable safe companion.
+        if lock.exists() {
+            fs::remove_file(&lock).unwrap();
+        }
+        symlink(&outside, &lock).unwrap();
+        assert!(store.save_template(&document(2.0), None).is_err());
+        assert!(!path.exists());
+        assert_eq!(fs::read(&outside).unwrap(), original);
+        fs::remove_file(&lock).unwrap();
+        fs::create_dir(&lock).unwrap();
+        assert!(store.save_template(&document(2.0), None).is_err());
+    }
+
     #[test]
     fn full_zoom_range_round_trips_through_projects_and_crash_recovery() {
         for zoom in [0.25, 0.85, 1.0, 4.0] {

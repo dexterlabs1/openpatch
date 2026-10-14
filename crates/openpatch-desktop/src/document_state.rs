@@ -191,13 +191,36 @@ pub fn apply_document_guarded(
     document: &Document,
     before_commit: impl FnOnce(&openpatch::control::Session) -> Result<(), String>,
 ) -> Result<AppliedDocument, String> {
+    install_document_guarded(shared, expected_revision, document, false, before_commit)
+}
+
+pub fn new_document_guarded(
+    shared: &openpatch::control::SharedSession,
+    expected_revision: u64,
+    document: &Document,
+    before_commit: impl FnOnce(&openpatch::control::Session) -> Result<(), String>,
+) -> Result<AppliedDocument, String> {
+    install_document_guarded(shared, expected_revision, document, true, before_commit)
+}
+
+fn install_document_guarded(
+    shared: &openpatch::control::SharedSession,
+    expected_revision: u64,
+    document: &Document,
+    new_document: bool,
+    before_commit: impl FnOnce(&openpatch::control::Session) -> Result<(), String>,
+) -> Result<AppliedDocument, String> {
     let validated = Document::new(document.patch.clone(), document.layout.clone())?;
     let mut rack = Rack::default();
     rack.restore_layout(&validated.layout)?;
     rack.reconcile(&validated.patch, &openpatch_core::catalog());
     let mut live = shared.lock().map_err(|_| "Session lock poisoned")?;
     before_commit(&live)?;
-    let revision = live.replace_patch(validated.patch.clone(), Some(expected_revision))?;
+    let revision = if new_document {
+        live.new_document(validated.patch, Some(expected_revision))?
+    } else {
+        live.replace_patch(validated.patch, Some(expected_revision))?
+    };
     Ok(AppliedDocument {
         patch: live.patch().clone(),
         rack,
@@ -385,5 +408,32 @@ mod loading_tests {
             serde_json::to_value(applied.patch).unwrap(),
             serde_json::to_value(candidate.patch).unwrap()
         );
+    }
+
+    #[test]
+    fn new_document_guard_rejection_keeps_graph_history_and_layout_then_success_clears_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::new(dir.path()).unwrap();
+        session
+            .execute("add_module", json!({"id":"old","kind":"constant"}))
+            .unwrap();
+        let shared = session.into_shared();
+        let before = shared.lock().unwrap().snapshot();
+        let candidate = crate::startup::factory_document();
+        let original_layout = candidate.layout.clone();
+        assert!(new_document_guarded(&shared, 1, &candidate, |_| Err(
+            "unsaved runtime changes".into()
+        ))
+        .is_err());
+        assert_eq!(shared.lock().unwrap().snapshot(), before);
+        assert_eq!(candidate.layout, original_layout);
+        assert!(new_document_guarded(&shared, 0, &candidate, |_| Ok(())).is_err());
+        assert_eq!(shared.lock().unwrap().snapshot(), before);
+        let applied = new_document_guarded(&shared, 1, &candidate, |_| Ok(())).unwrap();
+        assert_eq!(applied.rack.layout(), candidate.layout);
+        let live = shared.lock().unwrap();
+        assert!(!live.can_undo() && !live.can_redo());
+        assert_eq!(applied.revision, 2);
+        assert_eq!(applied.state_id, live.state_id());
     }
 }

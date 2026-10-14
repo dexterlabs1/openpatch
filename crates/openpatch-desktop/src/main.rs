@@ -13,9 +13,10 @@ mod project;
 mod project_acceptance_tests;
 mod rack;
 mod scope;
+mod startup;
 mod visuals;
 
-use openpatch::control::{Session, SharedSession};
+use openpatch::control::SharedSession;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -30,6 +31,7 @@ fn main() {
 fn run() -> Result<(), String> {
     let mut mcp = false;
     let mut smoke_test = None;
+    let mut explicit_patch = None;
     let mut workspace = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -43,6 +45,9 @@ fn run() -> Result<(), String> {
                 return Ok(());
             }
             "--mcp" => mcp = true,
+            "--patch" => {
+                explicit_patch = Some(args.next().ok_or("--patch needs a project filename")?)
+            }
             "--smoke-test" => {
                 smoke_test = Some(PathBuf::from(
                     args.next().ok_or("--smoke-test needs a PNG path")?,
@@ -52,16 +57,14 @@ fn run() -> Result<(), String> {
                 workspace = PathBuf::from(args.next().ok_or("--workspace needs a directory")?)
             }
             "--help" => {
-                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --font-license         Print the bundled panel font license");
+                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --patch FILENAME       Open a workspace project (.openpatch or legacy .json)\n  --font-license         Print the bundled panel font license");
                 return Ok(());
             }
             _ => return Err(format!("Unknown argument: {arg}")),
         }
     }
-    let mut session = Session::new(&workspace)?;
-    let mut initial_patch = openpatch_core::analog_demo_patch();
-    initial_patch.version = 2;
-    session.replace_patch(initial_patch, None)?;
+    let (session, startup) =
+        startup::prepare(&workspace, explicit_patch.as_deref(), smoke_test.is_some())?;
     let shared: SharedSession = Arc::new(Mutex::new(session));
     if mcp {
         let shared = shared.clone();
@@ -89,7 +92,11 @@ fn run() -> Result<(), String> {
     eframe::run_native(
         "OpenPatch",
         options,
-        Box::new(move |cc| Ok(Box::new(app::OpenPatch::new(cc, shared, mcp, smoke_test)))),
+        Box::new(move |cc| {
+            Ok(Box::new(app::OpenPatch::new(
+                cc, shared, mcp, smoke_test, startup,
+            )))
+        }),
     )
     .map_err(|e| e.to_string())
 }

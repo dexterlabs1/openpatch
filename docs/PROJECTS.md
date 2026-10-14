@@ -8,6 +8,8 @@ default, or the directory selected with `--workspace`.
 
 | Action | Behavior |
 |---|---|
+| **New / Cmd-N** | Start an untitled patch from the user template, or the factory analog voice. Clears undo history after the guarded replacement succeeds. |
+| **Save template** | Confirm a captured patch as the template for New and future launches. Leaves the current project identity and saved state unchanged. |
 | **Save / Cmd-S** | Update the current native project. An unsaved or imported patch opens Save As. |
 | **Save As / Shift-Cmd-S** | Create a new `.openpatch` file and make it the current project. Existing filenames are refused. |
 | **Open / Cmd-O** | Open a native project or import an older `.json` patch and its optional layout sidecar. |
@@ -25,6 +27,30 @@ the project changed. Returning to saved content clears the asterisk. A later
 Run/HOLD toggle or MCP edit during Save remains unsaved. Open, New, Revert, and Close offer Save / Discard /
 Cancel when needed; Save continues the requested action only if no newer edits
 remain. Recovery and newly opened projects start with playback paused.
+
+## Reusable starting patches
+
+**File → Save template** captures the native graph, cable identities, committed
+layout, view, and coherent Run/HOLD settings when the confirmation opens. Save
+uses that captured snapshot even if MCP edits the live patch afterward. Cancel
+leaves the existing template untouched. The template is stored separately as
+`.openpatch-template.openpatch` in the workspace; it is not a recovery copy or
+an ordinary project-list entry. Replacement checks the reviewed file bytes
+under a stable lock. If another instance changes the template, review and save
+again rather than overwriting that change.
+
+New uses the template, falling back to the built-in analog voice if it is absent
+or invalid. Invalid template bytes are preserved for inspection. New starts
+clean and untitled with playback paused and fresh undo history, while retaining
+host preferences and the module-position lock. Save opens Save As. Existing
+unsaved changes still go through Save / Discard / Cancel.
+
+At launch, `--patch NAME.openpatch` explicitly selects a workspace project
+(legacy `.json` is also accepted). Invalid explicit files stop startup with an
+error. Without an explicit file, previous-session recoveries are offered over
+the template or factory starting patch. Startup prepares the document before
+exposing MCP, retaining recovery locks throughout; MCP changes made before the
+window opens remain current and count as unsaved changes.
 
 ## Moving modules
 
@@ -135,7 +161,7 @@ Native documents preserve SEQ-3 Run and Push HOLD, but not sequence position, os
 phase, delay history, held controls, external assets,
 custom GLSL, keyboard/device preferences, or the undo stack. Device preferences
 remain separate host settings. [Native module presets](MODULE_PRESETS.md) are
-available separately. Asset packaging, portable paths, factory templates,
+available separately. Asset packaging, portable paths,
 complete geometry history for states the GUI has never observed, and broader
 platform/device qualification remain open.
 
