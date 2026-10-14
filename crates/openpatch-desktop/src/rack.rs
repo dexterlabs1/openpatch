@@ -2122,7 +2122,7 @@ impl Rack {
                 );
                 for track in 0..4 {
                     painter.text(
-                        point(25.0, 209.0 + track as f32 * 19.0),
+                        point(25.0, 202.0 + track as f32 * 17.0),
                         Align2::LEFT_CENTER,
                         format!("{}", track + 1),
                         crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
@@ -2136,7 +2136,7 @@ impl Rack {
                             .is_some_and(|t| t.steps.iter().any(|s| usize::from(s.step) == step));
                         painter.rect_filled(
                             Rect::from_min_size(
-                                point(42.0 + step as f32 * 3.5, 204.0 + track as f32 * 19.0),
+                                point(42.0 + step as f32 * 3.5, 197.0 + track as f32 * 17.0),
                                 vec2(2.5, 10.0) * self.zoom,
                             ),
                             0.0,
@@ -2501,13 +2501,15 @@ impl Rack {
                         pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
                         17.0,
                     )
+                } else if node.kind == "audio_stereo" {
+                    (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
                     (pos2(60.0 + index as f32 * 120.0, 130.0), 24.0)
                 } else if node.kind == "stereo_delay" {
                     (
                         pos2(
                             width * ((index % 4) as f32 + 0.5) / 4.0,
-                            125.0 + (index / 4) as f32 * 78.0,
+                            110.0 + (index / 4) as f32 * 80.0,
                         ),
                         17.0,
                     )
@@ -2518,7 +2520,7 @@ impl Rack {
                     (
                         pos2(
                             width * ((index % 3) as f32 + 0.5) / 3.0,
-                            122.0 + (index / 3) as f32 * 64.0,
+                            110.0 + (index / 3) as f32 * 80.0,
                         ),
                         17.0,
                     )
@@ -2860,7 +2862,16 @@ impl Rack {
                     15.0
                 };
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                let readout_width = if node.kind == "vca_mix" {
+                let readout_width = if node.kind == "score_sequencer" {
+                    96.0
+                } else if node.kind == "stereo_delay" {
+                    width / 4.0 - 12.0
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+                ) {
+                    width / 3.0 - 12.0
+                } else if node.kind == "vca_mix" {
                     70.0
                 } else if node.kind == "seq3" {
                     54.0
@@ -5383,6 +5394,12 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
+            return pos2(
+                width * (index + 1) as f32 / (count + 1) as f32,
+                if input { 342.0 } else { 382.0 },
+            );
+        }
         "score_sequencer" if input => return pos2(60.0 + index as f32 * 80.0, 373.0),
         "score_sequencer" if index < 12 => {
             return pos2(
@@ -6396,6 +6413,29 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     };
     let order: &[&str] = match node.kind.as_str() {
         "score_sequencer" => &["tempo", "swing", "running"],
+        "drum_voice" => &["mode", "pitch", "decay", "tone", "drive", "level"],
+        "stereo_delay" => &[
+            "time_left",
+            "time_right",
+            "feedback",
+            "crossfeed",
+            "low_cut",
+            "high_cut",
+            "mod_rate",
+            "mod_depth",
+            "dry",
+            "wet",
+        ],
+        "stereo_reverb" => &["predelay", "size", "decay", "damping", "dry", "wet"],
+        "sidechain_compressor" => &[
+            "threshold_db",
+            "ratio",
+            "knee_db",
+            "attack_ms",
+            "release_ms",
+            "detector_ms",
+            "makeup_db",
+        ],
         "vca_mix" => &[
             "level1",
             "level2",
@@ -6499,6 +6539,15 @@ fn quantize(value: f32, min: f32, max: f32, step: Option<f32>) -> f32 {
 }
 pub(crate) fn parameter_value(name: &str, value: f32, spec: &Value) -> String {
     match name {
+        "dc_block" | "running" => if value.round() == 0.0 { "Off" } else { "On" }.into(),
+        "mode" => match value.round() as i32 {
+            0 => "Kick",
+            1 => "Clap",
+            _ => "Hi-hat",
+        }
+        .into(),
+        "tempo" => format!("{value:.1} BPM"),
+        "swing" => format!("{value:.1}%"),
         "waveform" => {
             if value.round() == 0.0 {
                 "Saw".into()
@@ -6571,6 +6620,8 @@ fn format_value(value: f32, unit: &str) -> String {
         } else {
             format!("{value:.2} s")
         }
+    } else if matches!(unit, "ms" | "dB") {
+        format!("{value:.1} {unit}")
     } else if matches!(unit, "V" | "V RMS") {
         format!("{value:.2} {unit}")
     } else if unit == "x" {
@@ -7289,6 +7340,76 @@ mod tests {
                 actual.len(),
                 difference.map(|i| (i, &thumbnail[i], &actual[i]))
             );
+        }
+    }
+
+    #[test]
+    fn studio_panel_text_stays_separate_at_library_and_rack_scales() {
+        fn collect(shape: &egui::Shape, result: &mut Vec<(String, Rect)>) {
+            match shape {
+                egui::Shape::Vec(children) => {
+                    for child in children {
+                        collect(child, result);
+                    }
+                }
+                egui::Shape::Text(text) if !text.galley.text().is_empty() => {
+                    result.push((
+                        text.galley.text().into(),
+                        Rect::from_min_size(text.pos, text.galley.size()),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        let catalog = openpatch_core::catalog();
+        for kind in [
+            "score_sequencer",
+            "drum_voice",
+            "svf_filter",
+            "stereo_delay",
+            "stereo_reverb",
+            "sidechain_compressor",
+            "audio_stereo",
+        ] {
+            let module = catalog["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["kind"] == kind)
+                .unwrap();
+            for scale in [0.42, 0.85, 1.0] {
+                let ctx = egui::Context::default();
+                crate::panel_skin::install_fonts(&ctx);
+                let mut preview = ModulePreview::new(module);
+                let rect = Rect::from_min_size(
+                    pos2(12.0, 12.0),
+                    vec2(panel_width(kind), PANEL_HEIGHT) * scale,
+                );
+                for _ in 0..2 {
+                    let output = ctx.run(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 500.0))),
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            egui::CentralPanel::default().show(ctx, |ui| {
+                                preview.show(ui, rect, &catalog);
+                            });
+                        },
+                    );
+                    let mut texts = Vec::new();
+                    for shape in &output.shapes {
+                        collect(&shape.shape, &mut texts);
+                    }
+                    assert!(texts.len() >= 10, "missing panel drawing: {kind}");
+                    for (index, (label, bounds)) in texts.iter().enumerate() {
+                        for (other, other_bounds) in &texts[index + 1..] {
+                            assert!(!bounds.shrink(0.2 * scale).intersects(other_bounds.shrink(0.2 * scale)),
+                                "{kind} at {scale}: {label:?} {bounds:?} overlaps {other:?} {other_bounds:?}");
+                        }
+                    }
+                }
+            }
         }
     }
 

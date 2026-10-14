@@ -6,6 +6,32 @@ and OpenPatch source. This supplements the [roadmap](ROADMAP.md) and
 The reference is Rack 2 Free standalone. Module-specific manuals and pinned
 implementations are still needed where the general manual leaves behavior open.
 
+## Review coverage and DSP follow-up (2026-10-14)
+
+This is a selective manual/source review, not a page-by-page certification of the
+whole manual. The DSP page has now been read end to end; its linked textbooks,
+papers, and external sites have not all been reviewed. Review coverage and
+implementation acceptance are separate claims.
+
+The [DSP page](https://vcvrack.com/manual/DSP) discusses bandlimiting,
+nonlinear aliasing, filter responses, circuit equations and numerical integration,
+and measuring performance before and after optimization. Those principles inform
+the following OpenPatch acceptance work; they do not establish that it is done.
+
+| Area | Current evidence | Required next evidence |
+| --- | --- | --- |
+| Oscillator spectra | Ideal VCO has a BLEP waveform-error test. MULTI VCO has direct voltage comparisons and an alias-energy lower-bound probe; derivative discontinuities remain. | Sweep pitch, PWM, FM and sync at 44.1/48/96 kHz against a properly filtered high-rate reference. Separate legitimate harmonics from aliases and declare error thresholds before optimization. |
+| Nonlinear circuits | Ladder/OTA use 8× interpolation and decimation; ladder has analytic small-signal and independent RK4 comparisons. | Broader amplitude, resonance, two-tone IMD and modulation sweeps; record alias power, solver failures and latency. Hardware accuracy additionally requires identified hardware and measured captures. |
+| New DRUM and SVF | Original functional algorithms with finite-output/behavior tests. Metallic hat squares and nonlinear drive are currently evaluated at host rate. | Measure high-frequency aliasing and driven-filter spectra, then implement suitable bandlimiting/oversampling and compare cost at equivalent fidelity. These are not yet qualified hardware models. |
+| Studio effects | Delay/reverb/compressor have bounded processing and response tests. | Reference impulse/decay and dynamics curves over rates/settings, modulation sidebands, stereo behavior and parameter-transition checks. No Surge/Plateau/Pressor identity claim. |
+| Performance | Circuit optimization compares preserved arithmetic; callback diagnostics and offline benchmarks exist. | Matched workloads, voice counts, rates, latency and quality; callback deadline tails and graph-swap cost on devices. Changing a ladder into an SVF is a fidelity tradeoff, not an equal-quality speedup. |
+
+Each acceptance report must name the module/source version, stimuli, sample rate,
+reference method, thresholds, measured results and remaining limitations.
+Passing structural or finite-output tests alone does not satisfy these gates.
+See [analog model evidence](ANALOG_MODELS.md), [oscillator evidence](AUDIO_OSCILLATOR.md)
+and [studio module limits](SCORE_AND_STUDIO.md).
+
 ## What the existing foundation supports
 
 Rack documents voltage signals, one sample of cable delay, primary-input voice

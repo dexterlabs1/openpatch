@@ -34,6 +34,6 @@ All buffers are allocated during graph compilation. Callback processing and comp
 {"filename":"arrangement.wav","seconds":120.02}
 ```
 
-The `scripts/rebuild_stiw.py` reconstruction helper accepts an inspected source JSON, translates its saved score automatically (with optional native score overrides),, authors the graph through real stdio MCP, then saves a native project and explicit substitution manifest. It preserves the source file. A reconstruction is an editable native rendition, not a transparent `.vcv` import.
+The `scripts/rebuild_stiw.py` reconstruction helper accepts an inspected source JSON, translates its saved score automatically (with optional native score overrides), authors the graph through real stdio MCP, then saves a native project and explicit substitution manifest. It preserves the source file. A reconstruction is an editable native rendition, not a transparent `.vcv` import.
 
 The reconstruction uses cascaded native SVFs for its four-pole lowpasses by default; `--circuit-filters` selects the more expensive nonlinear ladder alternative. Both are explicit substitutions. The source Audio-2 DC-filter setting is preserved through the stereo output’s optional `dc_block` control (10 Hz high-pass; defaults off for existing OpenPatch projects). The reference setting is documented by the [Rack 2.6.6 audio source](https://github.com/VCVRack/Rack/blob/v2.6.6/src/core/Audio.cpp).
