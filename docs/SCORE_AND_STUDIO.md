@@ -26,7 +26,7 @@ Add this with `add_module`, or update its data with `set_score`. Both support at
 
 All buffers are allocated during graph compilation. Callback processing and compatible state adoption use bounded storage. Effects preserve histories across unrelated edits. Their DSP is tested for signal behavior, finite output, and allocation-free processing; this does not establish physical hardware calibration or superiority over Rack.
 
-The SVF drive has a measured aliasing gap, especially at high input frequencies and drive settings; see the [reproducible spectral baseline](benchmarks/svf-spectral/README.md). Its undriven linear path and nonlinear driven path must be assessed separately.
+The SVF drive has a measured aliasing gap, especially at high input frequencies and drive settings; see the [reproducible spectral baseline](benchmarks/svf-spectral/README.md). Its undriven linear path and nonlinear driven path must be assessed separately. An [isolated oversampling study](benchmarks/svf-antialias/README.md) now compares spectral accuracy and CPU cost; those prototypes are not part of the installed filter.
 
 ## Full arrangement export
 

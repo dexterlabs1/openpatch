@@ -57,3 +57,7 @@ Next work must specify a target, add suitable antialiasing to the driven path,
 and rerun this matrix alongside independent response/modulation tests and
 matched-quality timing/latency measurements. A low result here alone cannot
 prove the complete signal is correct.
+
+The follow-up [antialiasing study](../svf-antialias/README.md) adds independent
+reference spectra, upper-frequency cases, and actual-engine cost comparisons.
+It demonstrates why the original matrix alone is insufficient to select a fix.

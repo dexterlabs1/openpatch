@@ -324,3 +324,14 @@ throughput measurements; they do not measure live callback deadlines or Rack.
 CI timing is diagnostic: shared runners are noisy. No hard speed threshold or
 speedup claim should be based on one CI run. Broader SIMD work, multicore
 scheduling and feedback optimization remain future work.
+
+## SVF nonlinear-drive candidate screen
+
+The [SVF antialiasing study](benchmarks/svf-antialias/README.md) compares isolated
+4×/8×/16× drive preprocessing against the current host-rate baseline. The broader
+spectral tests reject 4×/8×; unoptimized 16× passes the measured sparse spectral
+matrices but exceeds the 48/96 kHz 128-frame block budget with sixteen voices.
+These prototypes are not shipped. The study retains source hashes, independent
+spectral references and 589,824 measured actual-engine blocks to guide an
+optimization that preserves sound quality. Offline cost is not device stability
+or a faster-than-Rack result.
