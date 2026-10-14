@@ -91,8 +91,8 @@ parser uses conventional exponent grouping and documents these corrections along
 [Reproducible reference results](benchmarks/parameter-expression-reference.json),
 [pinned dependency tests](https://github.com/codeplea/tinyexpr/blob/4e8cc0067a1e2378faae23eb2dfdd21e9e9907c2/smoke.c#L575-L594).
 
-Prioritize the first two interaction rows after the current performance batch,
-then navigation/templates and bounded hardware-input work. Each delivered row
+Next interaction work includes the remaining cable gestures, broader computer-
+keyboard range, and bounded hardware-input work. Each delivered row
 needs source changes, focused behavioral tests, shared undo/MCP checks where
 applicable, and native workflow evidence. Keep unresolved or untested behavior
 marked partial. The general manual contains unfinished sections and cannot
