@@ -11,6 +11,10 @@ use std::sync::{
     OnceLock,
 };
 
+#[path = "cable_menu.rs"]
+mod cable_menu;
+use cable_menu::CableMenu;
+
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
 const PANEL_HEIGHT: f32 = 396.0;
@@ -163,6 +167,8 @@ struct PendingCable {
     shift_at_press: bool,
     // The source stays live until a guarded edit commits. Clone never removes it.
     original: Option<Cable>,
+    companions: Vec<Cable>,
+    color: Option<[u8; 3]>,
     revision: u64,
     stack_requested: bool,
 }
@@ -191,6 +197,8 @@ impl PendingCable {
                 CableOperation::Create
             },
             original,
+            companions: Vec::new(),
+            color: None,
             revision,
             stack_requested: false,
             shift_at_press: false,
@@ -348,10 +356,12 @@ pub struct Rack {
     positions_locked: bool,
     pending: Option<PendingCable>,
     cable_press: Option<PendingCable>,
+    cable_menu: Option<CableMenu>,
     observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
     requested_parameter_menu: Option<(String, String)>,
+    requested_cable_menu: Option<CableEnd>,
     shortcuts_enabled: bool,
     suppress_reveal_once: bool,
     gesture: u64,
@@ -379,10 +389,12 @@ impl Default for Rack {
             positions_locked: false,
             pending: None,
             cable_press: None,
+            cable_menu: None,
             observed_revision: 0,
             dragging_cable: false,
             editing: None,
             requested_parameter_menu: None,
+            requested_cable_menu: None,
             shortcuts_enabled: true,
             suppress_reveal_once: false,
             gesture: 0,
@@ -398,6 +410,20 @@ impl Default for Rack {
 
 impl Rack {
     /// Open a real knob context menu on the next paint for the native smoke fixture.
+    pub(crate) fn request_cable_menu_for_smoke(&mut self, node: &str, port: &str, input: bool) {
+        self.requested_cable_menu = Some(if input {
+            CableEnd::Input {
+                node: node.into(),
+                port: port.into(),
+            }
+        } else {
+            CableEnd::Output {
+                node: node.into(),
+                port: port.into(),
+            }
+        });
+    }
+
     pub(crate) fn request_parameter_menu_for_smoke(&mut self, id: &str, parameter: &str) {
         self.requested_parameter_menu = Some((id.to_owned(), parameter.to_owned()));
     }
@@ -1312,6 +1338,11 @@ impl Rack {
                 .zip(nearest)
                 .is_some_and(|(pending, (target, _))| {
                     let shift = ui.input(|i| i.modifiers.shift);
+                    if !pending.companions.is_empty() {
+                        return pending.origin == *target
+                            || cable_group_action(patch, pending, target, catalog, shift)
+                                .is_some();
+                    }
                     cable_plan(pending, target).is_some_and(|(cable, old)| {
                         old.is_some_and(|old| same_route(old, &cable))
                             || ((!pending.allow_duplicate(shift) || patch.version >= 2)
@@ -1364,8 +1395,13 @@ impl Rack {
                 let picked_up = self
                     .pending
                     .as_ref()
-                    .and_then(PendingCable::moved_original)
-                    .is_some_and(|old| same_cable(old, cable));
+                    .filter(|p| p.operation == CableOperation::Move)
+                    .is_some_and(|p| {
+                        p.original
+                            .iter()
+                            .chain(&p.companions)
+                            .any(|old| same_cable(old, cable))
+                    });
                 let traced = nearest.is_some_and(|(end, _)| match end {
                     CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
                     CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
@@ -1448,6 +1484,9 @@ impl Rack {
                         .as_ref()
                         .map_or(CABLES[2], cable_instance_color),
                 };
+                let color = pending
+                    .color
+                    .map_or(color, |[r, g, b]| Color32::from_rgb(r, g, b));
                 if let Some(anchor) = anchor {
                     let endpoint = nearest.map_or(pointer, |(_, point)| *point);
                     let bus = match &pending.origin {
@@ -1461,6 +1500,31 @@ impl Rack {
                         &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
                     );
                     paint_jack_light(&painter, anchor, self.zoom, color);
+                }
+                for cable in &pending.companions {
+                    let anchor = match pending.origin {
+                        CableEnd::Input { .. } => {
+                            outputs.get(&(cable.from.clone(), cable.output.clone()))
+                        }
+                        CableEnd::Output { .. } => {
+                            inputs.get(&(cable.to.clone(), cable.input.clone()))
+                        }
+                    };
+                    if let Some(&anchor) = anchor {
+                        let endpoint = nearest.map_or(pointer, |(_, point)| *point);
+                        let color = cable_instance_color(cable);
+                        paint_cable(
+                            &painter,
+                            anchor,
+                            endpoint,
+                            color,
+                            self.zoom,
+                            false,
+                            configured_bus(patch, catalog, &cable.from),
+                            0.0,
+                        );
+                        paint_jack_light(&painter, anchor, self.zoom, color);
+                    }
                 }
                 if let Some((_, target)) = nearest {
                     let light = if target_valid {
@@ -1481,10 +1545,17 @@ impl Rack {
                     nearest.map(|(target, _)| target),
                     ui.input(|i| i.modifiers.shift),
                 );
-                let message = if !target_valid
-                    && incomplete
-                    && pending.operation == CableOperation::Move
-                {
+                let message = if !pending.companions.is_empty() {
+                    if nearest.is_none()
+                        || nearest.is_some_and(|(target, _)| cable_plan(pending, target).is_none())
+                    {
+                        "Drop deletes every cable in this bundle. Esc cancels and keeps them."
+                    } else if !target_valid {
+                        "The patch cannot accept this bundle. Existing cables stay; Esc cancels."
+                    } else {
+                        "Move bundle: compatible routes move; duplicate conflicts are deleted. Shift permits duplicates; Esc cancels."
+                    }
+                } else if !target_valid && incomplete && pending.operation == CableOperation::Move {
                     "Drop deletes this cable. Esc cancels and keeps the original."
                 } else if nearest.is_some() && !target_valid && incomplete {
                     "Drop discards this new cable. Existing cables stay; Esc cancels."
@@ -2770,13 +2841,27 @@ impl Rack {
                         cables.len(),
                     ));
                 }
+                let end = CableEnd::Input {
+                    node: node.id.clone(),
+                    port: port.into(),
+                };
                 if jack.secondary_clicked() {
-                    self.pending = None;
-                    self.cable_press = None;
-                    self.dragging_cable = false;
+                    self.open_cable_menu(end.clone(), patch);
                 }
-                jack.context_menu(|ui| {
-                    self.input_cable_menu(ui, &node.id, port, cables, patch.version, &mut action)
+                if self.requested_cable_menu.as_ref() == Some(&end) {
+                    self.open_cable_menu(end.clone(), patch);
+                    egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
+                    self.requested_cable_menu = None;
+                }
+                let mut popup = egui::Popup::context_menu(&jack)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                if !jack.secondary_clicked()
+                    && egui::Popup::position_of_id(ui.ctx(), jack.id.with("popup")).is_none()
+                {
+                    popup = popup.anchor(egui::PopupAnchor::Position(jack.rect.right_bottom()));
+                }
+                popup.show(|ui| {
+                    self.port_cable_menu(ui, &end, patch, &mut action);
                 });
                 let mut details = format!(
                     "{}.{} · {} cable{}\n{}",
@@ -2872,7 +2957,28 @@ impl Rack {
                 let units = metadata
                     .and_then(|metadata| metadata["units"].as_str())
                     .unwrap_or("signal");
-                jack.context_menu(|ui| {
+                let end = CableEnd::Output {
+                    node: node.id.clone(),
+                    port: port.to_string(),
+                };
+                if jack.secondary_clicked() {
+                    self.open_cable_menu(end.clone(), patch);
+                }
+                if self.requested_cable_menu.as_ref() == Some(&end) {
+                    self.open_cable_menu(end.clone(), patch);
+                    egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
+                    self.requested_cable_menu = None;
+                }
+                let mut popup = egui::Popup::context_menu(&jack)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+                if !jack.secondary_clicked()
+                    && egui::Popup::position_of_id(ui.ctx(), jack.id.with("popup")).is_none()
+                {
+                    popup = popup.anchor(egui::PopupAnchor::Position(jack.rect.right_bottom()));
+                }
+                popup.show(|ui| {
+                    self.port_cable_menu(ui, &end, patch, &mut action);
+                    ui.separator();
                     for (lane, label) in [(0, "Inspect in scope X"), (1, "Inspect in scope Y")] {
                         if ui.button(label).clicked() {
                             self.pending = None;
@@ -4203,106 +4309,6 @@ impl Rack {
         }
     }
 
-    fn input_cable_menu(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &str,
-        port: &str,
-        cables: &[&Cable],
-        version: u32,
-        action: &mut Option<RackAction>,
-    ) {
-        ui.strong(format!("{node}.{port} · {} cables", cables.len()));
-        ui.separator();
-        if version >= 2 {
-            if ui
-                .button(if cables.is_empty() {
-                    "Connect new cable here"
-                } else {
-                    "Stack new cable here"
-                })
-                .clicked()
-            {
-                self.pending = Some(PendingCable {
-                    origin: CableEnd::Input {
-                        node: node.into(),
-                        port: port.into(),
-                    },
-                    original: None,
-                    operation: CableOperation::Create,
-                    shift_at_press: false,
-                    revision: self.observed_revision,
-                    stack_requested: !cables.is_empty(),
-                });
-                self.dragging_cable = false;
-                ui.close();
-            }
-        } else {
-            ui.label("Stacking requires engine v2.");
-        }
-        egui::ScrollArea::vertical()
-            .max_height(260.0)
-            .show(ui, |ui| {
-                for cable in cables.iter().rev() {
-                    ui.menu_button(
-                        format!(
-                            "{} · {}.{}",
-                            cable.id.as_deref().unwrap_or("legacy"),
-                            cable.from,
-                            cable.output
-                        ),
-                        |ui| {
-                            if ui.button("Move this cable").clicked() {
-                                self.pending = Some(PendingCable {
-                                    origin: CableEnd::Input {
-                                        node: node.into(),
-                                        port: port.into(),
-                                    },
-                                    original: Some((*cable).clone()),
-                                    operation: CableOperation::Move,
-                                    shift_at_press: false,
-                                    revision: self.observed_revision,
-                                    stack_requested: false,
-                                });
-                                self.dragging_cable = false;
-                                ui.close();
-                            }
-                            if ui.button("Remove this cable").clicked() {
-                                let mut args = cable.id.as_ref().map_or_else(
-                                    || json!({"to":node,"input":port}),
-                                    |id| json!({"cable_id":id}),
-                                );
-                                args["expected_revision"] = json!(self.observed_revision);
-                                *action = Some(RackAction::Command("disconnect", args));
-                                self.pending = None;
-                                self.cable_press = None;
-                                self.dragging_cable = false;
-                                ui.close();
-                            }
-                        },
-                    );
-                }
-            });
-        if !cables.is_empty()
-            && ui
-                .button(format!(
-                    "Remove all {} cable{}",
-                    cables.len(),
-                    if cables.len() == 1 { "" } else { "s" }
-                ))
-                .clicked()
-        {
-            *action = Some(RackAction::Command(
-                "disconnect",
-                json!({"to":node,"input":port,"expected_revision":self.observed_revision}),
-            ));
-            self.pending = None;
-            self.cable_press = None;
-            self.dragging_cable = false;
-            ui.close();
-        }
-    }
-
     fn begin_cable(
         &self,
         end: CableEnd,
@@ -4428,12 +4434,21 @@ impl Rack {
                 self.dragging_cable = false;
                 return; // Includes empty ports and coalesced click events.
             }
-            self.cable_press = Some(self.begin_cable(
-                end.clone(),
-                patch,
-                modifiers.shift,
-                !modifiers.alt && (modifiers.command || modifiers.ctrl),
-            ));
+            self.cable_press = if modifiers == egui::Modifiers::NONE
+                && self
+                    .pending
+                    .as_ref()
+                    .is_some_and(|pending| pending.origin == end)
+            {
+                self.pending.clone()
+            } else {
+                Some(self.begin_cable(
+                    end.clone(),
+                    patch,
+                    modifiers.shift,
+                    !modifiers.alt && (modifiers.command || modifiers.ctrl),
+                ))
+            };
         }
         if response.clicked() {
             let pressed = self.cable_press.take();
@@ -4461,8 +4476,7 @@ impl Rack {
         }
         if response.drag_started_by(PointerButton::Primary) {
             if let Some(pressed) = self.cable_press.take() {
-                if matches!(end, CableEnd::Output { .. })
-                    || pressed.operation != CableOperation::Move
+                if pressed.operation != CableOperation::Move
                     || pressed.stack_requested
                     || self
                         .pending
@@ -4497,6 +4511,10 @@ impl Rack {
                     .original
                     .as_ref()
                     .is_some_and(|old| !patch.cables.iter().any(|cable| same_cable(old, cable)))
+                || pending
+                    .companions
+                    .iter()
+                    .any(|old| !patch.cables.iter().any(|cable| same_cable(old, cable)))
         }) {
             self.pending = None;
             self.cable_press = None;
@@ -5362,7 +5380,7 @@ fn cable_plan<'a>(
             },
             CableOperation::Create,
         ) => Cable {
-            color: None,
+            color: pending.color,
             id: None,
             from: from.clone(),
             output: output.clone(),
@@ -5400,6 +5418,18 @@ fn cable_plan<'a>(
 }
 
 fn delete_moved_cable(pending: &PendingCable) -> Option<RackAction> {
+    if !pending.companions.is_empty() {
+        let ids = pending
+            .original
+            .iter()
+            .chain(&pending.companions)
+            .map(|c| c.id.clone())
+            .collect::<Option<Vec<_>>>()?;
+        return Some(RackAction::Command(
+            "disconnect_cables",
+            json!({"cable_ids":ids,"expected_revision":pending.revision}),
+        ));
+    }
     let old = pending.moved_original()?;
     let mut args = old.id.as_ref().map_or_else(
         || json!({"to":old.to,"input":old.input}),
@@ -5436,6 +5466,12 @@ fn cable_release_action(
     catalog: &Value,
     shift: bool,
 ) -> Option<RackAction> {
+    if !pending.companions.is_empty() {
+        return match target.filter(|target| cable_plan(pending, target).is_some()) {
+            Some(target) => cable_group_action(patch, pending, target, catalog, shift),
+            None => delete_moved_cable(pending),
+        };
+    }
     if incomplete_cable_drop(patch, pending, target, shift) {
         return delete_moved_cable(pending);
     }
@@ -5540,6 +5576,9 @@ fn cable_action_mode(
     catalog: &Value,
     shift_stack: bool,
 ) -> Option<RackAction> {
+    if !pending.companions.is_empty() {
+        return cable_group_action(patch, pending, target, catalog, shift_stack);
+    }
     let (cable, old) = cable_plan(pending, target)?;
     let duplicate = pending.allow_duplicate(shift_stack);
     if old.is_some_and(|old| same_route(old, &cable)) {
@@ -5579,6 +5618,69 @@ fn cable_action_mode(
         {"tool":"disconnect","arguments":selector},
         {"tool":"connect","arguments":connect}
     ],"expected_revision":pending.revision}),
+    ))
+}
+
+/// Validate bundle geometry on the UI thread; the command layer revalidates the
+/// captured revision and final graph atomically before publishing any edit.
+fn cable_group_action(
+    patch: &Patch,
+    pending: &PendingCable,
+    target: &CableEnd,
+    catalog: &Value,
+    shift: bool,
+) -> Option<RackAction> {
+    if pending.operation != CableOperation::Move || pending.origin == *target {
+        return None;
+    }
+    cable_plan(pending, target)?;
+    let originals: Vec<_> = pending.original.iter().chain(&pending.companions).collect();
+    let ids = originals
+        .iter()
+        .map(|c| c.id.clone())
+        .collect::<Option<Vec<_>>>()?;
+    let allow_duplicate = pending.allow_duplicate(shift);
+    if allow_duplicate && patch.version < 2 {
+        return None;
+    }
+    let mut candidate = patch.clone();
+    candidate
+        .cables
+        .retain(|c| !originals.iter().any(|old| same_cable(old, c)));
+    for original in originals {
+        if !patch.cables.iter().any(|c| same_cable(c, original)) {
+            return None;
+        }
+        let mut cable = original.clone();
+        match target {
+            CableEnd::Input { node, port } => {
+                cable.to = node.clone();
+                cable.input = port.clone();
+            }
+            CableEnd::Output { node, port } => {
+                cable.from = node.clone();
+                cable.output = port.clone();
+            }
+        }
+        if !allow_duplicate && candidate.cables.iter().any(|c| same_route(c, &cable)) {
+            continue;
+        }
+        if !connection_allowed_mode(&candidate, &cable, None, catalog, true) {
+            return None;
+        }
+        candidate.cables.push(cable);
+    }
+    let (end, node, port) = match target {
+        CableEnd::Input { node, port } => ("input", node, port),
+        CableEnd::Output { node, port } => ("output", node, port),
+    };
+    if !port_exists(patch, catalog, node, port, end == "output") {
+        return None;
+    }
+    Some(RackAction::Command(
+        "move_cables",
+        json!({"cable_ids":ids,"end":end,"node":node,"port":port,
+        "duplicate_mode":if allow_duplicate {"stack"} else {"discard"},"expected_revision":pending.revision}),
     ))
 }
 
@@ -7676,7 +7778,7 @@ mod tests {
         }
         let (_, output) =
             frame_revision_state(&ctx, &mut rack, &patch, 1.5, vec![], true, true, revision);
-        let remove = text_position(&output, "Remove this cable");
+        let remove = text_position(&output, "Delete this cable");
         frame_revision_state(
             &ctx,
             &mut rack,
@@ -13293,6 +13395,8 @@ mod tests {
                 node: "target".into(),
                 port: "signal".into(),
             },
+            companions: Vec::new(),
+            color: None,
             original: Some(patch.cables[0].clone()),
             revision: 7,
             stack_requested: false,
@@ -13326,4 +13430,5 @@ mod tests {
             && args["edits"][1]["arguments"]["cable_id"] == "one"));
     }
     include!("cable_gesture_tests.rs");
+    include!("cable_menu_tests.rs");
 }

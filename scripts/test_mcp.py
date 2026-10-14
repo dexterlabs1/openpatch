@@ -321,6 +321,92 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(self.patch_snapshot()["patch"]["cables"][0], cable)
         self.assertEqual(json.loads((self.workspace / "colored.json").read_text()), saved)
 
+    def test_exact_cable_edit_tools_preserve_identity_history_and_atomicity(self) -> None:
+        listed = self.client.request("tools/list")["result"]["tools"]
+        schemas = {tool["name"]: tool["inputSchema"] for tool in listed}
+        for name in ("disconnect_cables", "move_cables"):
+            self.assertEqual(schemas[name]["properties"]["cable_ids"], {
+                "type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": True,
+                "items": schemas["set_cable_color"]["properties"]["cable_id"],
+            })
+        self.assertEqual(schemas["move_cables"]["properties"]["end"]["enum"], ["input", "output"])
+        self.assertEqual(schemas["move_cables"]["properties"]["duplicate_mode"]["enum"],
+                         ["reject", "discard", "stack"])
+        self.assertEqual(schemas["set_cable_color"]["properties"]["color"],
+                         schemas["connect"]["properties"]["color"])
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "a", "kind": "constant"}, {"id": "b", "kind": "constant"},
+                {"id": "left", "kind": "gain"}, {"id": "right", "kind": "gain"},
+                {"id": "target", "kind": "gain"},
+            ], "cables": [
+                {"id": "first", "from": "a", "to": "left", "input": "signal", "color": [1, 2, 3]},
+                {"id": "second", "from": "b", "to": "right", "input": "signal", "color": [4, 5, 6]},
+                {"id": "existing", "from": "a", "to": "target", "input": "signal", "color": [7, 8, 9]},
+            ], "output": "target",
+        }})
+        before = self.patch_snapshot()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_cable_color", "arguments": {"cable_id": "second", "color": [0, 128, 255]}},
+            {"tool": "move_cables", "arguments": {
+                "cable_ids": ["first"], "end": "input", "node": "target", "port": "signal",
+            }},
+        ]})
+        self.assertEqual(self.patch_snapshot(), before, "duplicate rejection must roll back prior color edits")
+        colored = self.payload(self.require_tool_success("set_cable_color", {
+            "cable_id": "second", "color": [0, 128, 255], "expected_revision": before["revision"],
+        }))
+        move = {"cable_ids": ["second"], "end": "input", "node": "target", "port": "signal"}
+        preview = self.payload(self.require_tool_success("preview_edits", {
+            "edits": [{"tool": "move_cables", "arguments": move}],
+        }))
+        self.assertEqual(self.patch_snapshot(), colored)
+        moved = self.payload(self.require_tool_success("move_cables", {
+            **move, "expected_revision": colored["revision"],
+        }))
+        self.assertEqual(moved["patch"], preview["patch"])
+        self.assertEqual([c["id"] for c in moved["patch"]["cables"]], ["first", "second", "existing"])
+        self.assertEqual(moved["patch"]["cables"][1]["color"], [0, 128, 255])
+        self.assertEqual(moved["patch"]["cables"][2], before["patch"]["cables"][2])
+        self.require_tool_success("save_patch", {"filename": "cable-edits.json"})
+        self.assertEqual(json.loads((self.workspace / "cable-edits.json").read_text()), moved["patch"])
+        self.require_tool_success("undo")
+        undone = self.patch_snapshot()
+        self.assertEqual(undone["patch"], colored["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("set_cable_color", {
+            "cable_id": "second", "color": [0, 128, 255], "expected_revision": undone["revision"],
+        })), undone)
+        self.assertEqual(self.payload(self.require_tool_success("move_cables", {
+            "cable_ids": ["first"], "end": "input", "node": "left", "port": "signal",
+            "duplicate_mode": "discard", "expected_revision": undone["revision"],
+        })), undone)
+        for name, args in [
+            ("set_cable_color", {"cable_id": "second", "color": [0, 256, 0]}),
+            ("set_cable_color", {"cable_id": "second", "color": [0, 128, 255], "expected_revision": 0}),
+            ("disconnect_cables", {"cable_ids": ["first", "missing"]}),
+            ("disconnect_cables", {"cable_ids": ["first", "first"]}),
+            ("move_cables", {**move, "node": "a", "port": "out", "duplicate_mode": "discard"}),
+            ("move_cables", {**move, "expected_revision": 0}),
+        ]:
+            with self.subTest(tool=name, arguments=args):
+                self.require_tool_error(name, args)
+                self.assertEqual(self.patch_snapshot(), undone)
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], moved["patch"])
+        discarded = self.payload(self.require_tool_success("move_cables", {
+            "cable_ids": ["first"], "end": "input", "node": "target", "port": "signal",
+            "duplicate_mode": "discard",
+        }))
+        self.assertEqual([c["id"] for c in discarded["patch"]["cables"]], ["second", "existing"])
+        cleared = self.payload(self.require_tool_success("disconnect_cables", {
+            "cable_ids": ["existing", "second"], "expected_revision": discarded["revision"],
+        }))
+        self.assertEqual(cleared["patch"]["cables"], [])
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], discarded["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], cleared["patch"])
+
     def test_clear_cables_schema_empty_noop_stale_guard_and_redo_preservation(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "clear_cables")

@@ -3831,6 +3831,40 @@ impl OpenPatch {
         if frame == 160 {
             self.scope.smoke_xy();
         }
+        if frame == 628 {
+            egui::Popup::close_all(ctx);
+            let patch: Patch = serde_json::from_value(json!({
+                "version":2,"nodes":[
+                    {"id":"pitch","kind":"constant","params":{"value":1.0}},
+                    {"id":"offset","kind":"constant","params":{"value":0.5}},
+                    {"id":"sum","kind":"mixer"}, {"id":"out","kind":"output"}
+                ], "cables":[
+                    {"id":"lead-a","from":"pitch","to":"sum","input":"a","color":[211,101,83]},
+                    {"id":"lead-b","from":"pitch","to":"sum","input":"b","color":[75,139,189]},
+                    {"id":"lead-c","from":"offset","to":"sum","input":"a","color":[72,171,167]},
+                    {"id":"lead-out","from":"sum","to":"out","input":"signal"}
+                ], "output":"out"
+            }))
+            .unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
+                    "pitch":[0,0],"offset":[120,0],"sum":[240,0],"out":[390,0]
+                }}))
+                .unwrap();
+            self.rack
+                .request_cable_menu_for_smoke("pitch", "out", false);
+            self.title = "Cable bundles · output menu".into();
+            self.status =
+                "Move, clone, colour or delete cables from either end · One shared undo history"
+                    .into();
+        }
+        if frame == 654 {
+            egui::Popup::close_all(ctx);
+            self.rack.request_cable_menu_for_smoke("sum", "a", true);
+            self.title = "Cable bundles · input menu".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -3874,6 +3908,8 @@ impl OpenPatch {
                 | 578
                 | 600
                 | 622
+                | 648
+                | 676
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3927,7 +3963,9 @@ impl OpenPatch {
                 32 => path.with_file_name("rack-push.png"),
                 33 => path.with_file_name("rack-gates.png"),
                 34 => path.with_file_name("audio-performance-simulated.png"),
-                _ => path.with_file_name("parameter-context-entry.png"),
+                35 => path.with_file_name("parameter-context-entry.png"),
+                36 => path.with_file_name("cable-output-menu.png"),
+                _ => path.with_file_name("cable-input-menu.png"),
             };
             image::save_buffer(
                 target,
@@ -3939,12 +3977,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 36 {
+            if captures == 38 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 654, "Native screenshot timeout");
+        assert!(frame < 708, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {

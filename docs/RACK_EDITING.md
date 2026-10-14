@@ -125,8 +125,8 @@ Press modifiers are latched, so releasing them before the drag threshold does
 not change the operation. In version 2, a valid new connection to an occupied
 input preserves its existing cables. Exact duplicate routes are rejected by
 ordinary gestures. OpenPatch additionally allows them when **Shift is added
-at drop** after starting without Shift, or through the input menu's **Stack new
-cable here**. The Shift used to start a clone does not enable duplicates.
+at drop** after starting without Shift. The Shift used to start a clone does
+not enable duplicates. Menu pickups require an unmodified primary press.
 
 **Esc**, focus loss, a modal interruption, loss of the pointer without an actual
 release, and a newer patch revision cancel the gesture. Version-1 stacking or
@@ -137,10 +137,36 @@ deletion is one guarded undo action. Native Save, recovery, and MCP retain the
 resulting cable IDs and explicit colors.
 
 Click-to-connect remains an OpenPatch extension using the same endpoint rules;
-Escape or an empty-rack click cancels its draft. Right-click an input to choose
-an individual cable by ID, move it, remove it, or clear its stack. Top currently
-means the last matching cable in patch order. Independent per-end plug ordering,
-Rack's move-all menu, and a native cable-color chooser remain parity work.
+Escape or an empty-rack click cancels its draft.
+
+### Cable menus and bundles
+
+Right-click either end for **Delete top cable**, **Clone top cable**, **Create
+new cable**, and **New cable colour**. Each listed cable has Move, Clone, Delete,
+palette colours, and **Custom RGB…** with an explicit **Apply colour** action.
+Changing colour preserves cable IDs, routes, and delayed signal state. Choosing
+its current rendered colour does nothing. Menu pickup items support dragging
+from the item or clicking the item then selecting a jack. Output scope actions
+remain available beneath the cable menu.
+
+**Move all cables** picks up every cable attached to the clicked jack. Drop on
+another jack of the same type to move the bundle; existing destination siblings
+remain. Cables that would create duplicate routes are deleted, while other
+members move. Winners follow saved cable order. Adding Shift at drop permits
+identical routes in version 2. Empty-space or wrong-type drops delete the picked
+bundle. Returning to the original jack does nothing, including for an intentional
+identical stack. **Delete all cables** removes only that port's bundle.
+
+A bundle operation is one undo step, including mixed move/delete results. Undo
+and redo restore exact IDs, endpoints, colours, and array order. Escape, focus
+loss, newer revisions, and unsupported version-1 graph changes cancel the entire
+proposal. Opening a menu captures its revision; a changed patch makes it stale,
+so even a reused cable ID cannot silently retarget an old menu action.
+
+Top currently means the last matching cable in saved patch order. Independent
+per-end plug ordering, editable palette presets, next-colour cycling, and physical
+native input qualification remain open.
+
 
 These gestures are independently implemented against the pinned
 [Rack port interaction source](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/PortWidget.cpp#L398).
@@ -304,8 +330,8 @@ The shortcut cable policies and selection priority follow pinned Rack 2.6.4.
 OpenPatch places groups to their right rather than centering them around the
 pointer, and resolves collisions using its existing rack-grid placement policy.
 It preserves global source cable order rather than appending internal cables
-before external inputs. Cable colors are derived from each fresh ID and can
-differ from the source cable. Full plug-order/color behavior, Rack preset conversion,
+before external inputs. Explicit cable colours are retained; uncoloured cables derive their appearance
+from each fresh ID and can differ from the source cable. Full plug ordering, Rack preset conversion,
 factory templates and complete project-layout history remain open.
 
 References: [Rack group serialization and duplication](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/RackWidget.cpp),

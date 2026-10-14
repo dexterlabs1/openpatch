@@ -16,9 +16,18 @@ VCO's pitch input. The mono transpose and vibrato signals apply to every voice.
 - **Cmd/Ctrl+Shift-drag** clones the top cable, retaining its color.
 - **Shift-click** deletes only the top cable immediately on press.
 - Add **Shift at drop**, after starting without Shift, to permit an identical
-  route. The input menu's **Stack new cable here** also permits this extension.
-- Right-click an input to choose, move, or remove one cable by ID and source;
-  **Remove all** clears the whole stack.
+  route. **Create new cable** uses ordinary duplicate rejection; late Shift is
+  required to permit an identical route.
+- Right-click either jack for **Create new cable**, top-cable clone/delete,
+  and **Move all cables** or **Delete all cables**. Each listed cable also has
+  its own pickup, clone, delete, and color controls.
+- **Move all cables** moves valid members and deletes selected members whose
+  new routes duplicate existing destination cables or earlier accepted moves.
+  Existing destination siblings remain intact. The whole result has one undo
+  step; cancellation or failed graph validation changes nothing.
+- Set a cable color from the palette or enter custom RGB bytes and choose
+  **Apply colour**. Palette choices and Apply are disabled when they match the
+  cable's current effective RGB, including its default palette color.
 - Dropping a moved cable on empty space, a wrong-type jack, or a duplicate route
   deletes that cable. Fresh and cloned drafts disappear without altering originals.
 - **Esc**, focus loss, modal interruption, stale revisions, and unsupported
@@ -60,15 +69,56 @@ that input. Do not combine the two selector forms.
 Optional `color` is an RGB array of exactly three integers from 0 through 255.
 Omitting it uses the rack's default palette. Invalid colors reject the whole
 operation before IDs or history change. Colors persist in patch JSON, native
-projects, recovery snapshots, undo/redo, and module duplicates. When moving a
-cable through MCP, pass its observed color to the replacement `connect` call.
-Color is presentation metadata and does not identify a DSP route or reset its
-delayed frame when only the color changes.
+projects, recovery snapshots, undo/redo, and module duplicates. Set an existing
+cable's color with `set_cable_color`, for example:
 
-To move a cable, put its disconnect and new connect into one `apply_edits`
-transaction, reusing its ID after removal. Preview the same edits with
-`preview_edits`; ID assignment is deterministic for the same starting revision.
-Failure publishes no partial disconnects, history entries, or runtime resets.
+```json
+{"cable_id":"transpose-pitch","color":[30,180,240],"expected_revision":12}
+```
+
+Color is presentation metadata and does not identify a DSP route or reset its
+delayed frame when only the color changes. A direct call with the same stored
+color validates the request and revision, then leaves revision, history, and
+redo unchanged. Preview reports metadata edits in `changes.changed_cables`.
+
+Use `disconnect_cables` with `cable_ids` to remove a chosen group in one undo
+step. The array must contain 1–1,024 unique, existing IDs. All IDs validate before
+any removal; an unknown, repeated, or stale selection changes nothing.
+
+Move one or more exact cable ends with `move_cables`:
+
+```json
+{
+  "cable_ids": ["transpose-pitch", "vibrato-pitch"],
+  "end": "input",
+  "node": "second-vco",
+  "port": "pitch",
+  "duplicate_mode": "reject",
+  "expected_revision": 12
+}
+```
+
+`end` selects the `input` or `output` endpoint. The destination module and port
+must exist and match that direction, even when a conflict would otherwise
+discard every selected cable. IDs and colors are retained. Moved and untouched
+cables retain their saved array positions; no independent plug ordering is
+stored. The `cable_ids` array accepts 1–1,024 unique existing IDs and controls
+collision evaluation order. The native rack supplies saved cable order.
+
+The default `duplicate_mode`, `reject`, fails the entire operation on an
+identical route. `discard` removes only selected members that conflict with
+unselected routes or earlier accepted moves; other selected members move and
+existing destination cables stay intact. `stack` allows identical routes in
+version 2. Selected cables whose requested endpoint is already unchanged stay
+intact, including intentional identical stacks. A direct all-unchanged move
+validates the request and revision, then preserves revision, history, and redo.
+Version 1 still rejects occupied inputs and cycles during final validation.
+
+These three tools support `preview_edits` and `apply_edits`; batch no-ops retain
+ordinary transaction history semantics. Failure publishes no partial color
+changes, moves, removals, history entries, or runtime resets. Changed or deleted
+selected cable frames reset; source modules and untouched sibling frames
+continue. Put `expected_revision` on the outer transaction when batching.
 Preview's `changes.cable_order_changed` flags a pure reordering of the same
 cable multiset; additions and removals use their existing change lists instead.
 `duplicate_modules` preserves cable multiplicity and assigns fresh IDs to every

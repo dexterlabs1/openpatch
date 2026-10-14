@@ -1,4 +1,5 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
+mod cable_edits;
 mod capture;
 mod layout_history;
 mod preset_tools;
@@ -8,6 +9,8 @@ pub use project_capture::{ProjectPatchSnapshot, ProjectRunningSnapshot};
 use running::EditEffects;
 #[cfg(test)]
 mod cable_color_tests;
+#[cfg(test)]
+mod cable_edit_tests;
 #[cfg(test)]
 mod duplicate_tests;
 #[cfg(test)]
@@ -91,6 +94,9 @@ const EDIT_TOOLS: &[&str] = &[
     "remove_module",
     "connect",
     "disconnect",
+    "disconnect_cables",
+    "move_cables",
+    "set_cable_color",
     "clear_cables",
     "set_parameter",
     "set_bypass",
@@ -780,6 +786,15 @@ impl Session {
             _ => return Err(format!("unknown tool: {name}")),
         }
         // Transaction boundary: failed edits never change the patch or revision.
+        // Direct equal-color/same-endpoint edits are validated no-ops. Batched
+        // no-ops intentionally retain the ordinary transaction history contract.
+        if matches!(name, "set_cable_color" | "move_cables")
+            && serde_json::to_value(&candidate).map_err(|error| error.to_string())?
+                == serde_json::to_value(&self.patch).map_err(|error| error.to_string())?
+        {
+            candidate.compile()?;
+            return Ok(self.snapshot());
+        }
         let group = if name == "set_parameter" && args.get("history_group").is_some() {
             let group = string(&args, "history_group")?;
             if group.is_empty() || group.len() > 128 {
@@ -1030,6 +1045,19 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
     };
     let added_cables = difference(&after.cables, &before.cables);
     let removed_cables = difference(&before.cables, &after.cables);
+    let changed_cables: Vec<_> = after
+        .cables
+        .iter()
+        .filter_map(|cable| {
+            let id = cable.id.as_ref()?;
+            let previous = before
+                .cables
+                .iter()
+                .find(|old| old.id.as_ref() == Some(id))?;
+            (signature(previous) == signature(cable) && previous.color != cable.color)
+                .then(|| json!({"id":id,"before":previous,"after":cable}))
+        })
+        .collect();
     // Add/remove/endpoint changes already appear above. This flag specifically
     // identifies a pure routing-order change of the same cable multiset.
     let cable_order_changed = added_cables.is_empty()
@@ -1040,7 +1068,7 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
             .map(&signature)
             .eq(after.cables.iter().map(&signature));
     json!({"added_modules":added,"removed_modules":removed,"changed_modules":changed,
-        "added_cables":added_cables,"removed_cables":removed_cables,"cable_order_changed":cable_order_changed,
+        "added_cables":added_cables,"removed_cables":removed_cables,"changed_cables":changed_cables,"cable_order_changed":cable_order_changed,
         "output":{"before":{"node":before.output,"port":before.output_port},"after":{"node":after.output,"port":after.output_port}}})
 }
 
@@ -1089,6 +1117,9 @@ fn apply_edit(
             });
         }
         "duplicate_modules" => duplicate_modules(candidate, args)?,
+        "set_cable_color" => cable_edits::set_color(candidate, args)?,
+        "disconnect_cables" => cable_edits::disconnect(candidate, args, retired_cables)?,
+        "move_cables" => cable_edits::move_endpoints(candidate, args, retired_cables)?,
         "remove_module" => {
             let id = string(args, "id")?;
             if !candidate.nodes.iter().any(|n| n.id == id) {
@@ -1111,14 +1142,7 @@ fn apply_edit(
         "connect" => {
             // Parse strict RGB bytes before changing the candidate or assigning
             // IDs. A present null is not an RGB color; omission uses the palette.
-            let color = args
-                .get("color")
-                .map(|value| {
-                    serde_json::from_value::<[u8; 3]>(value.clone()).map_err(|_| {
-                        "color must be an array of exactly 3 integers in 0..255".to_string()
-                    })
-                })
-                .transpose()?;
+            let color = args.get("color").map(cable_edits::rgb).transpose()?;
             let mode = optional_string(args, "mode", "reject")?;
             if !matches!(mode, "reject" | "stack") {
                 return Err("mode must be reject or stack".into());
@@ -1424,6 +1448,8 @@ pub fn tools() -> Value {
         "required":["id","new_id"],"additionalProperties":false
     }});
     let module_ids = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"uniqueItems":true,"items":module_id});
+    let cable_ids = json!({"type":"array","minItems":1,"maxItems":openpatch_core::MAX_CABLES,"uniqueItems":true,"items":module_id});
+    let color = json!({"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}});
     let midi_events = midi_events_schema();
     let module_events = module_events_schema();
     let edits = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
@@ -1449,6 +1475,9 @@ pub fn tools() -> Value {
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),
         disconnect_tool(&s, &module_id, &rev),
+        tool("set_cable_color","Set one existing cable's persisted RGB bytes without changing its ID, route or DSP state. A direct equal-color call validates revision and arguments but preserves history and redo. Supports preview and atomic batches.",json!({"cable_id":module_id,"color":color,"expected_revision":rev}),&["cable_id","color"],false),
+        tool("disconnect_cables","Atomically remove 1..1024 unique existing cable IDs in one revision and undo step. Every ID must exist; invalid/stale requests change nothing. Untouched cable IDs, colors, order and runtime state are preserved.",json!({"cable_ids":cable_ids,"expected_revision":rev}),&["cable_ids"],false),
+        tool("move_cables","Move the input or output endpoint of 1..1024 unique existing cable IDs to a named port of the matching direction. Keeps IDs/colors and saved array positions; collision evaluation follows supplied ID order against unaffected routes and earlier accepted moves. duplicate_mode reject fails on identical routes; discard deletes only conflicting selected members; stack permits identical routes in version 2. Unchanged endpoints are retained even in identical stacks; a direct all-unchanged request is a validated no-op preserving redo. Destination validation and final graph validation are atomic; version 1 still rejects occupied inputs/cycles. Changed/deleted selected cable delay frames reset; source module and untouched cable state continue.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"node":module_id,"port":s,"duplicate_mode":{"type":"string","enum":["reject","discard","stack"],"default":"reject"},"expected_revision":rev}),&["cable_ids","end","node","port"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),

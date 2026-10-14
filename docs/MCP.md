@@ -155,8 +155,8 @@ Version-2 inputs also support stacked cables. `connect` defaults to rejecting
 occupied inputs; set `mode: "stack"` to add another signal and optionally
 `cable_id` to name the new cable. Every live cable has a persistent `id` in
 `inspect_patch`. `disconnect` accepts either `cable_id` for one route or
-`to` plus `input` for all routes on that input. Preview and commit moves as one
-disconnect/connect transaction. `clear_cables` removes every route in one atomic
+`to` plus `input` for all routes on that input. Use `move_cables` for an atomic endpoint move, `disconnect_cables` for a
+selected group, or `set_cable_color` for a metadata-only colour change. `clear_cables` removes every route in one atomic
 operation, including patches with 1,024 cables. It preserves modules, parameters,
 output selection and live module state. Removed route delay histories are
 retired; undo restores exact cable IDs/order with fresh route delays. See
@@ -409,10 +409,18 @@ whole transaction commits one revision and one undo step. Temporary disconnected
 or unresolved connections inside the transaction are allowed; the final graph
 must compile. Any failure leaves the live graph, revision, and history unchanged.
 Supported operations include `add_module`, `duplicate_modules`, `remove_module`,
-`connect`, `disconnect`, `clear_cables`, `set_parameter`, `set_output`,
+`connect`, `disconnect`, `disconnect_cables`, `move_cables`, `set_cable_color`,
+`clear_cables`, `set_parameter`, `set_output`,
 `set_bypass`, `invert_mutes`, `initialize_modules`, `randomize_modules`, and
 `apply_module_preset`. Consult `tools/list` for their argument schemas. File I/O,
 nested transactions, and history commands are excluded.
+
+`move_cables` changes a selected input or output endpoint for up to 1024 exact
+cable IDs; its default rejects duplicate routes, while explicit `discard` and
+version-2 `stack` modes support bundle gestures. `disconnect_cables` deletes a
+selected group atomically, and `set_cable_color` changes one persisted RGB colour
+without retiring its signal state. All support `expected_revision`, previews,
+and transactions. See [cable editing examples and guarantees](STACKED_CABLES.md).
 
 `clear_cables` accepts only optional `expected_revision`. A direct call on an
 empty patch validates that revision and returns the unchanged snapshot; it
