@@ -1,6 +1,7 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
 mod cable_edits;
 mod capture;
+mod construction;
 mod layout_history;
 mod preset_tools;
 mod project_capture;
@@ -64,7 +65,6 @@ pub trait LiveModuleEvents: Send + Sync {
     fn release_module_controls(&self, _ids: &[String]) {}
 }
 
-#[derive(Clone)]
 pub struct Session {
     patch: Patch,
     revision: u64,
@@ -75,6 +75,31 @@ pub struct Session {
     history_group: Option<(String, String, String)>,
     closing: bool,
     live_module_events: Option<Arc<dyn LiveModuleEvents>>,
+    construction: construction::Construction,
+}
+
+// A cloned control snapshot never adopts another session's plan or worker.
+impl Clone for Session {
+    fn clone(&self) -> Self {
+        Self {
+            patch: self.patch.clone(),
+            revision: self.revision,
+            state_id: self.state_id,
+            workspace: self.workspace.clone(),
+            undo: self.undo.clone(),
+            redo: self.redo.clone(),
+            history_group: self.history_group.clone(),
+            closing: self.closing,
+            live_module_events: self.live_module_events.clone(),
+            construction: construction::Construction::default(),
+        }
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.construction.wake();
+    }
 }
 
 #[derive(Clone)]
@@ -123,6 +148,9 @@ pub type Application = Session;
 /// offline rendering, benchmarks, or file I/O. Those operations use a coherent
 /// snapshot; graph edits remain serialized by the live session mutex.
 pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
+    if name == "start_construction" {
+        return construction::start(session, args);
+    }
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     match name {
         "export_visualizer"
@@ -135,17 +163,7 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
         | "save_module_preset"
         | "read_module_preset"
         | "list_module_presets" => {
-            let mut snapshot = Session {
-                patch: live.patch.clone(),
-                revision: live.revision,
-                state_id: live.state_id,
-                workspace: live.workspace.clone(),
-                undo: VecDeque::new(),
-                redo: Vec::new(),
-                history_group: None,
-                closing: live.closing,
-                live_module_events: None,
-            };
+            let mut snapshot = live.detached_snapshot();
             drop(live);
             snapshot.execute(name, args)
         }
@@ -178,6 +196,7 @@ impl Session {
             history_group: None,
             closing: false,
             live_module_events: None,
+            construction: construction::Construction::default(),
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -210,6 +229,7 @@ impl Session {
     pub fn seal_for_close(&mut self, expected_revision: u64) -> Result<(), String> {
         self.check_revision(Some(expected_revision))?;
         self.closing = true;
+        self.construction.close();
         Ok(())
     }
 
@@ -326,6 +346,7 @@ impl Session {
         self.history_group = group;
         self.redo.clear();
         self.revision = revision;
+        self.construction.wake();
         if !effects.retired.is_empty() {
             if let Some(backend) = &self.live_module_events {
                 backend.retire_modules(&effects.retired);
@@ -390,6 +411,7 @@ impl Session {
         }
         self.revision = revision;
         self.history_group = None;
+        self.construction.wake();
         if let Some(backend) = &self.live_module_events {
             if !entry.retired_modules.is_empty() {
                 backend.retire_modules(&entry.retired_modules);
@@ -537,6 +559,15 @@ impl Session {
         let schemas = tools();
         validate_arguments(&schemas, name, &args)?;
         match name {
+            "start_construction" => {
+                return Err(
+                    "start_construction requires a shared session; use execute_shared".into(),
+                )
+            }
+            "inspect_construction"
+            | "pause_construction"
+            | "resume_construction"
+            | "cancel_construction" => return self.construction_command(name, &args),
             "catalog" => return Ok(catalog()),
             "capture_project_patch" => {
                 let captured = self.capture_project_patch(expected_revision(&args)?)?;
@@ -1512,7 +1543,19 @@ pub fn tools() -> Value {
         "type":"object","properties":{"tool":{"type":"string","enum":EDIT_TOOLS},"arguments":{"type":"object"}},
         "required":["tool","arguments"],"additionalProperties":false
     }});
+    let construction_edits =
+        json!({"type":"array","minItems":1,"maxItems":8,"items":edits["items"]});
+    let construction_steps = json!({"type":"array","minItems":1,"maxItems":64,"items":{
+        "type":"object","properties":{"label":{"type":"string","maxLength":160},"edits":construction_edits},
+        "required":["label","edits"],"additionalProperties":false
+    }});
+    let plan_id = json!({"type":"integer","minimum":1});
     json!([
+        tool("start_construction","Preflight every intermediate graph on an isolated snapshot, then progressively apply a reviewed plan to this session. Accepts 1..64 labelled steps, 1..8 graph edits per step, at most 256 edits total; labels/title are bounded to 160/128 UTF-8 bytes. Each step commits one revision and ordinary undo entry after its interval. External edits, undo, redo, or layout checkpoints stop the plan as conflicted; the plan never rebases. A client disconnect does not cancel it.",json!({"expected_revision":rev,"title":{"type":"string","maxLength":128},"steps":construction_steps,"interval_ms":{"type":"integer","minimum":100,"maximum":2000,"default":500}}),&["expected_revision","steps"],false),
+        tool("inspect_construction","Read the latest construction plan and current revision, or idle when no plan exists. Optional plan_id must identify the latest retained plan.",json!({"plan_id":plan_id}),&[],true),
+        tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
+        tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
+        tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),

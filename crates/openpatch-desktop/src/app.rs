@@ -315,6 +315,7 @@ pub struct OpenPatch {
     catalog: Value,
     start: Instant,
     mcp: bool,
+    construction: crate::construction_ui::Panel,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     local_mcp: Option<openpatch::local_mcp::LocalServer>,
     local_mcp_error: Option<String>,
@@ -523,6 +524,7 @@ impl OpenPatch {
             catalog: catalog(),
             start: Instant::now(),
             mcp,
+            construction: crate::construction_ui::Panel::default(),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             local_mcp: None,
             local_mcp_error: None,
@@ -1033,6 +1035,7 @@ impl OpenPatch {
     }
     fn sync(&mut self) {
         if let Ok(s) = self.shared.try_lock() {
+            self.construction.observe(s.construction_snapshot());
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
             if s.revision() != self.revision {
@@ -1216,6 +1219,28 @@ impl OpenPatch {
         if matches!(action, PendingAction::DiscardClose) {
             self.perform_action(action);
             return;
+        }
+        // A document decision should describe a stable construction prefix.
+        // Cancelling the dialog leaves the plan paused for an explicit Resume.
+        let construction = self
+            .shared
+            .try_lock()
+            .ok()
+            .map(|live| live.construction_snapshot());
+        let Some(construction) = construction else {
+            self.deferred_action = Some(action);
+            return;
+        };
+        if construction["status"] == "running" {
+            if let Err(error) = execute_shared(
+                &self.shared,
+                "pause_construction",
+                json!({"plan_id":construction["plan_id"]}),
+            ) {
+                self.status = error;
+                self.deferred_action = Some(action);
+                return;
+            }
         }
         self.sync();
         let current = self
@@ -4097,6 +4122,17 @@ impl eframe::App for OpenPatch {
         self.sync();
         self.observe_document();
         self.toolbar(ctx);
+        if let Some(action) = self.construction.show(ctx) {
+            self.status = match execute_shared(&self.shared, action.name, action.arguments) {
+                Ok(receipt) => format!(
+                    "Construction {} · {} steps committed",
+                    receipt["status"].as_str().unwrap_or("updated"),
+                    receipt["completed_steps"]
+                ),
+                Err(error) => error,
+            };
+            self.sync();
+        }
         self.footer(ctx);
         let library_action = self.browser(ctx);
         self.global_shortcuts(ctx);
@@ -4258,6 +4294,7 @@ mod project_workflow_tests {
             catalog: catalog(),
             start: Instant::now(),
             mcp: true,
+            construction: crate::construction_ui::Panel::default(),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             local_mcp: None,
             local_mcp_error: None,
@@ -7454,6 +7491,40 @@ mod project_workflow_tests {
         assert!(app.dirty());
         assert!(app.confirm_discard.is_some());
         assert!(app.patch.nodes.iter().any(|n| n.id == "latest"));
+    }
+
+    #[test]
+    fn close_confirmation_pauses_construction_and_dismissal_keeps_it_paused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        edit(&mut app, 330.0);
+        let plan = execute_shared(&app.shared, "start_construction", json!({
+            "expected_revision": app.revision,
+            "interval_ms": 2000,
+            "steps": [{"label": "Add a source", "edits": [
+                {"tool": "add_module", "arguments": {"id": "construction_source", "kind": "constant"}}
+            ]}]
+        })).unwrap();
+        app.request_action(PendingAction::Close);
+        assert!(app.confirm_discard.is_some());
+        assert!(!app.allow_close);
+        assert_eq!(
+            app.shared.lock().unwrap().construction_snapshot()["status"],
+            "paused"
+        );
+        // Cancelling the document dialog must not implicitly resume agent work.
+        app.confirm_discard = None;
+        app.sync();
+        assert_eq!(
+            app.shared.lock().unwrap().construction_snapshot()["status"],
+            "paused"
+        );
+        execute_shared(
+            &app.shared,
+            "cancel_construction",
+            json!({"plan_id": plan["plan_id"]}),
+        )
+        .unwrap();
     }
 
     #[test]

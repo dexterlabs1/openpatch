@@ -2,6 +2,7 @@
 mod app;
 mod audio;
 mod chrome;
+mod construction_ui;
 mod document_state;
 mod expression;
 mod keyboard;

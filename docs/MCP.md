@@ -526,6 +526,15 @@ form a single undo step for one parameter gesture, while each edit still advance
 the revision. Use a unique group per gesture; unrelated edits and undo/redo
 break the group. Omit this field inside transactions.
 
+## Visible construction
+
+For paced, visible construction, use `start_construction` with a required base
+revision and labelled graph-edit steps. Each step commits a real revision and
+one Undo entry. `inspect_construction`, `pause_construction`,
+`resume_construction`, and `cancel_construction` expose the same controls as the
+native progress panel. External revisions stop the plan; cancellation retains
+completed work. See [construction examples, limits and lifetime](CONSTRUCTION.md).
+
 ## Duplicating module groups
 
 `duplicate_modules` atomically copies a module group using explicit

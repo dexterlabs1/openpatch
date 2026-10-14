@@ -33,6 +33,7 @@
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
+- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, shared undo, and a native progress panel offering Pause, Resume and Cancel.
 
 ## Get started on macOS
 

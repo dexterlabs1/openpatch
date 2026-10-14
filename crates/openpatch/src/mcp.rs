@@ -53,7 +53,7 @@ struct Connection {
     bounded_socket_jobs: bool,
 }
 // The socket host bounds client workers separately. These permits additionally
-// bound CPU-heavy snapshots across all socket connections, before copying a
+// bound CPU-heavy snapshots and preflight across socket connections, before copying a
 // patch or acquiring the shared session lock. Stdio retains its original policy.
 const MAX_SOCKET_JOBS: usize = 2;
 static SOCKET_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -66,7 +66,7 @@ impl SocketJobGuard {
         loop {
             if active >= MAX_SOCKET_JOBS {
                 return Err(
-                    "offline snapshot jobs busy; retry after an active job completes".into(),
+                    "snapshot/preflight jobs busy; retry after an active job completes".into(),
                 );
             }
             match SOCKET_JOBS.compare_exchange_weak(
@@ -87,7 +87,7 @@ impl Drop for SocketJobGuard {
     }
 }
 
-fn expensive_snapshot(name: &str) -> bool {
+fn expensive_job(name: &str) -> bool {
     matches!(
         name,
         "render_audio"
@@ -96,12 +96,13 @@ fn expensive_snapshot(name: &str) -> bool {
             | "capture_signal"
             | "benchmark"
             | "export_visualizer"
+            | "start_construction"
     )
 }
 
 impl Connection {
     fn execute_tool(&self, name: &str, args: Value) -> Result<Value, String> {
-        let _permit = if self.bounded_socket_jobs && expensive_snapshot(name) {
+        let _permit = if self.bounded_socket_jobs && expensive_job(name) {
             Some(SocketJobGuard::acquire()?)
         } else {
             None
@@ -144,9 +145,9 @@ impl Connection {
                     VERSIONS[0]
                 };
                 let instructions = if self.live_desktop {
-                    "OpenPatch is a native modular synthesizer. This connection controls the same live patch shown in the desktop window. Start with catalog and inspect_patch. Edits update the window and its audio engine; speaker playback is controlled in the desktop window. Use expected_revision to avoid overwriting concurrent GUI edits. New patches use engine v2 with named outputs, up to 16 channels, and one sample per cable; inspect the patch version. analyze_signal measures any named output offline without changing the patch. capture_signal returns bounded peak-preserving waveform bins and calibrated channel statistics offline from reset; it is not a live scope. audio_stereo selects explicit L/R playback and WAV export; other outputs use the first channel. poly_sum mixes voices. render_audio, analyze_signal, and capture_signal accept sorted sample-frame midi_events and module_events to reproduce performances from reset without live playback or history edits. trigger_module queues live seq3, logic, or process actions; its receipt confirms acceptance only. inspect_performance reports actual published module state, controls, lights, and callback counters. rotate_sequence commits one undoable column rotation. initialize_modules restores eligible defaults with audited per-kind initialization; randomize_modules requires a u32 seed and follows catalog eligibility/distributions. Both support atomic batches and preview; undo/redo restore saved controls and captured SEQ3 Run. capture_module_preset snapshots effective controls/current Run; save_module_preset writes exactly reviewed contents to a new .opreset file. Browse with list_module_presets/read_module_preset and apply reviewed inline contents with apply_module_preset; loading does not Initialize or replace the module. Filenames are confined to the configured workspace; existing files are never overwritten. No VCV plugin compatibility."
+                    "OpenPatch is a native modular synthesizer. This connection controls the same live patch shown in the desktop window. Start with catalog and inspect_patch. For visible construction, start_construction preflights a bounded plan and commits paced steps; inspect_construction reports progress, and pause_construction/resume_construction/cancel_construction control future steps. Each committed step is one undo entry. External revision changes stop the plan; cancellation retains completed work. Plans do not start speaker playback. Edits update the window and its audio engine; speaker playback is controlled in the desktop window. Use expected_revision to avoid overwriting concurrent GUI edits. New patches use engine v2 with named outputs, up to 16 channels, and one sample per cable; inspect the patch version. analyze_signal measures any named output offline without changing the patch. capture_signal returns bounded peak-preserving waveform bins and calibrated channel statistics offline from reset; it is not a live scope. audio_stereo selects explicit L/R playback and WAV export; other outputs use the first channel. poly_sum mixes voices. render_audio, analyze_signal, and capture_signal accept sorted sample-frame midi_events and module_events to reproduce performances from reset without live playback or history edits. trigger_module queues live seq3, logic, or process actions; its receipt confirms acceptance only. inspect_performance reports actual published module state, controls, lights, and callback counters. rotate_sequence commits one undoable column rotation. initialize_modules restores eligible defaults with audited per-kind initialization; randomize_modules requires a u32 seed and follows catalog eligibility/distributions. Both support atomic batches and preview; undo/redo restore saved controls and captured SEQ3 Run. capture_module_preset snapshots effective controls/current Run; save_module_preset writes exactly reviewed contents to a new .opreset file. Browse with list_module_presets/read_module_preset and apply reviewed inline contents with apply_module_preset; loading does not Initialize or replace the module. Filenames are confined to the configured workspace; existing files are never overwritten. No VCV plugin compatibility."
                 } else {
-                    "OpenPatch is an offline modular synthesizer. Start with catalog and inspect_patch. New patches use engine v2 with named outputs and polyphonic cables. Build a patch, analyze_signal or capture_signal any output, then render_audio. capture_signal returns calibrated min/max waveform bins offline from reset, not live audio. audio_stereo selects stereo WAV export; other outputs use the first channel. Add poly_sum for a mono mix. Optional sorted sample-frame midi_events and module_events drive reproducible performances during render_audio, analyze_signal, and capture_signal without modifying the patch. trigger_module is unsupported without a live audio backend; inspect_performance reports that boundary. rotate_sequence commits one undoable seq3 column rotation. initialize_modules restores eligible defaults with audited per-kind initialization; randomize_modules requires a u32 seed and follows catalog eligibility/distributions. Both support atomic batches and preview; undo/redo restore saved controls and captured SEQ3 Run. capture_module_preset snapshots effective controls/current Run; save_module_preset writes exactly reviewed contents to a new .opreset file. Browse with list_module_presets/read_module_preset and apply reviewed inline contents with apply_module_preset; loading does not Initialize or replace the module. Filenames are confined to the configured workspace; existing files are never overwritten. This headless process owns an independent patch. No speaker playback or VCV plugin compatibility."
+                    "OpenPatch is an offline modular synthesizer. Start with catalog and inspect_patch. For visible construction, start_construction preflights a bounded plan and commits paced steps; inspect_construction reports progress, and pause_construction/resume_construction/cancel_construction control future steps. Each committed step is one undo entry. External revision changes stop the plan; cancellation retains completed work. Plans do not start speaker playback. New patches use engine v2 with named outputs and polyphonic cables. Build a patch, analyze_signal or capture_signal any output, then render_audio. capture_signal returns calibrated min/max waveform bins offline from reset, not live audio. audio_stereo selects stereo WAV export; other outputs use the first channel. Add poly_sum for a mono mix. Optional sorted sample-frame midi_events and module_events drive reproducible performances during render_audio, analyze_signal, and capture_signal without modifying the patch. trigger_module is unsupported without a live audio backend; inspect_performance reports that boundary. rotate_sequence commits one undoable seq3 column rotation. initialize_modules restores eligible defaults with audited per-kind initialization; randomize_modules requires a u32 seed and follows catalog eligibility/distributions. Both support atomic batches and preview; undo/redo restore saved controls and captured SEQ3 Run. capture_module_preset snapshots effective controls/current Run; save_module_preset writes exactly reviewed contents to a new .opreset file. Browse with list_module_presets/read_module_preset and apply reviewed inline contents with apply_module_preset; loading does not Initialize or replace the module. Filenames are confined to the configured workspace; existing files are never overwritten. This headless process owns an independent patch. No speaker playback or VCV plugin compatibility."
                 };
                 json!({"protocolVersion":version,"capabilities":{"tools":{}},"serverInfo":{"name":"openpatch","version":env!("CARGO_PKG_VERSION")},"instructions":instructions})
             }
@@ -824,6 +825,7 @@ mod tests {
                 "capture_signal",
                 "benchmark",
                 "export_visualizer",
+                "start_construction",
             ] {
                 let response = connection
                     .handle(json!({"jsonrpc":"2.0","id":1,
