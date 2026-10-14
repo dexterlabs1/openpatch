@@ -1,8 +1,22 @@
 //! Shared Studio Rack materials. These functions only paint: rack controls own
 //! their hit regions and parameter behavior independently of the hardware skin.
-use eframe::egui::{self, pos2, vec2, Align2, Color32, FontId, Pos2, Rect, Stroke};
+use eframe::egui::{self, pos2, vec2, Color32, FontId, Pos2, Rect, Stroke};
 
-pub(crate) const INK: Color32 = Color32::from_rgb(35, 37, 35);
+pub(crate) const INK: Color32 = Color32::from_rgb(32, 34, 35);
+
+/// Restrained silkscreen accents identify signal families on the same metal.
+pub(crate) fn family_accent(kind: &str) -> Color32 {
+    match kind {
+        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" => Color32::from_rgb(151, 93, 57),
+        "lowpass" | "ladder_vcf" => Color32::from_rgb(68, 113, 121),
+        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" => Color32::from_rgb(116, 96, 136),
+        "gain" | "analog_vca" | "mixer" | "mix6" | "cv_mix" | "vca_mix" | "fade" | "crossfade" => {
+            Color32::from_rgb(78, 116, 96)
+        }
+        "output" | "audio_out" | "audio_stereo" | "midi_cv" => Color32::from_rgb(66, 104, 133),
+        _ => Color32::from_rgb(112, 112, 105),
+    }
+}
 
 pub(crate) fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -41,14 +55,14 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
         1.0,
         Color32::from_black_alpha(115),
     );
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(89, 90, 83));
+    painter.rect_filled(rect, 1.0, Color32::from_rgb(90, 90, 87));
     let face = rect.shrink(1.5 * zoom);
     let mut mesh = egui::epaint::Mesh::default();
     for (fraction, left, right) in [
-        (0.0, [239, 237, 224], [227, 226, 214]),
-        (0.14, [231, 229, 215], [220, 219, 206]),
-        (0.60, [222, 220, 207], [213, 213, 201]),
-        (1.0, [213, 211, 197], [199, 200, 189]),
+        (0.0, [242, 240, 234], [231, 229, 223]),
+        (0.14, [226, 224, 218], [219, 217, 211]),
+        (0.60, [220, 218, 212], [214, 212, 206]),
+        (1.0, [212, 210, 204], [203, 202, 197]),
     ] {
         let y = egui::lerp(face.y_range(), fraction);
         mesh.colored_vertex(
@@ -90,22 +104,22 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
         (
             rect.left_top(),
             rect.right_top(),
-            Color32::from_rgb(251, 248, 232),
+            Color32::from_rgb(252, 250, 244),
         ),
         (
             rect.left_top(),
             rect.left_bottom(),
-            Color32::from_rgb(242, 239, 222),
+            Color32::from_rgb(245, 243, 237),
         ),
         (
             rect.right_top(),
             rect.right_bottom(),
-            Color32::from_rgb(81, 85, 77),
+            Color32::from_rgb(78, 79, 77),
         ),
         (
             rect.left_bottom(),
             rect.right_bottom(),
-            Color32::from_rgb(100, 104, 93),
+            Color32::from_rgb(103, 104, 101),
         ),
     ] {
         painter.line_segment([a, b], Stroke::new(zoom.max(0.5), color));
@@ -117,17 +131,17 @@ fn shaded_disc(painter: &egui::Painter, center: Pos2, radius: f32) {
     let mut mesh = egui::epaint::Mesh::default();
     mesh.colored_vertex(
         center - vec2(radius * 0.18, radius * 0.24),
-        Color32::from_rgb(59, 65, 62),
+        Color32::from_rgb(76, 79, 80),
     );
     const SEGMENTS: u32 = 40;
     for segment in 0..SEGMENTS {
         let angle = segment as f32 * std::f32::consts::TAU / SEGMENTS as f32;
         let direction = vec2(angle.cos(), angle.sin());
         let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
-        let gray = (18.0 + 25.0 * light) as u8;
+        let gray = (24.0 + 29.0 * light) as u8;
         mesh.colored_vertex(
             center + direction * radius,
-            Color32::from_rgb(gray, gray + 3, gray + 2),
+            Color32::from_rgb(gray, gray + 1, gray + 2),
         );
         mesh.add_triangle(0, segment + 1, (segment + 1) % SEGMENTS + 1);
     }
@@ -167,14 +181,14 @@ pub(crate) fn knob(
     painter.circle_filled(
         center,
         radius + 1.6 * zoom,
-        Color32::from_rgb(171, 172, 157),
+        Color32::from_rgb(161, 163, 161),
     );
     painter.circle_stroke(
         center,
         radius + 1.5 * zoom,
-        Stroke::new(0.7 * zoom, Color32::from_rgb(245, 242, 224)),
+        Stroke::new(0.7 * zoom, Color32::from_rgb(247, 246, 238)),
     );
-    painter.circle_filled(center, radius, Color32::from_rgb(22, 25, 24));
+    painter.circle_filled(center, radius, Color32::from_rgb(23, 25, 27));
     for step in 0..32 {
         let a = step as f32 * std::f32::consts::TAU / 32.0;
         let direction = vec2(a.cos(), a.sin());
@@ -207,7 +221,7 @@ pub(crate) fn knob(
         arc,
         Stroke::new(
             0.85 * zoom,
-            Color32::from_rgba_unmultiplied(193, 196, 177, 120),
+            Color32::from_rgba_unmultiplied(214, 217, 218, 150),
         ),
     ));
     if active {
@@ -242,25 +256,25 @@ pub(crate) fn socket(painter: &egui::Painter, center: Pos2, connected: bool, zoo
         .collect();
     painter.add(egui::Shape::convex_polygon(
         corners,
-        Color32::from_rgb(153, 155, 141),
-        Stroke::new(0.8 * zoom, Color32::from_rgb(84, 88, 77)),
+        Color32::from_rgb(158, 160, 160),
+        Stroke::new(0.8 * zoom, Color32::from_rgb(85, 87, 88)),
     ));
-    painter.circle_filled(center, 8.9 * zoom, Color32::from_rgb(236, 231, 209));
+    painter.circle_filled(center, 8.9 * zoom, Color32::from_rgb(230, 229, 222));
     painter.circle_stroke(
         center,
         8.9 * zoom,
-        Stroke::new(0.9 * zoom, Color32::from_rgb(251, 248, 232)),
+        Stroke::new(0.9 * zoom, Color32::from_rgb(252, 250, 244)),
     );
     painter.circle_filled(
         center + vec2(0.15, 0.4) * zoom,
         7.25 * zoom,
-        Color32::from_rgb(64, 69, 62),
+        Color32::from_rgb(64, 67, 68),
     );
     painter.circle_filled(center, 5.9 * zoom, Color32::from_rgb(12, 17, 16));
     painter.circle_stroke(
         center,
         6.5 * zoom,
-        Stroke::new(0.65 * zoom, Color32::from_rgb(115, 118, 100)),
+        Stroke::new(0.65 * zoom, Color32::from_rgb(116, 119, 119)),
     );
     if connected {
         painter.circle_stroke(
@@ -278,39 +292,63 @@ pub(crate) fn readout(
     max_width: f32,
     zoom: f32,
 ) {
-    let galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(11.0 * zoom), INK);
+    // A real recessed display, with a bounded galley even for long units.
+    let available = (max_width - 10.0 * zoom).max(1.0);
+    let mut galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(11.0 * zoom), INK);
+    if galley.size().x > available {
+        let size = 11.0 * zoom * available / galley.size().x;
+        galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(size), INK);
+    }
     let width = (galley.size().x + 12.0 * zoom)
-        .min(max_width)
-        .max(24.0 * zoom);
-    let rect = Rect::from_center_size(center, vec2(width, 16.0 * zoom));
-    painter.rect_filled(
+        .max(42.0 * zoom)
+        .min(max_width);
+    let rect = Rect::from_center_size(center, vec2(width, 17.0 * zoom));
+    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(190, 191, 183));
+    painter.rect_stroke(
         rect,
         2.0 * zoom,
-        Color32::from_rgba_unmultiplied(116, 121, 105, 26),
+        Stroke::new(0.6 * zoom, Color32::from_rgb(153, 155, 148)),
+        egui::StrokeKind::Inside,
     );
     painter.line_segment(
         [
             rect.left_top() + vec2(2.0, 0.0) * zoom,
             rect.right_top() - vec2(2.0, 0.0) * zoom,
         ],
-        Stroke::new(0.65 * zoom, Color32::from_black_alpha(55)),
+        Stroke::new(0.8 * zoom, Color32::from_black_alpha(75)),
     );
     painter.line_segment(
         [
-            rect.left_bottom() + vec2(2.0, 0.0) * zoom,
-            rect.right_bottom() - vec2(2.0, 0.0) * zoom,
+            rect.left_bottom() + vec2(2.0, 0.5) * zoom,
+            rect.right_bottom() + vec2(-2.0, 0.5) * zoom,
         ],
-        Stroke::new(0.75 * zoom, Color32::from_white_alpha(95)),
+        Stroke::new(0.9 * zoom, Color32::from_white_alpha(170)),
     );
-    painter.galley(center - galley.size() * 0.5, galley, INK);
+    painter
+        .with_clip_rect(painter.clip_rect().intersect(rect))
+        .galley(center - galley.size() * 0.5, galley, INK);
 }
 
-pub(crate) fn port_label(painter: &egui::Painter, center: Pos2, label: &str, zoom: f32) {
-    painter.text(
-        center,
-        Align2::CENTER_CENTER,
-        label,
+pub(crate) fn port_label(
+    painter: &egui::Painter,
+    center: Pos2,
+    label: &str,
+    output: bool,
+    zoom: f32,
+) {
+    let color = if output {
+        Color32::from_rgb(245, 242, 233)
+    } else {
+        INK
+    };
+    let galley = painter.layout_no_wrap(
+        label.to_owned(),
         print_font(painter.ctx(), 10.5 * zoom),
-        INK,
+        color,
     );
+    if output {
+        let plate = Rect::from_center_size(center, galley.size() + vec2(8.0, 2.0) * zoom);
+        painter.rect_filled(plate, 1.5 * zoom, INK);
+    }
+    painter.galley(center - galley.size() * 0.5, galley, color);
 }

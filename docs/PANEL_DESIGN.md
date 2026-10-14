@@ -12,8 +12,11 @@ the browser and sit outside the module artwork.
 
 *Native Linux CI capture; macOS is the primary design target.*
 
-The Studio Rack skin uses brushed ivory metal, compact printed headings,
-recessed value plaques, shaded dark knobs, and machined jack collars. Control
+The Studio Rack skin uses neutral brushed aluminum, compact printed headings,
+restrained signal-family accent rules, recessed value wells, graphite knobs with
+metal edges, and machined jack collars. Outputs have reversed charcoal labels;
+inputs use dark print directly on the panel. Long instance names truncate within
+the header and value text fits its well. Control
 centers, parameter ranges, cable endpoints, and hit areas retain their existing
 behavior. Panels scale from shared drawing code; subpixel brushing is omitted
 at small scales to keep thumbnails and zoomed-out panels clear.
@@ -31,7 +34,7 @@ and presentation state; a catalog change replaces it. No thumbnail image
 assets or separately maintained miniature control layouts are used.
 
 The shared-renderer regressions compare primitive geometry and drawing for all
-45 built-in kinds at default settings. Interaction tests cover preview input
+45 built-in kinds at default settings at 42%, 85%, and 100% scale. Interaction tests cover preview input
 isolation and card click/drag behavior over specialized controls. Native Linux
 CI captures qualify the appearance; macOS device playback is not part of these
 visual checks.

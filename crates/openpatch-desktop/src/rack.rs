@@ -6213,26 +6213,46 @@ fn paint_panel(
             );
         }
     }
-    painter.text(
-        point(width * 0.5, 32.0),
-        Align2::CENTER_CENTER,
-        title(&node.kind),
+    let mut heading = egui::text::LayoutJob::simple(
+        title(&node.kind).to_owned(),
         crate::panel_skin::print_font(
             painter.ctx(),
             if width < 140.0 { 18.0 } else { 21.0 } * zoom,
         ),
         INK,
+        (width - 26.0) * zoom,
     );
-    painter.text(
-        point(width * 0.5, 55.0),
-        Align2::CENTER_CENTER,
-        if node.bypassed { "BYPASSED" } else { &node.id },
+    heading.wrap.max_rows = 1;
+    heading.sections[0].format.extra_letter_spacing = 0.4 * zoom;
+    let heading = painter.layout_job(heading);
+    painter.galley(
+        point(width * 0.5, 31.0) - heading.size() * 0.5,
+        heading,
+        INK,
+    );
+    let mut identity = egui::text::LayoutJob::simple(
+        if node.bypassed { "BYPASSED" } else { &node.id }.to_owned(),
         FontId::monospace(9.0 * zoom),
+        MUTED,
+        (width - 28.0) * zoom,
+    );
+    identity.wrap.max_rows = 1;
+    let identity = painter.layout_job(identity);
+    painter.galley(
+        point(width * 0.5, 51.0) - identity.size() * 0.5,
+        identity,
         MUTED,
     );
     painter.line_segment(
         [point(22.0, 65.0), point(width - 22.0, 65.0)],
-        Stroke::new(0.9 * zoom, Color32::from_rgb(158, 153, 140)),
+        Stroke::new(0.65 * zoom, Color32::from_rgb(166, 164, 157)),
+    );
+    painter.line_segment(
+        [
+            point(width * 0.5 - 16.0, 65.0),
+            point(width * 0.5 + 16.0, 65.0),
+        ],
+        Stroke::new(2.0 * zoom, crate::panel_skin::family_accent(&node.kind)),
     );
     if node.kind != "pulses" {
         painter.text(
@@ -6370,7 +6390,7 @@ fn paint_jack(
     center: Pos2,
     label: &str,
     connected: bool,
-    _output: bool,
+    output: bool,
     zoom: f32,
     compact: bool,
 ) {
@@ -6379,6 +6399,7 @@ fn paint_jack(
             painter,
             center - vec2(0.0, 19.0) * zoom,
             &port_label(label).to_uppercase(),
+            output,
             zoom,
         );
     }
@@ -6611,9 +6632,15 @@ mod tests {
             45,
             "update coverage when adding module kinds"
         );
-        for module in modules {
+        for (module, scale) in modules
+            .iter()
+            .flat_map(|module| [0.42, 0.85, 1.0].map(|scale| (module, scale)))
+        {
             let kind = module["kind"].as_str().unwrap();
-            let rect = Rect::from_min_size(pos2(12.0, 12.0), vec2(panel_width(kind), PANEL_HEIGHT));
+            let rect = Rect::from_min_size(
+                pos2(12.0, 12.0),
+                vec2(panel_width(kind), PANEL_HEIGHT) * scale,
+            );
             let ctx = egui::Context::default();
             crate::panel_skin::install_fonts(&ctx);
             let mut preview = ModulePreview::new(module);
@@ -6633,15 +6660,21 @@ mod tests {
                     preview.show(ui, rect, &catalog);
                 });
             });
+            // Use the exact fitted bounds: fractional-scale centering has float
+            // rounding even when the supplied bounds have the same aspect ratio.
+            let fitted = Rect::from_center_size(
+                rect.center(),
+                vec2(panel_width(kind), PANEL_HEIGHT) * preview.renderer.zoom,
+            );
             let actual = ctx.run(input(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(fitted));
                     child.set_clip_rect(ui.clip_rect().intersect(rect));
                     let rendered = preview.renderer.render_modules(
                         &mut child,
                         &preview.patch,
                         &catalog,
-                        rect,
+                        fitted,
                         48_000,
                         0,
                         RenderMode::Interactive {
@@ -6657,7 +6690,7 @@ mod tests {
             let difference = thumbnail.iter().zip(&actual).position(|(a, b)| a != b);
             assert!(
                 difference.is_none() && thumbnail.len() == actual.len(),
-                "{kind}: preview has {} primitives, actual {}; first difference {:?}",
+                "{kind} at {scale}: preview has {} primitives, actual {}; first difference {:?}",
                 thumbnail.len(),
                 actual.len(),
                 difference.map(|i| (i, &thumbnail[i], &actual[i]))
