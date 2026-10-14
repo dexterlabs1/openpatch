@@ -4086,13 +4086,18 @@ impl OpenPatch {
                 _ => path.with_file_name("rack-score-studio.png"),
             };
             image::save_buffer(
-                target,
+                &target,
                 image.as_raw(),
                 image.width() as u32,
                 image.height() as u32,
                 image::ColorType::Rgba8,
             )
             .expect("Save screenshot");
+            eprintln!(
+                "Native smoke: capture {}/39 at frame {frame}: {}",
+                captures + 1,
+                target.display()
+            );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
             if captures == 39 {
@@ -4129,7 +4134,12 @@ impl eframe::App for OpenPatch {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.smoke_test.is_some() {
-            ctx.style_mut(|style| style.interaction.tooltip_delay = f32::INFINITY);
+            ctx.style_mut(|style| {
+                style.interaction.tooltip_delay = f32::INFINITY;
+                // These captures qualify settled UI states. Their frame-driven
+                // fixtures must not depend on a shared runner's wall-clock pace.
+                style.animation_time = 0.0;
+            });
         }
         self.sync();
         self.observe_document();
@@ -4232,7 +4242,13 @@ impl eframe::App for OpenPatch {
         // every editor/modal to claim keyboard focus in this frame.
         self.service_performance_keyboard(ctx);
         self.smoke(ctx);
-        ctx.request_repaint_after(Duration::from_millis(33));
+        if self.smoke_test.is_some() {
+            // Preserve every fixture frame and screenshot receipt, while avoiding
+            // ~23 seconds of idle delay inside the external 45-second smoke cap.
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(33));
+        }
     }
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
         #[cfg(any(target_os = "macos", target_os = "linux"))]

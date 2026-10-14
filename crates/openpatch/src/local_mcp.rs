@@ -628,6 +628,56 @@ mod tests {
         assert!(check(), "local MCP lifecycle did not settle");
     }
 
+    fn initialize(stream: &mut UnixStream) {
+        const MAX_RESPONSE: usize = 64 * 1024;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        stream
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        writeln!(stream, "{}", json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}})).unwrap();
+        let mut bytes = Vec::new();
+        loop {
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .expect("target MCP initialize response exceeded its deadline");
+            stream.set_read_timeout(Some(remaining)).unwrap();
+            // Read exactly through the response newline so no buffered bytes
+            // can conceal unexpected live data in the later disconnect check.
+            let mut byte = [0];
+            assert_eq!(
+                stream.read(&mut byte).unwrap(),
+                1,
+                "target closed before initialize response"
+            );
+            assert!(
+                bytes.len() < MAX_RESPONSE,
+                "initialize response exceeds test bound"
+            );
+            bytes.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+        }
+        let response: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(response["jsonrpc"], "2.0");
+        assert_eq!(response["id"], 1);
+        assert_eq!(response["result"]["serverInfo"]["name"], "openpatch");
+        assert_eq!(response["result"]["protocolVersion"], "2025-11-25");
+        assert!(response.get("error").is_none());
+    }
+
+    fn assert_disconnected(stream: &mut UnixStream) {
+        match stream.read(&mut [0]) {
+            Ok(0) => {}
+            Err(error) if error.kind() == io::ErrorKind::ConnectionReset => {}
+            Ok(count) => panic!(
+                "server shutdown returned {count} bytes of live data instead of disconnecting"
+            ),
+            Err(error) => panic!("server did not disconnect within the read deadline: {error}"),
+        }
+    }
+
     #[test]
     fn private_directory_rejects_permissions_and_symlinks() {
         let path = temporary();
@@ -654,13 +704,16 @@ mod tests {
             .unwrap_err()
             .contains("multiple"));
         let mut stream = connect(Some(first.session_id()), Some(&workspace)).unwrap();
+        // A discovery probe can temporarily account for client_count == 1.
+        // A response on this socket proves the actual target was admitted.
+        initialize(&mut stream);
         eventually(|| first.client_count() == 1);
         let directory = registry().join(first.session_id());
         stream
             .set_read_timeout(Some(Duration::from_secs(1)))
             .unwrap();
         drop(first);
-        assert_eq!(stream.read(&mut [0]).unwrap(), 0);
+        assert_disconnected(&mut stream);
         assert!(!directory.exists());
         let stream = connect(None, Some(&workspace)).unwrap();
         drop(stream);
