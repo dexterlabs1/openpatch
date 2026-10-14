@@ -17,6 +17,7 @@ mod project;
 mod project_acceptance_tests;
 mod rack;
 mod scope;
+mod scope_transport;
 mod startup;
 mod visuals;
 
@@ -44,6 +45,14 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--third-party-licenses" => {
+                println!(
+                    "{}\n{}",
+                    include_str!("../assets/licenses/THIRD_PARTY.txt"),
+                    include_str!("../assets/licenses/triple_buffer-MPL-2.0.txt")
+                );
+                return Ok(());
+            }
             "--font-license" => {
                 println!("{}", include_str!("../assets/fonts/OFL-Barlow.txt"));
                 return Ok(());
@@ -61,7 +70,7 @@ fn run() -> Result<(), String> {
                 workspace = PathBuf::from(args.next().ok_or("--workspace needs a directory")?)
             }
             "--help" => {
-                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --patch FILENAME       Open a workspace project (.openpatch or legacy .json)\n  --font-license         Print the bundled panel font license");
+                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --patch FILENAME       Open a workspace project (.openpatch or legacy .json)\n  --font-license         Print the bundled panel font license\n  --third-party-licenses Print bundled dependency notices and licenses");
                 return Ok(());
             }
             _ => return Err(format!("Unknown argument: {arg}")),

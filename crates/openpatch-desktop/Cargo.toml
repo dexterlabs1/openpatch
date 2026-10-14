@@ -11,6 +11,7 @@ openpatch = { path = "../openpatch" }
 eframe = { version = "0.33.3", default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "accesskit"] }
 cpal = "0.16.0"
 rtrb = "0.3"
+triple_buffer = "=9.0.0"
 midir = "=0.11.1"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

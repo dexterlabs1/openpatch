@@ -402,6 +402,28 @@ also does not mean playback is running. Values observe the live backend; they
 do not provide arbitrary raw waveforms. Use the native scope for live waveforms,
 or `capture_signal` for an offline trace from reset.
 
+`inspect_scope` reads a rack `scope` instance from the actual active desktop
+engine. Arguments are `id`, optional `channel` (integer 1–16, default 1), and
+optional `expected_revision`. It is read-only and does not enter undo history.
+Without a live backend, `supported` is false and `scope` is null; an attached
+backend awaiting a current capture returns `scope.available: false`.
+
+Available captures contain instance identity, applied revision, callback frame,
+publication sequence, sample rate, X/Y channel counts and selected-voice active
+flags. `x` and `y` each contain 256 raw-volt `{min,max}` bins; unobserved or invalid
+bins are null, never fabricated zero. Acquisition metadata includes write index,
+samples per bin, partial-bin sample count, trigger waiting state, display
+settings, requested seconds and actual rounded window seconds. Parameters are
+saved; captured buffers are runtime observations.
+
+These captures are separate from `inspect_performance`'s common-frame light
+snapshot. Publication is limited to 30 Hz per Scope instance and one roughly
+64 KiB copy per device callback across all Scopes, selected round-robin. Busy
+racks may refresh less often. Each capture is coherent but not guaranteed to
+be from the newest callback. Identity/revision changes invalidate previous
+captures; readers can see unavailable until the next publication. There is no
+offline fallback. See [Rack Scope](RACK_SCOPE.md) for acquisition and bypass.
+
 [Signal processor equations and state policies →](SIGNAL_PROCESSING.md)
 
 ## Saved bypass and mute inversion

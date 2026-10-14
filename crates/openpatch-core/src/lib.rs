@@ -42,6 +42,8 @@ pub use parameter_actions::ModuleParameterActions;
 mod poly;
 mod pulses;
 mod push;
+mod scope;
+pub use scope::{ScopePoint, ScopeSnapshot, SCOPE_BINS};
 mod saved_state;
 mod sum;
 mod viz;
@@ -263,6 +265,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(push::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(scope::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1090,6 +1096,25 @@ impl Engine {
         match &mut self.inner {
             EngineKind::Poly(e) => e.release_module_controls(handle.node),
             _ => false,
+        }
+    }
+    pub fn resolve_module_scope(&self, id: &str) -> Result<ModuleHandle, String> {
+        let node = match &self.inner {
+            EngineKind::Poly(e) => e.resolve_module_scope(id)?,
+            _ => return Err("module scope requires patch version 2".into()),
+        };
+        Ok(ModuleHandle {
+            generation: self.identity,
+            node,
+        })
+    }
+    pub fn module_scope(&self, handle: ModuleHandle) -> Option<&ScopeSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.module_scope(handle.node),
+            _ => None,
         }
     }
     pub fn resolve_module_lights(&self, id: &str) -> Result<ModuleHandle, String> {

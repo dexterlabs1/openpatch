@@ -101,3 +101,28 @@ fn viz_light_callback_allocates_nothing() {
         Some(16)
     );
 }
+
+#[test]
+fn scope_capture_clone_adoption_and_initialization_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame, ScopeSnapshot};
+    let p:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"x","kind":"poly_constant","params":{"channels":16}},{"id":"s","kind":"scope"}],"cables":[{"from":"x","to":"s","input":"x"}]})).unwrap();
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let handle = new.resolve_module_scope("s").unwrap();
+    let mut snapshot = Box::new(ScopeSnapshot::default());
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACKING.with(|c| c.set(true));
+    for _ in 0..20 {
+        old.process_poly_block(&mut frames);
+        new.adopt_state_from(&old);
+        snapshot
+            .as_mut()
+            .clone_from(new.module_scope(handle).unwrap());
+        new.process_poly_block(&mut frames);
+    }
+    assert!(new.initialize_module_state(handle));
+    TRACKING.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(new.module_scope(handle).unwrap().buffer_index, 0);
+}

@@ -2265,6 +2265,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "triple_buffer",
 ]
 
 [[package]]
@@ -3008,6 +3009,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "triple_buffer"
+version = "9.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e875ab7068a75b74f419da453927e05527c36f0001b3c7aad3ce443640683487"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]

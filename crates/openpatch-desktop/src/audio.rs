@@ -556,6 +556,9 @@ impl Audio {
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
+    pub fn module_scope(&self, id: &str) -> Option<Arc<openpatch_core::ScopeSnapshot>> {
+        self.performance.scope_frame(id).map(|frame| frame.snapshot)
+    }
     pub fn module_lights(&self, id: &str) -> Option<openpatch_core::ModuleLightState> {
         self.performance.module_lights(id)
     }
@@ -1049,6 +1052,10 @@ impl Callback {
             // CPAL normally supplies complete frames; incomplete tails are silence.
             chunk[frames * channels..].fill(T::from_mono(0.0));
         }
+        self.graphs
+            .active
+            .modules
+            .publish_scope(&self.graphs.active.engine, self.frame_clock);
         self.module_events.publish(
             &self.graphs.active.engine,
             &self.graphs.active.modules,
@@ -4398,6 +4405,7 @@ mod tests {
 
     include!("sum_audio_tests.rs");
     include!("viz_audio_tests.rs");
+    include!("rack_scope_audio_tests.rs");
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

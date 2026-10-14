@@ -1,0 +1,159 @@
+{
+  "reference": {
+    "commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Scope.cpp",
+    "sha256": "948a5034696084bd894d256a9fdecd620799e611c689e6ae5b0e19ff0b73c54f",
+    "sdk_path": "/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
+    "headers": {
+      "dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2"
+    }
+  },
+  "production_sha256": "8574a3a7baac4aa271f33da24bd955b596e2b1cf9e85878ad23fd0082c470fa1",
+  "method": "Independent C++ bin driver with genuine SDK Input and SchmittTrigger versus production scope.rs with minimal Rust Node/parameter/PortFrame host. Exact bin widths use binary-exact literal seconds at 65536 Hz. Per-frame comparison includes indices, output widths and FNV-1a-style u32-word hash of every min/max bin plus all passthrough voltages.",
+  "limitations": [
+    "Does not execute upstream Scope module or GUI; no upstream source vendored",
+    "Does not compare exponential TIME mapping/approximation, graph latency, physical SDK output bookkeeping, bypass, route-edit reset or nonfinite samples",
+    "Hash comparison has theoretical collisions; regression tests independently inspect exact bins",
+    "Display-edit adoption compared to uninterrupted SDK driver; reset differences deliberately excluded"
+  ],
+  "cases": [
+    {
+      "name": "retirement",
+      "samples_per_bin": 2,
+      "frames": 4500,
+      "input_sha256": "c7f9d3565d9db9d5c3ecaefdf0377aabc0b0c779e101f36cd167d561778836d8",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "random",
+      "samples_per_bin": 2,
+      "frames": 4500,
+      "input_sha256": "4a10901cac6e7c333ed7447c0d88b85f384dbcd88a55eb89cc80a1c506233fad",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "external",
+      "samples_per_bin": 2,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "internal",
+      "samples_per_bin": 2,
+      "frames": 4500,
+      "input_sha256": "4359523626e2a30b78c2d246cc81d9305606814f40de8a1fed76f69211d855fc",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "xy",
+      "samples_per_bin": 2,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "retirement",
+      "samples_per_bin": 4,
+      "frames": 4500,
+      "input_sha256": "c7f9d3565d9db9d5c3ecaefdf0377aabc0b0c779e101f36cd167d561778836d8",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "random",
+      "samples_per_bin": 4,
+      "frames": 4500,
+      "input_sha256": "4a10901cac6e7c333ed7447c0d88b85f384dbcd88a55eb89cc80a1c506233fad",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "external",
+      "samples_per_bin": 4,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "internal",
+      "samples_per_bin": 4,
+      "frames": 4500,
+      "input_sha256": "4359523626e2a30b78c2d246cc81d9305606814f40de8a1fed76f69211d855fc",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "xy",
+      "samples_per_bin": 4,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "retirement",
+      "samples_per_bin": 16,
+      "frames": 4500,
+      "input_sha256": "c7f9d3565d9db9d5c3ecaefdf0377aabc0b0c779e101f36cd167d561778836d8",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "random",
+      "samples_per_bin": 16,
+      "frames": 4500,
+      "input_sha256": "4a10901cac6e7c333ed7447c0d88b85f384dbcd88a55eb89cc80a1c506233fad",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "external",
+      "samples_per_bin": 16,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "internal",
+      "samples_per_bin": 16,
+      "frames": 4500,
+      "input_sha256": "4359523626e2a30b78c2d246cc81d9305606814f40de8a1fed76f69211d855fc",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    },
+    {
+      "name": "xy",
+      "samples_per_bin": 16,
+      "frames": 4500,
+      "input_sha256": "b161d93e06709d28a1e30a15ddbd4eb7ae1276f747b7a1238d7bc634cac4e4f0",
+      "passed": true,
+      "failure_count": 0,
+      "first_failures": []
+    }
+  ],
+  "passed": true,
+  "total_frames": 67500
+}

@@ -9,6 +9,7 @@ use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
 use crate::routing::{self, Routing};
+use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
@@ -82,6 +83,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "seq3"
                 | "pulses"
                 | "push"
+                | "scope"
                 | "gates"
         )
 }
@@ -119,6 +121,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
+        "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "pulses" => None,
@@ -157,7 +160,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if let Some(ports) = routing::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
-    if kind == "pulses" {
+    if kind == "scope" {
+        scope::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "pulses" {
         pulses::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
         push::OUTPUTS.iter().position(|port| *port == name)
@@ -249,6 +254,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if kind == "pulses" {
         pulses::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "scope" {
+        scope::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -409,6 +419,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "pulses" {
         pulses::annotate(module);
     }
+    if kind == "scope" {
+        scope::annotate(module);
+    }
     if kind == "push" {
         push::annotate(module);
     }
@@ -441,6 +454,7 @@ enum Model {
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
+    Scope(Box<Scope>),
     Gates(Box<Gates>),
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
@@ -472,6 +486,9 @@ impl Model {
         }
         if node.kind == "gates" {
             return Ok(Self::Gates(Box::new(Gates::build(node, rate)?)));
+        }
+        if node.kind == "scope" {
+            return Ok(Self::Scope(Box::new(Scope::build(node, rate)?)));
         }
         if node.kind == "push" {
             return Ok(Self::Push(Box::new(Push::build(node, rate)?)));
@@ -628,6 +645,22 @@ impl PolyEngine {
             return Err(format!("module '{id}' has no manual controls"));
         }
         Ok(index)
+    }
+    pub(crate) fn resolve_module_scope(&self, id: &str) -> Result<usize, String> {
+        let index = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("module '{id}' does not exist"))?;
+        if self.module_scope(index).is_none() {
+            return Err(format!("module '{id}' has no scope"));
+        }
+        Ok(index)
+    }
+    pub(crate) fn module_scope(&self, index: usize) -> Option<&crate::ScopeSnapshot> {
+        match self.nodes.get(index).map(|n| &n.model) {
+            Some(Model::Scope(s)) => Some(&s.snapshot),
+            _ => None,
+        }
     }
     pub(crate) fn resolve_module_lights(&self, id: &str) -> Result<usize, String> {
         let index = *self
@@ -811,6 +844,10 @@ impl PolyEngine {
                 g.reset_state();
                 gates::OUTPUTS.len()
             }
+            Model::Scope(s) => {
+                s.reset();
+                scope::OUTPUTS.len()
+            }
             Model::Push(p) => {
                 p.reset_state();
                 push::OUTPUTS.len()
@@ -854,6 +891,7 @@ impl PolyEngine {
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
+            Model::Scope(s) => s.reset(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
@@ -976,6 +1014,7 @@ impl PolyEngine {
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
+                    "scope" => scope::OUTPUTS.len(),
                     "gates" => gates::OUTPUTS.len(),
                     _ => 1,
                 }
@@ -1166,8 +1205,14 @@ impl PolyEngine {
                         .flatten()
                         .and_then(|input| node.inputs[input])
                         .map(|edge| self.input_frames[edge])
-                        .filter(|frame| frame.channels > 0)
-                        .unwrap_or_else(|| PortFrame::mono(0.0));
+                        .filter(|frame| node.kind == "scope" || frame.channels > 0)
+                        .unwrap_or_else(|| {
+                            if node.kind == "scope" {
+                                PortFrame::default()
+                            } else {
+                                PortFrame::mono(0.0)
+                            }
+                        });
                 }
                 continue;
             }
@@ -1221,6 +1266,18 @@ impl PolyEngine {
                         }
                     }
                     g.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
+                Model::Scope(s) => {
+                    let mut inputs = [PortFrame::default(); 3];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    s.process(
                         &inputs,
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     );
@@ -1585,6 +1642,11 @@ impl PolyEngine {
             } else {
                 [false; 2]
             };
+            let scope_routes_unchanged = if self.nodes[*index].kind == "scope" {
+                (0..3).all(|port| self.input_unchanged(*index, old, *old_index, port))
+            } else {
+                true
+            };
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
@@ -1595,6 +1657,7 @@ impl PolyEngine {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
                 (Model::Viz(v), Model::Viz(old)) => v.adopt(old),
+                (Model::Scope(s), Model::Scope(old)) => s.adopt(old, scope_routes_unchanged),
                 (Model::Score(s), Model::Score(old)) => {
                     s.adopt(old);
                     s.reset_input_detectors(score_inputs_changed[0], score_inputs_changed[1]);

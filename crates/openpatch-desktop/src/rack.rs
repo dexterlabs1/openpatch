@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
     atomic::{AtomicU32, Ordering},
-    OnceLock,
+    Arc, OnceLock,
 };
 
 #[path = "cable_menu.rs"]
@@ -365,6 +365,7 @@ pub struct Rack {
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
+    scope_states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
@@ -399,6 +400,7 @@ impl Default for Rack {
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
+            scope_states: BTreeMap::new(),
             sequence_states: BTreeMap::new(),
             performance_available: false,
             module_lights: BTreeMap::new(),
@@ -790,6 +792,13 @@ impl Rack {
         self.reveal_group_once = select_copies;
         self.suppress_reveal_once = false;
         self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    pub fn set_scope_states(
+        &mut self,
+        states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
+    ) {
+        self.scope_states = states;
     }
 
     pub fn set_sequence_states(
@@ -2121,6 +2130,11 @@ impl Rack {
                     .unwrap_or("mono");
                 header_response.on_hover_text(format!("{} · {description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows.", node.id));
             }
+            if node.kind == "scope" {
+                if let Some(edit) = self.scope_panel(ui, node, module, rect) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "seq3" {
                 if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
                     action = Some(edit);
@@ -2320,7 +2334,8 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if is_voltage_utility(&node.kind)
+                if node.kind == "scope"
+                    || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
                     || (node.kind == "rescale"
@@ -4543,6 +4558,164 @@ impl Rack {
         })
     }
 
+    fn scope_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let display = Rect::from_min_max(point(30.0, 70.0), point(600.0, 250.0));
+        painter.rect_filled(display.expand(3.0 * zoom), 3.0 * zoom, INK);
+        painter.rect_filled(display, 1.0, Color32::from_rgb(14, 24, 27));
+        for i in 1..10 {
+            let x = display.left() + display.width() * i as f32 / 10.0;
+            painter.line_segment(
+                [pos2(x, display.top()), pos2(x, display.bottom())],
+                Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
+            );
+        }
+        for i in 1..6 {
+            let y = display.top() + display.height() * i as f32 / 6.0;
+            painter.line_segment(
+                [pos2(display.left(), y), pos2(display.right(), y)],
+                Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
+            );
+        }
+        let trace = painter.with_clip_rect(display.shrink(1.0));
+        if let Some(state) = self.scope_states.get(&node.id) {
+            let colors = [
+                Color32::from_rgb(86, 215, 222),
+                Color32::from_rgb(250, 185, 80),
+            ];
+            let voltage_y = |v: f32, scale: u8, offset: f32| {
+                display.center().y
+                    - (v + offset) * display.height() / (20.0 / 2.0_f32.powi(i32::from(scale)))
+            };
+            if state.xy {
+                for voice in 0..usize::from(state.x_channels.min(state.y_channels).min(16)) {
+                    let mut previous = None;
+                    for bin in scope_xy_order(state.buffer_index) {
+                        let x = state.x[voice][bin];
+                        let y = state.y[voice][bin];
+                        if !scope_point_valid(x) || !scope_point_valid(y) {
+                            previous = None;
+                            continue;
+                        }
+                        let p = pos2(
+                            display.center().x
+                                + ((x.min + x.max) * 0.5 + state.x_offset) * display.width()
+                                    / (20.0 / 2.0_f32.powi(i32::from(state.x_scale))),
+                            voltage_y((y.min + y.max) * 0.5, state.y_scale, state.y_offset),
+                        );
+                        if let Some(prev) = previous {
+                            trace.line_segment(
+                                [prev, p],
+                                Stroke::new(zoom.max(0.6), scope_voice_color(colors[0], voice)),
+                            );
+                        }
+                        previous = Some(p);
+                    }
+                }
+            } else {
+                for (channel, count, scale, offset, color) in [
+                    (
+                        &state.x,
+                        state.x_channels,
+                        state.x_scale,
+                        state.x_offset,
+                        colors[0],
+                    ),
+                    (
+                        &state.y,
+                        state.y_channels,
+                        state.y_scale,
+                        state.y_offset,
+                        colors[1],
+                    ),
+                ] {
+                    for (voice, samples) in
+                        channel.iter().enumerate().take(usize::from(count.min(16)))
+                    {
+                        let mut previous = None;
+                        for (bin, sample) in samples.iter().enumerate() {
+                            if !scope_point_valid(*sample) {
+                                previous = None;
+                                continue;
+                            }
+                            let x = display.left() + display.width() * bin as f32 / 255.0;
+                            let lo = pos2(x, voltage_y(sample.min, scale, offset));
+                            let hi = pos2(x, voltage_y(sample.max, scale, offset));
+                            let stroke =
+                                Stroke::new(zoom.max(0.6), scope_voice_color(color, voice));
+                            trace.line_segment([lo, hi], stroke);
+                            let mid = pos2(x, (lo.y + hi.y) * 0.5);
+                            if let Some(prev) = previous {
+                                trace.line_segment([prev, mid], stroke);
+                            }
+                            previous = Some(mid);
+                        }
+                    }
+                }
+            }
+            painter.text(
+                point(40.0, 81.0),
+                Align2::LEFT_TOP,
+                format!(
+                    "X {} ch   Y {} ch   {}   {:.3} s requested{}",
+                    state.x_channels,
+                    state.y_channels,
+                    if state.xy { "XY" } else { "TIME" },
+                    state.time,
+                    if state.waiting {
+                        "   WAITING FOR TRIGGER"
+                    } else {
+                        ""
+                    }
+                ),
+                FontId::monospace(10.0 * zoom),
+                Color32::from_gray(216),
+            );
+        } else {
+            painter.text(
+                display.center(),
+                Align2::CENTER_CENTER,
+                "NO ENGINE CAPTURE · X / Y VOLTS",
+                FontId::monospace(12.0 * zoom),
+                Color32::from_gray(155),
+            );
+        }
+        let mut action = None;
+        for (index, (name, label, suffix)) in SCOPE_CONTROLS.iter().enumerate() {
+            let local = scope_control_rect(index);
+            let control = Rect::from_min_max(
+                point(local.min.x, local.min.y),
+                point(local.max.x, local.max.y),
+            );
+            painter.text(
+                point(local.min.x, local.min.y - 8.0),
+                Align2::LEFT_CENTER,
+                *label,
+                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+                INK,
+            );
+            if let Some(spec) = module.and_then(|m| m["params"].get(*name)) {
+                let edit = if matches!(*name, "xy" | "trigger_enabled") {
+                    self.choice_parameter(ui, node, name, spec, control, &["OFF", "ON"])
+                } else {
+                    self.compact_parameter(ui, node, name, spec, control, suffix)
+                };
+                if edit.is_some() {
+                    action = edit;
+                }
+            }
+        }
+        action
+    }
+
     fn compact_parameter(
         &mut self,
         ui: &mut egui::Ui,
@@ -4593,8 +4766,20 @@ impl Rack {
                     rect.size(),
                     egui::DragValue::new(&mut value)
                         .range(min * scale..=max * scale)
-                        .speed(if step.is_some() { 0.1 } else { 0.02 * scale })
-                        .max_decimals(if step.is_some() { 0 } else { 2 })
+                        .speed(if step.is_some() {
+                            0.1
+                        } else if node.kind == "scope" && parameter == "time" {
+                            0.001
+                        } else {
+                            0.02 * scale
+                        })
+                        .max_decimals(if step.is_some() {
+                            0
+                        } else if node.kind == "scope" && parameter == "time" {
+                            3
+                        } else {
+                            2
+                        })
                         .suffix(suffix),
                 )
             })
@@ -5575,6 +5760,16 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "scope" => {
+            return pos2(
+                if input {
+                    [70.0, 170.0, 285.0][index]
+                } else {
+                    [460.0, 560.0][index]
+                },
+                360.0,
+            )
+        }
         "poly_viz" => return pos2(width * 0.5, 367.0),
         "poly_sum" => return pos2(if input { 45.0 } else { 105.0 }, 367.0),
         "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
@@ -6399,6 +6594,7 @@ fn panel_button(
 
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
@@ -6433,6 +6629,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
 }
 pub(crate) fn title(kind: &str) -> &str {
     match kind {
+        "scope" => "SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
         "stereo_reverb" => "SPACE",
@@ -7371,8 +7568,49 @@ fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: 
     painter.circle_filled(point, 2.0 * zoom, Color32::from_rgb(34, 35, 33));
 }
 
+const SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
+    ("x_scale", "X SCALE · 20 / 2^n V", ""),
+    ("y_scale", "Y SCALE · 20 / 2^n V", ""),
+    ("time", "WINDOW", " s"),
+    ("xy", "XY MODE", ""),
+    ("x_offset", "X OFFSET", " V"),
+    ("y_offset", "Y OFFSET", " V"),
+    ("threshold", "TRIGGER LEVEL", " V"),
+    ("trigger_enabled", "TRIGGER", ""),
+];
+fn scope_control_rect(index: usize) -> Rect {
+    Rect::from_min_size(
+        pos2(
+            30.0 + (index % 4) as f32 * 145.0,
+            274.0 + (index / 4) as f32 * 40.0,
+        ),
+        vec2(130.0, 22.0),
+    )
+}
+fn scope_voice_color(base: Color32, voice: usize) -> Color32 {
+    let factor = 0.55 + 0.45 * (voice % 4) as f32 / 3.0;
+    let mix = (voice / 4) as u8 * 18;
+    Color32::from_rgb(
+        ((base.r() as f32 * factor) as u8).saturating_add(mix),
+        ((base.g() as f32 * factor) as u8).saturating_add(mix),
+        ((base.b() as f32 * factor) as u8).saturating_add(mix),
+    )
+}
+
+fn scope_point_valid(point: openpatch_core::ScopePoint) -> bool {
+    point.min.is_finite() && point.max.is_finite() && point.min <= point.max
+}
+fn scope_xy_order(buffer_index: usize) -> impl Iterator<Item = usize> {
+    (0..openpatch_core::SCOPE_BINS).map(move |index| {
+        (buffer_index % openpatch_core::SCOPE_BINS + index) % openpatch_core::SCOPE_BINS
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    mod scope_ui_tests {
+        include!("newscope_ui_tests.rs");
+    }
     mod viz_ui_tests {
         include!("viz_ui_tests.rs");
     }
@@ -7534,7 +7772,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            52,
+            53,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules

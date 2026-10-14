@@ -953,6 +953,42 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("redo", {})
         self.assertEqual(len(self.patch_snapshot()["patch"]["nodes"]), 1)
 
+    def test_rack_scope_contract_and_offline_inspection_boundary(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog", {}))
+        module = next(m for m in catalog["modules"] if m["kind"] == "scope")
+        self.assertEqual(module["inputs"], ["x", "y", "trigger"])
+        self.assertEqual(module["outputs"], ["x", "y"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 16, "v1": 12, "v16": -14}},
+            {"id": "scope", "kind": "scope", "params": {"time": 0.005}}],
+            "cables": [{"from": "source", "to": "scope", "input": "x"}],
+            "output": "scope", "output_port": "x"}})
+        before = self.patch_snapshot()
+        unavailable = self.payload(self.require_tool_success("inspect_scope", {"id": "scope", "channel": 16}))
+        self.assertFalse(unavailable["supported"])
+        self.assertIsNone(unavailable["scope"])
+        for channel in [0, 17, -1, 1.5, "1", None]:
+            self.require_tool_error("inspect_scope", {"id": "scope", "channel": channel})
+        self.require_tool_error("inspect_scope", {"id": "source"})
+        self.require_tool_error("inspect_scope", {"id": "missing"})
+        self.require_tool_error("inspect_scope", {"id": "scope", "expected_revision": 0})
+        self.assertEqual(self.patch_snapshot(), before)
+        measured = self.payload(self.require_tool_success("analyze_signal", {
+            "id": "scope", "port": "x", "seconds": 0.001}))
+        self.assertEqual(measured["max_channels"], 16)
+        self.assertEqual(measured["channels"][0]["peak"], 12)
+        self.assertEqual(measured["channels"][15]["peak"], 14)
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("set_parameter", {"id": "scope", "parameter": "xy", "value": 1})
+        self.require_tool_success("save_patch", {"filename": "scope.json"})
+        saved = json.loads((self.workspace / "scope.json").read_text())
+        self.assertAlmostEqual(saved["nodes"][1]["params"]["time"], 0.005)
+        self.assertEqual(saved["nodes"][1]["params"]["xy"], 1)
+        self.require_tool_success("undo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo", {})
+        self.assertEqual(self.patch_snapshot()["patch"]["nodes"][1]["params"]["xy"], 1)
+
     def test_stereo_render_preserves_channels_and_normalization(self) -> None:
         patch = {"version": 2, "sample_rate": 48000, "nodes": [
             {"id": "left", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": 3}},

@@ -3356,6 +3356,33 @@ impl OpenPatch {
             });
         self.shader_open = open;
     }
+    fn rack_scope_smoke_fixture(xy: bool) -> (Patch, openpatch_core::ScopeSnapshot) {
+        let mut pitch = serde_json::Map::new();
+        pitch.insert("channels".into(), json!(16));
+        for voice in 1..=16 {
+            pitch.insert(format!("v{voice}"), json!((voice - 1) as f32 * 0.1));
+        }
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"scope","kind":"scope","params":{"time":0.08,"xy":if xy {1} else {0}}},
+                {"id":"wave","kind":"multi_vco","params":{"frequency":50.0}},
+                {"id":"pitch","kind":"poly_constant","params":pitch}],
+            "cables":[{"from":"pitch","to":"wave","input":"pitch"},
+                {"from":"wave","output":"sine","to":"scope","input":"x"},
+                {"from":"wave","output":"triangle","to":"scope","input":"y"}]
+        }))
+        .expect("Rack Scope smoke patch");
+        let mut engine = patch.compile().expect("Rack Scope offline engine");
+        engine.process_block(&mut vec![0.0; 3840]);
+        let handle = engine
+            .resolve_module_scope("scope")
+            .expect("Rack Scope handle");
+        let snapshot = engine
+            .module_scope(handle)
+            .expect("Rack Scope snapshot")
+            .clone();
+        (patch, snapshot)
+    }
+
     fn smoke(&mut self, ctx: &egui::Context) {
         let Some((path, frame, captures)) = &mut self.smoke_test else {
             return;
@@ -4013,6 +4040,31 @@ impl OpenPatch {
             self.title = "Score and studio modules".into();
             self.status = "Native patterns, percussion, filters and stereo effects".into();
         }
+        if matches!(frame, 710 | 738) {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            self.settings_open = false;
+            self.keyboard_open = false;
+            let xy = frame == 738;
+            let (patch, snapshot) = Self::rack_scope_smoke_fixture(xy);
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("Rack Scope offline fixture publishes");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+                    "scope":[0,0],"wave":[630,0],"pitch":[930,0]
+                }}))
+                .expect("Rack Scope fixture layout");
+            self.rack.set_scope_states(BTreeMap::from([(
+                "scope".into(),
+                std::sync::Arc::new(snapshot),
+            )]));
+            self.title = format!(
+                "Rack Scope · {} · offline DSP snapshot",
+                if xy { "XY" } else { "time" }
+            );
+            self.status = "Offline DSP capture · 16 voices per input · sine X / triangle Y · no live audio stream".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -4059,6 +4111,8 @@ impl OpenPatch {
                 | 648
                 | 676
                 | 704
+                | 732
+                | 760
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4115,7 +4169,9 @@ impl OpenPatch {
                 35 => path.with_file_name("parameter-context-entry.png"),
                 36 => path.with_file_name("cable-output-menu.png"),
                 37 => path.with_file_name("cable-input-menu.png"),
-                _ => path.with_file_name("rack-score-studio.png"),
+                38 => path.with_file_name("rack-score-studio.png"),
+                39 => path.with_file_name("rack-scope-time.png"),
+                _ => path.with_file_name("rack-scope-xy.png"),
             };
             image::save_buffer(
                 &target,
@@ -4126,18 +4182,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/39 at frame {frame}: {}",
+                "Native smoke: capture {}/41 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 39 {
+            if captures == 41 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 738, "Native screenshot timeout");
+        assert!(frame < 794, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4219,8 +4275,14 @@ impl eframe::App for OpenPatch {
             self.rack.set_sequence_states(states, self.audio.is_some());
             let mut lights = BTreeMap::new();
             let mut controls = BTreeMap::new();
+            let mut scopes = BTreeMap::new();
             if let Some(audio) = self.audio.as_ref() {
                 for node in &self.patch.nodes {
+                    if node.kind == "scope" {
+                        if let Some(state) = audio.module_scope(&node.id) {
+                            scopes.insert(node.id.clone(), state);
+                        }
+                    }
                     if let Some(state) = audio.module_lights(&node.id) {
                         lights.insert(node.id.clone(), state);
                     }
@@ -4230,6 +4292,7 @@ impl eframe::App for OpenPatch {
                 }
             }
             self.rack.set_module_states(lights, controls);
+            self.rack.set_scope_states(scopes);
         }
         self.rack_workspace(ctx, library_action);
         self.observe_document();
@@ -4400,6 +4463,29 @@ mod project_workflow_tests {
         app.rack.select_only("tone".into());
         app.observe_document();
         app
+    }
+
+    #[test]
+    fn rack_scope_smoke_fixtures_capture_real_sixteen_voice_dsp() {
+        for xy in [false, true] {
+            let (patch, snapshot) = OpenPatch::rack_scope_smoke_fixture(xy);
+            assert_eq!(snapshot.xy, xy);
+            assert_eq!((snapshot.x_channels, snapshot.y_channels), (16, 16));
+            assert_eq!(
+                patch.nodes.iter().find(|n| n.id == "scope").unwrap().params["time"],
+                0.08
+            );
+            for channel in [&snapshot.x, &snapshot.y] {
+                for voice in channel {
+                    assert!(voice
+                        .iter()
+                        .all(|p| p.min.is_finite() && p.max.is_finite() && p.min <= p.max));
+                    assert!(voice.iter().any(|p| p.min < -1.0));
+                    assert!(voice.iter().any(|p| p.max > 1.0));
+                }
+            }
+            assert_ne!(snapshot.x[0], snapshot.x[15]);
+        }
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use super::audio_diagnostics::{Diagnostics, Recorder};
+use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
 use openpatch::control::LiveModuleEvents;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
@@ -171,6 +172,7 @@ struct Control {
     entries: BTreeMap<String, Entry>,
     state_entries: BTreeMap<String, StateEntry>,
     cable_entries: BTreeMap<String, CableEntry>,
+    scope_readers: BTreeMap<String, ScopeReader>,
     revision: u64,
     next_token: u64,
     next_sequence: u64,
@@ -360,7 +362,16 @@ pub(super) struct CableBinding {
     pub token: u64,
     pub handle: CableHandle,
 }
+struct ScopeBinding {
+    token: u64,
+    handle: ModuleHandle,
+    producer: ScopeProducer,
+    next_frame: u64,
+}
 pub(super) struct ModulePlan {
+    scopes: Vec<ScopeBinding>,
+    scope_cursor: usize,
+    scope_interval: u64,
     pub bindings: [Option<Binding>; MAX_NODES],
     pub states: [Option<StateBinding>; MAX_NODES],
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
@@ -372,6 +383,9 @@ pub(super) struct ModulePlan {
 impl Default for ModulePlan {
     fn default() -> Self {
         Self {
+            scopes: Vec::new(),
+            scope_cursor: 0,
+            scope_interval: 1,
             bindings: [None; MAX_NODES],
             states: [None; MAX_NODES],
             fresh_states: [None; MAX_NODES],
@@ -387,6 +401,24 @@ impl Default for ModulePlan {
     }
 }
 impl ModulePlan {
+    /// At most one fixed-size waveform copy per device callback. Unobserved
+    /// instances slow down under load; audio never waits for display consumers.
+    pub(super) fn publish_scope(&mut self, engine: &Engine, frame: u64) {
+        let count = self.scopes.len();
+        for offset in 0..count {
+            let index = (self.scope_cursor + offset) % count;
+            let binding = &mut self.scopes[index];
+            if frame < binding.next_frame {
+                continue;
+            }
+            if let Some(snapshot) = engine.module_scope(binding.handle) {
+                binding.producer.publish(snapshot, frame);
+                binding.next_frame = frame.saturating_add(self.scope_interval);
+                self.scope_cursor = (index + 1) % count;
+                break;
+            }
+        }
+    }
     /// Saved custom state is assigned after DSP adoption, never replayed as a
     /// button press. A load also reaches the fading instance of the same module.
     pub(super) fn load_saved_pending(
@@ -445,7 +477,18 @@ impl ModulePlan {
     }
 
     /// Exclusions are fixed stack storage; no control registry reaches audio.
-    pub(super) fn adopt_state(&self, engine: &mut Engine, previous: &Self, old: &Engine) {
+    pub(super) fn adopt_state(&mut self, engine: &mut Engine, previous: &Self, old: &Engine) {
+        // Display edits and graph rebuilds preserve the per-instance refresh
+        // deadline. A new capture reader can remain unavailable until it is due.
+        for binding in &mut self.scopes {
+            if let Some(old) = previous
+                .scopes
+                .iter()
+                .find(|old| old.token == binding.token)
+            {
+                binding.next_frame = old.next_frame;
+            }
+        }
         let first = self
             .states
             .iter()
@@ -546,6 +589,7 @@ impl Performance {
                     entries: BTreeMap::new(),
                     state_entries: BTreeMap::new(),
                     cable_entries: BTreeMap::new(),
+                    scope_readers: BTreeMap::new(),
                     revision: 0,
                     next_token: 1,
                     next_sequence: 1,
@@ -564,7 +608,7 @@ impl Performance {
         engine: &Engine,
         revision: u64,
     ) -> Result<ModulePlan, String> {
-        let control = self
+        let mut control = self
             .control
             .lock()
             .map_err(|_| "Module event registry poisoned")?;
@@ -638,7 +682,44 @@ impl Performance {
                 release_epoch: 0,
             });
         }
+        plan.scope_interval = u64::from(self.rate).div_ceil(30);
+        for node in patch.nodes.iter().filter(|node| node.kind == "scope") {
+            let Some(entry) = control
+                .state_entries
+                .get(&node.id)
+                .filter(|entry| entry.kind == "scope" && revision >= entry.born_revision)
+            else {
+                continue;
+            };
+            let token = entry.token;
+            let handle = engine.resolve_module_scope(&node.id)?;
+            let (producer, reader) = scope_transport::channel(token, revision);
+            // Prepared stale graphs must never replace the latest reader.
+            if revision == control.revision {
+                control.scope_readers.insert(node.id.clone(), reader);
+            }
+            plan.scopes.push(ScopeBinding {
+                token,
+                handle,
+                producer,
+                next_frame: 0,
+            });
+        }
         Ok(plan)
+    }
+    pub(super) fn scope_frame(&self, id: &str) -> Option<ScopeFrame> {
+        let control = self.control.lock().ok()?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        let entry = control
+            .state_entries
+            .get(id)
+            .filter(|entry| entry.kind == "scope")?;
+        control
+            .scope_readers
+            .get(id)?
+            .read(entry.token, control.revision)
     }
     pub(super) fn sequence_state(&self, id: &str) -> Option<ModuleTelemetry> {
         let control = self.control.lock().ok()?;
@@ -723,6 +804,39 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn inspect_scope(&self, id: &str, channel: usize) -> Result<Value, String> {
+        if channel >= 16 {
+            return Err("Scope channel is outside 1..16".into());
+        }
+        let Some(frame) = self.scope_frame(id) else {
+            return Ok(json!({"available":false,"source":"live_rack_scope","id":id}));
+        };
+        let s = &frame.snapshot;
+        let bins =
+            |axis: &[[openpatch_core::ScopePoint; openpatch_core::SCOPE_BINS]; 16]| -> Vec<Value> {
+                axis[channel]
+                    .iter()
+                    .map(|p| {
+                        if p.min.is_finite() && p.max.is_finite() && p.min <= p.max {
+                            json!({"min":p.min,"max":p.max})
+                        } else {
+                            Value::Null
+                        }
+                    })
+                    .collect()
+            };
+        Ok(json!({"available":true,"source":"live_rack_scope","id":id,
+            "revision":frame.revision,"instance":frame.token,"frame":frame.frame,"sequence":frame.sequence,
+            "sample_rate":self.rate,"channel":channel+1,"x_channels":s.x_channels,"y_channels":s.y_channels,
+            "x_active":channel<usize::from(s.x_channels),"y_active":channel<usize::from(s.y_channels),
+            "buffer_index":s.buffer_index,"samples_per_bin":s.samples_per_bin,"sample_index":s.sample_index,
+            "waiting":s.waiting,"xy":s.xy,"requested_seconds":s.time,
+            "window_seconds":f64::from(s.samples_per_bin)*256.0/f64::from(self.rate),
+            "x_scale":s.x_scale,"y_scale":s.y_scale,"x_offset":s.x_offset,"y_offset":s.y_offset,
+            "trigger_enabled":s.trigger_enabled,"threshold":s.threshold,"units":"V",
+            "publication":{"maximum_hz":30,"budget":"one Scope snapshot per device callback, round-robin; busy racks reduce refresh cadence"},
+            "x":bins(&s.x),"y":bins(&s.y)}))
+    }
     fn load_module_running(&self, states: &BTreeMap<String, bool>) {
         self.load_saved_states(states, SavedModuleState::Seq3Run(false));
     }
@@ -777,6 +891,7 @@ impl LiveModuleEvents for Performance {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
             control.state_entries.remove(id);
+            control.scope_readers.remove(id);
             if let Some(entry) = control.entries.remove(id) {
                 // The following sync assigns a fresh token even when the final
                 // patch recreates an identical module in the same transaction.
@@ -836,6 +951,12 @@ impl LiveModuleEvents for Performance {
                 .nodes
                 .iter()
                 .any(|node| node.id == *id && node.kind == entry.kind)
+        });
+        control.scope_readers.retain(|id, _| {
+            patch
+                .nodes
+                .iter()
+                .any(|node| node.id == *id && node.kind == "scope")
         });
         let mut state_used = [false; MAX_NODES];
         for entry in control.state_entries.values() {

@@ -121,7 +121,7 @@ waveform bins with `capture_signal`, rendered offline from a patch snapshot.
 <sub>Native Linux / Mesa CI renders using an offline engine calibration fixture;
 these images do not demonstrate live audio-device qualification.</sub>
 
-[Scope controls, sampling contract, and remaining parity →](docs/SCOPE.md)
+[Scope dock controls and sampling contract →](docs/SCOPE.md) · [Rack Scope module →](docs/RACK_SCOPE.md)
 
 </details>
 
@@ -347,7 +347,7 @@ The desktop `--mcp` mode launches a new window per client and remains available 
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
 
-**52 built-in kinds:** a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+**53 built-in kinds:** a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 

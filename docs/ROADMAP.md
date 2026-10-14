@@ -1,12 +1,12 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 52 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 53 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 52 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 52 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 53 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 53 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -186,7 +186,7 @@ These are OpenPatch differentiators and do not substitute for missing host or mo
 | Render/analysis jobs | Partial: synchronous offline render and benchmark | Cancellable background jobs, progress, reproducible patch/seed/configuration records, and artifact results; GUI and other control requests remain responsive. |
 | Musical operations | Partial: graph tools, shared undo/redo, grouped parameter edits, atomic sequence rotation and live/offline module actions | Sample-timed automation, audition, transport control and reusable subpatch operations share the same validation/history as human edits. |
 | Objective evaluation | Partial: numerical tests, per-channel statistics and peak-preserving MCP offline waveform capture | Agents can request calibrated spectra, pitch, clipping, latency and CPU diagnostics from explicit taps; tests use known signals and declared error bounds. |
-| Native visual instruments | Partial: GLSL dock/editor plus calibrated two-source live scope with arbitrary ports/voices, trigger, freeze and X/Y | Arbitrary-port and per-voice taps, calibrated scope/spectrum, saved shader/preset state and synchronized controls; GPU failures preserve the instrument and last valid shader. |
+| Native visual instruments | Partial: GLSL dock/editor, calibrated two-source dock, and rack Scope with polyphonic X/Y, external trigger and active-graph live inspection; [contract](RACK_SCOPE.md) | Arbitrary-port and per-voice taps, calibrated scope/spectrum, saved shader/preset state and synchronized controls; GPU failures preserve the instrument and last valid shader. |
 | Better performance at equal quality | Unproven | Fixed workload/quality comparisons, reproducible CPU and callback-tail measurements, memory and power observations; publish improvements and regressions separately. |
 
 Local controls, remote commands and project loading should use one command/history layer. A future control service should not depend on the GUI repaint loop to acknowledge whether the audio engine has applied a revision. Distinguish committed revision from audio-applied revision in diagnostics.

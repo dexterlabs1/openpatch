@@ -132,6 +132,7 @@ panels or configuration menus. They require version 2.
 | `poly_split` | `signal`; `out1`…`out16` | Every output is mono; indices beyond the input count produce 0 V. |
 | `poly_merge` | `in1`…`in16`; `out`; integer `channels` 0–16 | `channels=0` selects automatic highest occupied input index; 1–16 forces the count. Holes remain zero; each input contributes channel 0. No connected signals in automatic mode produces zero channels. |
 | `poly_viz` | `signal`; no outputs | Input-only 16-channel polarity display; sampled signed smoothing and latched channel count every 16 frames. [State and telemetry contract](POLYPHONIC_VIZ.md). |
+| `scope` | `x`, `y`, `trigger`; outputs `x`, `y` | Independent raw 0–16-channel passthrough with 256 min/max bins per axis/lane. Literal seconds timebase, external-trigger normaling, bypass freeze and allocation-free borrowed snapshots; [contract](RACK_SCOPE.md). |
 | `poly_sum` | `signal`; `out` | One-channel sum of all active input channels with `level` 0–1 (default unity); empty input produces mono zero. No automatic averaging. [Meter and state contract](POLYPHONIC_SUM.md). |
 
 Merge's zero setting means automatic, not forced zero. Use a zero-channel

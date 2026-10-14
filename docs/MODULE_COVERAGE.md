@@ -11,7 +11,9 @@ OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified c
 Six additional native reconstruction tools—SCORE, DRUM, SVF, stereo delay, reverb and sidechain compression—extend the catalog; they are original algorithms, not new claims of completed Rack plugin equivalence. See [score and studio contract](SCORE_AND_STUDIO.md).
 
 VIZ adds a dedicated input-only 16-channel polarity display, bringing the total
-to 52 kinds; [signal and validation contract](POLYPHONIC_VIZ.md).
+to 52 kinds; [signal and validation contract](POLYPHONIC_VIZ.md). Rack Scope adds
+independent polyphonic X/Y acquisition and passthrough, bringing the catalog to
+53 kinds; [Scope contract and bounded reference](RACK_SCOPE.md).
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -143,7 +145,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | 8vert | Voltage utility | Implemented signal role: `attenuverter8`, eight gains, downward input/polyphony propagation, voltage/percent presentation | Direct reference traces and Rack import/UI parity; [contract](VOLTAGE_UTILITIES.md) |
 | Mutes | Routing | Implemented signal role: `mutes10`, ten flags, atomic invert, pinned mono inheritance and direct bypass | Direct reference traces, legacy state polarity migration and native qualification; [contract](VOLTAGE_UTILITIES.md) |
 | Pulses | Gate utility | Implemented signal role: `pulses`, ten independent 1 ms triggers and held gates, native buttons and indexed MCP actions | Explicit integer timing/event policies; direct VCV comparison and native qualification remain open; [contract](PULSES.md) |
-| Scope | Measurement | Partial: native dock with two arbitrary named-output/voice taps, calibrated time/voltage scales, auto/normal/free trigger, freeze, X/Y and raw statistics; MCP offline trace bins | Rack-mounted instances, external trigger, all-voice overlays, persistence, direct VCV comparison; [contract](SCOPE.md) |
+| Scope | Measurement | Partial: rack instances with independent 16-lane X/Y min/max bins, external trigger, raw passthrough, saved parameters and live MCP inspection; separate calibrated two-source dock | Full display/measurement parity, persisted captures and hardware qualification; [rack contract and bounded reference](RACK_SCOPE.md), [dock contract](SCOPE.md) |
 | SEQ 3 | Sequencing | Partial: 3×8 voltage editor, five inputs/sixteen outputs, gates, length/tempo CV, passthrough, atomic rotation and bounded live/offline actions | Direct pinned-reference traces, timing/mapping differences, runtime state persistence and native qualification; [contract](SEQUENCER.md) |
 | Sequential Switch 1 to 4 | Routing | Implemented documented signal role: `switch_1to4`, 2–4 routes, clock/reset, de-click and live indicators | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Sequential Switch 4 to 1 | Routing | Implemented documented signal role: `switch_4to1`, polyphonic selection, mode-specific mono behavior and de-click | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |

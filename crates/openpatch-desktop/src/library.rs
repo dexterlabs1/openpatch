@@ -100,7 +100,7 @@ impl Category {
             "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "poly_sum"
             | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" => Self::InputOutput,
-            "pulses" | "push" | "gates" | "poly_viz" => Self::Utilities,
+            "pulses" | "push" | "gates" | "poly_viz" | "scope" => Self::Utilities,
             _ => Self::Utilities,
         }
     }

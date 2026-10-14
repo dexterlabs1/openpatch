@@ -1,0 +1,7 @@
+OpenPatch waveform snapshot transport uses triple_buffer 9.0.0 (unmodified),
+Copyright its respective contributors, licensed under Mozilla Public License 2.0.
+Source: https://crates.io/crates/triple_buffer/9.0.0
+Repository: https://github.com/HadrienG2/triple-buffer
+License: triple_buffer-MPL-2.0.txt in this directory.
+The MPL applies to that dependency's covered files. OpenPatch original source
+is available under the repository MIT license.

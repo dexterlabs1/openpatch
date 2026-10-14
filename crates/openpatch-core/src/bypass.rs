@@ -5,6 +5,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
         "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
             &[("left", "left"), ("right", "right")]
         }
+        "scope" => &[("x", "x"), ("y", "y")],
         "svf_filter" => &[("signal", "low")],
         "mutes10" => &[
             ("in1", "out1"),
@@ -30,7 +31,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
 pub(crate) fn annotate(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
     module["bypass"] = json!({"field":"bypassed","default":false,"routes":routes(&kind).iter().map(|(input,output)|json!({"input":input,"output":output})).collect::<Vec<_>>(),
-        "output_policy":"direct input frames without normaling, gain, clipping or mixing; empty routed input and all unrouted outputs produce mono zero",
+        "output_policy":if kind=="scope" {"independent raw X/Y input frames preserving 0–16 channels"} else {"direct input frames without normaling, gain, clipping or mixing; empty routed input and all unrouted outputs produce mono zero"},
         "state_policy":if kind=="midi_cv" {"events are consumed and MIDI state/pulses continue processing in fixed scratch storage; published outputs are mono zero"} else {"DSP state freezes while bypassed; bypass transitions preserve DSP and incoming delayed frames but clear output/outgoing delayed frames to mono zero, including self-loops"},
         "module_actions":"bypassed sequencers reject actions; manual presses reject while matching releases remain accepted and clear held/pending controls immediately; transitions discard pending actions and release held manual controls while preserving DSP",
         "compatibility":"explicit OpenPatch host policy; generic utility/filter routes are chosen for existing OpenPatch kinds, not a claim of full Rack bypass parity"});
