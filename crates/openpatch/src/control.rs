@@ -89,6 +89,7 @@ const EDIT_TOOLS: &[&str] = &[
     "remove_module",
     "connect",
     "disconnect",
+    "clear_cables",
     "set_parameter",
     "set_bypass",
     "invert_mutes",
@@ -683,6 +684,11 @@ impl Session {
             })
             .transpose()?;
         self.check_revision(expected_revision)?;
+        // A top-level empty clear is a validated no-op. Preserve redo and an
+        // active history group; transactions retain their ordinary semantics.
+        if name == "clear_cables" && self.patch.cables.is_empty() {
+            return Ok(self.snapshot());
+        }
         let mut candidate = self.patch.clone();
         let mut effects = EditEffects::default();
         if matches!(name, "replace_patch" | "load_patch") {
@@ -1125,6 +1131,10 @@ fn apply_edit(
             });
             candidate.assign_missing_cable_ids()?;
         }
+        "clear_cables" => {
+            retired_cables.extend(candidate.cables.iter().filter_map(|cable| cable.id.clone()));
+            candidate.cables.clear();
+        }
         "disconnect" => {
             let specific = args.get("cable_id").is_some();
             let destination = args.get("to").is_some() || args.get("input").is_some();
@@ -1412,6 +1422,7 @@ pub fn tools() -> Value {
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"expected_revision":rev}),&["from","to","input"],false),
         disconnect_tool(&s, &module_id, &rev),
+        tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),

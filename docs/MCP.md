@@ -155,7 +155,11 @@ occupied inputs; set `mode: "stack"` to add another signal and optionally
 `cable_id` to name the new cable. Every live cable has a persistent `id` in
 `inspect_patch`. `disconnect` accepts either `cable_id` for one route or
 `to` plus `input` for all routes on that input. Preview and commit moves as one
-disconnect/connect transaction. See [stacked cable examples and timing](STACKED_CABLES.md).
+disconnect/connect transaction. `clear_cables` removes every route in one atomic
+operation, including patches with 1,024 cables. It preserves modules, parameters,
+output selection and live module state. Removed route delay histories are
+retired; undo restores exact cable IDs/order with fresh route delays. See
+[stacked cable examples and timing](STACKED_CABLES.md).
 
 Select `audio_stereo.out` for explicit L/R playback and stereo WAV export. Each
 input sums its voices and converts 10 V to digital full scale; unpatched Right
@@ -403,9 +407,18 @@ returned revision identifies the coherent snapshot that produced the trace.
 whole transaction commits one revision and one undo step. Temporary disconnected
 or unresolved connections inside the transaction are allowed; the final graph
 must compile. Any failure leaves the live graph, revision, and history unchanged.
-The supported operations are `add_module`, `remove_module`, `connect`,
-`disconnect`, `set_parameter`, `set_output`, `set_bypass`, and `invert_mutes`. File I/O, nested transactions,
-and history commands are excluded.
+Supported operations include `add_module`, `duplicate_modules`, `remove_module`,
+`connect`, `disconnect`, `clear_cables`, `set_parameter`, `set_output`,
+`set_bypass`, `invert_mutes`, `initialize_modules`, `randomize_modules`, and
+`apply_module_preset`. Consult `tools/list` for their argument schemas. File I/O,
+nested transactions, and history commands are excluded.
+
+`clear_cables` accepts only optional `expected_revision`. A direct call on an
+empty patch validates that revision and returns the unchanged snapshot; it
+preserves undo/redo, state ID and active parameter history grouping. Invalid
+arguments, closed sessions and stale revisions still fail. An empty
+`clear_cables` subedit in `apply_edits` follows the ordinary transaction commit
+rules. `preview_edits` never publishes route retirement or changes runtime state.
 
 For example, pass this argument object to `preview_edits`, using the revision
 from `inspect_patch` (replace `7` below):

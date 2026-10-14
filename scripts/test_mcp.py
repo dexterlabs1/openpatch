@@ -265,6 +265,115 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(redone["patch"], committed["patch"])
         self.assertEqual(redone["revision"], committed["revision"] + 2)
 
+    def test_clear_cables_schema_empty_noop_stale_guard_and_redo_preservation(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "clear_cables")
+        self.assertEqual(set(schema["properties"]), {"expected_revision"})
+        self.assertFalse(schema["additionalProperties"])
+        self.assertFalse(schema.get("required", []))
+        empty = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("clear_cables")), empty)
+        self.assertEqual(self.patch_snapshot(), empty)
+        self.add_node("temporary", "constant")
+        changed = self.patch_snapshot()
+        self.require_tool_success("undo")
+        undone = self.patch_snapshot()
+        self.assertEqual(undone["patch"], empty["patch"])
+        self.assertEqual(undone["history"]["redo_steps"], 1)
+        self.assertEqual(self.payload(self.require_tool_success("clear_cables", {
+            "expected_revision": undone["revision"],
+        })), undone)
+        self.require_tool_error("clear_cables", {"expected_revision": changed["revision"]})
+        self.require_tool_error("clear_cables", {"to": "temporary"})
+        self.assertEqual(self.patch_snapshot(), undone)
+        redone = self.payload(self.require_tool_success("redo"))
+        self.assertEqual(redone["patch"], changed["patch"])
+
+    def test_clear_cables_v1_and_maximum_v2_stack_preview_undo_and_file_roundtrip(self) -> None:
+        for version, count in [(1, 2), (2, 1024)]:
+            with self.subTest(version=version, cables=count):
+                patch = {"version": version, "sample_rate": 48000, "nodes": [
+                    {"id": "source", "kind": "constant", "params": {"value": 0.25}},
+                    {"id": "sink", "kind": "gain", "params": {"gain": 0.5}, "bypassed": True},
+                    {"id": "other", "kind": "gain"},
+                ], "cables": [
+                    {"id": f"route_{index}", "from": "source", "output": "out",
+                     "to": "sink" if version == 2 or index == 0 else "other", "input": "signal"}
+                    for index in range(count)
+                ], "output": "sink", "output_port": "out"}
+                # replace_patch exercises the full cable limit without a 256-edit batch.
+                self.require_tool_success("replace_patch", {"patch": patch})
+                before = self.patch_snapshot()
+                request = {"expected_revision": before["revision"], "edits": [
+                    {"tool": "clear_cables", "arguments": {}},
+                ]}
+                preview = self.payload(self.require_tool_success("preview_edits", request))
+                self.assertFalse(preview["committed"])
+                self.assertEqual(len(preview["changes"]["removed_cables"]), count)
+                self.assertEqual(preview["changes"]["added_cables"], [])
+                self.assertEqual(self.patch_snapshot(), before)
+                cleared = self.payload(self.require_tool_success("clear_cables", {
+                    "expected_revision": before["revision"],
+                }))
+                expected = dict(before["patch"], cables=[])
+                self.assertEqual(cleared["patch"], expected)
+                self.assertEqual(cleared["patch"], preview["patch"])
+                self.assertEqual(cleared["revision"], before["revision"] + 1)
+                self.assertEqual(cleared["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+                self.require_tool_error("clear_cables", {"expected_revision": before["revision"]})
+                self.assertEqual(self.patch_snapshot(), cleared)
+                filename = f"cleared-v{version}.json"
+                self.require_tool_success("save_patch", {"filename": filename})
+                saved = json.loads((self.workspace / filename).read_text())
+                self.assertEqual(saved, expected)
+                undone = self.payload(self.require_tool_success("undo"))
+                self.assertEqual(undone["patch"], before["patch"], "one undo restores every ID and cable order")
+                redone = self.payload(self.require_tool_success("redo"))
+                self.assertEqual(redone["patch"], expected)
+                self.require_tool_success("undo")
+                loaded = self.payload(self.require_tool_success("load_patch", {"filename": filename}))
+                self.assertEqual(loaded["patch"], expected)
+
+    def test_clear_cables_transaction_preview_rollback_and_empty_subedit_commit(self) -> None:
+        self.make_audio_graph()
+        before = self.patch_snapshot()
+        for tool in ("preview_edits", "apply_edits"):
+            self.require_tool_error(tool, {"expected_revision": before["revision"], "edits": [
+                {"tool": "clear_cables", "arguments": {}},
+                {"tool": "set_parameter", "arguments": {
+                    "id": "missing", "parameter": "gain", "value": 1,
+                }},
+            ]})
+            self.assertEqual(self.patch_snapshot(), before)
+        request = {"expected_revision": before["revision"], "edits": [
+            {"tool": "clear_cables", "arguments": {}},
+            {"tool": "connect", "arguments": {
+                "from": "osc", "to": "out", "input": "signal", "cable_id": "replacement_route",
+            }},
+        ]}
+        preview = self.payload(self.require_tool_success("preview_edits", request))
+        self.assertEqual(self.patch_snapshot(), before)
+        committed = self.payload(self.require_tool_success("apply_edits", request))
+        self.assertEqual(committed["patch"], preview["patch"])
+        self.assertEqual([c["id"] for c in committed["patch"]["cables"]], ["replacement_route"])
+        self.assertEqual(committed["revision"], before["revision"] + 1)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+        self.require_tool_success("clear_cables")
+        empty = self.patch_snapshot()
+        empty_request = {"expected_revision": empty["revision"], "edits": [
+            {"tool": "clear_cables", "arguments": {}},
+        ]}
+        empty_preview = self.payload(self.require_tool_success("preview_edits", empty_request))
+        self.assertEqual(empty_preview["patch"], empty["patch"])
+        self.assertEqual(self.patch_snapshot(), empty)
+        empty_committed = self.payload(self.require_tool_success("apply_edits", empty_request))
+        self.assertEqual(empty_committed["patch"], empty["patch"])
+        self.assertEqual(empty_committed["revision"], empty["revision"] + 1)
+        self.assertEqual(empty_committed["history"]["undo_steps"], empty["history"]["undo_steps"] + 1)
+
     def test_duplicate_groups_copy_explicit_cables_atomically_and_roundtrip(self) -> None:
         patch = {"version": 2, "nodes": [
             {"id": "source", "kind": "poly_constant", "params": {"channels": 2, "v1": 2, "v2": 4}},
@@ -1038,7 +1147,7 @@ class OpenPatchMCPTests(unittest.TestCase):
         names = {item.get("name") for item in tools if isinstance(item, dict)}
         self.assertTrue(
             {"catalog", "inspect_patch", "replace_patch", "add_module", "remove_module",
-             "connect", "disconnect", "set_parameter", "set_output", "save_patch",
+             "connect", "disconnect", "clear_cables", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
              "inspect_history", "undo", "redo", "analyze_signal", "capture_signal",
              "trigger_module", "inspect_performance", "rotate_sequence", "set_bypass", "invert_mutes"}.issubset(names),

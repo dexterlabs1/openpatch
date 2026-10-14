@@ -493,6 +493,22 @@ impl Rack {
         }
     }
 
+    /// Deletion keeps the current selection even when the pointer is elsewhere.
+    /// Hover is only a fallback when no modules are selected.
+    fn delete_shortcut_ids(
+        &self,
+        patch: &Patch,
+        canvas: Rect,
+        pointer: Option<Pos2>,
+    ) -> Vec<String> {
+        if !self.selection.is_empty() {
+            self.selected_ids()
+        } else {
+            self.shortcut_target(patch, canvas, pointer)
+                .map_or_else(Vec::new, |(ids, _)| ids)
+        }
+    }
+
     /// Predict the same default positions as reconcile without changing layout.
     fn positions_for_patch(&self, patch: &Patch) -> BTreeMap<String, Pos2> {
         let mut positions = self.positions.clone();
@@ -1170,11 +1186,39 @@ impl Rack {
                 ui.input_mut(|i| {
                     i.consume_key(i.modifiers, egui::Key::R);
                 });
-            } else if ui
-                .input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
-                && !self.selection.is_empty()
-            {
-                action = Some(remove_selection_action(&self.selected_ids()));
+            }
+        }
+        if interactive
+            && self.shortcuts_enabled
+            && ui.input(|i| i.focused)
+            && !ui.ctx().wants_keyboard_input()
+            && !egui::Popup::is_any_open(ui.ctx())
+            && navigation_idle_at_frame_start
+            && self.navigation_idle()
+            && !ui.input(|i| i.pointer.any_down())
+        {
+            // OS repeats arrive as pressed key events. Merely holding a key
+            // across frames must not remove another module without a repeat.
+            let key = ui.input(|i| {
+                i.events.iter().find_map(|event| match event {
+                    egui::Event::Key {
+                        key: key @ (egui::Key::Delete | egui::Key::Backspace),
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() => Some(*key),
+                    _ => None,
+                })
+            });
+            if let Some(key) = key {
+                let ids =
+                    self.delete_shortcut_ids(patch, canvas, ui.input(|i| i.pointer.hover_pos()));
+                if !ids.is_empty() {
+                    action = Some(remove_selection_action(&ids, self.observed_revision));
+                    ui.input_mut(|i| {
+                        i.consume_key(egui::Modifiers::NONE, key);
+                    });
+                }
             }
         }
         paint_background(&painter, canvas, self.pan, self.zoom);
@@ -4562,13 +4606,16 @@ fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> Par
     }
 }
 
-fn remove_selection_action(ids: &[String]) -> RackAction {
+fn remove_selection_action(ids: &[String], revision: u64) -> RackAction {
     if ids.len() == 1 {
-        RackAction::Command("remove_module", json!({"id":ids[0]}))
+        RackAction::Command(
+            "remove_module",
+            json!({"id":ids[0],"expected_revision":revision}),
+        )
     } else {
         RackAction::Command(
             "apply_edits",
-            json!({"edits":ids.iter().map(|id|json!({"tool":"remove_module","arguments":{"id":id}})).collect::<Vec<_>>()}),
+            json!({"edits":ids.iter().map(|id|json!({"tool":"remove_module","arguments":{"id":id}})).collect::<Vec<_>>(),"expected_revision":revision}),
         )
     }
 }
@@ -4725,7 +4772,7 @@ fn selection_menu(
         })
         .clicked()
     {
-        *action = Some(remove_selection_action(ids));
+        *action = Some(remove_selection_action(ids, revision));
         ui.close();
     }
 }
@@ -11297,6 +11344,307 @@ mod tests {
             assert_eq!(rack.layout_revision(), 0);
         }
     }
+    fn deletion_fixture() -> Patch {
+        serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"a","kind":"constant"},{"id":"b","kind":"constant"},{"id":"c","kind":"constant"}]})).unwrap()
+    }
+    fn delete_event(key: egui::Key, repeat: bool, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat,
+            modifiers,
+        }
+    }
+    fn is_removal(action: &Option<RackAction>) -> bool {
+        matches!(
+            action,
+            Some(RackAction::Command("remove_module" | "apply_edits", _))
+        )
+    }
+
+    #[test]
+    fn delete_selection_precedes_hover_and_does_not_require_pointer_inside_canvas() {
+        let patch = deletion_fixture();
+        for pointer in [Some(pos2(204.0, 160.0)), Some(pos2(-20.0, -20.0)), None] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 73);
+            rack.select_only("a".into());
+            rack.toggle_selection("c".into());
+            rack.set_positions_locked(true);
+            let mut events = pointer
+                .into_iter()
+                .map(egui::Event::PointerMoved)
+                .collect::<Vec<_>>();
+            events.push(delete_event(
+                egui::Key::Delete,
+                false,
+                egui::Modifiers::NONE,
+            ));
+            let action =
+                frame_revision_state(&ctx, &mut rack, &patch, 1.0, events, true, true, 73).0;
+            let Some(RackAction::Command("apply_edits", args)) = action else {
+                panic!("selected deletion at {pointer:?}");
+            };
+            assert_eq!(args["expected_revision"], 73);
+            let ids = args["edits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|edit| edit["arguments"]["id"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(ids, vec!["a", "c"]);
+            assert!(
+                !ctx.input(|i| i.key_pressed(egui::Key::Delete)),
+                "accepted delete is consumed"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_hover_fallback_accepts_backspace_and_os_repeat_but_not_held_key_alone() {
+        let patch = deletion_fixture();
+        for key in [egui::Key::Delete, egui::Key::Backspace] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 19);
+            let hover = pos2(204.0, 160.0);
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![
+                    egui::Event::PointerMoved(hover),
+                    delete_event(key, false, egui::Modifiers::NONE),
+                ],
+                true,
+                true,
+                19,
+            )
+            .0;
+            assert!(
+                matches!(action,Some(RackAction::Command("remove_module",ref args)) if args["id"]=="b" && args["expected_revision"]==19)
+            );
+            assert!(
+                rack.selection.is_empty(),
+                "hover targeting must not create selection"
+            );
+            assert!(
+                frame_revision_state(&ctx, &mut rack, &patch, 1.1, vec![], true, true, 19)
+                    .0
+                    .is_none()
+            );
+            assert!(
+                ctx.input(|i| i.key_down(key)),
+                "held key alone still exists after consumption"
+            );
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.2,
+                vec![delete_event(key, true, egui::Modifiers::NONE)],
+                true,
+                true,
+                19,
+            )
+            .0;
+            assert!(
+                matches!(action,Some(RackAction::Command("remove_module",ref args)) if args["id"]=="b")
+            );
+        }
+        for pointer in [None, Some(pos2(900.0, 600.0)), Some(pos2(-10.0, -10.0))] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let mut events = pointer
+                .into_iter()
+                .map(egui::Event::PointerMoved)
+                .collect::<Vec<_>>();
+            events.push(delete_event(
+                egui::Key::Backspace,
+                false,
+                egui::Modifiers::NONE,
+            ));
+            assert!(frame(&ctx, &mut rack, &patch, 1.0, events).is_none());
+            assert!(
+                ctx.input(|i| i.key_pressed(egui::Key::Backspace)),
+                "unhandled key must remain available"
+            );
+        }
+    }
+
+    #[test]
+    fn modified_delete_and_backspace_never_remove_modules() {
+        let patch = deletion_fixture();
+        for key in [egui::Key::Delete, egui::Key::Backspace] {
+            for modifiers in [
+                egui::Modifiers::COMMAND,
+                egui::Modifiers::CTRL,
+                egui::Modifiers::SHIFT,
+                egui::Modifiers::ALT,
+            ] {
+                let ctx = egui::Context::default();
+                let mut rack = Rack::default();
+                frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+                rack.select_only("a".into());
+                assert!(frame(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    1.0,
+                    vec![delete_event(key, false, modifiers)]
+                )
+                .is_none());
+                assert!(ctx.input(|i| i.key_pressed(key)));
+            }
+        }
+    }
+
+    #[test]
+    fn deletion_guards_focus_popups_all_pointer_buttons_and_live_gestures() {
+        let patch = deletion_fixture();
+        for guard in [
+            "blur",
+            "disabled",
+            "shortcuts",
+            "text",
+            "popup",
+            "pending",
+            "cable_press",
+            "group",
+            "manual",
+            "editor",
+            "primary",
+            "secondary",
+            "middle",
+            "extra",
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 73);
+            rack.select_only("a".into());
+            if guard == "shortcuts" {
+                rack.set_shortcuts_enabled(false);
+            }
+            if guard == "pending" || guard == "cable_press" {
+                let pending = PendingCable::at_revision(
+                    CableEnd::Output {
+                        node: "a".into(),
+                        port: "out".into(),
+                    },
+                    &patch,
+                    73,
+                );
+                if guard == "pending" {
+                    rack.pending = Some(pending);
+                } else {
+                    rack.cable_press = Some(pending);
+                }
+            }
+            if guard == "group" {
+                rack.group_drag = Some(GroupDrag {
+                    anchor: "a".into(),
+                    origins: BTreeMap::from([("a".into(), Pos2::ZERO)]),
+                    delta: Vec2::ZERO,
+                    revision: 73,
+                });
+            }
+            if guard == "manual" {
+                rack.held_manual = Some(HeldManual {
+                    id: "a".into(),
+                    kind: "constant".into(),
+                    release: "push_release",
+                    button_rect: Rect::NOTHING,
+                });
+            }
+            if guard == "editor" {
+                rack.editing = Some(ParameterEdit {
+                    id: "a".into(),
+                    kind: "constant".into(),
+                    parameter: "value".into(),
+                    revision: 73,
+                    surface: ParameterEditSurface::Window,
+                    menu_popup: None,
+                    stale: false,
+                    text: "0".into(),
+                    min: -16.0,
+                    max: 16.0,
+                    step: None,
+                    display_scale: 1.0,
+                    display_unit: "V".into(),
+                    slew_min: None,
+                    gain_power: None,
+                    raw_max: 16.0,
+                    focus: false,
+                });
+            }
+            let mut events = vec![delete_event(
+                egui::Key::Delete,
+                false,
+                egui::Modifiers::NONE,
+            )];
+            let button = match guard {
+                "primary" => Some(PointerButton::Primary),
+                "secondary" => Some(PointerButton::Secondary),
+                "middle" => Some(PointerButton::Middle),
+                "extra" => Some(PointerButton::Extra1),
+                _ => None,
+            };
+            if let Some(button) = button {
+                events.push(egui::Event::PointerMoved(pos2(900.0, 600.0)));
+                events.push(egui::Event::PointerButton {
+                    pos: pos2(900.0, 600.0),
+                    button,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let mut action = None;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                    time: Some(1.0),
+                    events,
+                    focused: guard != "blur",
+                    ..Default::default()
+                },
+                |ctx| {
+                    if guard == "popup" {
+                        egui::Popup::open_id(ctx, egui::Id::new("delete-popup"));
+                    }
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::NONE)
+                        .show(ctx, |ui| {
+                            if guard == "text" {
+                                let mut text = String::new();
+                                ui.add(egui::TextEdit::singleline(&mut text))
+                                    .request_focus();
+                            }
+                            ui.add_enabled_ui(guard != "disabled", |ui| {
+                                action =
+                                    rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 73);
+                            });
+                        });
+                },
+            );
+            assert!(!is_removal(&action), "guard {guard}");
+        }
+    }
+
+    #[test]
+    fn context_removal_helper_captures_revision_for_single_and_group_actions() {
+        for ids in [vec!["a".into()], vec!["a".into(), "b".into()]] {
+            let RackAction::Command(_, args) = remove_selection_action(&ids, 91) else {
+                panic!("expected removal command");
+            };
+            assert_eq!(args["expected_revision"], 91);
+        }
+    }
+
     fn navigation_key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
         egui::Event::Key {
             key,

@@ -4824,8 +4824,10 @@ mod tests {
     }
 
     #[test]
-    fn cable_recreation_clears_only_its_delay_and_retains_source_state_and_sibling_history() {
-        for through_history in [false, true] {
+    fn disconnect_and_clear_reset_removed_route_delays_without_resetting_source_state() {
+        for (clear_all, through_history) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
             let patch = stacked_history_patch();
             let (mut callback, mut updates, _disposal) = sequence_callback(&patch);
             let mut packets = callback.scope_packets.take().unwrap();
@@ -4847,14 +4849,35 @@ mod tests {
             let old_b = callback.graphs.active.modules.cables[1].unwrap().token;
             if through_history {
                 session
-                    .execute("disconnect", serde_json::json!({"cable_id":"route_a"}))
+                    .execute(
+                        if clear_all {
+                            "clear_cables"
+                        } else {
+                            "disconnect"
+                        },
+                        if clear_all {
+                            serde_json::json!({})
+                        } else {
+                            serde_json::json!({"cable_id":"route_a"})
+                        },
+                    )
                     .unwrap();
                 session.execute("undo", serde_json::json!({})).unwrap();
             } else {
-                session.execute("apply_edits", serde_json::json!({"edits":[
-                    {"tool":"disconnect","arguments":{"cable_id":"route_a"}},
-                    {"tool":"connect","arguments":{"from":"osc","to":"sum","input":"signal","mode":"stack","cable_id":"route_a"}}
-                ]})).unwrap();
+                let mut edits = vec![
+                    if clear_all {
+                        serde_json::json!({"tool":"clear_cables","arguments":{}})
+                    } else {
+                        serde_json::json!({"tool":"disconnect","arguments":{"cable_id":"route_a"}})
+                    },
+                    serde_json::json!({"tool":"connect","arguments":{"from":"osc","to":"sum","input":"signal","mode":"stack","cable_id":"route_a"}}),
+                ];
+                if clear_all {
+                    edits.push(serde_json::json!({"tool":"connect","arguments":{"from":"b","to":"sum","input":"signal","mode":"stack","cable_id":"route_b"}}));
+                }
+                session
+                    .execute("apply_edits", serde_json::json!({"edits":edits}))
+                    .unwrap();
             }
             let graph = scoped_route_graph(&callback, session.patch(), session.revision(), 2);
             assert_eq!(
@@ -4865,11 +4888,11 @@ mod tests {
                 nodes
             );
             assert_ne!(graph.modules.cables[0].unwrap().token, old_a);
-            assert_eq!(graph.modules.cables[1].unwrap().token, old_b);
+            assert_eq!(graph.modules.cables[1].unwrap().token == old_b, !clear_all);
             assert!(updates.push(graph).is_ok());
             without_heap_activity(|| callback.render(&mut [0.0_f32; SCOPE_PACKET_SIZE], 1));
             let packet = packets.pop().unwrap();
-            assert_eq!(packet.x[0], 3.0);
+            assert_eq!(packet.x[0], if clear_all { 0.0 } else { 3.0 });
             reference.process_audio_block(&mut expected[..SCOPE_PACKET_SIZE]);
             for (index, expected_frame) in expected.iter().take(SCOPE_PACKET_SIZE).enumerate() {
                 assert!(packet.x_active[index] && packet.y_active[index]);

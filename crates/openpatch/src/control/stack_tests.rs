@@ -291,3 +291,192 @@ fn preview_reports_pure_cable_reordering_separately_from_additions_and_removals(
         false
     );
 }
+
+#[test]
+fn clear_cables_retires_exact_ids_once_and_preserves_modules_in_both_versions() {
+    for version in [1, 2] {
+        let mut patch = raw_patch(version);
+        patch.cables[0].id = Some("first".into());
+        let mut second = patch.cables[0].clone();
+        second.id = Some("second".into());
+        if version == 1 {
+            second.from = "b".into();
+            second.input = "cv".into();
+        }
+        patch.cables.push(second);
+        let mut session = Session::new(&std::env::temp_dir()).unwrap();
+        session.replace_patch(patch, None).unwrap();
+        let live = Arc::new(Live::default());
+        session.set_live_module_events(Some(live.clone()));
+        let before = session.snapshot();
+        let request = json!({"expected_revision":session.revision(),"edits":[
+            {"tool":"clear_cables","arguments":{}}
+        ]});
+        let preview = session.execute("preview_edits", request).unwrap();
+        assert_eq!(session.snapshot(), before);
+        for tool in ["preview_edits", "apply_edits"] {
+            assert!(session.execute(tool, json!({"edits":[
+                {"tool":"clear_cables","arguments":{}},
+                {"tool":"connect","arguments":{"from":"missing","to":"sum","input":"signal"}}
+            ]})).is_err());
+            assert_eq!(session.snapshot(), before);
+        }
+        assert!(live.retired.lock().unwrap().is_empty());
+        assert!(live.retired_modules.lock().unwrap().is_empty());
+        assert_eq!(*live.synced.lock().unwrap(), vec![1]);
+        let result = session
+            .execute("clear_cables", json!({"expected_revision":1}))
+            .unwrap();
+        assert_eq!(result["patch"], preview["patch"]);
+        let mut expected = before["patch"].clone();
+        expected["cables"] = json!([]);
+        assert_eq!(result["patch"], expected);
+        assert_eq!(result["revision"], 2);
+        assert_eq!(
+            result["history"]["undo_steps"],
+            before["history"]["undo_steps"].as_u64().unwrap() + 1
+        );
+        assert_eq!(*live.retired.lock().unwrap(), vec!["first", "second"]);
+        assert!(live.retired_modules.lock().unwrap().is_empty());
+        assert_eq!(*live.synced.lock().unwrap(), vec![1, 2]);
+        session.execute("undo", json!({})).unwrap();
+        assert_eq!(session.snapshot()["patch"], before["patch"]);
+        session.execute("redo", json!({})).unwrap();
+        assert_eq!(session.snapshot()["patch"], expected);
+        assert_eq!(
+            *live.retired.lock().unwrap(),
+            vec!["first", "second", "first", "second", "first", "second"]
+        );
+        assert!(live.retired_modules.lock().unwrap().is_empty());
+        assert_eq!(*live.synced.lock().unwrap(), vec![1, 2, 3, 4]);
+    }
+}
+
+#[test]
+fn clear_and_reconnect_identical_ids_replays_retirement_for_each_history_transition() {
+    let mut session = make_session(2);
+    session
+        .execute(
+            "connect",
+            json!({"from":"a","to":"sum","input":"signal","mode":"stack","cable_id":"second"}),
+        )
+        .unwrap();
+    let original = session.snapshot()["patch"].clone();
+    let live = Arc::new(Live::default());
+    session.set_live_module_events(Some(live.clone()));
+    let edits = json!([
+        {"tool":"clear_cables","arguments":{}},
+        {"tool":"connect","arguments":{"from":"a","to":"sum","input":"signal","cable_id":"cable_1"}},
+        {"tool":"connect","arguments":{"from":"a","to":"sum","input":"signal","mode":"stack","cable_id":"second"}}
+    ]);
+    session
+        .execute("preview_edits", json!({"edits":edits}))
+        .unwrap();
+    assert!(live.retired.lock().unwrap().is_empty());
+    assert_eq!(*live.synced.lock().unwrap(), vec![2]);
+    session
+        .execute("apply_edits", json!({"edits":edits}))
+        .unwrap();
+    session.execute("undo", json!({})).unwrap();
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.snapshot()["patch"], original);
+    assert_eq!(
+        *live.retired.lock().unwrap(),
+        vec!["cable_1", "second", "cable_1", "second", "cable_1", "second"]
+    );
+    assert!(live.retired_modules.lock().unwrap().is_empty());
+    assert_eq!(*live.synced.lock().unwrap(), vec![2, 3, 4, 5]);
+}
+
+#[test]
+fn connect_then_clear_retires_new_candidate_id_even_when_it_never_reaches_live_patch() {
+    let mut session = make_session(2);
+    let live = Arc::new(Live::default());
+    session.set_live_module_events(Some(live.clone()));
+    let edits = json!([
+        {"tool":"connect","arguments":{"from":"b","to":"sum","input":"signal","mode":"stack","cable_id":"candidate_only"}},
+        {"tool":"clear_cables","arguments":{}}
+    ]);
+    session
+        .execute("preview_edits", json!({"edits":edits}))
+        .unwrap();
+    assert!(live.retired.lock().unwrap().is_empty());
+    session
+        .execute("apply_edits", json!({"edits":edits}))
+        .unwrap();
+    assert!(session.patch().cables.is_empty());
+    assert_eq!(
+        *live.retired.lock().unwrap(),
+        vec!["cable_1", "candidate_only"]
+    );
+    assert!(live.retired_modules.lock().unwrap().is_empty());
+    assert_eq!(*live.synced.lock().unwrap(), vec![1, 2]);
+}
+
+#[test]
+fn direct_empty_clear_preserves_group_state_identity_redo_and_backend_and_still_validates() {
+    let mut session = make_session(2);
+    session.execute("clear_cables", json!({})).unwrap();
+    session
+        .execute(
+            "set_parameter",
+            json!({"id":"a","parameter":"value","value":4,"history_group":"drag"}),
+        )
+        .unwrap();
+    let live = Arc::new(Live::default());
+    session.set_live_module_events(Some(live.clone()));
+    let before = session.snapshot();
+    let group = session.history_group.clone();
+    let states: Vec<_> = session.history_state_ids().collect();
+    assert_eq!(
+        session
+            .execute(
+                "clear_cables",
+                json!({"expected_revision":session.revision()})
+            )
+            .unwrap(),
+        before
+    );
+    assert_eq!(session.history_group, group);
+    assert_eq!(session.history_state_ids().collect::<Vec<_>>(), states);
+    for args in [
+        json!({"expected_revision":0}),
+        json!({"expected_revision":false}),
+        json!({"unknown":true}),
+        json!({"history_group":"other"}),
+    ] {
+        assert!(session.execute("clear_cables", args).is_err());
+        assert_eq!(session.snapshot(), before);
+        assert_eq!(session.history_group, group);
+    }
+    assert_eq!(*live.synced.lock().unwrap(), vec![3]);
+    assert!(live.retired.lock().unwrap().is_empty());
+    assert!(live.retired_modules.lock().unwrap().is_empty());
+    session
+        .execute(
+            "set_parameter",
+            json!({"id":"a","parameter":"value","value":5,"history_group":"drag"}),
+        )
+        .unwrap();
+    assert_eq!(session.snapshot()["history"], before["history"]);
+    assert_eq!(session.state_id(), before["state_id"].as_u64().unwrap());
+    session.execute("undo", json!({})).unwrap();
+    let undone = session.snapshot();
+    let synced = live.synced.lock().unwrap().clone();
+    assert_eq!(undone["history"]["redo_steps"], 1);
+    assert_eq!(session.execute("clear_cables", json!({})).unwrap(), undone);
+    assert_eq!(*live.synced.lock().unwrap(), synced);
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.patch.nodes[0].params["value"], 5.0);
+    assert!(live.retired.lock().unwrap().is_empty());
+    assert!(live.retired_modules.lock().unwrap().is_empty());
+    session.seal_for_close(session.revision()).unwrap();
+    let sealed = session.snapshot();
+    let synced = live.synced.lock().unwrap().clone();
+    assert!(session
+        .execute("clear_cables", json!({}))
+        .unwrap_err()
+        .contains("closing"));
+    assert_eq!(session.snapshot(), sealed);
+    assert_eq!(*live.synced.lock().unwrap(), synced);
+}

@@ -13,7 +13,7 @@ The module context menu and keyboard offer:
 | Duplicate | Cmd-D | None |
 | Duplicate selection with inputs | Shift-Cmd-D with a selection | Internal connections and incoming connections from outside the selection |
 | Duplicate hovered module with cables | Shift-Cmd-D with no selection | All incoming and outgoing connections; self-patches become self-patches on the copy |
-| Remove selected modules | Delete / Backspace | Removes the selection and its incident cables |
+| Remove modules | Delete / Backspace | Removes the selection, or the hovered module when nothing is selected, with its incident cables |
 
 Keyboard duplication gives any nonempty selection priority, including a single
 selected module. With no selection, hover a module to duplicate it. The pointer
@@ -21,6 +21,16 @@ must be inside the rack; text editing, dialogs and active drags suppress these
 shortcuts. Right-clicking an unselected module instead targets that module,
 without replacing a selection elsewhere. Its menu offers **Duplicate with
 cables**; a selected module's menu offers **Duplicate with inputs**.
+
+Deletion uses unmodified **Delete** or **Backspace**. An existing selection
+wins even when the pointer is over another module or outside the rack. With
+nothing selected, the pointer must be over a module inside the rack. Holding
+the key while moving the pointer uses the operating system's key-repeat events
+to remove successive hovered modules. Text entry, dialogs, focus loss and active
+editing gestures suppress deletion; locking module positions does not. Each
+accepted deletion carries the displayed patch revision, so a newer MCP edit
+cannot be silently overwritten. Undo restores modules, cable IDs/order and
+committed placement.
 
 Copies retain saved parameters, bypass flags and captured SEQ-3 Run state. Their
 IDs are new; other running DSP state starts fresh. Existing modules retain their
@@ -81,6 +91,23 @@ ratios were checked against the pinned
 and [keyboard navigation](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/Scene.cpp)
 implementations. Arrow cadence is deliberately based on elapsed time, using
 Rack's nominal 60 Hz movement as the baseline.
+
+## Clear cables
+
+**Edit → Clear cables** removes every cable in one undoable action, keeping
+modules, parameters, output selection and module positions. It is disabled when
+there are no cables. Undo restores the exact routing and cable IDs/order;
+redo clears them again. Removed cable delay state starts fresh when a route is
+restored, while the modules retain their running state. Native Save and recovery
+preserve the resulting patch.
+
+The same atomic operation is exposed as MCP `clear_cables`, including preview
+and batch support. A direct call with no cables is a validated no-op: revision,
+undo, redo and ongoing parameter-history grouping stay unchanged. See the
+[MCP contract](MCP.md#atomic-edits-and-shared-history).
+
+Deletion and clearing follow the [Rack key commands](https://vcvrack.com/manual/KeyCommands)
+and [Edit menu](https://vcvrack.com/manual/MenuBar).
 
 ## Cable gestures
 

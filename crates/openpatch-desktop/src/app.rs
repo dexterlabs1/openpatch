@@ -2107,6 +2107,13 @@ impl OpenPatch {
                                 ui.close();
                             }
                             ui.separator();
+                            if ui
+                                .add_enabled(!self.patch.cables.is_empty(), egui::Button::new("Clear cables"))
+                                .clicked()
+                            {
+                                self.command("clear_cables", json!({"expected_revision":self.revision}));
+                                ui.close();
+                            }
                             if ui.button("Add module…   Enter").clicked() {
                                 self.browse();
                                 ui.close();
@@ -5203,6 +5210,174 @@ mod project_workflow_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn edit_menu_clear_cables_is_one_undoable_persisted_action_without_moving_modules() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.rack.set_positions_locked(true);
+        app.save_document("before-clear.openpatch", true);
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        assert!(!app.patch.cables.is_empty());
+        let ctx = egui::Context::default();
+        let frame = |app: &mut OpenPatch, time, events| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1100.0, 800.0),
+                    )),
+                    time: Some(time),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    app.toolbar(ctx);
+                    app.rack_workspace(ctx, None);
+                },
+            )
+        };
+        frame(&mut app, 0.0, vec![]);
+        let output = frame(&mut app, 0.1, vec![]);
+        let edit = preset_text(&output, "Edit");
+        for (time, pressed) in [(1.0, true), (1.1, false)] {
+            frame(
+                &mut app,
+                time,
+                vec![
+                    egui::Event::PointerMoved(edit),
+                    pointer_event(edit, pressed),
+                ],
+            );
+        }
+        let output = frame(&mut app, 1.2, vec![]);
+        let clear = preset_text(&output, "Clear cables");
+        for (time, pressed) in [(2.0, true), (2.1, false)] {
+            frame(
+                &mut app,
+                time,
+                vec![
+                    egui::Event::PointerMoved(clear),
+                    pointer_event(clear, pressed),
+                ],
+            );
+        }
+        let after = app.shared.lock().unwrap().snapshot();
+        assert!(app.patch.cables.is_empty());
+        assert_eq!(
+            after["revision"].as_u64(),
+            Some(before["revision"].as_u64().unwrap() + 1)
+        );
+        assert_eq!(
+            after["history"]["undo_steps"].as_u64(),
+            Some(before["history"]["undo_steps"].as_u64().unwrap() + 1)
+        );
+        assert_eq!(after["patch"]["nodes"], before["patch"]["nodes"]);
+        assert_eq!(after["patch"]["output"], before["patch"]["output"]);
+        assert_eq!(app.rack.layout(), layout);
+        app.history(false);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["patch"],
+            before["patch"]
+        );
+        assert_eq!(app.rack.layout(), layout);
+        app.history(true);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["patch"],
+            after["patch"]
+        );
+        assert!(app.rack.positions_locked());
+        app.observe_document();
+        assert!(app.dirty());
+        make_autosave_due(&mut app);
+        app.autosave();
+        let files = recovery_files(dir.path());
+        assert_eq!(files.len(), 1);
+        let recovery: Value = serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
+        assert_eq!(recovery["patch"]["cables"], json!([]));
+        assert_eq!(recovery["layout"], layout);
+        app.save_document("cleared.openpatch", true);
+        let saved = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("cleared.openpatch")
+            .unwrap();
+        assert!(saved.document.equivalent(&app.capture_document()));
+        assert!(!app.dirty());
+    }
+
+    #[test]
+    fn hovered_delete_restores_module_cables_and_layout_with_one_undo() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"source","kind":"constant","params":{"value":2.0}},
+            {"id":"sum","kind":"gain"}],"cables":[
+            {"id":"first","from":"source","to":"sum","input":"signal"},
+            {"id":"second","from":"source","to":"sum","input":"signal"}],"output":"sum"}))
+        .unwrap();
+        app.replace_now(patch, "Hover deletion");
+        app.rack.set_positions_locked(true);
+        let ctx = egui::Context::default();
+        library_frame(&mut app, &ctx, 0.0, vec![], true);
+        assert!(app.rack.selected_ids().is_empty());
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let point = egui::pos2(
+            layout["pan"][0].as_f64().unwrap() as f32 + 35.0,
+            layout["pan"][1].as_f64().unwrap() as f32 + 35.0,
+        );
+        library_frame(
+            &mut app,
+            &ctx,
+            1.0,
+            vec![
+                egui::Event::PointerMoved(point),
+                egui::Event::Key {
+                    key: egui::Key::Delete,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            true,
+        );
+        assert_eq!(app.patch.nodes.len(), 1);
+        assert_eq!(app.patch.nodes[0].id, "sum");
+        assert!(app.patch.cables.is_empty());
+        assert_eq!(app.revision, before["revision"].as_u64().unwrap() + 1);
+        app.history(false);
+        assert_eq!(
+            app.shared.lock().unwrap().snapshot()["patch"],
+            before["patch"]
+        );
+        assert_eq!(app.rack.layout(), layout);
+        assert!(app.rack.positions_locked());
+        app.history(true);
+        assert_eq!(app.patch.nodes.len(), 1);
+        assert!(app.patch.cables.is_empty());
+    }
+
+    #[test]
+    fn stale_clear_cables_cannot_clear_a_newer_mcp_patch() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let revision = app.revision;
+        app.shared
+            .lock()
+            .unwrap()
+            .execute("add_module", json!({"id":"new","kind":"constant"}))
+            .unwrap();
+        let newer = app.shared.lock().unwrap().snapshot();
+        assert!(!app.command("clear_cables", json!({"expected_revision":revision})));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
+        assert!(!app.patch.cables.is_empty());
+        assert!(app.status.contains("revision conflict"));
     }
 
     #[test]

@@ -78,7 +78,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** adds inputs for a selection, or all cables for a hovered module when nothing is selected |
 | Save / browse module presets | Right-click a module → **Presets**; preview settings before applying |
 | Initialize / randomize | **Cmd-I** / **Cmd-R**, or the module context menu; one undo step per group |
-| Remove | **Delete** the selection, or use the module context menu |
+| Remove | **Delete / Backspace** the selection, or the hovered module when nothing is selected |
+| Clear patching | **Edit → Clear cables** removes all cables in one undoable action |
 | Pan / zoom | Scroll, middle-drag, or arrow keys; pinch or **Cmd-scroll** to zoom **25–400%**; **Cmd −/+** steps zoom; **Cmd-0** restores 100% |
 | Lock placement | **View → Lock module positions** prevents accidental module moves while keeping knobs and cables editable |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
