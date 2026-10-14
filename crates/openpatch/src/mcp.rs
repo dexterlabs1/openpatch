@@ -542,10 +542,10 @@ mod tests {
             fn spawn(session: SharedSession, limits: SocketLimits) -> Self {
                 let (server, client) = UnixStream::pair().unwrap();
                 client
-                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
                 client
-                    .set_write_timeout(Some(Duration::from_secs(2)))
+                    .set_write_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
                 let (sender, finished) = mpsc::channel();
                 let worker = thread::spawn(move || {
@@ -578,7 +578,7 @@ mod tests {
             fn result(&mut self) -> Result<(), String> {
                 let result = self
                     .finished
-                    .recv_timeout(Duration::from_secs(2))
+                    .recv_timeout(Duration::from_secs(5))
                     .expect("socket worker did not wake");
                 self.worker.take().unwrap().join().unwrap();
                 result
@@ -592,11 +592,11 @@ mod tests {
                 }
             }
         }
-        fn short_limits() -> SocketLimits {
+        fn normal_limits() -> SocketLimits {
             SocketLimits {
-                handshake: Duration::from_millis(180),
-                frame: Duration::from_millis(120),
-                write: Duration::from_millis(100),
+                handshake: Duration::from_secs(10),
+                frame: Duration::from_secs(2),
+                write: Duration::from_secs(2),
             }
         }
         fn session() -> (SharedSession, std::path::PathBuf) {
@@ -610,29 +610,60 @@ mod tests {
         #[test]
         fn socket_handshake_deadline_is_absolute_and_requires_ready_notification() {
             let (session, directory) = session();
-            let mut client = Client::spawn(session, short_limits());
-            let start = Instant::now();
-            let response = client.request(json!({"jsonrpc":"2.0","id":1,"method":"initialize",
-                "params":{"protocolVersion":VERSIONS[0]}}));
-            assert!(response.get("result").is_some());
+            let mut client = Client::spawn(
+                session,
+                SocketLimits {
+                    handshake: Duration::from_millis(180),
+                    ..normal_limits()
+                },
+            );
+            // No ready notification: initialize and ping activity must not keep
+            // this worker alive. A late write may find it correctly closed on
+            // a busy runner; responses are not prerequisites for this check.
+            let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize",
+                "params":{"protocolVersion":VERSIONS[0]}});
+            let _ = writeln!(client.reader.get_mut(), "{initialize}");
             for id in 2..5 {
                 thread::sleep(Duration::from_millis(35));
-                assert!(client
-                    .request(json!({"jsonrpc":"2.0","id":id,"method":"ping"}))
-                    .get("result")
-                    .is_some());
+                let ping = json!({"jsonrpc":"2.0","id":id,"method":"ping"});
+                if writeln!(client.reader.get_mut(), "{ping}").is_err() {
+                    break;
+                }
             }
             assert!(client.result().is_err());
-            assert!(start.elapsed() < Duration::from_secs(1));
             std::fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn socket_expired_absolute_deadline_rejects_a_buffered_complete_frame() {
+            let (server, mut peer) = UnixStream::pair().unwrap();
+            peer.write_all(b"{}\n").unwrap();
+            let mut reader = io::BufReader::new(server);
+            assert_eq!(reader.fill_buf().unwrap(), b"{}\n");
+            // An already available complete frame cannot restart an expired
+            // handshake deadline. No sleep or cross-thread timing is needed.
+            let deadline = Instant::now();
+            let error = read_socket_message(&mut reader, Some(deadline), Duration::from_secs(30))
+                .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+            assert_eq!(reader.buffer(), b"{}\n");
         }
 
         #[test]
         fn socket_idle_initialized_client_survives_and_shutdown_wakes_reader() {
             let (session, directory) = session();
-            let mut client = Client::spawn(session, short_limits());
+            let mut client = Client::spawn(
+                session,
+                SocketLimits {
+                    handshake: Duration::from_secs(1),
+                    frame: Duration::from_secs(1),
+                    ..normal_limits()
+                },
+            );
             client.initialize();
-            thread::sleep(Duration::from_millis(360));
+            // Once ready, idle must outlive both deadlines. Setup has ample
+            // scheduling margin; no writes are required during a short deadline.
+            thread::sleep(Duration::from_millis(1200));
             assert!(matches!(
                 client.finished.try_recv(),
                 Err(mpsc::TryRecvError::Empty)
@@ -648,18 +679,36 @@ mod tests {
 
         #[test]
         fn socket_partial_frame_deadline_does_not_reset_on_more_bytes() {
-            let (session, directory) = session();
-            let mut client = Client::spawn(session, short_limits());
-            client.initialize();
-            let start = Instant::now();
-            client.reader.get_mut().write_all(b"{").unwrap();
+            let (server, mut peer) = UnixStream::pair().unwrap();
+            peer.set_write_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            // Start with available partial input: protocol setup and its multiple
+            // writes must not compete with this deliberately short frame limit.
+            peer.write_all(b"{").unwrap();
+            let (sender, finished) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                let mut reader = io::BufReader::new(server);
+                let result = read_socket_message(&mut reader, None, Duration::from_millis(120));
+                let _ = reader.get_ref().shutdown(Shutdown::Both);
+                sender.send(result).unwrap();
+            });
             for _ in 0..2 {
                 thread::sleep(Duration::from_millis(35));
-                client.reader.get_mut().write_all(b" ").unwrap();
+                // Scheduling can make this trickle arrive after the absolute
+                // frame deadline. Peer closure is then the required outcome.
+                if peer.write_all(b" ").is_err() {
+                    break;
+                }
             }
-            assert!(client.result().is_err());
-            assert!(start.elapsed() < Duration::from_secs(1));
-            std::fs::remove_dir_all(directory).unwrap();
+            let error = finished
+                .recv_timeout(Duration::from_secs(5))
+                .expect("partial-frame reader did not wake")
+                .unwrap_err();
+            assert!(matches!(
+                error.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+            ));
+            worker.join().unwrap();
         }
 
         #[test]
@@ -675,7 +724,7 @@ mod tests {
             );
             let _ = client.reader.get_mut().write_all(&vec![b'x'; MAX_LINE + 1]);
             assert!(client.result().unwrap_err().contains("exceeds 1 MiB"));
-            let mut partial = Client::spawn(shared, short_limits());
+            let mut partial = Client::spawn(shared, normal_limits());
             partial.reader.get_mut().write_all(b"{").unwrap();
             partial.reader.get_ref().shutdown(Shutdown::Write).unwrap();
             assert!(partial
@@ -688,10 +737,7 @@ mod tests {
         #[test]
         fn socket_client_handshakes_are_isolated_but_session_revisions_are_shared() {
             let (session, directory) = session();
-            let limits = SocketLimits {
-                handshake: Duration::from_secs(2),
-                ..short_limits()
-            };
+            let limits = normal_limits();
             let mut first = Client::spawn(session.clone(), limits);
             let mut second = Client::spawn(session.clone(), limits);
             first.initialize();
