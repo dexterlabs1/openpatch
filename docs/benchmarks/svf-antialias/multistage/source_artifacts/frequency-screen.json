@@ -1,0 +1,154 @@
+[
+  {
+    "lengths": [
+      129,
+      33,
+      17,
+      33
+    ],
+    "latency": 76.0,
+    "stages": [
+      {
+        "rate": 2,
+        "taps": 129,
+        "pass_min_db": -0.00279587875165957,
+        "pass_max_db": 0.0015043926094664495,
+        "upper_fold_max_db": -92.92179268562138
+      },
+      {
+        "rate": 4,
+        "taps": 33,
+        "pass_min_db": -0.001600408419578914,
+        "pass_max_db": 0.0001993180861812016,
+        "upper_fold_max_db": -74.91628385054904
+      },
+      {
+        "rate": 8,
+        "taps": 17,
+        "pass_min_db": -0.0044998361459743594,
+        "pass_max_db": -1.9286549331065743e-15,
+        "upper_fold_max_db": -69.70805144198903
+      },
+      {
+        "rate": 16,
+        "taps": 33,
+        "pass_min_db": -0.0010395926904841518,
+        "pass_max_db": -9.643274665532871e-16,
+        "upper_fold_max_db": -83.35272636457677
+      }
+    ],
+    "roundtrip_pass_min_db": -0.019114898997770247,
+    "roundtrip_pass_max_db": -9.643274665532873e-15,
+    "complete_input_image_and_decimator_alias_bands": [
+      {
+        "center": 1,
+        "max_db": -92.92914044792319
+      },
+      {
+        "center": 2,
+        "max_db": -80.38226962872284
+      },
+      {
+        "center": 3,
+        "max_db": -166.38990439747505
+      },
+      {
+        "center": 4,
+        "max_db": -75.4365036174763
+      },
+      {
+        "center": 5,
+        "max_db": -185.43427409142424
+      },
+      {
+        "center": 6,
+        "max_db": -161.65214470644509
+      },
+      {
+        "center": 7,
+        "max_db": -177.8817932097616
+      },
+      {
+        "center": 8,
+        "max_db": -84.05429322730382
+      }
+    ],
+    "complete_wanted_alias_max_db": -75.4365036174763
+  },
+  {
+    "lengths": [
+      129,
+      33,
+      33,
+      33
+    ],
+    "latency": 78.0,
+    "stages": [
+      {
+        "rate": 2,
+        "taps": 129,
+        "pass_min_db": -0.00279587875165957,
+        "pass_max_db": 0.0015043926094664495,
+        "upper_fold_max_db": -92.92179268562138
+      },
+      {
+        "rate": 4,
+        "taps": 33,
+        "pass_min_db": -0.001600408419578914,
+        "pass_max_db": 0.0001993180861812016,
+        "upper_fold_max_db": -74.91628385054904
+      },
+      {
+        "rate": 8,
+        "taps": 33,
+        "pass_min_db": -0.0011351444837980839,
+        "pass_max_db": -9.643274665532871e-16,
+        "upper_fold_max_db": -81.34541704928549
+      },
+      {
+        "rate": 16,
+        "taps": 33,
+        "pass_min_db": -0.0010395926904841518,
+        "pass_max_db": -9.643274665532871e-16,
+        "upper_fold_max_db": -83.35272636457677
+      }
+    ],
+    "roundtrip_pass_min_db": -0.010561881713140375,
+    "roundtrip_pass_max_db": -7.714619732426299e-15,
+    "complete_input_image_and_decimator_alias_bands": [
+      {
+        "center": 1,
+        "max_db": -92.92453843411744
+      },
+      {
+        "center": 2,
+        "max_db": -78.74703870095371
+      },
+      {
+        "center": 3,
+        "max_db": -184.45408484539325
+      },
+      {
+        "center": 4,
+        "max_db": -86.40298657976868
+      },
+      {
+        "center": 5,
+        "max_db": -203.49845453959057
+      },
+      {
+        "center": 6,
+        "max_db": -160.04015743807744
+      },
+      {
+        "center": 7,
+        "max_db": -177.8771911959559
+      },
+      {
+        "center": 8,
+        "max_db": -84.05429322730382
+      }
+    ],
+    "complete_wanted_alias_max_db": -78.74703870095371
+  }
+]

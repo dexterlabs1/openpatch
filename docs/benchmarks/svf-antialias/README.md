@@ -144,14 +144,63 @@ subsequent change reserves a new report file before timing instead of overwritin
 at the end. Both measured and reproducer hashes are retained in the summary.
 No application DSP or installed bundle changed in this study.
 
+## Grouped 16× bounded comparison
+
+The grouped prototype processes active quartets through the existing
+`Oversampler::process_four`, with scalar processing for one to three remaining
+voices. Each lane retains its FIR addition order, ring heads and separate
+64-host-sample cutoff-CV delay. Gain, blend and `tanh(gain)` are compiled once;
+division and drive expression order are preserved. Zero blend uses an identity
+closure while advancing the FIR histories. State adoption retains the newly
+compiled constants, and reset/voice retirement clear the histories.
+
+[grouped-performance.json](grouped-performance.json) records a **bounded eight-case
+screen per variant**, with 256 warmup and 1024 measured 128-frame blocks per case:
+48/96 kHz × 1/16 voices × drive 0/1, with cutoff modulation enabled throughout.
+The scalar and grouped release binaries were built before sequential timing on
+the same Apple M1 Max. Total measured blocks: 16,384. This has fewer cases and
+shorter runs than the previous 36-case/4096-block study.
+
+Selected 16-voice block times, milliseconds:
+
+| Rate | Drive | Scalar p50 | Grouped p50 | p50 speedup | Scalar p99 | Grouped p99 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 48 kHz | 0 | 2.540 | 0.796 | 3.19× | 2.786 | 0.883 |
+| 48 kHz | 1 | 2.565 | 0.981 | 2.61× | 2.766 | 1.143 |
+| 96 kHz | 0 | 2.490 | 0.774 | 3.22× | 2.694 | 0.903 |
+| 96 kHz | 1 | 2.528 | 0.978 | 2.58× | 2.696 | 1.147 |
+
+Maximum-drive mono p50 was essentially unchanged: 0.168/0.172 ms scalar versus
+0.168/0.168 ms grouped at 48/96 kHz, respectively. Zero-drive mono improved by
+approximately 1.13×. The measured 16-voice maximum-drive speedup is about 2.6×;
+it does not establish production readiness. At 96 kHz, two of the grouped
+maximum-drive case's 1024 blocks exceeded the nominal 1.333 ms whole-block budget;
+the maximum was 1.966 ms. OS scheduling still affects tails, and this screen does
+not test audio callbacks or headroom for a full patch.
+
+Six release unit tests passed both in the isolated candidate and in a freshly
+prepared public candidate using `--locked`. They compare all three output ports
+with `to_bits()` against an unchanged scalar 16× source copy, across counts 1–16,
+44.1/48/96 kHz, and drive 0/1e−12/0.1/1. They also cover changing counts, differing
+ring heads, CV broadcast/modulation and exact 64-frame delay, reset, retirement,
+state adoption and drive changes, f64 drive outputs, retained FIR histories and
+subsequent scalar continuation. Signed-zero checks found no bit mismatch. These
+are bounded equivalence checks, not qualification for arbitrary signals.
+
 ## Remaining work
 
+The subsequent [four-stage resampler study](multistage/README.md) changes the
+filter kernels and adds 76 samples of latency. It passes all three measured
+spectral matrices and reduces both mono and polyphonic median cost. Its initial
+96 kHz p99 and bounded repeat results remain explicit; this is still an
+experimental candidate, not an installed fix.
+
 The production decision remains open. Preserve the 16× candidate as a spectral
-reference while measuring and reducing its cost. A promising next experiment
-shares FIR coefficient traversal across four independent voice lanes, preserves
-each lane's accumulation order, and hoists shared drive constants. Zero drive
-can avoid nonlinear evaluations while continuing all FIR histories. Any speedup
-requires measurement and scalar/grouped equivalence checks.
+reference while measuring and reducing its cost. The grouped experiment improves
+the bounded screen while retaining scalar bit equality in the tests above.
+It still needs the full timing matrix, parameter-continuity and allocation/state
+adoption checks, broader amplitude/intermodulation/modulation/feedback tests, and
+eventual audio-device qualification before any production decision.
 
 The experimental factor changes affect the copied `ladder.rs` shared resampler.
 Only SVF is tested here. **Do not copy that constants change into production**:
@@ -204,6 +253,37 @@ uses the public engine with 1 or 16 active voices, 128-frame blocks, three rates
 three drive settings, and optional 13 Hz cutoff modulation. Each case has 512
 warmup and 4096 measured blocks. Taps verify voice activity after cable startup;
 only public block processing and timer/black-box overhead are timed.
+
+To reproduce the bounded scalar/grouped screen, prepare both candidates and
+build both binaries before timing either one:
+
+```sh
+python3 docs/benchmarks/svf-antialias/prepare.py --factor 16 --matrix performance --screen --output native-test-output/svf-screen-scalar
+python3 docs/benchmarks/svf-antialias/prepare.py --factor 16 --matrix performance --grouped --screen --output native-test-output/svf-screen-grouped
+cargo build --release --locked --manifest-path native-test-output/svf-screen-scalar/probe/Cargo.toml
+cargo build --release --locked --manifest-path native-test-output/svf-screen-grouped/probe/Cargo.toml
+native-test-output/svf-screen-scalar/probe/target/release/openpatch-svf-performance-probe scalar16x native-test-output/svf-screen-scalar/performance.json
+native-test-output/svf-screen-grouped/probe/target/release/openpatch-svf-performance-probe grouped16x native-test-output/svf-screen-grouped/performance.json
+```
+
+Run these sequentially with other heavy work stopped. `--screen` requires matrix
+`performance`; `--grouped` requires factor `16`. Each output directory and JSON
+report must be new. The generated screen main is byte-identical to the measured
+screen harness. Public grouped DSP/test source is byte-identical to the frozen
+candidate, and prepared provenance includes the unchanged scalar test oracle and
+core/probe lockfiles. [source-provenance.json](source-provenance.json) records the
+16 original combinations, four grouped matrices and two performance screens.
+
+Run the six equivalence checks separately from timing:
+
+```sh
+cargo test --release --locked --lib --manifest-path native-test-output/svf-screen-grouped/core/Cargo.toml voice_tools::grouped_tests::
+```
+
+Use this selected test group: copied ladder tests include assertions for the
+original 8× configuration and are not a valid full-suite gate for these 16× SVF
+experiments. `--grouped` also works with `engine`, `highband` and `dense`; their
+spectral probe/oracle invocation and 64-sample delay are unchanged.
 
 This is an offline wall-clock screen. OS scheduling affects tails; there is no
 realtime priority, core pinning, audio device, or callback scheduling test. All

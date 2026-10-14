@@ -1,0 +1,25 @@
+{
+  "license": "MIT",
+  "baseline_commit": "147c8300b7dab2ab58569ee186d0e8fe4a58f1ad",
+  "frozen_candidate": "native-test-output/svf-antialias/16x-multistage",
+  "latency_samples": 76,
+  "stage_taps": [
+    129,
+    33,
+    17,
+    33
+  ],
+  "frozen_rust_sha256": {
+    "svf_resampler.rs": "c4c72f477a4387f90018820d15ca147253e7247479ce11d4f8d5e6dea8571dcc",
+    "svf_resampler_kernels.rs": "a87b3ca16cbed7cdc17906f9b22bcbf4885e9725c22cc6146e2dfc9f3a94e08b",
+    "svf_resampler_tests.rs": "5625bf66affbc5328c201ed927c0160b0da8138969258419623a6228f7e82c1d",
+    "voice_tools.rs": "7afb1b0bdcfdf3eec899119feb834681056d40be85ebf2e6830a9d3a43fb9cfb"
+  },
+  "frozen_lib_sha256": "bde76a7ad4b09aebd3ec636b6822e99caf1faddd1bf977cf90d8719cd14407ca",
+  "frozen_ladder_sha256": "5e913ab9abdcd7bd9740e5590e168be1448161315ed8c1abd1b4e6e7a33393b0",
+  "original_artifacts_sha256": {
+    "frequency-screen.json": "576974b94a318ecd2683953347aa880398fb6c795d0b967ab787656bd59bbc99",
+    "generate_kernels.py": "18bcbad504bf9a8d21520e00865dd735257134e491bfb520e2772e8cae218b5b",
+    "screen.py": "8bdb4c0eb8c75d94911cf821f0fce135fee44e8e3094962306848d8228ce4573"
+  }
+}

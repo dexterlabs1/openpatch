@@ -4,6 +4,8 @@
 The checked-in runtime is not modified. Factor 0 preserves the baseline DSP.
 Factors 4/8/16 reuse its Blackman FIR resampler with 257/513/1025 taps and add
 the study's drive preprocessing and matched 64-sample cutoff-CV delay.
+The optional 16x grouped candidate preserves the measured quartet source;
+--screen selects the measured eight-case performance workload.
 """
 import argparse
 import hashlib
@@ -122,7 +124,9 @@ pub(crate) struct Filter {""")
     return source
 
 
-def prepared_files(baseline_files, factor, matrix):
+def prepared_files(baseline_files, factor, matrix, grouped=False, screen=False):
+    if screen and matrix != "performance":
+        raise ValueError("Screen comparison requires the performance matrix")
     files = {"core/" + name[len(CORE_PREFIX):]: data
              for name, data in baseline_files.items() if name.startswith(CORE_PREFIX)}
     files["core/Cargo.toml"] += b"\n[workspace]\n"
@@ -136,6 +140,22 @@ def prepared_files(baseline_files, factor, matrix):
         source = replace_exact(source, "const TAPS: usize = 513;",
                                f"const TAPS: usize = {64 * factor + 1};")
         files[name] = source.encode()
+    if grouped:
+        if factor != 16:
+            raise ValueError("Grouped comparison is qualified only for factor 16")
+        # Retain the unchanged scalar implementation as a test oracle. The
+        # grouped source is the byte-preserved measured prototype.
+        files["core/src/voice_tools/scalar_reference.rs"] = files["core/src/voice_tools.rs"]
+        files["core/src/voice_tools.rs"] = (HERE / "grouped_voice_tools.rs").read_bytes()
+        files["core/src/voice_tools/grouped_tests.rs"] = (HERE / "grouped_tests.rs").read_bytes()
+        # Standalone core tests use the same pinned dependency versions as the
+        # probe; remove only the probe package from that lockfile.
+        files["core/Cargo.lock"] = replace_exact(
+            baseline_files[PROBE_PREFIX + "Cargo.lock"].decode(),
+            '\n[[package]]\nname = "openpatch-svf-spectral-probe"\nversion = "0.0.0"\ndependencies = [\n "openpatch-core",\n "serde_json",\n]\n',
+            "",
+        ).encode()
+
     manifest = baseline_files[PROBE_PREFIX + "Cargo.toml"].decode()
     files["probe/Cargo.toml"] = replace_exact(manifest, "../../../crates/openpatch-core", "../core").encode()
     files["probe/Cargo.lock"] = baseline_files[PROBE_PREFIX + "Cargo.lock"]
@@ -160,6 +180,18 @@ def prepared_files(baseline_files, factor, matrix):
         # Use the exact timed public-Engine workload. Profile flags are local
         # to this probe; spectral-probe compilation settings stay unchanged.
         files["probe/src/main.rs"] = (HERE / "performance.rs").read_bytes()
+        if screen:
+            source = files["probe/src/main.rs"].decode()
+            for old, new in (
+                ("const WARMUP: usize = 512;", "const WARMUP: usize = 256;"),
+                ("const MEASURED: usize = 4096;", "const MEASURED: usize = 1024;"),
+                ("for rate in [44100,48000,96000]", "for rate in [48000,96000]"),
+                ("for modulation in [false,true]", "for modulation in [true]"),
+                ("for drive in [0.0,0.1,1.0]", "for drive in [0.0,1.0]"),
+            ):
+                source = replace_exact(source, old, new)
+            files["probe/src/main.rs"] = source.encode()
+
         manifest = replace_exact(files["probe/Cargo.toml"].decode(),
                                  'name = "openpatch-svf-spectral-probe"',
                                  'name = "openpatch-svf-performance-probe"')
@@ -179,23 +211,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--factor", type=int, choices=(0, 4, 8, 16), required=True)
     parser.add_argument("--matrix", choices=("engine", "highband", "dense", "performance"), required=True)
+    parser.add_argument("--grouped", action="store_true", help="Use the measured 16x quartet prototype")
+    parser.add_argument("--screen", action="store_true", help="Use the bounded eight-case performance comparison")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.screen and args.matrix != "performance":
+        parser.error("--screen requires --matrix performance")
+    if args.grouped and args.factor != 16:
+        parser.error("--grouped requires --factor 16")
     if args.output.exists() or args.output.is_symlink():
         parser.error("--output must be a new directory; existing paths are never overwritten")
     repository = HERE.parents[2]
     baseline_files = pinned_files(repository)
-    files = prepared_files(baseline_files, args.factor, args.matrix)
+    files = prepared_files(baseline_files, args.factor, args.matrix, args.grouped, args.screen)
     provenance = {
         "baseline_commit": BASELINE,
-        "factor": args.factor, "matrix": args.matrix,
+        "factor": args.factor, "matrix": args.matrix, "grouped": args.grouped, "screen": args.screen,
         "fir_taps": 64 * args.factor + 1 if args.factor else None,
         "candidate_delay_host_samples": 64 if args.factor else 0,
         "source_delay_host_samples": 3 if args.matrix == "performance" else 2,
         "baseline_files_sha256": {name: sha256(data) for name, data in sorted(baseline_files.items())},
         "prepared_files_sha256": {name: sha256(data) for name, data in sorted(files.items())},
         "study_files_sha256": {name: sha256((HERE / name).read_bytes())
-                               for name in ("prepare.py", "highband_probe.rs", "performance.rs", "reference.py")},
+                               for name in ("prepare.py", "highband_probe.rs", "performance.rs", "reference.py",
+                                            "grouped_voice_tools.rs", "grouped_tests.rs")},
     }
     args.output.mkdir(parents=True, exist_ok=False)
     for name, data in sorted(files.items()):

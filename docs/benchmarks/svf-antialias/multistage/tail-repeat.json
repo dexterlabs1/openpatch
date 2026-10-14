@@ -1,0 +1,1013 @@
+{
+  "method": {
+    "reason": "Initial multistage96k16voice drive1 overbudget samples cluster in indices439..469; bounded counterbalanced repeat to investigate persistence, not to discard original result.",
+    "order": [
+      "multistage16",
+      "grouped16",
+      "grouped16",
+      "multistage16",
+      "multistage16",
+      "grouped16"
+    ],
+    "scope": "Reuse unchanged prebuilt8case harness;3repetitions/variant,1024blocks/case, no deliberately concurrent heavy work. Focus diagnostic on96k16voice drive1 CVenabled; all other cases retained. No realtime/core/thermal isolation.",
+    "prior_metadata": "performance.json metadata (initial screen; same prebuilt binaries)"
+  },
+  "runs": [
+    {
+      "name": "0-multistage16.json",
+      "sha256": "31b0575a61b2388187880900bf79277f54ff4706649fe6bc7e7402b032ef7802",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.052187625,
+            "max_us": 139.167,
+            "mean_us": 57.3470810546875,
+            "p50_deadline_ratio": 0.02109375,
+            "p50_us": 56.25,
+            "p95_deadline_ratio": 0.022953375,
+            "p95_us": 61.209,
+            "p99_deadline_ratio": 0.0306405,
+            "p99_us": 81.708
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.0443595,
+            "max_us": 118.292,
+            "mean_us": 58.92391796875,
+            "p50_deadline_ratio": 0.02195325,
+            "p50_us": 58.542,
+            "p95_deadline_ratio": 0.022781250000000003,
+            "p95_us": 60.75,
+            "p99_deadline_ratio": 0.028765500000000003,
+            "p99_us": 76.708
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.52048425,
+            "max_us": 1387.958,
+            "mean_us": 694.1679736328125,
+            "p50_deadline_ratio": 0.257047125,
+            "p50_us": 685.459,
+            "p95_deadline_ratio": 0.284390625,
+            "p95_us": 758.375,
+            "p99_deadline_ratio": 0.31351575000000004,
+            "p99_us": 836.042
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.9849063750000001,
+            "max_us": 2626.417,
+            "mean_us": 747.93147265625,
+            "p50_deadline_ratio": 0.27339075,
+            "p50_us": 729.042,
+            "p95_deadline_ratio": 0.314859375,
+            "p95_us": 839.625,
+            "p99_deadline_ratio": 0.3602655,
+            "p99_us": 960.708
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.113031,
+            "max_us": 150.708,
+            "mean_us": 56.7524130859375,
+            "p50_deadline_ratio": 0.041937,
+            "p50_us": 55.916,
+            "p95_deadline_ratio": 0.044062500000000004,
+            "p95_us": 58.75,
+            "p99_deadline_ratio": 0.06159375,
+            "p99_us": 82.125
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.8776875000000001,
+            "max_us": 1170.25,
+            "mean_us": 61.58004296875,
+            "p50_deadline_ratio": 0.044844,
+            "p50_us": 59.792,
+            "p95_deadline_ratio": 0.04875,
+            "p95_us": 65.0,
+            "p99_deadline_ratio": 0.05581275,
+            "p99_us": 74.417
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 5,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 2.0831880000000003,
+            "max_us": 2777.584,
+            "mean_us": 694.7532451171875,
+            "p50_deadline_ratio": 0.511281,
+            "p50_us": 681.708,
+            "p95_deadline_ratio": 0.57293775,
+            "p95_us": 763.917,
+            "p99_deadline_ratio": 0.64509375,
+            "p99_us": 860.125
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.8640315000000001,
+            "max_us": 1152.042,
+            "mean_us": 727.0750654296875,
+            "p50_deadline_ratio": 0.53856225,
+            "p50_us": 718.083,
+            "p95_deadline_ratio": 0.6009690000000001,
+            "p95_us": 801.292,
+            "p99_deadline_ratio": 0.6465937500000001,
+            "p99_us": 862.125
+          }
+        }
+      ]
+    },
+    {
+      "name": "1-grouped16.json",
+      "sha256": "e68cedc0d4f069ccf6ab9730d61d82c6e7c0a4eb547ad021a31ff46eed02a913",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 1,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 1.36040625,
+            "max_us": 3627.75,
+            "mean_us": 163.6006298828125,
+            "p50_deadline_ratio": 0.058343625,
+            "p50_us": 155.583,
+            "p95_deadline_ratio": 0.067015875,
+            "p95_us": 178.709,
+            "p99_deadline_ratio": 0.10278150000000001,
+            "p99_us": 274.084
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.20259375000000002,
+            "max_us": 540.25,
+            "mean_us": 176.5475595703125,
+            "p50_deadline_ratio": 0.065125125,
+            "p50_us": 173.667,
+            "p95_deadline_ratio": 0.07215637500000001,
+            "p95_us": 192.417,
+            "p99_deadline_ratio": 0.087078375,
+            "p99_us": 232.209
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.39582825000000005,
+            "max_us": 1055.542,
+            "mean_us": 815.4230546875,
+            "p50_deadline_ratio": 0.302109375,
+            "p50_us": 805.625,
+            "p95_deadline_ratio": 0.33076575,
+            "p95_us": 882.042,
+            "p99_deadline_ratio": 0.35776575,
+            "p99_us": 954.042
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.58275,
+            "max_us": 1554.0,
+            "mean_us": 1005.856005859375,
+            "p50_deadline_ratio": 0.374374875,
+            "p50_us": 998.333,
+            "p95_deadline_ratio": 0.39559387500000004,
+            "p95_us": 1054.917,
+            "p99_deadline_ratio": 0.4355625,
+            "p99_us": 1161.5
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.19053150000000002,
+            "max_us": 254.042,
+            "mean_us": 152.78837109375,
+            "p50_deadline_ratio": 0.11343750000000001,
+            "p50_us": 151.25,
+            "p95_deadline_ratio": 0.120219,
+            "p95_us": 160.292,
+            "p99_deadline_ratio": 0.13415625,
+            "p99_us": 178.875
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.20903100000000002,
+            "max_us": 278.708,
+            "mean_us": 171.3239677734375,
+            "p50_deadline_ratio": 0.12637500000000002,
+            "p50_us": 168.5,
+            "p95_deadline_ratio": 0.13581225,
+            "p95_us": 181.083,
+            "p99_deadline_ratio": 0.15087525000000002,
+            "p99_us": 201.167
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.7311562500000001,
+            "max_us": 974.875,
+            "mean_us": 802.544845703125,
+            "p50_deadline_ratio": 0.5967187500000001,
+            "p50_us": 795.625,
+            "p95_deadline_ratio": 0.6349687500000001,
+            "p95_us": 846.625,
+            "p99_deadline_ratio": 0.68596875,
+            "p99_us": 914.625
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.8981250000000001,
+            "max_us": 1197.5,
+            "mean_us": 999.1525263671875,
+            "p50_deadline_ratio": 0.743688,
+            "p50_us": 991.584,
+            "p95_deadline_ratio": 0.786219,
+            "p95_us": 1048.292,
+            "p99_deadline_ratio": 0.8527815000000001,
+            "p99_us": 1137.042
+          }
+        }
+      ]
+    },
+    {
+      "name": "2-grouped16.json",
+      "sha256": "578239b9b15e607b2a6fc74247f7912027c85c9eaa49c6f4d7a3cbe75a586f30",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.29425012500000003,
+            "max_us": 784.667,
+            "mean_us": 153.90891015625,
+            "p50_deadline_ratio": 0.0563595,
+            "p50_us": 150.292,
+            "p95_deadline_ratio": 0.061796625,
+            "p95_us": 164.791,
+            "p99_deadline_ratio": 0.06703125,
+            "p99_us": 178.75
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.110125125,
+            "max_us": 293.667,
+            "mean_us": 175.312423828125,
+            "p50_deadline_ratio": 0.065093625,
+            "p50_us": 173.583,
+            "p95_deadline_ratio": 0.071515875,
+            "p95_us": 190.709,
+            "p99_deadline_ratio": 0.08039062500000001,
+            "p99_us": 214.375
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.43990650000000003,
+            "max_us": 1173.084,
+            "mean_us": 815.58233203125,
+            "p50_deadline_ratio": 0.302484375,
+            "p50_us": 806.625,
+            "p95_deadline_ratio": 0.33167212500000004,
+            "p95_us": 884.459,
+            "p99_deadline_ratio": 0.349171875,
+            "p99_us": 931.125
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 7,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 5.0602346250000005,
+            "max_us": 13493.959,
+            "mean_us": 1071.4980166015625,
+            "p50_deadline_ratio": 0.375046875,
+            "p50_us": 1000.125,
+            "p95_deadline_ratio": 0.425937375,
+            "p95_us": 1135.833,
+            "p99_deadline_ratio": 0.920374875,
+            "p99_us": 2454.333
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.1849065,
+            "max_us": 246.542,
+            "mean_us": 152.72745703125,
+            "p50_deadline_ratio": 0.1137495,
+            "p50_us": 151.666,
+            "p95_deadline_ratio": 0.11893725000000001,
+            "p95_us": 158.583,
+            "p99_deadline_ratio": 0.129906,
+            "p99_us": 173.208
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.1739685,
+            "max_us": 231.958,
+            "mean_us": 171.6780615234375,
+            "p50_deadline_ratio": 0.1264065,
+            "p50_us": 168.542,
+            "p95_deadline_ratio": 0.137844,
+            "p95_us": 183.792,
+            "p99_deadline_ratio": 0.14956275000000002,
+            "p99_us": 199.417
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.71781225,
+            "max_us": 957.083,
+            "mean_us": 791.7912685546875,
+            "p50_deadline_ratio": 0.58875,
+            "p50_us": 785.0,
+            "p95_deadline_ratio": 0.619656,
+            "p95_us": 826.208,
+            "p99_deadline_ratio": 0.6803122500000001,
+            "p99_us": 907.083
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.94996875,
+            "max_us": 1266.625,
+            "mean_us": 994.341251953125,
+            "p50_deadline_ratio": 0.73824975,
+            "p50_us": 984.333,
+            "p95_deadline_ratio": 0.78099975,
+            "p95_us": 1041.333,
+            "p99_deadline_ratio": 0.85934325,
+            "p99_us": 1145.791
+          }
+        }
+      ]
+    },
+    {
+      "name": "3-multistage16.json",
+      "sha256": "64db1e15f1b686450cca5085c2110a13c0f5f488274fb21b2feb1c002646ef74",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.036156,
+            "max_us": 96.416,
+            "mean_us": 57.3639638671875,
+            "p50_deadline_ratio": 0.021124875,
+            "p50_us": 56.333,
+            "p95_deadline_ratio": 0.022437375000000002,
+            "p95_us": 59.833,
+            "p99_deadline_ratio": 0.02642175,
+            "p99_us": 70.458
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.034937625,
+            "max_us": 93.167,
+            "mean_us": 59.86328515625,
+            "p50_deadline_ratio": 0.021984375,
+            "p50_us": 58.625,
+            "p95_deadline_ratio": 0.02514075,
+            "p95_us": 67.042,
+            "p99_deadline_ratio": 0.030593625000000003,
+            "p99_us": 81.583
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.403468875,
+            "max_us": 1075.917,
+            "mean_us": 690.49097265625,
+            "p50_deadline_ratio": 0.254749875,
+            "p50_us": 679.333,
+            "p95_deadline_ratio": 0.278547,
+            "p95_us": 742.792,
+            "p99_deadline_ratio": 0.307156125,
+            "p99_us": 819.083
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.39525000000000005,
+            "max_us": 1054.0,
+            "mean_us": 726.6783037109375,
+            "p50_deadline_ratio": 0.269390625,
+            "p50_us": 718.375,
+            "p95_deadline_ratio": 0.295828125,
+            "p95_us": 788.875,
+            "p99_deadline_ratio": 0.315781125,
+            "p99_us": 842.083
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.11403075,
+            "max_us": 152.041,
+            "mean_us": 58.0346552734375,
+            "p50_deadline_ratio": 0.04228125,
+            "p50_us": 56.375,
+            "p95_deadline_ratio": 0.051063000000000004,
+            "p95_us": 68.084,
+            "p99_deadline_ratio": 0.062031,
+            "p99_us": 82.708
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.07118775000000001,
+            "max_us": 94.917,
+            "mean_us": 59.188087890625,
+            "p50_deadline_ratio": 0.0434685,
+            "p50_us": 57.958,
+            "p95_deadline_ratio": 0.05053125,
+            "p95_us": 67.375,
+            "p99_deadline_ratio": 0.059187750000000004,
+            "p99_us": 78.917
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 1,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 1.1107815,
+            "max_us": 1481.042,
+            "mean_us": 686.147412109375,
+            "p50_deadline_ratio": 0.5080005000000001,
+            "p50_us": 677.334,
+            "p95_deadline_ratio": 0.5499375000000001,
+            "p95_us": 733.25,
+            "p99_deadline_ratio": 0.59221875,
+            "p99_us": 789.625
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 2,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 1.4426557500000001,
+            "max_us": 1923.541,
+            "mean_us": 730.9692333984375,
+            "p50_deadline_ratio": 0.53893725,
+            "p50_us": 718.583,
+            "p95_deadline_ratio": 0.59025,
+            "p95_us": 787.0,
+            "p99_deadline_ratio": 0.6549375000000001,
+            "p99_us": 873.25
+          }
+        }
+      ]
+    },
+    {
+      "name": "4-multistage16.json",
+      "sha256": "fa63a228517391131727f6efe9ed97c1c2c8034a2a7ed799b1f471cea01fa7c9",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.035499750000000004,
+            "max_us": 94.666,
+            "mean_us": 57.024447265625,
+            "p50_deadline_ratio": 0.021046875,
+            "p50_us": 56.125,
+            "p95_deadline_ratio": 0.0222345,
+            "p95_us": 59.292,
+            "p99_deadline_ratio": 0.029172,
+            "p99_us": 77.792
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.32064075000000003,
+            "max_us": 855.042,
+            "mean_us": 61.09180078125,
+            "p50_deadline_ratio": 0.022093500000000002,
+            "p50_us": 58.916,
+            "p95_deadline_ratio": 0.026500125000000003,
+            "p95_us": 70.667,
+            "p99_deadline_ratio": 0.030359625,
+            "p99_us": 80.959
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.32839050000000003,
+            "max_us": 875.708,
+            "mean_us": 687.6923408203126,
+            "p50_deadline_ratio": 0.254281125,
+            "p50_us": 678.083,
+            "p95_deadline_ratio": 0.28078125000000004,
+            "p95_us": 748.75,
+            "p99_deadline_ratio": 0.29979675,
+            "p99_us": 799.458
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.48976575000000006,
+            "max_us": 1306.042,
+            "mean_us": 730.7941484375,
+            "p50_deadline_ratio": 0.26934375,
+            "p50_us": 718.25,
+            "p95_deadline_ratio": 0.295484625,
+            "p95_us": 787.959,
+            "p99_deadline_ratio": 0.31632825000000003,
+            "p99_us": 843.542
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.081375,
+            "max_us": 108.5,
+            "mean_us": 58.277052734375,
+            "p50_deadline_ratio": 0.042438000000000003,
+            "p50_us": 56.584,
+            "p95_deadline_ratio": 0.049875,
+            "p95_us": 66.5,
+            "p99_deadline_ratio": 0.05693775,
+            "p99_us": 75.917
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.09368775,
+            "max_us": 124.917,
+            "mean_us": 59.608869140625,
+            "p50_deadline_ratio": 0.04384425,
+            "p50_us": 58.459,
+            "p95_deadline_ratio": 0.049155750000000005,
+            "p95_us": 65.541,
+            "p99_deadline_ratio": 0.0596565,
+            "p99_us": 79.542
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 4,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 1.7902185000000002,
+            "max_us": 2386.958,
+            "mean_us": 696.66320703125,
+            "p50_deadline_ratio": 0.5089687500000001,
+            "p50_us": 678.625,
+            "p95_deadline_ratio": 0.56503125,
+            "p95_us": 753.375,
+            "p99_deadline_ratio": 0.6466875000000001,
+            "p99_us": 862.25
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.90621825,
+            "max_us": 1208.291,
+            "mean_us": 734.8068115234375,
+            "p50_deadline_ratio": 0.54050025,
+            "p50_us": 720.667,
+            "p95_deadline_ratio": 0.6123435,
+            "p95_us": 816.458,
+            "p99_deadline_ratio": 0.652188,
+            "p99_us": 869.584
+          }
+        }
+      ]
+    },
+    {
+      "name": "5-grouped16.json",
+      "sha256": "6aba7dc813717d53992df01acfcdcbb33a790161e00df3b1beb1f75241ca4a2a",
+      "cases": [
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.09575025000000001,
+            "max_us": 255.334,
+            "mean_us": 155.118572265625,
+            "p50_deadline_ratio": 0.05698425,
+            "p50_us": 151.958,
+            "p95_deadline_ratio": 0.06478125,
+            "p95_us": 172.75,
+            "p99_deadline_ratio": 0.073171875,
+            "p99_us": 195.125
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.1152345,
+            "max_us": 307.292,
+            "mean_us": 174.659740234375,
+            "p50_deadline_ratio": 0.06443775,
+            "p50_us": 171.834,
+            "p95_deadline_ratio": 0.07259362500000001,
+            "p95_us": 193.583,
+            "p99_deadline_ratio": 0.08215650000000001,
+            "p99_us": 219.084
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.53307825,
+            "max_us": 1421.542,
+            "mean_us": 814.3330439453125,
+            "p50_deadline_ratio": 0.299656125,
+            "p50_us": 799.083,
+            "p95_deadline_ratio": 0.328843875,
+            "p95_us": 876.917,
+            "p99_deadline_ratio": 0.36262500000000003,
+            "p99_us": 967.0
+          }
+        },
+        {
+          "sample_rate": 48000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 2666.6666666666665,
+            "max_deadline_ratio": 0.46400025,
+            "max_us": 1237.334,
+            "mean_us": 1009.8839072265625,
+            "p50_deadline_ratio": 0.37415625,
+            "p50_us": 997.75,
+            "p95_deadline_ratio": 0.403718625,
+            "p95_us": 1076.583,
+            "p99_deadline_ratio": 0.43426575,
+            "p99_us": 1158.042
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.8996557500000001,
+            "max_us": 1199.541,
+            "mean_us": 156.106650390625,
+            "p50_deadline_ratio": 0.1142505,
+            "p50_us": 152.334,
+            "p95_deadline_ratio": 0.12662475,
+            "p95_us": 168.833,
+            "p99_deadline_ratio": 0.14906250000000001,
+            "p99_us": 198.75
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 1,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.65693775,
+            "max_us": 875.917,
+            "mean_us": 175.92094140625,
+            "p50_deadline_ratio": 0.12937500000000002,
+            "p50_us": 172.5,
+            "p95_deadline_ratio": 0.14393775,
+            "p95_us": 191.917,
+            "p99_deadline_ratio": 0.166437,
+            "p99_us": 221.916
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 0.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.9462502500000001,
+            "max_us": 1261.667,
+            "mean_us": 799.3369580078125,
+            "p50_deadline_ratio": 0.59106225,
+            "p50_us": 788.083,
+            "p95_deadline_ratio": 0.6369060000000001,
+            "p95_us": 849.208,
+            "p99_deadline_ratio": 0.68293725,
+            "p99_us": 910.583
+          }
+        },
+        {
+          "sample_rate": 96000,
+          "voices": 16,
+          "drive": 1.0,
+          "modulation": true,
+          "statistics": {
+            "blocks": 1024,
+            "blocks_exceeding_nominal_deadline": 0,
+            "deadline_us": 1333.3333333333333,
+            "max_deadline_ratio": 0.9246562500000001,
+            "max_us": 1232.875,
+            "mean_us": 998.987498046875,
+            "p50_deadline_ratio": 0.7403437500000001,
+            "p50_us": 987.125,
+            "p95_deadline_ratio": 0.7950622500000001,
+            "p95_us": 1060.083,
+            "p99_deadline_ratio": 0.8636565,
+            "p99_us": 1151.542
+          }
+        }
+      ]
+    }
+  ]
+}

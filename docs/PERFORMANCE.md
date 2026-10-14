@@ -335,3 +335,14 @@ These prototypes are not shipped. The study retains source hashes, independent
 spectral references and 589,824 measured actual-engine blocks to guide an
 optimization that preserves sound quality. Offline cost is not device stability
 or a faster-than-Rack result.
+
+Two subsequent bounded screens compare implementations at 16×. Processing voice
+quartets retains scalar bit equality in the tested cases and reduces the
+16-voice maximum-drive median by about 2.6×; mono cost is essentially unchanged.
+An original [four-stage resampler](benchmarks/svf-antialias/multistage/README.md)
+passes the 144-case engine, 198-case extended and 234-case dense spectral gates,
+with 76 samples of additional latency instead of 64. Its paired median is about
+3× faster for mono and 3.6× for sixteen voices than the unoptimized 16× prototype.
+The initial 96 kHz/16-voice maximum-drive p99 still exceeds the nominal block
+budget. These are experimental alternatives, with public source and measured
+tails; neither changes the installed filter or establishes callback reliability.
