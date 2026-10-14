@@ -79,13 +79,24 @@ impl Category {
 
     fn of_kind(kind: &str) -> Self {
         match kind {
-            "oscillator" | "analog_vco" | "multi_vco" | "white_noise" => Self::Oscillators,
-            "lowpass" | "ladder_vcf" => Self::Filters,
+            "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
+                Self::Oscillators
+            }
+            "lowpass" | "ladder_vcf" | "svf_filter" => Self::Filters,
             "adsr" => Self::Envelopes,
-            "seq3" => Self::Sequencers,
+            "seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "gate" => Self::Modulation,
-            "gain" | "mixer" | "analog_vca" | "mix6" | "cv_mix" | "vca_mix" | "fade"
-            | "crossfade" => Self::Mixing,
+            "gain"
+            | "mixer"
+            | "analog_vca"
+            | "mix6"
+            | "cv_mix"
+            | "vca_mix"
+            | "fade"
+            | "crossfade"
+            | "stereo_delay"
+            | "stereo_reverb"
+            | "sidechain_compressor" => Self::Mixing,
             "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "poly_sum"
             | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" => Self::InputOutput,

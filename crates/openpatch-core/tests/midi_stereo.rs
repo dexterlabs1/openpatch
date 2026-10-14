@@ -2,6 +2,7 @@ use openpatch_core::*;
 use std::collections::BTreeMap;
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        score: None,
         bypassed: false,
         id: id.into(),
         kind: kind.into(),

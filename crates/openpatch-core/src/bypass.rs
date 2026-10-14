@@ -2,6 +2,10 @@
 use serde_json::{json, Value};
 pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
     match kind {
+        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
+            &[("left", "left"), ("right", "right")]
+        }
+        "svf_filter" => &[("signal", "low")],
         "mutes10" => &[
             ("in1", "out1"),
             ("in2", "out2"),

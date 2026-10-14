@@ -351,6 +351,7 @@ mod tests {
     fn model(rate: u32, length: f32) -> Gates {
         Gates::build(
             &Node {
+                score: None,
                 id: "g".into(),
                 kind: "gates".into(),
                 bypassed: false,

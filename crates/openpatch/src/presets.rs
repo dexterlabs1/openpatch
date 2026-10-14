@@ -33,10 +33,12 @@ pub fn validate(preset: &Value) -> Result<(), String> {
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "format" | "version" | "kind" | "params" | "bypassed"
+            "format" | "version" | "kind" | "params" | "bypassed" | "score"
         )
     }) {
-        return Err("preset accepts only format, version, kind, params, and bypassed".into());
+        return Err(
+            "preset accepts only format, version, kind, params, bypassed, and score".into(),
+        );
     }
     if preset["format"] != "openpatch-module-preset" || preset["version"].as_u64() != Some(1) {
         return Err("unsupported module preset format or version".into());
@@ -84,6 +86,17 @@ pub fn validate(preset: &Value) -> Result<(), String> {
         .is_some_and(|value| !value.is_boolean())
     {
         return Err("preset bypassed must be a boolean".into());
+    }
+    if let Some(score) = preset.get("score") {
+        if kind != "score_sequencer" {
+            return Err("score data requires score_sequencer".into());
+        }
+        let mut patch = openpatch_core::Patch::new_v2();
+        patch.nodes.push(
+            serde_json::from_value(json!({"id":"preset", "kind":kind,"score":score}))
+                .map_err(|error| error.to_string())?,
+        );
+        patch.validate()?;
     }
     if serde_json::to_vec(preset)
         .map_err(|error| error.to_string())?
@@ -136,7 +149,11 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
             if actual.value() { 1.0 } else { 0.0 },
         );
     }
-    let preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
+    let mut preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
+    if node.kind == "score_sequencer" {
+        preset["score"] = serde_json::to_value(node.score.clone().unwrap_or_default())
+            .map_err(|error| error.to_string())?;
+    }
     validate(&preset)?;
     Ok(preset)
 }
@@ -145,6 +162,10 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
     validate(preset)?;
     if preset["kind"] != node.kind {
         return Err("module preset kind does not match target module".into());
+    }
+    if let Some(score) = preset.get("score") {
+        node.score =
+            Some(serde_json::from_value(score.clone()).map_err(|error| error.to_string())?);
     }
     for (name, value) in preset["params"].as_object().unwrap() {
         node.params
@@ -311,6 +332,7 @@ mod tests {
         for module in catalog()["modules"].as_array().unwrap() {
             let kind = module["kind"].as_str().unwrap();
             let base = Node {
+                score: None,
                 id: "test".into(),
                 kind: kind.into(),
                 params: BTreeMap::new(),

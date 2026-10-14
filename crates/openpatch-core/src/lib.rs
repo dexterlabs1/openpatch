@@ -22,6 +22,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod analog;
+mod score;
+pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
+mod stereo_output;
+mod stream_render;
+mod studio_fx;
+pub use stream_render::{render_wav_stream, RenderStats};
 mod bypass;
 mod gates;
 pub mod ladder;
@@ -30,6 +36,7 @@ mod mixing;
 mod multi_lfo;
 mod multi_vco;
 mod parameter_actions;
+mod voice_tools;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;
 mod pulses;
@@ -107,6 +114,9 @@ impl Default for Patch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
+    /// Structured patterns and automation for score_sequencer only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<ScoreData>,
     pub id: String,
     pub kind: String,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -270,6 +280,18 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .extend(mixing::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(score::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(studio_fx::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(voice_tools::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -599,6 +621,14 @@ impl Patch {
 
     pub fn compile(&self) -> Result<Engine, String> {
         validate_cable_ids(&self.cables)?;
+        for node in &self.nodes {
+            if node.score.is_some() && (node.kind != "score_sequencer" || self.version != 2) {
+                return Err(format!(
+                    "node {}: score data requires version-2 score_sequencer",
+                    node.id
+                ));
+            }
+        }
         let inner = match self.version {
             1 => EngineKind::Legacy(self.compile_legacy()?),
             2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile(self)?)),
@@ -1365,6 +1395,7 @@ impl Engine {
 /// A 220 Hz tone with a smooth 2 Hz tremolo, routed through a low-pass filter.
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        score: None,
         bypassed: false,
         id: id.into(),
         kind: kind.into(),
@@ -1413,6 +1444,7 @@ pub fn demo_patch() -> Patch {
 /// A reference voice in volts, with a clock-gated RC envelope and OTA VCA.
 pub fn analog_demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        score: None,
         bypassed: false,
         id: id.into(),
         kind: kind.into(),

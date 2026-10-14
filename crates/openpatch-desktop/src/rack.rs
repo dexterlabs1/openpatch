@@ -262,6 +262,7 @@ impl ModulePreview {
     pub(crate) fn new(module: &Value) -> Self {
         let kind = module["kind"].as_str().unwrap_or("").to_owned();
         let node = Node {
+            score: None,
             id: String::new(),
             kind,
             bypassed: false,
@@ -2110,6 +2111,44 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "score_sequencer" {
+                let length = node.score.as_ref().map_or(64, |s| s.length);
+                painter.text(
+                    point(25.0, 180.0),
+                    Align2::LEFT_CENTER,
+                    format!("{length} STEPS / FOUR TRACKS"),
+                    crate::panel_skin::print_font(painter.ctx(), 11.0 * self.zoom),
+                    INK,
+                );
+                for track in 0..4 {
+                    painter.text(
+                        point(25.0, 209.0 + track as f32 * 19.0),
+                        Align2::LEFT_CENTER,
+                        format!("{}", track + 1),
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
+                        INK,
+                    );
+                    for step in 0..usize::from(length) {
+                        let on = node
+                            .score
+                            .as_ref()
+                            .and_then(|s| s.tracks.get(track))
+                            .is_some_and(|t| t.steps.iter().any(|s| usize::from(s.step) == step));
+                        painter.rect_filled(
+                            Rect::from_min_size(
+                                point(42.0 + step as f32 * 3.5, 204.0 + track as f32 * 19.0),
+                                vec2(2.5, 10.0) * self.zoom,
+                            ),
+                            0.0,
+                            if on {
+                                crate::panel_skin::family_accent("score_sequencer")
+                            } else {
+                                Color32::from_rgb(164, 165, 155)
+                            },
+                        );
+                    }
+                }
+            }
             // Saved `holding` seeds the runtime latch; the two performance
             // buttons are PUSH's only on-panel controls.
             let parameters = if node.kind == "push" {
@@ -2460,6 +2499,27 @@ impl Rack {
                 {
                     (
                         pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
+                        17.0,
+                    )
+                } else if node.kind == "score_sequencer" {
+                    (pos2(60.0 + index as f32 * 120.0, 130.0), 24.0)
+                } else if node.kind == "stereo_delay" {
+                    (
+                        pos2(
+                            width * ((index % 4) as f32 + 0.5) / 4.0,
+                            125.0 + (index / 4) as f32 * 78.0,
+                        ),
+                        17.0,
+                    )
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+                ) {
+                    (
+                        pos2(
+                            width * ((index % 3) as f32 + 0.5) / 3.0,
+                            122.0 + (index / 3) as f32 * 64.0,
+                        ),
                         17.0,
                     )
                 } else if node.kind == "vca_mix" {
@@ -5323,6 +5383,14 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "score_sequencer" if input => return pos2(60.0 + index as f32 * 80.0, 373.0),
+        "score_sequencer" if index < 12 => {
+            return pos2(
+                310.0 + (index % 4) as f32 * 78.0,
+                220.0 + (index / 4) as f32 * 62.0,
+            )
+        }
+        "score_sequencer" => return pos2(60.0 + (index - 12) as f32 * 80.0, 292.0),
         "gates" if input => return pos2(45.0 + index as f32 * 75.0, 105.0),
         "gates" => {
             return pos2(
@@ -6131,6 +6199,10 @@ fn panel_button(
 
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "score_sequencer" => HP * 40.0,
+        "stereo_delay" | "sidechain_compressor" => HP * 28.0,
+        "stereo_reverb" | "drum_voice" => HP * 24.0,
+        "svf_filter" => HP * 18.0,
         "vca_mix" => HP * 26.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
@@ -6160,6 +6232,12 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
 }
 pub(crate) fn title(kind: &str) -> &str {
     match kind {
+        "score_sequencer" => "SCORE",
+        "stereo_delay" => "STEREO DELAY",
+        "stereo_reverb" => "SPACE",
+        "sidechain_compressor" => "DUCK",
+        "drum_voice" => "DRUM",
+        "svf_filter" => "STATE VARIABLE",
         "vca_mix" => "VCA MIX",
         "fade" => "FADE",
         "logic" => "LOGIC",
@@ -6210,6 +6288,35 @@ pub(crate) fn title(kind: &str) -> &str {
 }
 pub(crate) fn parameter_label(name: &str) -> &str {
     match name {
+        "tempo" => "TEMPO",
+        "dc_block" => "DC FILTER",
+        "swing" => "SWING",
+        "running" => "RUN",
+        "time_left" => "LEFT TIME",
+        "time_right" => "RIGHT TIME",
+        "feedback" => "FEEDBACK",
+        "crossfeed" => "CROSSFEED",
+        "dry" => "DRY",
+        "wet" => "WET",
+        "low_cut" => "LOW CUT",
+        "high_cut" => "HIGH CUT",
+        "mod_rate" => "MOD RATE",
+        "mod_depth" => "MOD DEPTH",
+        "predelay" => "PREDELAY",
+        "size" => "SIZE",
+        "damping" => "DAMPING",
+        "threshold_db" => "THRESHOLD",
+        "ratio" => "RATIO",
+        "attack_ms" => "ATTACK",
+        "release_ms" => "RELEASE",
+        "knee_db" => "KNEE",
+        "makeup_db" => "MAKEUP",
+        "detector_ms" => "DETECTOR",
+        "mode" => "VOICE",
+        "pitch" => "PITCH",
+        "tone" => "TONE",
+        "cutoff_cv_amount" => "CV DEPTH",
+
         "position" => "POSITION",
         "cv_amount" => "CV DEPTH",
         "b_offset" => "B OFFSET",
@@ -6288,6 +6395,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "score_sequencer" => &["tempo", "swing", "running"],
         "vca_mix" => &[
             "level1",
             "level2",
@@ -7111,7 +7219,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            45,
+            51,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -8778,6 +8886,7 @@ mod tests {
         assert_eq!(rack.selected_ids(), vec!["small-copy", "wide-copy"]);
         let mut updated = patch;
         updated.nodes.push(Node {
+            score: None,
             id: "wide-copy".into(),
             kind: "vca_mix".into(),
             params: Default::default(),
@@ -10992,6 +11101,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                score: None,
                 bypassed: false,
                 id: "q".into(),
                 kind: "quantizer".into(),
@@ -11039,6 +11149,7 @@ mod tests {
             nodes: [("split", "poly_split"), ("a", "gain"), ("b", "gain")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    score: None,
                     bypassed: false,
                     id: id.into(),
                     kind: kind.into(),
@@ -11100,6 +11211,7 @@ mod tests {
             nodes: [("midi", "midi_cv"), ("audio", "audio_stereo")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    score: None,
                     bypassed: false,
                     id: id.into(),
                     kind: kind.into(),
@@ -11145,6 +11257,7 @@ mod tests {
             ]
             .into_iter()
             .map(|(id, kind)| Node {
+                score: None,
                 bypassed: false,
                 id: id.into(),
                 kind: kind.into(),
@@ -11304,6 +11417,7 @@ mod tests {
             let patch = Patch {
                 version,
                 nodes: vec![Node {
+                    score: None,
                     bypassed: false,
                     id: "loop".into(),
                     kind: "gain".into(),
@@ -11358,6 +11472,7 @@ mod tests {
         let patch = Patch {
             version: 2,
             nodes: vec![Node {
+                score: None,
                 bypassed: false,
                 id: "voltages".into(),
                 kind: "poly_constant".into(),
@@ -11516,6 +11631,7 @@ mod tests {
         let catalog = openpatch_core::catalog();
         for module in catalog["modules"].as_array().unwrap() {
             let node = Node {
+                score: None,
                 bypassed: false,
                 id: "test".into(),
                 kind: module["kind"].as_str().unwrap().into(),
@@ -11535,6 +11651,7 @@ mod tests {
             .find(|module| module["kind"] == "adsr")
             .unwrap();
         let node = Node {
+            score: None,
             bypassed: false,
             id: "env".into(),
             kind: "adsr".into(),
@@ -11626,6 +11743,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                score: None,
                 bypassed: false,
                 id: "vco".into(),
                 kind: "analog_vco".into(),

@@ -147,6 +147,7 @@ mod tests {
     fn model(rate: u32) -> Pulses {
         Pulses::build(
             &Node {
+                score: None,
                 id: "p".into(),
                 kind: "pulses".into(),
                 bypassed: false,

@@ -22,6 +22,8 @@ mod preset_tests;
 #[cfg(test)]
 mod push_tests;
 #[cfg(test)]
+mod score_tests;
+#[cfg(test)]
 mod sequence_tests;
 #[cfg(test)]
 mod stack_tests;
@@ -102,6 +104,7 @@ const EDIT_TOOLS: &[&str] = &[
     "set_cable_color",
     "clear_cables",
     "set_parameter",
+    "set_score",
     "set_bypass",
     "invert_mutes",
     "initialize_modules",
@@ -125,6 +128,7 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
         "export_visualizer"
         | "save_patch"
         | "render_audio"
+        | "render_arrangement"
         | "benchmark"
         | "analyze_signal"
         | "capture_signal"
@@ -632,6 +636,17 @@ impl Session {
                 f.write_all(&bytes).map_err(|e| e.to_string())?;
                 return Ok(json!({"filename":args["filename"],"revision":self.revision}));
             }
+            "render_arrangement" => {
+                let seconds = args
+                    .get("seconds")
+                    .and_then(Value::as_f64)
+                    .ok_or("seconds must be a number")?;
+                let path = self.file(string(&args, "filename")?, ".wav")?;
+                let stats = openpatch_core::render_wav_stream(&self.patch, &path, seconds)?;
+                return Ok(
+                    json!({"filename":args["filename"],"revision":self.revision,"state":"rendered from reset","stats":stats}),
+                );
+            }
             "render_audio" => {
                 let seconds = args
                     .get("seconds")
@@ -1017,6 +1032,7 @@ fn patch_changes(before: &Patch, after: &Patch) -> Value {
             let previous = old.get(id)?;
             (previous.kind != node.kind
                 || previous.params != node.params
+                || previous.score != node.score
                 || previous.bypassed != node.bypassed)
                 .then(|| json!({"id":id,"before":previous,"after":node}))
         })
@@ -1119,11 +1135,30 @@ fn apply_edit(
                 serde_json::from_value(args.get("params").cloned().unwrap_or(json!({})))
                     .map_err(|e| e.to_string())?;
             candidate.nodes.push(Node {
+                score: args
+                    .get("score")
+                    .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
+                    .transpose()?,
                 id: string(args, "id")?.into(),
                 kind: string(args, "kind")?.into(),
                 params,
                 bypassed: false,
             });
+        }
+        "set_score" => {
+            let id = string(args, "id")?;
+            let score =
+                serde_json::from_value(args.get("score").cloned().ok_or("score is required")?)
+                    .map_err(|e| e.to_string())?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|n| n.id == id)
+                .ok_or("module not found")?;
+            if node.kind != "score_sequencer" {
+                return Err("set_score requires score_sequencer".into());
+            }
+            node.score = Some(score);
         }
         "duplicate_modules" => duplicate_modules(candidate, args)?,
         "set_cable_color" => cable_edits::set_color(candidate, args)?,
@@ -1491,7 +1526,7 @@ pub fn tools() -> Value {
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run and Push HOLD overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running and holding maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
-        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"expected_revision":rev}),&["id","kind"],false),
+        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run and Push HOLD are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),
@@ -1501,6 +1536,7 @@ pub fn tools() -> Value {
         tool("move_cables","Move the input or output endpoint of 1..1024 unique existing cable IDs to a named port of the matching direction. Keeps IDs/colors and saved array positions; collision evaluation follows supplied ID order against unaffected routes and earlier accepted moves. duplicate_mode reject fails on identical routes; discard deletes only conflicting selected members; stack permits identical routes in version 2. Moved ends promote independently of the opposite plug ranks. Optional plug_order is a selected-ID permutation controlling bottom-to-top bundle order independently of collision winners. Unchanged endpoints are retained even in identical stacks; promote true applies order promotion even on same-origin return. A direct all-unchanged request without effective promotion is a validated no-op preserving redo. Destination validation and final graph validation are atomic; version 1 still rejects occupied inputs/cycles. Changed/deleted selected cable delay frames reset; source module and untouched cable state continue.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"node":module_id,"port":s,"duplicate_mode":{"type":"string","enum":["reject","discard","stack"],"default":"reject"},"promote":{"type":"boolean","default":false},"plug_order":cable_ids,"expected_revision":rev}),&["cable_ids","end","node","port"],false),
         tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
+        tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
@@ -1514,6 +1550,7 @@ pub fn tools() -> Value {
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
         tool("save_patch","Save patch JSON inside the workspace. Simple filename only; never overwrites.",json!({"filename":s}),&["filename"],false),
         tool("load_patch","Modules start with fresh runtime state. Load workspace patch JSON, validate, then replace the session patch.",json!({"filename":s,"expected_revision":rev}),&["filename"],false),
+        tool("render_arrangement","Stream up to 300 seconds of the current patch from reset to a new PCM16 WAV using bounded memory. For scores and autonomous patches; no MIDI/module event trace. Does not play speakers, alter the live graph, or overwrite files. Returns preclip peak/RMS and clipped sample count.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":300}}),&["filename","seconds"],false),
         tool("render_audio","Render offline from reset to 16-bit WAV in workspace, stereo only for a selected audio_stereo module. Optional sample-frame MIDI and module events drive reproducible performances. Does not play speakers or change history. Never overwrites.",json!({"filename":s,"seconds":{"type":"number","minimum":0.001,"maximum":30},"midi_events":midi_events,"module_events":module_events}),&["filename","seconds"],false),
         tool("analyze_signal","Measure a named output offline from reset with optional sample-frame MIDI and module events. Reports each channel's active frames, mean, RMS, peak and range. No speaker playback or live-state mutation. Raw module signal units; audio_out/audio_stereo convert volts to digital full scale.",json!({"id":s,"port":s,"seconds":{"type":"number","minimum":0.001,"maximum":2},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),
         tool("capture_signal","Capture a calibrated waveform from any named output/channel offline from reset. Returns bounded nonempty min/max/mean bins preserving every active-sample peak, plus active-sample DC/RMS/peak. Raw output units come from catalog; no live audio, summing, clipping, or history changes. Optional sample-frame MIDI and module events reproduce performances; expected_revision guards the captured snapshot.",json!({"id":s,"port":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"seconds":{"type":"number","minimum":0.001,"maximum":2},"points":{"type":"integer","minimum":64,"maximum":2048,"default":512},"midi_events":midi_events,"module_events":module_events,"expected_revision":rev}),&["id","seconds"],true),

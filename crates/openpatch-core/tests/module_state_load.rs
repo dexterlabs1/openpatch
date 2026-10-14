@@ -6,12 +6,14 @@ fn patch(bypassed: bool) -> Patch {
     patch.sample_rate = 8000;
     patch.nodes = vec![
         Node {
+            score: None,
             id: "seq".into(),
             kind: "seq3".into(),
             bypassed,
             params: BTreeMap::new(),
         },
         Node {
+            score: None,
             id: "other".into(),
             kind: "constant".into(),
             bypassed: false,

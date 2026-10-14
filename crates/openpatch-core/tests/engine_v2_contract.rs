@@ -70,6 +70,7 @@ static ALLOCATOR: CallbackAllocator = CallbackAllocator;
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        score: None,
         bypassed: false,
         id: id.into(),
         kind: kind.into(),
@@ -1167,4 +1168,41 @@ fn gates_all_voice_history_eviction_render_adoption_and_bypass_use_no_heap() {
     TRACK_MEMORY.with(|t| t.set(false));
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     assert!(frames.iter().all(|frame| *frame == PortFrame::mono(0.0)));
+}
+
+#[test]
+fn score_and_studio_chain_callbacks_and_adoption_use_no_heap() {
+    let p: Patch = serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[
+        {"id":"score","kind":"score_sequencer","score":{"length":4,"tracks":[{"steps":[{"step":0,"notes":[0]},{"step":2,"notes":[7]}]}]}},
+        {"id":"drum","kind":"drum_voice"}, {"id":"filter","kind":"svf_filter"},
+        {"id":"delay","kind":"stereo_delay","params":{"time_left":0.01,"time_right":0.02}},
+        {"id":"space","kind":"stereo_reverb"}, {"id":"duck","kind":"sidechain_compressor"},
+        {"id":"audio","kind":"audio_stereo"}],"cables":[
+        {"from":"score","output":"gate1","to":"drum","input":"trigger"},
+        {"from":"drum","to":"filter","input":"signal"},
+        {"from":"filter","output":"low","to":"delay","input":"left"},
+        {"from":"delay","output":"left","to":"space","input":"left"},
+        {"from":"delay","output":"right","to":"space","input":"right"},
+        {"from":"space","output":"left","to":"duck","input":"left"},
+        {"from":"space","output":"right","to":"duck","input":"right"},
+        {"from":"drum","to":"duck","input":"sidechain"},
+        {"from":"duck","output":"left","to":"audio","input":"left"},
+        {"from":"duck","output":"right","to":"audio","input":"right"}],"output":"audio"})).unwrap();
+    let mut old = p.compile().unwrap();
+    let mut next = p.compile().unwrap();
+    let mut audio = [[0.0; 2]; 128];
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for _ in 0..400 {
+        old.process_audio_block(&mut audio);
+    }
+    next.adopt_state_from(&old);
+    let mut expected = audio;
+    old.process_audio_block(&mut expected);
+    next.process_audio_block(&mut audio);
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(audio, expected);
+    assert!(audio.iter().flatten().all(|x| x.is_finite()));
+    assert!(audio.iter().flatten().any(|x| x.abs() > 0.000001));
 }

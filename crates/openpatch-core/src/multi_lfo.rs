@@ -211,6 +211,7 @@ mod tests {
     fn lfo(params: &[(&str, f32)]) -> MultiLfo {
         MultiLfo::build(
             &Node {
+                score: None,
                 bypassed: false,
                 id: "lfo".into(),
                 kind: "multi_lfo".into(),
@@ -353,6 +354,7 @@ mod tests {
         assert!(!clock_changed.voices[0].clock.armed);
         // Unknown/nonfinite parameters reject on the control thread.
         let n = Node {
+            score: None,
             bypassed: false,
             id: "bad".into(),
             kind: "multi_lfo".into(),

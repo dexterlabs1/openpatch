@@ -7,12 +7,24 @@ pub(crate) const INK: Color32 = Color32::from_rgb(32, 34, 35);
 /// Restrained silkscreen accents identify signal families on the same metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
-        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" => Color32::from_rgb(151, 93, 57),
-        "lowpass" | "ladder_vcf" => Color32::from_rgb(68, 113, 121),
-        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" => Color32::from_rgb(116, 96, 136),
-        "gain" | "analog_vca" | "mixer" | "mix6" | "cv_mix" | "vca_mix" | "fade" | "crossfade" => {
-            Color32::from_rgb(78, 116, 96)
+        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
+            Color32::from_rgb(151, 93, 57)
         }
+        "lowpass" | "ladder_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
+        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer" => {
+            Color32::from_rgb(116, 96, 136)
+        }
+        "gain"
+        | "analog_vca"
+        | "mixer"
+        | "mix6"
+        | "cv_mix"
+        | "vca_mix"
+        | "fade"
+        | "crossfade"
+        | "stereo_delay"
+        | "stereo_reverb"
+        | "sidechain_compressor" => Color32::from_rgb(78, 116, 96),
         "output" | "audio_out" | "audio_stereo" | "midi_cv" => Color32::from_rgb(66, 104, 133),
         _ => Color32::from_rgb(112, 112, 105),
     }
@@ -21,6 +33,12 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
 /// Permanent faceplate print: independent of instance IDs and live values.
 pub(crate) fn model_caption(kind: &str) -> &str {
     match kind {
+        "score_sequencer" => "PATTERNS & AUTOMATION",
+        "stereo_delay" => "MODULATED ECHO",
+        "stereo_reverb" => "STEREO REVERBERATOR",
+        "sidechain_compressor" => "SIDECHAIN COMPRESSOR",
+        "drum_voice" => "PERCUSSION SYNTHESIZER",
+        "svf_filter" => "LOW / BAND / HIGH",
         "analog_vco" => "ANALOG OSCILLATOR",
         "oscillator" => "SINE OSCILLATOR",
         "multi_vco" => "MULTI-WAVE OSCILLATOR",

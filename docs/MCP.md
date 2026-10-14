@@ -531,3 +531,7 @@ action is a different module action. Live queue receipts and offline event
 validation follow the existing manual-control rules. Six light pairs report
 mono/poly output activity; `controls.pressed_mask` bit 0 reports the button.
 See [Gates timing, history, and numerical policies](GATES.md).
+
+## Structured scores and long rendering
+
+`add_module` accepts optional typed `score` data for `score_sequencer`; `set_score` replaces it atomically with revision guards, undo/redo and batch support. `catalog` supplies its score schema. `render_arrangement` streams a reset-origin autonomous performance of up to 300 seconds to a new WAV, with bounded memory and preclip statistics. See [scores and studio modules](SCORE_AND_STUDIO.md).

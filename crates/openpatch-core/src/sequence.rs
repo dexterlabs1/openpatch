@@ -622,6 +622,7 @@ mod tests {
     fn seq(params: &[(&str, f32)]) -> Seq3 {
         Seq3::build(
             &Node {
+                score: None,
                 bypassed: false,
                 id: "s".into(),
                 kind: "seq3".into(),

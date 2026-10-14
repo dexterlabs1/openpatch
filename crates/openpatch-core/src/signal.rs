@@ -572,6 +572,7 @@ mod tests {
     fn model(kind: &str, params: &[(&str, f32)]) -> Signal {
         Signal::build(
             &Node {
+                score: None,
                 id: "s".into(),
                 kind: kind.into(),
                 bypassed: false,

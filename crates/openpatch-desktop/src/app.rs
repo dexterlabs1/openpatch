@@ -3864,6 +3864,22 @@ impl OpenPatch {
             self.rack.request_cable_menu_for_smoke("sum", "a", true);
             self.title = "Cable bundles · input menu".into();
         }
+        if frame == 682 {
+            egui::Popup::close_all(ctx);
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"score","kind":"score_sequencer","params":{"tempo":128},"score":{"length":16,"tracks":[{"steps":[{"step":0,"notes":[0]},{"step":4,"notes":[7]},{"step":8,"notes":[0]},{"step":12,"notes":[7]}]}]}},
+                {"id":"drum","kind":"drum_voice"},{"id":"filter","kind":"svf_filter"},
+                {"id":"echo","kind":"stereo_delay"},{"id":"space","kind":"stereo_reverb"},
+                {"id":"duck","kind":"sidechain_compressor"}
+            ],"cables":[{"from":"score","output":"gate1","to":"drum","input":"trigger"},{"from":"drum","to":"filter","input":"signal"}]})).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack.restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":{
+                "score":[0,0],"drum":[615,0],"filter":[990,0],"echo":[0,420],"space":[435,420],"duck":[810,420]
+            }})).unwrap();
+            self.title = "Score and studio modules".into();
+            self.status = "Native patterns, percussion, filters and stereo effects".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -3909,6 +3925,7 @@ impl OpenPatch {
                 | 622
                 | 648
                 | 676
+                | 704
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -3964,7 +3981,8 @@ impl OpenPatch {
                 34 => path.with_file_name("audio-performance-simulated.png"),
                 35 => path.with_file_name("parameter-context-entry.png"),
                 36 => path.with_file_name("cable-output-menu.png"),
-                _ => path.with_file_name("cable-input-menu.png"),
+                37 => path.with_file_name("cable-input-menu.png"),
+                _ => path.with_file_name("rack-score-studio.png"),
             };
             image::save_buffer(
                 target,
@@ -3976,12 +3994,12 @@ impl OpenPatch {
             .expect("Save screenshot");
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 38 {
+            if captures == 39 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 708, "Native screenshot timeout");
+        assert!(frame < 738, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4990,6 +5008,7 @@ mod project_workflow_tests {
         let full = Patch {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
+                    score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
                     params: Default::default(),
@@ -6484,6 +6503,7 @@ mod project_workflow_tests {
         let full = Patch {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
+                    score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
                     params: Default::default(),
@@ -6526,6 +6546,7 @@ mod project_workflow_tests {
             nodes: original
                 .iter()
                 .map(|id| openpatch_core::Node {
+                    score: None,
                     id: id.clone(),
                     kind: "constant".into(),
                     params: Default::default(),

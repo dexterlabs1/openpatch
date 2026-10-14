@@ -201,6 +201,27 @@ class OpenPatchMCPTests(unittest.TestCase):
                     return decoded
         return None
 
+    def test_score_edit_roundtrip_and_bounded_arrangement_render(self) -> None:
+        score = {"length":4,"tracks":[{"steps":[{"step":0,"notes":[0]}]}],"lanes":[{"points":[{"bar":0,"value":0.5}]}]}
+        self.require_tool_success("replace_patch", {"patch":{"version":2,"sample_rate":8000,"nodes":[{"id":"score","kind":"score_sequencer","score":score}],"output":"score","output_port":"automation"}})
+        before = self.patch_snapshot()
+        changed = dict(score, length=8)
+        self.require_tool_success("set_score", {"id":"score","score":changed})
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_error("set_score", {"id":"score","score":{"length":0}})
+        self.require_tool_success("save_patch", {"filename":"score.json"})
+        result = self.payload(self.require_tool_success("render_arrangement", {"filename":"arrangement.wav","seconds":31}))
+        self.assertEqual(result["stats"]["frames"], 248000)
+        self.assertEqual(result["stats"]["channels"], 1)
+        self.assertEqual(result["stats"]["clipped_samples"], 0)
+        with wave.open(str(self.workspace / "arrangement.wav"), "rb") as wav:
+            self.assertEqual(wav.getnframes(), 248000)
+            self.assertEqual(wav.getnchannels(), 1)
+        self.require_tool_error("render_arrangement", {"filename":"arrangement.wav","seconds":1})
+        self.require_tool_error("render_arrangement", {"filename":"too-long.wav","seconds":301})
+        self.assertFalse((self.workspace / "too-long.wav").exists())
+
     def patch_snapshot(self) -> dict[str, Any]:
         result = self.require_tool_success("inspect_patch")
         payload = self.payload(result)

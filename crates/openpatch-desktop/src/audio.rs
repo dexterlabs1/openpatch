@@ -1287,6 +1287,7 @@ mod tests {
     fn arbitrary_callback_size_duplicates_mono_and_crossfades_edits() {
         let mut patch = Patch::default();
         patch.nodes.push(openpatch_core::Node {
+            score: None,
             bypassed: false,
             id: "dc".into(),
             kind: "constant".into(),

@@ -9,10 +9,14 @@ use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
 use crate::routing::{self, Routing};
+use crate::score::{self, ScoreSequencer};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
+use crate::stereo_output::StereoOutput;
+use crate::studio_fx::{self, StudioFx};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
+use crate::voice_tools::{self, VoiceTools};
 use crate::{
     bounded, build_dsp, parameter, Dsp, MidiEvent, Node, Patch, SavedModuleState, MAX_CABLES,
     MAX_NODES,
@@ -57,7 +61,10 @@ impl PortFrame {
 }
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
-    routing::input_names(kind).is_some()
+    kind == "score_sequencer"
+        || studio_fx::input_names(kind).is_some()
+        || voice_tools::input_names(kind).is_some()
+        || routing::input_names(kind).is_some()
         || switch::input_names(kind).is_some()
         || utility_bank::input_names(kind).is_some()
         || signal::input_names(kind).is_some()
@@ -87,6 +94,12 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if kind == "score_sequencer" {
+        return score::INPUTS.iter().position(|p| *p == name);
+    }
+    if let Some(ports) = studio_fx::input_names(kind).or_else(|| voice_tools::input_names(kind)) {
+        return ports.iter().position(|p| *p == name);
+    }
     if let Some(ports) = mixing::input_names(kind) {
         return ports.iter().position(|p| *p == name);
     }
@@ -120,6 +133,12 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "score_sequencer" {
+        return score::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if let Some(ports) = studio_fx::output_names(kind).or_else(|| voice_tools::output_names(kind)) {
+        return ports.iter().position(|p| *p == name);
+    }
     if let Some(ports) = mixing::output_names(kind) {
         return ports.iter().position(|p| *p == name);
     }
@@ -181,7 +200,7 @@ pub(crate) fn catalog() -> [Value; 6] {
     constants["params"].as_object_mut().unwrap().extend(values);
     [
         json!({"kind":"midi_cv","title":"MIDI-CV","model":"functional","description":"MIDI notes to fixed polyphonic voltages; pitch 1 V/oct relative to C4; gates 10 V. Channel pressure aftertouch (poly pressure ignored), separate ±5 V pitchwheel, CC1 modwheel. Sustain CC64, all-sound-off CC120, reset controllers CC121, all-notes-off CC123. Triggers last 1 ms. Duplicate notes are counted; one note-off releases one pressed voice. Mono uses last-held-note priority. No MIDI events means silence.","inputs":[],"params":{"channels":{"default":4.0,"min":1.0,"max":16.0,"step":1.0},"channel":{"default":0.0,"min":0.0,"max":16.0,"step":1.0,"description":"0 omni; 1–16 selects wire channel 0–15"},"allocation":{"default":0.0,"min":0.0,"max":2.0,"step":1.0,"description":"0 rotate free then next steal; 1 reuse previous note/channel else lowest free then lane 1 steal; 2 lowest free then lane 1 steal, compact releases"},"clock_div":{"default":24.0,"min":1.0,"max":96.0,"step":1.0}}}),
-        json!({"kind":"audio_stereo","title":"STEREO AUDIO","model":"functional","description":"Unity-sum polyphony independently on left/right, divide voltages by 10, multiply gain. Right normalizes to left only when disconnected or zero-channel. Selecting out explicitly renders stereo.","inputs":["left","right"],"params":{"gain":{"default":1.0,"min":0.0,"max":2.0}}}),
+        json!({"kind":"audio_stereo","title":"STEREO AUDIO","model":"functional","description":"Unity-sum polyphony independently on left/right, divide voltages by 10, multiply gain. Right normalizes to left only when disconnected or zero-channel. Selecting out explicitly renders stereo.","inputs":["left","right"],"params":{"gain":{"default":1.0,"min":0.0,"max":2.0},"dc_block":{"default":0.0,"min":0.0,"max":1.0,"step":1.0,"description":"Optional bilinear 10 Hz DC blocker; defaults off for older patches"}}}),
         constants,
         json!({"kind":"poly_split","title":"SPLIT","model":"functional","description":"Split channels 1–16 into named mono outputs out1..out16. Missing channels produce mono zero.","inputs":["signal"],"params":{}}),
         json!({"kind":"poly_merge","title":"MERGE","model":"functional","description":"Take channel zero of in1..in16 into one polyphonic output. channels=0 auto uses the highest nonzero-channel input; holes are preserved as zero. Override 1–16 forces channel count.","inputs":(1..=16).map(|i|format!("in{i}")).collect::<Vec<_>>(),"params":{"channels":{"default":0.0,"min":0.0,"max":16.0,"step":1.0}}}),
@@ -205,7 +224,16 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if let Some(names) = mixing::output_names(&kind) {
+    let outputs = if kind == "score_sequencer" {
+        score::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if let Some(names) =
+        studio_fx::output_names(&kind).or_else(|| voice_tools::output_names(&kind))
+    {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if let Some(names) = mixing::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if let Some(names) = signal::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
@@ -304,6 +332,37 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             json!("first clock after reset/start, then every clock_div clocks");
     }
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
+    if matches!(
+        kind.as_str(),
+        "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
+    ) {
+        module["polyphony"]["version_2"] = json!(
+            "mono per port; stereo effects use independent left/right ports and read channel zero"
+        );
+        module["polyphony"]["maximum_channels"] = json!(1);
+        for output in module["output_metadata"].as_array_mut().unwrap() {
+            output["maximum_channels"] = json!(1);
+        }
+    }
+    if kind == "score_sequencer" {
+        module["polyphony"]["version_2"] = json!(
+            "four polyphonic note tracks; automation lanes packed into one polyphonic output"
+        );
+        for (index, output) in module["output_metadata"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            output["maximum_channels"] = json!(if index < 12 {
+                4
+            } else if index == 12 {
+                16
+            } else {
+                1
+            });
+        }
+    }
     routing::annotate(module);
     switch::annotate(module);
     utility_bank::annotate(module);
@@ -331,6 +390,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 
 #[derive(Debug)]
 enum Model {
+    Score(Box<ScoreSequencer>),
+    StudioFx(Box<StudioFx>),
+    VoiceTools(Box<VoiceTools>),
     Voices {
         template: Dsp,
         voices: Vec<Dsp>,
@@ -342,7 +404,7 @@ enum Model {
     Merge(u8),
     Sum,
     Midi(Box<MidiCv>),
-    Stereo(f32),
+    Stereo(StereoOutput),
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
     MultiVco(Box<MultiVco>),
@@ -357,6 +419,15 @@ enum Model {
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if node.kind == "score_sequencer" {
+            return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
+        }
+        if studio_fx::input_names(&node.kind).is_some() {
+            return StudioFx::build(node, rate).map(|s| Self::StudioFx(Box::new(s)));
+        }
+        if voice_tools::input_names(&node.kind).is_some() {
+            return VoiceTools::build(node, rate).map(|s| Self::VoiceTools(Box::new(s)));
+        }
         if mixing::input_names(&node.kind).is_some() {
             return Mixing::build(node, rate).map(Self::Mixing);
         }
@@ -394,12 +465,7 @@ impl Model {
             return Ok(Self::Midi(Box::new(MidiCv::build(node, rate)?)));
         }
         if node.kind == "audio_stereo" {
-            for key in node.params.keys() {
-                if key != "gain" {
-                    return Err(format!("node '{}': unknown parameter '{key}'", node.id));
-                }
-            }
-            return Ok(Self::Stereo(parameter(node, "gain", 1.0, 0.0, 2.0)?));
+            return StereoOutput::build(node, rate).map(Self::Stereo);
         }
         let allowed = match node.kind.as_str() {
             "poly_constant" => Some(
@@ -691,6 +757,22 @@ impl PolyEngine {
             return false;
         };
         let count = match &mut node.model {
+            Model::Stereo(s) => {
+                s.reset_state();
+                node.output_count
+            }
+            Model::Score(s) => {
+                s.reset_state();
+                node.output_count
+            }
+            Model::StudioFx(s) => {
+                s.reset_state();
+                node.output_count
+            }
+            Model::VoiceTools(s) => {
+                s.reset_state();
+                node.output_count
+            }
             Model::Gates(g) => {
                 g.reset_state();
                 gates::OUTPUTS.len()
@@ -834,7 +916,13 @@ impl PolyEngine {
                 bypassed: node.bypassed,
                 bypass_inputs: [None; MAX_PORTS],
             });
-            let count = if let Some(ports) = mixing::output_names(&node.kind) {
+            let count = if node.kind == "score_sequencer" {
+                score::OUTPUTS.len()
+            } else if let Some(ports) = studio_fx::output_names(&node.kind)
+                .or_else(|| voice_tools::output_names(&node.kind))
+            {
+                ports.len()
+            } else if let Some(ports) = mixing::output_names(&node.kind) {
                 ports.len()
             } else if let Some(ports) = signal::output_names(&node.kind) {
                 ports.len()
@@ -1055,6 +1143,29 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
+                Model::Score(_) | Model::StudioFx(_) | Model::VoiceTools(_) => {
+                    let mut inputs = [PortFrame::default(); MAX_PORTS];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    let outputs =
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count];
+                    match &mut node.model {
+                        Model::Score(s) => {
+                            // A patched clock is external even before its first delayed
+                            // frame arrives, or while its source has zero channels.
+                            if node.inputs[0].is_some() && inputs[0].channels == 0 {
+                                inputs[0] = PortFrame::mono(0.0);
+                            }
+                            s.process(&inputs, outputs);
+                        }
+                        Model::StudioFx(s) => s.process(&inputs, outputs),
+                        Model::VoiceTools(s) => s.process(&inputs, outputs),
+                        _ => unreachable!(),
+                    }
+                }
                 Model::Mixing(mixing) => {
                     let mut inputs = [PortFrame::default(); 9];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -1306,20 +1417,8 @@ impl PolyEngine {
                 Model::Midi(midi) => midi.process(
                     &mut self.outputs[node.output_start..node.output_start + MIDI_OUTPUTS.len()],
                 ),
-                Model::Stereo(gain) => {
-                    let left = a.values[..a.channels as usize].iter().sum::<f32>() / 10.0 * *gain;
-                    let right = if b.channels == 0 {
-                        left
-                    } else {
-                        b.values[..b.channels as usize].iter().sum::<f32>() / 10.0 * *gain
-                    };
-                    let mut frame = PortFrame {
-                        channels: 2,
-                        ..PortFrame::default()
-                    };
-                    frame.values[0] = left;
-                    frame.values[1] = right;
-                    self.outputs[node.output_start] = frame;
+                Model::Stereo(output) => {
+                    self.outputs[node.output_start] = output.process(a, b);
                 }
                 Model::Constant(frame) => self.outputs[node.output_start] = *frame,
                 Model::Split => {
@@ -1443,12 +1542,30 @@ impl PolyEngine {
             } else {
                 [true; 2]
             };
+            let score_inputs_changed = if self.nodes[*index].kind == "score_sequencer" {
+                [
+                    !self.input_unchanged(*index, old, *old_index, 0),
+                    !self.input_unchanged(*index, old, *old_index, 1),
+                ]
+            } else {
+                [false; 2]
+            };
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
                 continue;
             }
             let bypass_changed = node.bypassed != previous.bypassed;
+            match (&mut node.model, &previous.model) {
+                (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
+                (Model::Score(s), Model::Score(old)) => {
+                    s.adopt(old);
+                    s.reset_input_detectors(score_inputs_changed[0], score_inputs_changed[1]);
+                }
+                (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
+                (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),
+                _ => {}
+            }
             if let (Model::Mixing(mixing), Model::Mixing(previous)) =
                 (&mut node.model, &previous.model)
             {
@@ -1591,18 +1708,21 @@ mod tests {
         let mut patch = Patch {
             nodes: vec![
                 Node {
+                    score: None,
                     id: "a".into(),
                     kind: "constant".into(),
                     bypassed: false,
                     params: BTreeMap::new(),
                 },
                 Node {
+                    score: None,
                     id: "b".into(),
                     kind: "constant".into(),
                     bypassed: false,
                     params: BTreeMap::new(),
                 },
                 Node {
+                    score: None,
                     id: "target".into(),
                     kind: "gain".into(),
                     bypassed: false,
@@ -1647,12 +1767,14 @@ mod tests {
         let mut patch = Patch {
             nodes: vec![
                 Node {
+                    score: None,
                     id: "source".into(),
                     kind: "constant".into(),
                     bypassed: false,
                     params: BTreeMap::new(),
                 },
                 Node {
+                    score: None,
                     id: "target".into(),
                     kind: "gain".into(),
                     bypassed: false,
@@ -1721,6 +1843,7 @@ mod tests {
         Patch {
             nodes: vec![
                 Node {
+                    score: None,
                     bypassed: false,
                     id: "source".into(),
                     kind: "poly_constant".into(),
@@ -1733,6 +1856,7 @@ mod tests {
                     ]),
                 },
                 Node {
+                    score: None,
                     bypassed: false,
                     id: "voice".into(),
                     kind: kind.into(),

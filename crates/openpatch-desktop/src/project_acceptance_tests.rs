@@ -14,6 +14,7 @@ fn patch(version: u32, value: f32) -> Patch {
     Patch {
         version,
         nodes: vec![Node {
+            score: None,
             bypassed: false,
             id: "dc".into(),
             kind: "constant".into(),
@@ -101,12 +102,14 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             .into();
             original_patch.nodes.extend([
                 Node {
+                    score: None,
                     bypassed: false,
                     id: "a".into(),
                     kind: "mult".into(),
                     params: Default::default(),
                 },
                 Node {
+                    score: None,
                     bypassed: false,
                     id: "b".into(),
                     kind: "mult".into(),
