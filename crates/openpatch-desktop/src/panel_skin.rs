@@ -18,6 +18,52 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
     }
 }
 
+/// Permanent faceplate print: independent of instance IDs and live values.
+pub(crate) fn model_caption(kind: &str) -> &str {
+    match kind {
+        "analog_vco" => "ANALOG OSCILLATOR",
+        "oscillator" => "SINE OSCILLATOR",
+        "multi_vco" => "MULTI-WAVE OSCILLATOR",
+        "lowpass" => "LOW-PASS FILTER",
+        "ladder_vcf" => "TRANSISTOR FILTER",
+        "analog_vca" => "TRANSCONDUCTANCE VCA",
+        "gain" => "AMPLIFIER",
+        "adsr" => "ENVELOPE GENERATOR",
+        "lfo" | "multi_lfo" => "LOW FREQUENCY",
+        "gate" => "PULSE GENERATOR",
+        "seq3" => "THREE-ROW SEQUENCER",
+        "constant" => "VOLTAGE SOURCE",
+        "poly_constant" => "POLYPHONIC SOURCE",
+        "output" | "audio_out" => "AUDIO OUTPUT",
+        "audio_stereo" => "STEREO OUTPUT",
+        "midi_cv" => "MIDI INTERFACE",
+        "white_noise" => "NOISE GENERATOR",
+        "mixer" => "SIGNAL SUMMER",
+        "mix6" => "SIX-CHANNEL MIXER",
+        "vca_mix" => "VOLTAGE CONTROLLED MIXER",
+        "cv_mix" => "BIPOLAR MIXER",
+        "fade" | "crossfade" => "SIGNAL CROSSFADER",
+        "attenuverter" | "attenuverter8" => "BIPOLAR ATTENUATOR",
+        "mutes10" => "TEN-CHANNEL MUTES",
+        "mid_side" => "STEREO MATRIX",
+        "octave" => "PITCH TRANSPOSE",
+        "quantizer" => "PITCH QUANTIZER",
+        "sample_hold" => "SAMPLE & HOLD",
+        "mult" => "SIGNAL MULTIPLE",
+        "poly_split" => "POLYPHONIC SPLITTER",
+        "poly_merge" => "POLYPHONIC MERGER",
+        "poly_sum" => "POLYPHONIC SUMMER",
+        "switch_1to4" | "switch_4to1" => "SEQUENTIAL SWITCH",
+        "logic" => "BOOLEAN LOGIC",
+        "compare" => "VOLTAGE COMPARATOR",
+        "process" => "SIGNAL PROCESSOR",
+        "rescale" => "VOLTAGE SCALER",
+        "pulses" | "push" => "MANUAL GATES",
+        "gates" => "GATE PROCESSOR",
+        _ => "SIGNAL UTILITY",
+    }
+}
+
 pub(crate) fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
@@ -381,4 +427,30 @@ pub(crate) fn port_label(
         painter.rect_filled(plate, 1.5 * zoom, INK);
     }
     painter.galley(center - galley.size() * 0.5, galley, color);
+}
+
+/// Material for native ComboBox/DragValue controls embedded in a panel.
+/// Geometry, font sizes, and selection/active colors remain owned by the caller.
+pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
+    let visuals = ui.visuals_mut();
+    visuals.override_text_color = Some(INK);
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(190, 191, 183);
+    visuals.widgets.inactive.weak_bg_fill = visuals.widgets.inactive.bg_fill;
+    visuals.widgets.inactive.bg_stroke = Stroke::new(0.6 * zoom, Color32::from_rgb(153, 155, 148));
+    visuals.widgets.inactive.fg_stroke.color = INK;
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(207, 208, 198);
+    visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
+    visuals.widgets.hovered.bg_stroke = Stroke::new(0.8 * zoom, Color32::from_rgb(112, 115, 108));
+    visuals.widgets.hovered.fg_stroke.color = INK;
+    // Keep the existing active fill and selection palette as interaction cues.
+    visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
+    visuals.widgets.active.fg_stroke.color = INK;
+    visuals.text_edit_bg_color = Some(Color32::from_rgb(207, 208, 198));
+    visuals.window_fill = Color32::from_rgb(220, 218, 208);
+    visuals.extreme_bg_color = Color32::from_rgb(190, 191, 183);
+    if !ui.is_enabled() {
+        let visuals = ui.visuals_mut();
+        visuals.disabled_alpha = 1.0;
+        visuals.widgets.noninteractive = visuals.widgets.inactive;
+    }
 }

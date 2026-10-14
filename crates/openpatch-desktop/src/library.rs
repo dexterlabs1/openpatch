@@ -356,18 +356,35 @@ impl ModuleLibrary {
                                 return;
                             }
                             let gap = 8.0;
-                            let tile_width = ((ui.available_width() - gap) * 0.5).max(108.0);
-                            for row in visible.chunks(2) {
+                            let full_width = ui.available_width();
+                            let tile_width = ((full_width - gap) * 0.5).max(108.0);
+                            let wide = |module: &Value| {
+                                crate::rack::panel_width(module["kind"].as_str().unwrap_or(""))
+                                    > 280.0
+                            };
+                            let mut index = 0;
+                            while index < visible.len() {
+                                // Wide hardware keeps its real aspect ratio and gets the
+                                // full shelf, instead of shrinking to an illegible sliver.
+                                let spanning = wide(visible[index]);
+                                let count = if !spanning
+                                    && index + 1 < visible.len()
+                                    && !wide(visible[index + 1])
+                                {
+                                    2
+                                } else {
+                                    1
+                                };
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = gap;
-                                    for module in row {
+                                    for module in &visible[index..index + count] {
                                         if let Some(kind) = module["kind"].as_str() {
                                             visible_kinds.push(kind);
                                             let (tile_action, id, star_id) = self.tile(
                                                 ui,
                                                 module,
                                                 catalog,
-                                                tile_width,
+                                                if spanning { full_width } else { tile_width },
                                                 patch_version,
                                             );
                                             tile_ids.push((kind, id));
@@ -378,6 +395,7 @@ impl ModuleLibrary {
                                         }
                                     }
                                 });
+                                index += count;
                                 ui.add_space(gap);
                             }
                         });
@@ -1180,6 +1198,27 @@ mod tests {
             let mut library = ModuleLibrary::default();
             let mut open = true;
             let (_, output) = frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+            let card_width = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(29, 33, 32) => {
+                        Some(rect.rect.width())
+                    }
+                    _ => None,
+                })
+                .fold(0.0_f32, f32::max);
+            if matches!(kind, "seq3" | "poly_constant") {
+                assert!(
+                    card_width > 250.0,
+                    "wide {kind} needs the full browser shelf"
+                );
+            } else {
+                assert!(
+                    (108.0..160.0).contains(&card_width),
+                    "narrow {kind} stays in two columns"
+                );
+            }
             let start = target(&output.shapes, kind);
             // Native compact fields and performance buttons are painted inside
             // the card at its fitted scale, but the card owns every gesture.

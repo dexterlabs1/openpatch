@@ -304,7 +304,7 @@ normaling, and voice behavior explicitly.
 
 Search module names, controls and ports, filter by musical role, and star favorites.
 Drag a tile onto the rack to preview its placement; adding a module is one undo step.
-The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, knobs, and jacks as the rack. Hover a card for a larger view of the complete panel. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
+The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, knobs, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view of the complete panel. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
 
 <sub>Actual native Linux / Mesa CI render. macOS is the primary design target.</sub>
 

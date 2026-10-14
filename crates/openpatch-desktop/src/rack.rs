@@ -269,7 +269,6 @@ impl ModulePreview {
                 .collect(),
         };
         let mut renderer = Rack {
-            preview_only: true,
             shortcuts_enabled: false,
             pan: Vec2::ZERO,
             ..Rack::default()
@@ -354,7 +353,6 @@ pub struct Rack {
     editing: Option<ParameterEdit>,
     requested_parameter_menu: Option<(String, String)>,
     shortcuts_enabled: bool,
-    preview_only: bool,
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
@@ -386,7 +384,6 @@ impl Default for Rack {
             editing: None,
             requested_parameter_menu: None,
             shortcuts_enabled: true,
-            preview_only: false,
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
@@ -1941,7 +1938,7 @@ impl Rack {
                         .as_str()
                     })
                     .unwrap_or("mono");
-                header_response.on_hover_text(format!("{description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows."));
+                header_response.on_hover_text(format!("{} · {description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows.", node.id));
             }
             if node.kind == "seq3" {
                 if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
@@ -4102,12 +4099,9 @@ impl Rack {
                 .id_salt((&node.id, parameter)),
             |ui| {
                 *ui.visuals_mut() = egui::Visuals::light();
-                if self.preview_only && !ui.is_enabled() {
-                    let visuals = ui.visuals_mut();
-                    visuals.disabled_alpha = 1.0;
-                    visuals.widgets.noninteractive = visuals.widgets.inactive;
-                }
-                ui.style_mut().override_font_id = Some(FontId::proportional(12.0 * self.zoom));
+                crate::panel_skin::control_style(ui, self.zoom);
+                let font = crate::panel_skin::print_font(ui.ctx(), 12.0 * self.zoom);
+                ui.style_mut().override_font_id = Some(font);
                 egui::ComboBox::from_id_salt("choice")
                     .width(rect.width())
                     .selected_text(choices[value])
@@ -4165,25 +4159,13 @@ impl Rack {
         let id = ui.id().with((&node.id, parameter, "compact"));
         let response = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
-                ui.visuals_mut().override_text_color = Some(INK);
+                // Retain the established active gold cue while matching the
+                // inactive and text-edit surfaces to the panel readouts.
+                ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(226, 197, 143);
+                crate::panel_skin::control_style(ui, self.zoom);
                 ui.style_mut().override_font_id = Some(FontId::monospace(10.0 * self.zoom));
                 ui.spacing_mut().button_padding = vec2(2.0, 1.0) * self.zoom;
                 ui.spacing_mut().interact_size = vec2(8.0, 18.0) * self.zoom;
-                ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(235, 231, 219);
-                ui.visuals_mut().widgets.hovered.bg_fill = Color32::from_rgb(246, 241, 227);
-                ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(226, 197, 143);
-                // DragValue paints a Button at rest and a TextEdit while typing.
-                // Set both surfaces so the dark panel text stays legible.
-                let visuals = ui.visuals_mut();
-                visuals.widgets.inactive.weak_bg_fill = visuals.widgets.inactive.bg_fill;
-                visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
-                visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
-                visuals.text_edit_bg_color = Some(Color32::from_rgb(246, 241, 227));
-                if self.preview_only && !ui.is_enabled() {
-                    let visuals = ui.visuals_mut();
-                    visuals.disabled_alpha = 1.0;
-                    visuals.widgets.noninteractive = visuals.widgets.inactive;
-                }
                 ui.add_sized(
                     rect.size(),
                     egui::DragValue::new(&mut value)
@@ -5897,7 +5879,7 @@ fn panel_button(
     clicked
 }
 
-fn panel_width(kind: &str) -> f32 {
+pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
         "vca_mix" => HP * 26.0,
         "fade" => HP * 16.0,
@@ -6442,26 +6424,28 @@ fn paint_panel(
             );
         }
     }
-    let mut heading = egui::text::LayoutJob::simple(
-        title(&node.kind).to_owned(),
-        crate::panel_skin::print_font(
-            painter.ctx(),
-            if width < 140.0 { 18.0 } else { 21.0 } * zoom,
-        ),
-        INK,
-        (width - 26.0) * zoom,
+    let label = title(&node.kind);
+    let mut font = crate::panel_skin::print_font(
+        painter.ctx(),
+        if width < 140.0 { 18.0 } else { 21.0 } * zoom,
     );
-    heading.wrap.max_rows = 1;
-    heading.sections[0].format.extra_letter_spacing = 0.4 * zoom;
-    let heading = painter.layout_job(heading);
+    let measured = painter.layout_no_wrap(label.to_owned(), font.clone(), INK);
+    let available = (width - 30.0) * zoom;
+    font.size *= (available / measured.size().x.max(1.0)).min(1.0);
+    let heading = painter.layout_no_wrap(label.to_owned(), font, INK);
     painter.galley(
         point(width * 0.5, 31.0) - heading.size() * 0.5,
         heading,
         INK,
     );
     let mut identity = egui::text::LayoutJob::simple(
-        if node.bypassed { "BYPASSED" } else { &node.id }.to_owned(),
-        FontId::monospace(9.0 * zoom),
+        if node.bypassed {
+            "BYPASSED"
+        } else {
+            crate::panel_skin::model_caption(&node.kind)
+        }
+        .to_owned(),
+        crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
         MUTED,
         (width - 28.0) * zoom,
     );
@@ -6477,11 +6461,8 @@ fn paint_panel(
         Stroke::new(0.65 * zoom, Color32::from_rgb(166, 164, 157)),
     );
     painter.line_segment(
-        [
-            point(width * 0.5 - 16.0, 65.0),
-            point(width * 0.5 + 16.0, 65.0),
-        ],
-        Stroke::new(2.0 * zoom, crate::panel_skin::family_accent(&node.kind)),
+        [point(22.0, 65.0), point(width - 22.0, 65.0)],
+        Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
     );
     if node.kind != "pulses" {
         painter.text(
@@ -6608,7 +6589,7 @@ fn jack(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     response.on_hover_text(if output {
-        "Occupied OUT: drag or click another OUT to move the top cable source. Cmd/Ctrl starts a new cable to IN. Empty OUT starts a new cable. Occupied inputs are replaced atomically."
+        "Occupied OUT: drag or click another OUT to move the top cable source. Cmd/Ctrl starts a new cable to IN. Empty OUT starts a new cable. Cmd/Ctrl+Shift clones the top cable; Shift-click removes it."
     } else {
         "Drag to OUT to connect. Drag a connected input to another input to move its cable. Right-click to unplug; Esc cancels."
     })
@@ -6623,6 +6604,14 @@ fn paint_jack(
     zoom: f32,
     compact: bool,
 ) {
+    if output {
+        painter.circle_filled(center, 13.0 * zoom, crate::panel_skin::INK);
+        painter.circle_stroke(
+            center,
+            13.0 * zoom,
+            Stroke::new(0.6 * zoom, Color32::from_rgb(106, 109, 106)),
+        );
+    }
     if !compact {
         crate::panel_skin::port_label(
             painter,
@@ -6895,6 +6884,10 @@ mod tests {
                 rect.center(),
                 vec2(panel_width(kind), PANEL_HEIGHT) * preview.renderer.zoom,
             );
+            let actual_id = "rack-instance-42".to_owned();
+            preview.patch.nodes[0].id = actual_id.clone();
+            preview.renderer.positions.clear();
+            preview.renderer.positions.insert(actual_id, Pos2::ZERO);
             let actual = ctx.run(input(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(fitted));
