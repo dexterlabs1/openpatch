@@ -79,7 +79,8 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Save / browse module presets | Right-click a module → **Presets**; preview settings before applying |
 | Initialize / randomize | **Cmd-I** / **Cmd-R**, or the module context menu; one undo step per group |
 | Remove | **Delete** the selection, or use the module context menu |
-| Pan / zoom | Scroll or middle-drag; pinch or **Cmd-scroll** to zoom; **Cmd-0** resets the view |
+| Pan / zoom | Scroll, middle-drag, or arrow keys; pinch or **Cmd-scroll** to zoom **25–400%**; **Cmd −/+** steps zoom; **Cmd-0** restores 100% |
+| Lock placement | **View → Lock module positions** prevents accidental module moves while keeping knobs and cables editable |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 

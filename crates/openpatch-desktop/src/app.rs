@@ -470,14 +470,9 @@ impl OpenPatch {
             app.status = format!("Project storage unavailable: {error}");
         }
         app.refresh_recovery_list();
-        let favorites: Vec<String> = preferences["module_favorites"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|value| value.as_str().map(str::to_owned))
-            .collect();
-        app.library.set_favorites(&favorites, &app.catalog);
+        app.apply_host_preferences(&preferences);
         app.refresh_files();
+
         app.refresh_devices();
         app.connect_selected_midi();
         app.attach_live_events();
@@ -505,6 +500,21 @@ impl OpenPatch {
             Err(e) => (None, e),
         }
     }
+    fn apply_host_preferences(&mut self, preferences: &Value) {
+        self.rack.set_positions_locked(
+            preferences["lock_module_positions"]
+                .as_bool()
+                .unwrap_or(false),
+        );
+        let favorites: Vec<String> = preferences["module_favorites"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        self.library.set_favorites(&favorites, &self.catalog);
+    }
+
     fn save_host_settings(&mut self) {
         let path = PathBuf::from(&self.workspace).join(".host-settings.json");
         let temporary = path.with_extension(format!(
@@ -518,7 +528,8 @@ impl OpenPatch {
         let result = (|| -> Result<(), String> {
             let data = serde_json::to_vec_pretty(&json!({
                 "output_device": self.output_device, "midi_device": self.midi_device,
-                "module_favorites": self.library.favorites()
+                "module_favorites": self.library.favorites(),
+                "lock_module_positions": self.rack.positions_locked()
             }))
             .map_err(|e| e.to_string())?;
             let mut file = std::fs::OpenOptions::new()
@@ -1163,7 +1174,9 @@ impl OpenPatch {
         self.title = title.into();
         self.active_file = None;
         self.active_token = None;
+        let positions_locked = self.rack.positions_locked();
         self.rack = Rack::default();
+        self.rack.set_positions_locked(positions_locked);
         if title == "Sequenced analog voice" {
             self.sequence_layout();
         } else if title == "Delayed gate voice" {
@@ -1422,7 +1435,9 @@ impl OpenPatch {
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
                 self.patch = applied.patch;
+                let positions_locked = self.rack.positions_locked();
                 self.rack = applied.rack;
+                self.rack.set_positions_locked(positions_locked);
                 self.revision = applied.revision;
                 self.state_id = applied.state_id;
                 self.history_layouts
@@ -1853,8 +1868,22 @@ impl OpenPatch {
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
             self.history(ctx.input(|i| i.modifiers.shift));
         }
-        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Num0)) {
-            self.rack.reset_view();
+        if self.rack.navigation_idle()
+            && ctx.input(|i| {
+                (i.modifiers.command || i.modifiers.ctrl)
+                    && !i.modifiers.alt
+                    && !i.pointer.any_down()
+            })
+        {
+            if ctx.input(|i| i.key_pressed(egui::Key::Num0)) {
+                self.rack.set_zoom(1.0);
+            } else if ctx
+                .input(|i| i.key_pressed(egui::Key::Equals) || i.key_pressed(egui::Key::Plus))
+            {
+                self.rack.zoom_step(true);
+            } else if ctx.input(|i| i.key_pressed(egui::Key::Minus)) {
+                self.rack.zoom_step(false);
+            }
         }
     }
 
@@ -2098,6 +2127,12 @@ impl OpenPatch {
                                 self.audio_performance_open = true;
                                 ui.close();
                             }
+                            ui.separator();
+                            let mut locked = self.rack.positions_locked();
+                            if ui.checkbox(&mut locked, "Lock module positions").changed() {
+                                self.rack.set_positions_locked(locked);
+                                self.save_host_settings();
+                            }
                             if ui.button("Reset rack view").clicked() {
                                 self.rack.reset_view();
                                 ui.close();
@@ -2126,24 +2161,27 @@ impl OpenPatch {
                                 }
                             }
                             if icon_button(ui, Icon::Plus, "Zoom in", false, true).clicked() {
-                                self.rack.set_zoom((self.rack.zoom() + 0.1).min(1.8));
+                                self.rack.zoom_step(true);
                             }
                             let mut zoom = self.rack.zoom() * 100.0;
-                            if ui
+                            let zoom_response = ui
                                 .add_sized(
                                     [48.0, 30.0],
                                     egui::DragValue::new(&mut zoom)
-                                        .range(40.0..=180.0)
+                                        .range(25.0..=400.0)
                                         .suffix("%")
                                         .speed(1.0),
                                 )
-                                .on_hover_text("Rack zoom · Cmd/Ctrl+0 resets the view")
-                                .changed()
-                            {
+                                .on_hover_text("Rack zoom · Cmd/Ctrl −/+ · double-click or Cmd/Ctrl+0 for 100%");
+                            if zoom_response.double_clicked() {
+                                self.rack.set_zoom(1.0);
+                                zoom_response.surrender_focus();
+                                ui.data_mut(|data| data.remove::<String>(zoom_response.id));
+                            } else if zoom_response.changed() {
                                 self.rack.set_zoom(zoom / 100.0);
                             }
                             if icon_button(ui, Icon::Minus, "Zoom out", false, true).clicked() {
-                                self.rack.set_zoom((self.rack.zoom() - 0.1).max(0.4));
+                                self.rack.zoom_step(false);
                             }
                             ui.separator();
                             if icon_button(
@@ -5164,6 +5202,302 @@ mod project_workflow_tests {
                     "{blocked} leaked Undo"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn toolbar_zoom_double_click_resets_and_single_click_allows_exact_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.rack.set_zoom(0.85);
+        let ctx = egui::Context::default();
+        let frame = |app: &mut OpenPatch, time, events| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1100.0, 800.0),
+                    )),
+                    time: Some(time),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    app.toolbar(ctx);
+                    app.rack_workspace(ctx, None);
+                },
+            )
+        };
+        frame(&mut app, 0.0, vec![]);
+        let output = frame(&mut app, 0.1, vec![]);
+        let at = preset_text(&output, "85%");
+        for (time, pressed) in [(1.0, true), (1.05, false), (1.1, true), (1.15, false)] {
+            frame(
+                &mut app,
+                time,
+                vec![egui::Event::PointerMoved(at), pointer_event(at, pressed)],
+            );
+        }
+        frame(&mut app, 1.3, vec![]);
+        assert_eq!(
+            app.rack.zoom(),
+            1.0,
+            "An old text draft must not overwrite double-click reset"
+        );
+        assert!(!ctx.wants_keyboard_input());
+        for (time, pressed) in [(2.0, true), (2.05, false)] {
+            frame(
+                &mut app,
+                time,
+                vec![egui::Event::PointerMoved(at), pointer_event(at, pressed)],
+            );
+        }
+        frame(&mut app, 2.1, vec![egui::Event::Text("175".into())]);
+        frame(
+            &mut app,
+            2.2,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        frame(&mut app, 2.3, vec![]);
+        assert_eq!(app.rack.zoom(), 1.75);
+    }
+
+    #[test]
+    fn keyboard_zoom_uses_resized_rack_center_in_the_same_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.rack.set_zoom(0.85);
+        let ctx = egui::Context::default();
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1100.0, 800.0),
+                )),
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| {
+                app.toolbar(ctx);
+                app.rack_workspace(ctx, None);
+            },
+        );
+        let old = app.rack.layout();
+        let pan = egui::vec2(
+            old["pan"][0].as_f64().unwrap() as f32,
+            old["pan"][1].as_f64().unwrap() as f32,
+        );
+        let mut pivot = Vec2::ZERO;
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(940.0, 680.0),
+                )),
+                focused: true,
+                modifiers: egui::Modifiers::COMMAND,
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Equals,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                }],
+                ..Default::default()
+            },
+            |ctx| {
+                app.toolbar(ctx);
+                pivot = ctx.available_rect().size() * 0.5;
+                app.global_shortcuts(ctx);
+                app.rack_workspace(ctx, None);
+            },
+        );
+        let expected = pivot - (pivot - pan) / 0.85;
+        let after = app.rack.layout();
+        let actual = egui::vec2(
+            after["pan"][0].as_f64().unwrap() as f32,
+            after["pan"][1].as_f64().unwrap() as f32,
+        );
+        assert_eq!(app.rack.zoom(), 1.0);
+        assert!(
+            (actual - expected).length() < 0.001,
+            "{actual:?} vs {expected:?}"
+        );
+    }
+
+    #[test]
+    fn navigation_shortcuts_change_view_without_graph_history() {
+        for modifiers in [egui::Modifiers::COMMAND, egui::Modifiers::CTRL] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            let graph = app.shared.lock().unwrap().snapshot();
+            let ctx = egui::Context::default();
+            let mut layout = app.rack.layout();
+            layout["zoom"] = json!(0.85);
+            layout["pan"] = json!([-150.0, 80.0]);
+            app.rack.restore_layout(&layout).unwrap();
+            for (key, expected) in [
+                (egui::Key::Equals, 1.0),
+                (egui::Key::Minus, std::f32::consts::FRAC_1_SQRT_2),
+                (egui::Key::Num0, 1.0),
+                (egui::Key::Plus, std::f32::consts::SQRT_2),
+            ] {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        focused: true,
+                        modifiers,
+                        events: vec![egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers,
+                        }],
+                        ..Default::default()
+                    },
+                    |ctx| app.global_shortcuts(ctx),
+                );
+                assert!((app.rack.zoom() - expected).abs() < 0.0001);
+                assert_eq!(
+                    app.rack.layout()["pan"],
+                    layout["pan"],
+                    "Before a viewport exists, zoom must not invent a pan reset"
+                );
+                assert_eq!(app.shared.lock().unwrap().snapshot(), graph);
+            }
+        }
+    }
+
+    #[test]
+    fn navigation_shortcuts_respect_editor_focus_and_pointer_gestures() {
+        for blocked in [
+            "settings",
+            "audio-performance",
+            "shader",
+            "popup",
+            "blur",
+            "text",
+            "drag",
+            "pointer",
+            "alt",
+        ] {
+            for key in [egui::Key::Equals, egui::Key::Minus, egui::Key::Num0] {
+                let dir = tempfile::tempdir().unwrap();
+                let mut app = host(dir.path());
+                app.rack.set_zoom(0.85);
+                let before = app.rack.layout();
+                app.settings_open = blocked == "settings";
+                app.audio_performance_open = blocked == "audio-performance";
+                app.shader_open = blocked == "shader";
+                let ctx = egui::Context::default();
+                let modifiers = egui::Modifiers {
+                    alt: blocked == "alt",
+                    ..egui::Modifiers::COMMAND
+                };
+                let mut events = vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                }];
+                if blocked == "pointer" {
+                    events.push(pointer_event(egui::pos2(80.0, 80.0), true));
+                }
+                let _ = ctx.run(
+                    egui::RawInput {
+                        focused: blocked != "blur",
+                        modifiers,
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        if blocked == "popup" {
+                            egui::Popup::open_id(ctx, egui::Id::new("zoom-popup"));
+                        }
+                        if blocked == "text" {
+                            ctx.memory_mut(|m| m.request_focus(egui::Id::new("zoom-text")));
+                        }
+                        if blocked == "drag" {
+                            egui::DragAndDrop::set_payload(
+                                ctx,
+                                LibraryDrag {
+                                    kind: "constant".into(),
+                                },
+                            );
+                        }
+                        app.global_shortcuts(ctx);
+                    },
+                );
+                assert_eq!(app.rack.layout(), before, "{blocked} leaked {key:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn position_lock_survives_new_open_import_and_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected =
+            Document::new(openpatch_core::demo_patch(), Rack::default().layout()).unwrap();
+        {
+            let previous = Store::new(dir.path()).unwrap();
+            previous.save_recovery(&expected).unwrap();
+            previous.save_new("locked.openpatch", &expected).unwrap();
+        }
+        std::fs::write(
+            dir.path().join("legacy.json"),
+            serde_json::to_vec(&expected.patch).unwrap(),
+        )
+        .unwrap();
+        let mut app = host(dir.path());
+        let recovery = app.recovery_names[0].clone();
+        app.rack.set_positions_locked(true);
+        app.load_document(&recovery, true);
+        assert!(app.rack.positions_locked());
+        assert_eq!(app.title, "Recovered project");
+        app.replace_now(Patch::new_v2(), "Untitled");
+        assert!(app.rack.positions_locked());
+        assert!(app.patch.nodes.is_empty());
+        app.load_document("locked.openpatch", false);
+        assert!(app.rack.positions_locked());
+        assert_eq!(app.active_file.as_deref(), Some("locked.openpatch"));
+        app.load_document("legacy.json", false);
+        assert!(app.rack.positions_locked());
+        assert!(app.active_file.is_none());
+        assert_eq!(app.patch.nodes.len(), expected.patch.nodes.len());
+    }
+
+    #[test]
+    fn position_lock_persists_as_host_preference_without_patch_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        app.rack.set_positions_locked(true);
+        app.save_host_settings();
+        let preferences: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(".host-settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(preferences["lock_module_positions"], true);
+        app.rack.set_positions_locked(false);
+        app.apply_host_preferences(&preferences);
+        assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        for legacy in [
+            json!({}),
+            json!({"lock_module_positions":"true"}),
+            Value::Null,
+        ] {
+            app.apply_host_preferences(&legacy);
+            assert!(!app.rack.positions_locked());
         }
     }
 

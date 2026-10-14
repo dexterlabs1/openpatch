@@ -455,6 +455,30 @@ mod tests {
         Document::new(patch, rack.layout()).unwrap()
     }
     #[test]
+    fn full_zoom_range_round_trips_through_projects_and_crash_recovery() {
+        for zoom in [0.25, 0.85, 1.0, 4.0] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = Store::new(directory.path()).unwrap();
+            let mut original = document(1.0);
+            original.layout["zoom"] = json!(zoom);
+            original.layout["pan"] = json!([-452.5, 930.0]);
+            store.save_new("zoom.openpatch", &original).unwrap();
+            assert!(original.equivalent(&store.load("zoom.openpatch").unwrap().document));
+            store.save_recovery(&original).unwrap();
+            drop(store);
+            let reopened = Store::new(directory.path()).unwrap();
+            let names = reopened.recoveries();
+            assert_eq!(names.len(), 1);
+            assert!(original.equivalent(&reopened.load_recovery(&names[0]).unwrap().document));
+            for invalid in [json!(0.249), json!(4.001), Value::Null, json!("1.0")] {
+                let mut candidate = original.clone();
+                candidate.layout["zoom"] = invalid;
+                assert!(candidate.encode().is_err());
+            }
+        }
+    }
+
+    #[test]
     fn failed_prepublication_save_and_recovery_leave_previous_complete_bytes() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::new(directory.path()).unwrap();

@@ -49,6 +49,39 @@ a modal dialog, a blocked/no-op drop, or a newer graph revision cancels the
 preview without adding history. Pan/zoom remain persisted view settings without
 separate undo entries.
 
+## Rack navigation
+
+Zoom spans **25–400%**. Pinch or Cmd-scroll zooms around the pointer; mouse
+buttons 4/5 zoom out/in at that point. **Cmd-minus** and **Cmd-equals/plus**
+step between half-octave zoom levels around the rack's center. **Cmd-0** and a
+double-click on the toolbar percentage restore 100% without resetting your
+view location. Click the percentage once to enter an exact value. Use
+**View → Reset rack view** to reset both zoom and pan.
+
+Scroll or middle-drag to pan; Shift-scroll moves horizontally. Hold the arrow
+keys to move the view continuously. Cmd slows movement to one quarter speed,
+Shift accelerates it fourfold, and Cmd+Shift slows it to one sixteenth. Panning
+uses elapsed time to stay consistent across display refresh rates. Text entry,
+library keyboard focus, dialogs, and active editing gestures suppress rack
+navigation. Use Ctrl in place of Cmd on Windows/Linux.
+
+**View → Lock module positions** prevents single and selected-group mouse
+moves. Turning it on cancels any unfinished move. Selection, knobs, cables,
+module insertion, and undo/redo remain available. The lock is saved with host
+preferences rather than inside a patch. Pan and zoom are saved in projects and
+crash recovery without adding graph undo steps. View coordinates are bounded
+to ±1,000,000 logical pixels, keeping every allowed module position reachable
+at 400% and preventing navigation from producing an unsavable project.
+At that outer bound, zoom anchoring yields to the view limit.
+
+These interactions follow the [Rack key commands](https://vcvrack.com/manual/KeyCommands)
+and [View menu](https://vcvrack.com/manual/MenuBar). Zoom stepping and modifier
+ratios were checked against the pinned
+[Rack viewport](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/RackScrollWidget.cpp)
+and [keyboard navigation](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/Scene.cpp)
+implementations. Arrow cadence is deliberately based on elapsed time, using
+Rack's nominal 60 Hz movement as the baseline.
+
 ## Cable gestures
 
 Drag an empty output to an input to connect it. At an occupied output, an

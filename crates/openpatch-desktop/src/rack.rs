@@ -14,6 +14,7 @@ use std::sync::{
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
 const PANEL_HEIGHT: f32 = 396.0;
+const MAX_PAN: f32 = 1_000_000.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
 const INK: Color32 = crate::panel_skin::INK;
 const MUTED: Color32 = Color32::from_rgb(95, 91, 82);
@@ -312,6 +313,11 @@ pub struct Rack {
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
     zoom: f32,
+    viewport: Option<Rect>,
+    // Center zoom may arrive from the toolbar before this frame measures the
+    // resized rack. Correct that pivot once the new canvas is available.
+    pending_center_zoom_ratio: f32,
+    positions_locked: bool,
     pending: Option<PendingCable>,
     cable_press: Option<PendingCable>,
     observed_revision: u64,
@@ -341,6 +347,9 @@ impl Default for Rack {
             positions: BTreeMap::new(),
             pan: vec2(24.0, 12.0),
             zoom: 1.0,
+            viewport: None,
+            pending_center_zoom_ratio: 1.0,
+            positions_locked: false,
             pending: None,
             cable_press: None,
             observed_revision: 0,
@@ -736,6 +745,7 @@ impl Rack {
     }
 
     pub fn reset_view(&mut self) {
+        self.pending_center_zoom_ratio = 1.0;
         if self.pan != vec2(24.0, 12.0) || self.zoom != 1.0 {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
@@ -745,14 +755,67 @@ impl Rack {
     pub fn zoom(&self) -> f32 {
         self.zoom
     }
+    /// Zoom about the latest rack viewport center. Before the first frame,
+    /// preserve the origin because no viewport has been measured yet.
     pub fn set_zoom(&mut self, zoom: f32) {
-        if zoom.is_finite() {
-            let zoom = zoom.clamp(0.4, 1.8);
-            if zoom != self.zoom {
-                self.layout_revision = self.layout_revision.wrapping_add(1);
-            }
-            self.zoom = zoom;
+        let pivot = self
+            .viewport
+            .map_or(Vec2::ZERO, |canvas| canvas.size() * 0.5);
+        let previous_zoom = self.zoom;
+        self.set_zoom_at(zoom, pivot);
+        if self.viewport.is_some() {
+            self.pending_center_zoom_ratio *= self.zoom / previous_zoom;
         }
+    }
+
+    fn set_zoom_at(&mut self, zoom: f32, pivot: Vec2) {
+        if !zoom.is_finite() || !pivot.is_finite() {
+            return;
+        }
+        let zoom = zoom.clamp(0.25, 4.0);
+        if zoom == self.zoom {
+            return;
+        }
+        if self.viewport.is_some() {
+            let world = (pivot - self.pan) / self.zoom;
+            self.pan = bounded_pan(pivot - world * zoom);
+        }
+        self.zoom = zoom;
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// Adjacent half-octave steps, including recovery from arbitrary slider zoom.
+    pub fn zoom_step(&mut self, zoom_in: bool) {
+        let exponent = 2.0 * self.zoom.log2();
+        let exponent = if zoom_in {
+            (exponent + 0.01).floor() + 1.0
+        } else {
+            (exponent - 0.01).ceil() - 1.0
+        };
+        self.set_zoom(2.0_f32.powf(exponent * 0.5));
+    }
+
+    pub fn positions_locked(&self) -> bool {
+        self.positions_locked
+    }
+
+    /// A host preference: lock mouse movement without restricting graph edits,
+    /// selection, controls, insertion, or undo of previously committed moves.
+    pub fn set_positions_locked(&mut self, locked: bool) {
+        self.positions_locked = locked;
+        if locked {
+            self.cancel_module_drag();
+        }
+    }
+
+    /// Host zoom shortcuts must not change geometry during a live gesture.
+    pub fn navigation_idle(&self) -> bool {
+        self.pending.is_none()
+            && self.cable_press.is_none()
+            && !self.dragging_cable
+            && self.group_drag.is_none()
+            && self.held_manual.is_none()
+            && self.editing.is_none()
     }
 
     pub fn layout(&self) -> Value {
@@ -813,8 +876,15 @@ impl Rack {
         if value["version"] != 1 {
             return Err("Unsupported rack layout version".into());
         }
-        let zoom = finite_number(&value["zoom"], 0.4, 1.8)?;
-        let pan = coordinate(&value["pan"])?;
+        let zoom = finite_number(&value["zoom"], 0.25, 4.0)?;
+        let pan_values = value["pan"]
+            .as_array()
+            .filter(|values| values.len() == 2)
+            .ok_or("Rack pan needs two coordinates")?;
+        let pan = vec2(
+            finite_number(&pan_values[0], -MAX_PAN, MAX_PAN)?,
+            finite_number(&pan_values[1], -MAX_PAN, MAX_PAN)?,
+        );
         let values = value["positions"]
             .as_object()
             .ok_or("Rack layout needs a positions object")?;
@@ -830,8 +900,9 @@ impl Rack {
         }
         self.layout_revision = self.layout_revision.wrapping_add(1);
         self.positions = positions;
-        self.pan = pan.to_vec2();
+        self.pan = pan;
         self.zoom = zoom;
+        self.pending_center_zoom_ratio = 1.0;
         self.pending = None;
         self.cable_press = None;
         self.dragging_cable = false;
@@ -850,6 +921,7 @@ impl Rack {
         device_rate: u32,
         revision: u64,
     ) -> Option<RackAction> {
+        let navigation_idle_at_frame_start = self.navigation_idle();
         if self.observed_revision != revision {
             self.cancel_module_drag();
             self.pending = None;
@@ -882,6 +954,9 @@ impl Rack {
             && ui.input(|i| i.focused)
             && !egui::Popup::is_any_open(ui.ctx())
             && !ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if self.positions_locked {
+            self.cancel_module_drag();
+        }
         if !drag_interactive {
             self.pending = None;
             self.cable_press = None;
@@ -911,6 +986,13 @@ impl Rack {
             ui.available_size().max(vec2(1.0, 1.0)),
             Sense::click_and_drag(),
         );
+        if let Some(previous) = self.viewport {
+            let center_shift = (canvas.size() - previous.size()) * 0.5;
+            self.pan =
+                bounded_pan(self.pan + center_shift * (1.0 - self.pending_center_zoom_ratio));
+        }
+        self.pending_center_zoom_ratio = 1.0;
+        self.viewport = Some(canvas);
         if !suppress_reveal {
             if std::mem::take(&mut self.reveal_group_once) {
                 self.reveal_selected_group(patch, canvas);
@@ -936,7 +1018,16 @@ impl Rack {
             )
         });
         let painter = ui.painter().with_clip_rect(canvas);
-        if interactive && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
+        let navigation_enabled = interactive
+            && self.shortcuts_enabled
+            && ui.input(|i| i.focused)
+            && !ui.ctx().wants_keyboard_input()
+            && !popup_open_at_frame_start
+            && navigation_idle_at_frame_start
+            && self.navigation_idle();
+        if navigation_enabled
+            && !ui.input(|i| i.pointer.any_down())
+            && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
         {
             let (scroll, zoom_delta, command) = ui.input(|i| {
                 (
@@ -949,17 +1040,51 @@ impl Rack {
                 let pointer = ui
                     .input(|i| i.pointer.hover_pos())
                     .unwrap_or(canvas.center());
-                let local = pointer - canvas.min;
-                let world = (local - self.pan) / self.zoom;
-                self.set_zoom(self.zoom * zoom_delta);
-                self.pan = local - world * self.zoom;
+                self.set_zoom_at(self.zoom * zoom_delta, pointer - canvas.min);
             } else if !command {
                 self.pan += scroll;
             }
         }
-        if interactive && response.dragged_by(PointerButton::Middle) {
+        if navigation_enabled
+            && !ui.input(|i| {
+                i.pointer.primary_down()
+                    || i.pointer.secondary_down()
+                    || i.pointer.button_down(PointerButton::Middle)
+            })
+            && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
+        {
+            let (zoom_out, zoom_in) = ui.input(|i| {
+                (
+                    i.pointer.button_pressed(PointerButton::Extra1),
+                    i.pointer.button_pressed(PointerButton::Extra2),
+                )
+            });
+            if zoom_out != zoom_in {
+                let factor = if zoom_in {
+                    std::f32::consts::SQRT_2
+                } else {
+                    std::f32::consts::FRAC_1_SQRT_2
+                };
+                let pivot = ui
+                    .input(|i| i.pointer.hover_pos())
+                    .unwrap_or(canvas.center())
+                    - canvas.min;
+                self.set_zoom_at(self.zoom * factor, pivot);
+            }
+        }
+        if navigation_enabled
+            && response.dragged_by(PointerButton::Middle)
+            && !ui.input(|i| i.pointer.primary_down() || i.pointer.secondary_down())
+        {
             self.pan += response.drag_delta();
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+        if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
+            let delta = ui.input(keyboard_pan_delta);
+            if delta != Vec2::ZERO {
+                self.pan += delta;
+                ui.ctx().request_repaint();
+            }
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.cancel_module_drag();
@@ -1304,6 +1429,7 @@ impl Rack {
                 Color32::from_gray(118),
             );
         }
+        self.pan = bounded_pan(self.pan);
         if self.pan != initial_pan {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
@@ -1509,7 +1635,15 @@ impl Rack {
                     egui::WidgetInfo::labeled(
                         egui::WidgetType::Button,
                         true,
-                        format!("Move {} module", node.id),
+                        format!(
+                            "{} {} module",
+                            if self.positions_locked {
+                                "Select"
+                            } else {
+                                "Move"
+                            },
+                            node.id
+                        ),
                     )
                 });
                 if !popup_open_at_frame_start && header_response.clicked() {
@@ -1519,7 +1653,10 @@ impl Rack {
                         self.select_primary(node.id.clone());
                     }
                 }
-                if drag_interactive && header_response.drag_started_by(PointerButton::Primary) {
+                if drag_interactive
+                    && !self.positions_locked
+                    && header_response.drag_started_by(PointerButton::Primary)
+                {
                     self.select_primary(node.id.clone());
                     self.group_drag = Some(GroupDrag {
                         anchor: node.id.clone(),
@@ -1532,10 +1669,13 @@ impl Rack {
                         revision,
                     });
                 }
-                if header_response.hovered() {
+                if header_response.hovered() && !self.positions_locked {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 }
-                if drag_interactive && header_response.dragged_by(PointerButton::Primary) {
+                if drag_interactive
+                    && !self.positions_locked
+                    && header_response.dragged_by(PointerButton::Primary)
+                {
                     if let Some(drag) = self
                         .group_drag
                         .as_mut()
@@ -1548,7 +1688,10 @@ impl Rack {
                     }
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 }
-                if drag_interactive && header_response.drag_stopped_by(PointerButton::Primary) {
+                if drag_interactive
+                    && !self.positions_locked
+                    && header_response.drag_stopped_by(PointerButton::Primary)
+                {
                     if let Some(drag) = self.group_drag.take().filter(|drag| drag.anchor == node.id)
                     {
                         let min = pos2(
@@ -4272,6 +4415,29 @@ impl Rack {
             ParameterEditOutcome::Cancel => self.editing = None,
         }
     }
+}
+
+fn bounded_pan(pan: Vec2) -> Vec2 {
+    vec2(
+        pan.x.clamp(-MAX_PAN, MAX_PAN),
+        pan.y.clamp(-MAX_PAN, MAX_PAN),
+    )
+}
+
+/// Screen-space camera movement; rack translation is its inverse.
+fn keyboard_pan_delta(input: &egui::InputState) -> Vec2 {
+    let x = i32::from(input.key_down(egui::Key::ArrowLeft))
+        - i32::from(input.key_down(egui::Key::ArrowRight));
+    let y = i32::from(input.key_down(egui::Key::ArrowUp))
+        - i32::from(input.key_down(egui::Key::ArrowDown));
+    let command = input.modifiers.command || input.modifiers.ctrl;
+    let speed = match (command, input.modifiers.shift) {
+        (false, false) => 1920.0,
+        (true, false) => 480.0,
+        (false, true) => 7680.0,
+        (true, true) => 120.0,
+    };
+    vec2(x as f32, y as f32) * speed * input.stable_dt.min(0.1)
 }
 
 fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value) -> bool {
@@ -10939,9 +11105,9 @@ mod tests {
     #[test]
     fn library_drop_converts_zoom_pan_and_centers_actual_panel_width_without_mutation() {
         let patch = Patch::new_v2();
-        let canvas = Rect::from_min_size(pos2(200.0, 100.0), vec2(3000.0, 2000.0));
-        for zoom in [0.4, 0.85, 1.0, 1.8] {
-            for pan in [vec2(24.0, 12.0), vec2(-170.0, 60.0)] {
+        let canvas = Rect::from_min_size(pos2(200.0, 100.0), vec2(6000.0, 4000.0));
+        for zoom in [0.25, 0.4, 0.85, 1.0, 1.8, 4.0] {
+            for pan in [vec2(24.0, 12.0), vec2(-80.0, 60.0)] {
                 for kind in ["constant", "seq3", "multi_vco", "vca_mix"] {
                     let mut rack = Rack {
                         pan,
@@ -11131,6 +11297,418 @@ mod tests {
             assert_eq!(rack.layout_revision(), 0);
         }
     }
+    fn navigation_key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+    fn assert_near_vec(actual: Vec2, expected: Vec2) {
+        assert!(
+            (actual - expected).length() < 0.001,
+            "{actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn zoom_limits_center_anchor_resize_and_half_octave_steps() {
+        let mut rack = Rack::default();
+        assert!(!rack.positions_locked());
+        let pan = rack.pan;
+        rack.set_zoom(0.0);
+        assert_eq!(rack.zoom(), 0.25);
+        assert_eq!(
+            rack.pan, pan,
+            "before viewport measurement the origin is preserved"
+        );
+        rack.set_zoom(100.0);
+        assert_eq!(rack.zoom(), 4.0);
+        let layout = rack.layout();
+        for zoom in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            rack.set_zoom(zoom);
+            assert_eq!(rack.layout(), layout);
+        }
+        for zoom in [0.25, 4.0] {
+            rack.restore_layout(&json!({"version":1,"zoom":zoom,"pan":[31,-20],"positions":{}}))
+                .unwrap();
+            assert_eq!(rack.zoom(), zoom);
+        }
+        for zoom in [0.249, 4.001] {
+            assert!(rack
+                .restore_layout(&json!({"version":1,"zoom":zoom,"pan":[0,0],"positions":{}}))
+                .is_err());
+        }
+        let ctx = egui::Context::default();
+        let patch = Patch::new_v2();
+        for size in [vec2(900.0, 500.0), vec2(1300.0, 800.0)] {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
+                    });
+                },
+            );
+            let pivot = rack.viewport.unwrap().size() * 0.5;
+            let world = (pivot - rack.pan) / rack.zoom();
+            rack.set_zoom(if rack.zoom() == 4.0 { 0.25 } else { 4.0 });
+            assert_near_vec((pivot - rack.pan) / rack.zoom(), world);
+        }
+        for (start, zoom_in, expected) in [
+            (1.0, true, std::f32::consts::SQRT_2),
+            (1.0, false, std::f32::consts::FRAC_1_SQRT_2),
+            (0.85, true, 1.0),
+            (0.85, false, std::f32::consts::FRAC_1_SQRT_2),
+            (4.0, true, 4.0),
+            (0.25, false, 0.25),
+        ] {
+            rack.set_zoom(start);
+            rack.zoom_step(zoom_in);
+            assert!((rack.zoom() - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn navigation_pan_bounds_round_trip_without_restricting_module_positions() {
+        let ctx = egui::Context::default();
+        let patch = Patch::new_v2();
+        let mut rack = Rack::default();
+        rack.restore_layout(&json!({"version":1,"zoom":0.25,"pan":[999999,-999999],"positions":{"edge":[100000,-100000]}})).unwrap();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        rack.set_zoom(4.0);
+        assert!(rack.pan.x.abs() <= MAX_PAN && rack.pan.y.abs() <= MAX_PAN);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            0.02,
+            vec![
+                navigation_key(egui::Key::ArrowLeft, egui::Modifiers::SHIFT),
+                navigation_key(egui::Key::ArrowDown, egui::Modifiers::SHIFT),
+            ],
+        );
+        let layout = rack.layout();
+        let mut restored = Rack::default();
+        restored.restore_layout(&layout).unwrap();
+        assert_eq!(restored.layout(), layout);
+        assert!(restored
+            .restore_layout(&json!({"version":1,"zoom":1,"pan":[1000001,0],"positions":{}}))
+            .is_err());
+        assert!(restored
+            .restore_layout(
+                &json!({"version":1,"zoom":1,"pan":[0,0],"positions":{"edge":[100001,0]}})
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn pointer_zoom_and_extra_buttons_keep_cursor_anchor_without_center_drift() {
+        for event in [
+            egui::Event::Zoom(1.5),
+            egui::Event::PointerButton {
+                pos: pos2(230.0, 155.0),
+                button: PointerButton::Extra1,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: pos2(230.0, 155.0),
+                button: PointerButton::Extra2,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch = Patch::new_v2();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            rack.set_zoom(0.85);
+            let pivot = pos2(230.0, 155.0) - rack.viewport.unwrap().min;
+            let world = (pivot - rack.pan) / rack.zoom;
+            let factor = match &event {
+                egui::Event::Zoom(factor) => *factor,
+                egui::Event::PointerButton {
+                    button: PointerButton::Extra1,
+                    ..
+                } => std::f32::consts::FRAC_1_SQRT_2,
+                _ => std::f32::consts::SQRT_2,
+            };
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.0,
+                vec![egui::Event::PointerMoved(pos2(230.0, 155.0)), event],
+            );
+            assert!((rack.zoom - 0.85 * factor).abs() < 1e-6);
+            assert_near_vec((pivot - rack.pan) / rack.zoom, world);
+        }
+    }
+
+    #[test]
+    fn held_arrows_pan_camera_with_modifiers_and_opposing_keys_cancel() {
+        for (modifiers, speed) in [
+            (egui::Modifiers::NONE, 1920.0),
+            (egui::Modifiers::COMMAND, 480.0),
+            (egui::Modifiers::CTRL, 480.0),
+            (egui::Modifiers::SHIFT, 7680.0),
+            (
+                egui::Modifiers {
+                    shift: true,
+                    ctrl: true,
+                    ..Default::default()
+                },
+                120.0,
+            ),
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch = Patch::new_v2();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let before = rack.pan;
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                0.02,
+                vec![
+                    navigation_key(egui::Key::ArrowRight, modifiers),
+                    navigation_key(egui::Key::ArrowUp, modifiers),
+                ],
+            );
+            let dt = ctx.input(|i| i.stable_dt.min(0.1));
+            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
+            let before = rack.pan;
+            // A held key continues on the next frame without a fresh press.
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                    time: Some(0.04),
+                    modifiers,
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::NONE)
+                        .show(ctx, |ui| {
+                            rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
+                        });
+                },
+            );
+            let dt = ctx.input(|i| i.stable_dt.min(0.1));
+            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
+            let before = rack.pan;
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                0.06,
+                vec![
+                    navigation_key(egui::Key::ArrowLeft, modifiers),
+                    navigation_key(egui::Key::ArrowDown, modifiers),
+                ],
+            );
+            assert_eq!(rack.pan, before);
+        }
+    }
+
+    #[test]
+    fn navigation_respects_focus_popups_disabled_surfaces_and_live_gestures() {
+        for guard in [
+            "focus",
+            "disabled",
+            "shortcuts",
+            "text",
+            "popup",
+            "pointer",
+            "cable",
+            "module",
+            "manual",
+        ] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch = Patch::new_v2();
+            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+            let before = rack.pan;
+            if guard == "shortcuts" {
+                rack.set_shortcuts_enabled(false);
+            }
+            if guard == "cable" {
+                rack.pending = Some(PendingCable::new(
+                    CableEnd::Output {
+                        node: "none".into(),
+                        port: "out".into(),
+                    },
+                    &patch,
+                ));
+            }
+            if guard == "module" {
+                rack.group_drag = Some(GroupDrag {
+                    anchor: "none".into(),
+                    origins: BTreeMap::new(),
+                    delta: Vec2::ZERO,
+                    revision: 0,
+                });
+            }
+            if guard == "manual" {
+                rack.held_manual = Some(HeldManual {
+                    id: "none".into(),
+                    kind: "push".into(),
+                    release: "push_release",
+                    button_rect: Rect::NOTHING,
+                });
+            }
+            let mut events = vec![navigation_key(egui::Key::ArrowRight, egui::Modifiers::NONE)];
+            if guard == "pointer" {
+                events.push(button(pos2(900.0, 600.0), true));
+            }
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                    time: Some(0.02),
+                    events,
+                    focused: guard != "focus",
+                    ..Default::default()
+                },
+                |ctx| {
+                    if guard == "popup" {
+                        egui::Popup::open_id(ctx, egui::Id::new("navigation-popup"));
+                    }
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::NONE)
+                        .show(ctx, |ui| {
+                            if guard == "text" {
+                                let mut text = String::new();
+                                ui.add(egui::TextEdit::singleline(&mut text))
+                                    .request_focus();
+                            }
+                            ui.add_enabled_ui(guard != "disabled", |ui| {
+                                rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
+                            });
+                        });
+                },
+            );
+            assert_eq!(rack.pan, before, "guard {guard}");
+        }
+    }
+
+    #[test]
+    fn position_lock_cancels_group_preview_but_preserves_controls_cables_and_history_moves() {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[{"id":"a","kind":"constant"},{"id":"b","kind":"audio_out"}]})).unwrap();
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        frame(&ctx, &mut rack, &patch, 0.0, vec![]);
+        rack.select_only("a".into());
+        rack.toggle_selection("b".into());
+        let original_positions = rack.positions.clone();
+        let start = pos2(60.0, 45.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::PointerMoved(start + vec2(90.0, 30.0))],
+        );
+        assert_eq!(rack.group_drag.as_ref().unwrap().origins.len(), 2);
+        rack.set_positions_locked(true);
+        assert!(rack.positions_locked());
+        assert!(rack.group_drag.is_none());
+        assert_eq!(rack.positions, original_positions);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![button(start + vec2(90.0, 30.0), false)],
+        );
+        let positions = rack.positions.clone();
+        assert!(drag(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            start,
+            start + vec2(100.0, 50.0)
+        )
+        .is_none());
+        assert_eq!(rack.positions, positions);
+        assert!(rack.selection.contains("a"));
+        let (knob_position, _) = parameter_position(1, 0, panel_width("constant"));
+        let knob = rack.viewport.unwrap().min
+            + rack.pan
+            + (rack.positions["a"].to_vec2() + knob_position.to_vec2()) * rack.zoom;
+        let moved = knob - vec2(0.0, 20.0);
+        frame(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.0,
+            vec![egui::Event::PointerMoved(knob), button(knob, true)],
+        );
+        // Parameter edits are emitted while dragging; release is intentionally
+        // action-free, unlike the atomic cable drop checked below.
+        assert!(matches!(
+            frame(
+                &ctx,
+                &mut rack,
+                &patch,
+                3.1,
+                vec![egui::Event::PointerMoved(moved)]
+            ),
+            Some(RackAction::Command("set_parameter", _))
+        ));
+        frame(&ctx, &mut rack, &patch, 3.2, vec![button(moved, false)]);
+        let from = fixture_jack(&rack, &patch, "a", "out", false);
+        let to = fixture_jack(&rack, &patch, "b", "signal", true);
+        assert!(matches!(
+            drag(&ctx, &mut rack, &patch, 4.0, from, to),
+            Some(RackAction::Command("connect", _))
+        ));
+        let before = BTreeMap::from([("a".to_owned(), Pos2::ZERO)]);
+        let after = BTreeMap::from([("a".to_owned(), pos2(15.0, ROW))]);
+        rack.apply_module_move(&ModuleMove {
+            revision: 0,
+            before,
+            after,
+        })
+        .unwrap();
+        assert_eq!(rack.positions["a"], pos2(15.0, ROW));
+        assert!(rack
+            .library_placement(
+                &patch,
+                "constant",
+                rack.viewport.unwrap(),
+                pos2(700.0, 300.0)
+            )
+            .is_ok());
+        rack.set_positions_locked(false);
+        frame(&ctx, &mut rack, &patch, 4.8, vec![]);
+        rack.select_only("a".into());
+        rack.toggle_selection("b".into());
+        let header = rack.viewport.unwrap().min
+            + rack.pan
+            + (rack.positions["a"].to_vec2() + vec2(35.0, 35.0)) * rack.zoom;
+        assert!(matches!(
+            drag(&ctx, &mut rack, &patch, 5.0, header, header + vec2(45.0, 0.0)),
+            Some(RackAction::MoveModules(movement)) if movement.before.len() == 2
+        ));
+    }
+
     #[test]
     fn sidecar_restores_atomically_and_rejects_bad_values() {
         let mut rack = Rack::default();
