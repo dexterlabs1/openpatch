@@ -50,9 +50,31 @@ Transport and volume use
 an approximately 10 ms gain smoother. Pause fades the output to silence while
 the engine continues advancing; it is not a rewind. Pause and resume reset MIDI
 performance state. Separate bounded hardware and UI MIDI queues deliver events
-at sample boundaries to both crossfade branches. Timestamp mapping, reset
+at sample boundaries to advancing crossfade branches. Timestamp mapping, reset
 generations, keyboard behavior, and offline traces are documented in
 [MIDI and audio](MIDI_AUDIO.md).
+
+`stock_delay` adds a large-state exception to the ordinary two-graph transition.
+Each instance owns an 8 MiB circular audio history and approximately 49 KB of
+SRC state, allocated before processing. The mutable live handoff swaps a
+compatible Delay runtime into the replacement in constant time. Once any
+runtime moves, the retiring whole graph stops advancing; the callback fades
+its cached raw, pre-gain output rather than processing a donor whose history
+has moved. The new graph alone continues that tail. Borrowed/immutable
+adoption still copies the history, and existing StudioFx state still has its
+copying path; neither all graph adoption nor all effects are claimed to be
+constant-time. Device deadline measurements remain separate acceptance work.
+The [release adoption microprofile](benchmarks/stock-delay-handoff.json)
+measures prepared Engine copies versus destructive transfers with resident
+histories, including graph bookkeeping. It excludes rendering, donor retirement
+and device scheduling; it does not establish a full callback budget or a Rack
+CPU advantage. Callback tests separately check no heap activity on the tested
+handoff paths.
+Initialize restores Delay controls without clearing the tail; a fresh
+incarnation or incompatible rate starts fresh. Normal Delay processing sums
+audio into mono, while bypass freezes DSP and routes raw polyphonic input to
+both outputs. See [Stock Delay](STOCK_DELAY.md) for the bounded source contract,
+resampler attribution and the final guarded source-defined DSP comparison.
 
 The audio callback publishes a decimated waveform and peak through atomics.
 Native visual analysis and OpenGL work run on the UI/render thread. The display

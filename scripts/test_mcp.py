@@ -1176,7 +1176,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 65)
+        self.assertEqual(len(catalog["modules"]), 66)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1236,7 +1236,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 65)
+        self.assertEqual(len(catalog["modules"]), 66)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1329,7 +1329,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 65)
+        self.assertEqual(len(catalog["modules"]), 66)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2469,6 +2469,105 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_delay_signed_cv_edits_history_persistence_and_offline_render(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_delay"]
+        controls = ("time", "feedback", "tone", "mix")
+        depths = {f"{name}_cv_amount" for name in controls}
+        self.assertEqual(descriptor["min_patch_version"], 2)
+        self.assertEqual(descriptor["inputs"], ["time_cv", "feedback_cv", "tone_cv", "mix_cv", "signal", "clock"])
+        self.assertEqual(descriptor["outputs"], ["mix", "wet"])
+        self.assertEqual(set(descriptor["params"]), set(controls) | depths)
+        for name in controls:
+            self.assertEqual([descriptor["params"][name][key] for key in ("min", "max")], [0, 1])
+        for name in depths:
+            self.assertEqual([descriptor["params"][name][key] for key in ("default", "min", "max")], [0, -1, 1])
+
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 8000, "nodes": []}})
+        empty = self.patch_snapshot()
+        # Dyadic values must survive the complete RPC/history/JSON path exactly.
+        params = {"time": .25, "feedback": .5, "tone": .5, "mix": .5,
+                  "time_cv_amount": -.5, "feedback_cv_amount": .25,
+                  "tone_cv_amount": -.75, "mix_cv_amount": .5}
+        edits = [
+            {"tool": "add_module", "arguments": {"id": "signal", "kind": "poly_constant", "params": {
+                "channels": 3, "v1": .125, "v2": -.25, "v3": .375}}},
+            {"tool": "add_module", "arguments": {"id": "cv", "kind": "constant", "params": {"value": 2.5}}},
+            {"tool": "add_module", "arguments": {"id": "clock", "kind": "gate", "params": {"frequency": 13, "duty": .25}}},
+            {"tool": "add_module", "arguments": {"id": "echo", "kind": "stock_delay", "params": params}},
+        ]
+        routes = {"signal": "signal", "clock": "clock", **{f"{name}_cv": "cv" for name in controls}}
+        edits.extend({"tool": "connect", "arguments": {
+            "cable_id": f"echo_{port}", "from": source, "to": "echo", "input": port,
+        }} for port, source in routes.items())
+        edits.append({"tool": "set_output", "arguments": {"id": "echo", "port": "mix"}})
+        configured = self.payload(self.require_tool_success("apply_edits", {
+            "edits": edits, "expected_revision": empty["revision"],
+        }))
+        self.assertEqual(configured["history"]["undo_steps"], empty["history"]["undo_steps"] + 1)
+        echo = next(node for node in configured["patch"]["nodes"] if node["id"] == "echo")
+        self.assertEqual(echo["params"], params)
+        self.assertEqual({cable["input"]: cable["from"] for cable in configured["patch"]["cables"]
+                          if cable["to"] == "echo"}, routes)
+        self.assertEqual(len({cable["id"] for cable in configured["patch"]["cables"]}), 6)
+
+        changed = self.payload(self.require_tool_success("set_parameter", {
+            "id": "echo", "parameter": "time_cv_amount", "value": -.875,
+            "expected_revision": configured["revision"],
+        }))
+        changed_params = {**params, "time_cv_amount": -.875}
+        self.assertEqual(next(node for node in changed["patch"]["nodes"] if node["id"] == "echo")["params"], changed_params)
+        self.assertEqual(changed["history"]["undo_steps"], configured["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], configured["patch"])
+        redone = self.payload(self.require_tool_success("redo"))
+        self.assertEqual(redone["patch"], changed["patch"])
+        for arguments in [
+            {"id": "echo", "parameter": "time_cv_amount", "value": -1.125},
+            {"id": "echo", "parameter": "mix", "value": 1.125},
+            {"id": "echo", "parameter": "tone", "value": .25, "expected_revision": configured["revision"]},
+        ]:
+            self.require_tool_error("set_parameter", arguments)
+            self.assertEqual(self.patch_snapshot(), redone, "rejected edits must not alter revision, controls or history")
+
+        self.require_tool_success("save_patch", {"filename": "stock-delay.json"})
+        saved = json.loads((self.workspace / "stock-delay.json").read_text())
+        self.assertEqual(saved, redone["patch"])
+        self.assertEqual(self.patch_snapshot(), redone)
+        self.require_tool_success("set_parameter", {"id": "echo", "parameter": "mix", "value": .25})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-delay.json"}))
+        self.assertEqual(loaded["patch"], saved)
+        self.assertEqual(next(node for node in loaded["patch"]["nodes"] if node["id"] == "echo")["params"], changed_params)
+
+        # Each bounded probe starts from reset and must leave the editable patch,
+        # its revision and undo history intact. Both Delay outputs stay mono.
+        for port in ["mix", "wet"]:
+            arguments = {"id": "echo", "port": port, "seconds": .125, "points": 128,
+                         "expected_revision": loaded["revision"]}
+            capture = self.payload(self.require_tool_success("capture_signal", arguments))
+            self.assertEqual((capture["frames"], capture["points"]), (1000, 128))
+            self.assertEqual(capture["summary"]["active_frames"], 1000)
+            self.assertGreater(capture["summary"]["peak"], .001)
+            self.assertTrue(all(math.isfinite(capture["summary"][field]) for field in ("min", "max", "dc", "rms", "peak")))
+            self.assertEqual(capture, self.payload(self.require_tool_success("capture_signal", arguments)))
+            analysis = self.payload(self.require_tool_success("analyze_signal", {
+                "id": "echo", "port": port, "seconds": .125, "expected_revision": loaded["revision"],
+            }))
+            self.assertEqual(analysis["max_channels"], 1)
+            self.assertEqual(analysis["channels"][0]["active_frames"], 1000)
+        rendered = self.payload(self.require_tool_success("render_audio", {
+            "filename": "stock-delay.wav", "seconds": .125,
+        }))
+        self.assertEqual((rendered["sample_rate"], rendered["channels"], rendered["frames"]), (8000, 1, 1000))
+        self.assertEqual(rendered["revision"], loaded["revision"])
+        self.assertGreater(rendered["peak"], .001)
+        self.assertLess(rendered["peak"], 1)
+        self.assertTrue(math.isfinite(rendered["rms"]))
+        with wave.open(str(self.workspace / "stock-delay.wav"), "rb") as wav:
+            self.assertEqual((wav.getframerate(), wav.getnchannels(), wav.getnframes()), (8000, 1, 1000))
+            samples = self._first_channel_samples(wav.readframes(1000), wav.getsampwidth(), wav.getnchannels())
+        self.assertTrue(any(abs(sample) > 100 for sample in samples))
+        self.assertEqual(self.patch_snapshot(), loaded)
 
     def test_stock_vcf_controls_capture_consumers_bypass_and_history(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

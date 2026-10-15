@@ -29,6 +29,7 @@ mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod stereo_output;
+mod stock_delay;
 mod stock_vca;
 mod stock_vcf;
 mod stream_render;
@@ -310,6 +311,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_vcf::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_delay::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1690,15 +1695,15 @@ impl Engine {
         })
     }
 
-    /// Render unchanged device audio while sampling two module outputs before
+    /// Render unchanged device audio while sampling module outputs before
     /// host gain/crossfade. Storage is supplied by the caller; no allocation.
     /// Tap and audio slices must have equal length. Handles from another engine
     /// (including a recompiled graph) produce inactive samples.
-    pub fn process_audio_block_with_taps(
+    pub fn process_audio_block_with_taps<const N: usize>(
         &mut self,
         output: &mut [[f32; 2]],
-        taps: &[Option<ResolvedTap>; 2],
-        samples: &mut [[TapSample; 2]],
+        taps: &[Option<ResolvedTap>; N],
+        samples: &mut [[TapSample; N]],
     ) {
         assert_eq!(output.len(), samples.len());
         let identity = self.identity;
@@ -1753,8 +1758,62 @@ impl Engine {
     }
     /// Copy compatible state without allocation. Version and sample rate must
     /// match. Version 2 also retains only edges with unchanged compatible endpoints.
+    /// This independent copy can be large for effects. The desktop uses mutable
+    /// `handoff_state_from` to transfer Delay buffers without copying history.
     pub fn adopt_state_from(&mut self, previous: &Self) {
         self.adopt_state_from_excluding_routes(previous, &[], &[]);
+    }
+    /// Adopt compatible state, transferring large Delay allocations in constant
+    /// time. Returns true only when runtime ownership moved. In that case the
+    /// donor must be retired without further processing; it owns the receiver's
+    /// prepared spare buffers. No allocation, deallocation, locks or I/O.
+    pub fn handoff_state_from(&mut self, previous: &mut Self) -> bool {
+        self.handoff_state_from_excluding_routes(previous, &[], &[])
+    }
+    /// Destructive counterpart of `adopt_state_from_excluding_routes` with the
+    /// same incarnation/cable exclusions. Receiving parameters remain in force.
+    pub fn handoff_state_from_excluding_routes(
+        &mut self,
+        previous: &mut Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+    ) -> bool {
+        let mut mask = [false; MAX_NODES];
+        for handle in excluded {
+            if handle.generation == self.identity {
+                if let Some(slot) = mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
+        let mut cable_mask = [false; MAX_CABLES];
+        for handle in excluded_cables {
+            if handle.generation == self.identity {
+                if let Some(slot) = cable_mask.get_mut(handle.cable) {
+                    *slot = true;
+                }
+            }
+        }
+        match (&mut self.inner, &mut previous.inner) {
+            (EngineKind::Legacy(current), EngineKind::Legacy(old))
+                if current.sample_rate == old.sample_rate =>
+            {
+                current.adopt_state_from_excluding(old, &mask);
+                current.adopt_port_lights(old, &mask);
+                false
+            }
+            (EngineKind::Poly(current), EngineKind::Poly(old)) => {
+                current.handoff_state_from_excluding(old, &mask, &cable_mask)
+            }
+            (EngineKind::Legacy(current), _) => {
+                current.port_lights.reset_epoch();
+                false
+            }
+            (EngineKind::Poly(current), _) => {
+                current.port_lights.reset_epoch();
+                false
+            }
+        }
     }
     /// Copy compatible state except modules identified as fresh incarnations.
     /// Resolve exclusions against self; stale/foreign handles are ignored.

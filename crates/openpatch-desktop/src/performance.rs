@@ -49,6 +49,7 @@ enum ModuleKind {
     MidiCc,
     MidiGate,
     StockVca,
+    StockDelay,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -72,6 +73,7 @@ impl ModuleKind {
             "midi_cc" => Some(Self::MidiCc),
             "midi_gate" => Some(Self::MidiGate),
             "stock_vca" => Some(Self::StockVca),
+            "stock_delay" => Some(Self::StockDelay),
             _ => None,
         }
     }
@@ -96,6 +98,7 @@ impl ModuleKind {
             Self::MidiCc => "midi_cc",
             Self::MidiGate => "midi_gate",
             Self::StockVca => "stock_vca",
+            Self::StockDelay => "stock_delay",
         }
     }
     fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {
@@ -621,8 +624,32 @@ impl ModulePlan {
         }
     }
 
-    /// Exclusions are fixed stack storage; no control registry reaches audio.
+    #[cfg(test)]
     pub(super) fn adopt_state(&mut self, engine: &mut Engine, previous: &Self, old: &Engine) {
+        self.with_adoption_exclusions(previous, |modules, cables| {
+            engine.adopt_state_from_excluding_routes(old, modules, cables);
+        });
+    }
+    /// Large Delay allocations move once; the caller must freeze the donor if
+    /// any runtime moved. Exclusion and observer rules are shared with snapshots.
+    pub(super) fn handoff_state(
+        &mut self,
+        engine: &mut Engine,
+        previous: &Self,
+        old: &mut Engine,
+    ) -> bool {
+        let mut moved = false;
+        self.with_adoption_exclusions(previous, |modules, cables| {
+            moved = engine.handoff_state_from_excluding_routes(old, modules, cables);
+        });
+        moved
+    }
+    /// Exclusions are fixed stack storage; no control registry reaches audio.
+    fn with_adoption_exclusions(
+        &mut self,
+        previous: &Self,
+        mut apply: impl FnMut(&[ModuleHandle], &[CableHandle]),
+    ) {
         // Display edits and graph rebuilds preserve the per-instance refresh
         // deadline. A new capture reader can remain unavailable until it is due.
         for binding in &mut self.scopes {
@@ -642,7 +669,7 @@ impl ModulePlan {
             .chain(self.fresh_states.iter().flatten().copied())
             .next();
         let Some(first) = first else {
-            engine.adopt_state_from_excluding_routes(old, &[], &[]);
+            apply(&[], &[]);
             return;
         };
         let mut modules = [first; MAX_NODES];
@@ -681,13 +708,9 @@ impl ModulePlan {
                 cables[cable_count] = *handle;
                 cable_count += 1;
             }
-            engine.adopt_state_from_excluding_routes(
-                old,
-                &modules[..module_count],
-                &cables[..cable_count],
-            );
+            apply(&modules[..module_count], &cables[..cable_count]);
         } else {
-            engine.adopt_state_from_excluding_routes(old, &modules[..module_count], &[]);
+            apply(&modules[..module_count], &[]);
         }
     }
 }

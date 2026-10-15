@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "declared_before_first_rust_comparison": true,
+  "sample_rates": [44100, 48000, 96000],
+  "delay": {
+    "absolute_volts": 0.002,
+    "relative": 0.00001,
+    "comparison": "Every output sample from frame zero at the same frame; no alignment, warmup exclusion, envelope substitution or frequency-only qualification.",
+    "channel_counts": "Both connected source outputs and both native outputs must be exactly mono; unused native storage must be numerical zero.",
+    "finite": "Every visible and padded output value must be finite.",
+    "signed_zero": "Positive and negative zero are numerically equivalent; no bitwise zero-sign requirement.",
+    "justification": "Fixed 2 mV absolute plus 10 ppm relative permits ordinary f32 platform math differences while requiring startup, timing, feedback, tone and mix to remain pointwise close. Long feedback traces receive the identical bound."
+  },
+  "resampler": {
+    "absolute": 0.000002,
+    "relative": 0.000002,
+    "counts": "input_frames_used and output_frames_gen must match on every individual process call, including calls producing no output.",
+    "comparison": "Compare every emitted output at identical call and offset, with persistent state and no reset except a declared new scenario; end_of_input always false.",
+    "ratios": [0.25, 0.5, 0.9999, 1.0, 1.0001, 2.0, 4.0],
+    "calls_per_scenario": 8192,
+    "scenarios": ["constant_min", "constant_unity", "constant_max", "steps", "smooth", "capacity_and_short_input"],
+    "justification": "Direct SRC qualification removes the delay feedback loop as a possible source of count or interpolation errors. Fixed 2 micro-unit absolute plus 2 ppm relative is stricter than the whole-module voltage bound."
+  },
+  "cases": [
+    {"name":"startup_impulse", "seconds":2.0},
+    {"name":"startup_dc", "seconds":2.0},
+    {"name":"minimum_delay", "seconds":0.5},
+    {"name":"maximum_delay", "seconds":12.0},
+    {"name":"tone_feedback_extremes", "seconds":4.0},
+    {"name":"signed_cv", "seconds":2.0},
+    {"name":"cv_zero_depth", "seconds":2.0},
+    {"name":"time_jumps", "seconds":3.0},
+    {"name":"clock_connected_startup", "seconds":3.0},
+    {"name":"clock_tempo_change", "seconds":5.0},
+    {"name":"clock_unpatch_reconnect", "seconds":5.0},
+    {"name":"clock_thresholds", "seconds":2.0},
+    {"name":"poly_sum_aux_first_lane", "seconds":2.0},
+    {"name":"parameter_adoption", "seconds":3.0},
+    {"name":"history_wrap", "frames":2200000, "rates":[44100]}
+  ],
+  "history_wrap": "2,200,000 frames exceeds the 2^21 logical ring position. It exercises repeated physical wrap under ordinary short delay, and does not claim the history queue can become full at the supported 10-second delay.",
+  "lifecycle": "Parameter changes rebuild the native module and adopt the prior state. A separate explicit adoption case rebuilds with unchanged parameters at non-buffer-aligned frame numbers. The source class continues untouched across those events.",
+  "scope": "Actual pinned Delay class prefix with only plugin.hpp replaced by rack.hpp; actual SDK src_new/src_process SRC_SINC_FASTEST. Bypass, host graph/cable timing, finite-voltage policy and sample-rate rebuilds require separate host tests and are not qualified by the DSP oracle.",
+  "no_post_observation_relaxation": true
+}

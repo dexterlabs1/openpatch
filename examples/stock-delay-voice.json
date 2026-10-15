@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {"id":"voice","kind":"multi_vco","params":{"frequency":164.8138}},
+    {"id":"envelope","kind":"adsr_eg","params":{"attack":0.1,"decay":0.36,"sustain":0,"release":0.3}},
+    {"id":"amplifier","kind":"stock_vca","params":{"level":0.7,"response":1}},
+    {"id":"echo","kind":"stock_delay","params":{"time":0.6747425,"feedback":0.4,"tone":0.58,"mix":0.48,"time_cv_amount":0,"feedback_cv_amount":0,"tone_cv_amount":0.15,"mix_cv_amount":0}},
+    {"id":"clock","kind":"gate","params":{"frequency":2,"duty":0.12}},
+    {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0}},
+    {"id":"out","kind":"audio_stereo","params":{"gain":0.15}},
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"CLOCKED ECHO\n\nSaw → VCA → Delay → audio\nClock → envelope + CLK\n\nTIME: 1 ms–10 seconds\nType 250 ms or 0.25 s\nFour bipolar CV depths\nMIX: dry to wet\nWET: independent output\n\nScope X: mixed output\nScope Y: wet repeats\nCLK shows actual DSP state."}}
+  ],
+  "cables": [
+    {"from":"voice","output":"saw","to":"amplifier","input":"signal"},
+    {"from":"clock","to":"envelope","input":"gate"},
+    {"from":"envelope","to":"amplifier","input":"cv"},
+    {"from":"amplifier","to":"echo","input":"signal"},
+    {"from":"clock","to":"echo","input":"clock"},
+    {"from":"envelope","to":"echo","input":"tone_cv"},
+    {"from":"echo","output":"mix","to":"scope","input":"x"},
+    {"from":"echo","output":"wet","to":"scope","input":"y"},
+    {"from":"echo","output":"mix","to":"out","input":"left"},
+    {"from":"echo","output":"mix","to":"out","input":"right"}
+  ],
+  "output":"out"
+}

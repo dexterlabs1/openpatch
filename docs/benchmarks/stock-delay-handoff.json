@@ -1,0 +1,344 @@
+{
+  "fixture": "Two prepared compatible graphs; 4096 warmup frames, alternating trial order, resident histories; handoffs batched to reduce timer overhead.",
+  "profiles": [
+    {
+      "copy_operations_per_trial": 1,
+      "delay_count": 1,
+      "destructive_ownership_handoff": {
+        "maximum_us": 2.8361015625,
+        "median_us": 0.3346328125,
+        "observations_us_per_operation": [
+          0.35595703125,
+          0.3346328125,
+          1.4358710937499999,
+          0.334796875,
+          0.3299140625,
+          0.32975390625,
+          0.6611328125,
+          0.32861328125,
+          0.38427734375,
+          2.8361015625,
+          0.3375625,
+          0.3443984375,
+          0.9581679687500001,
+          0.3346328125,
+          0.3359375,
+          0.33480078125,
+          0.337078125,
+          0.35026171874999995,
+          0.33561328125,
+          0.58366015625,
+          0.33121875,
+          0.32796484375,
+          0.13362890624999998,
+          0.13053515625,
+          0.1306953125,
+          0.130859375,
+          0.1306953125,
+          0.13053125,
+          0.130859375,
+          0.13053515625,
+          0.13053125,
+          0.130859375,
+          0.13118359375
+        ]
+      },
+      "handoff_operations_per_trial": 256,
+      "history_bytes_per_delay": 8388608,
+      "immutable_independent_copy": {
+        "maximum_us": 3998.834,
+        "median_us": 393.5,
+        "observations_us_per_operation": [
+          3998.834,
+          865.5,
+          372.708,
+          709.291,
+          375.125,
+          793.625,
+          695.4590000000001,
+          505.75,
+          436.167,
+          405.542,
+          552.0409999999999,
+          711.8330000000001,
+          393.5,
+          393.33299999999997,
+          587.7080000000001,
+          374.5,
+          404.833,
+          386.41700000000003,
+          384.70799999999997,
+          1486.625,
+          509.91700000000003,
+          2435.292,
+          473.791,
+          176.625,
+          176.042,
+          175.125,
+          176.334,
+          176.334,
+          176.541,
+          176.709,
+          176.042,
+          175.375,
+          188.625
+        ]
+      },
+      "patch": {
+        "cables": [
+          {
+            "from": "source",
+            "id": "signal0",
+            "input": "signal",
+            "to": "delay0"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "source",
+            "kind": "constant",
+            "params": {
+              "value": 0.5
+            }
+          },
+          {
+            "id": "delay0",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          }
+        ],
+        "output": "delay0",
+        "output_port": "mix",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "trials": 33
+    },
+    {
+      "copy_operations_per_trial": 1,
+      "delay_count": 8,
+      "destructive_ownership_handoff": {
+        "maximum_us": 1.22135546875,
+        "median_us": 1.1393203125,
+        "observations_us_per_operation": [
+          1.15006640625,
+          1.1580390624999999,
+          1.12158203125,
+          1.10986328125,
+          1.10205078125,
+          1.1015625,
+          1.2151679687499999,
+          1.16829296875,
+          1.1061171875,
+          1.10302734375,
+          1.1044921875,
+          1.10384375,
+          1.1842460937500001,
+          1.20849609375,
+          1.16357421875,
+          1.1357421875,
+          1.1075859375000001,
+          1.1277656249999999,
+          1.1393203125,
+          1.1378593750000001,
+          1.163734375,
+          1.1023749999999999,
+          1.1344414062500001,
+          1.1328125,
+          1.19775390625,
+          1.10498046875,
+          1.22135546875,
+          1.22037890625,
+          1.16748046875,
+          1.16715234375,
+          1.14078515625,
+          1.174640625,
+          1.220703125
+        ]
+      },
+      "handoff_operations_per_trial": 256,
+      "history_bytes_per_delay": 8388608,
+      "immutable_independent_copy": {
+        "maximum_us": 9623.082999999999,
+        "median_us": 1581.625,
+        "observations_us_per_operation": [
+          9623.082999999999,
+          4276.708,
+          1539.75,
+          1445.083,
+          1533.834,
+          1465.333,
+          1622.333,
+          1770.1660000000002,
+          1492.5,
+          1581.625,
+          1428.459,
+          1409.6670000000001,
+          2031.8329999999999,
+          1982.7920000000001,
+          1935.709,
+          2458.167,
+          1799.8339999999998,
+          1901.416,
+          1484.084,
+          1812.667,
+          2127.708,
+          1469.3329999999999,
+          1446.375,
+          1453.0,
+          1644.583,
+          1601.9579999999999,
+          1496.5829999999999,
+          1423.375,
+          1490.6660000000002,
+          1430.833,
+          1681.75,
+          1571.4170000000001,
+          1726.25
+        ]
+      },
+      "patch": {
+        "cables": [
+          {
+            "from": "source",
+            "id": "signal0",
+            "input": "signal",
+            "to": "delay0"
+          },
+          {
+            "from": "source",
+            "id": "signal1",
+            "input": "signal",
+            "to": "delay1"
+          },
+          {
+            "from": "source",
+            "id": "signal2",
+            "input": "signal",
+            "to": "delay2"
+          },
+          {
+            "from": "source",
+            "id": "signal3",
+            "input": "signal",
+            "to": "delay3"
+          },
+          {
+            "from": "source",
+            "id": "signal4",
+            "input": "signal",
+            "to": "delay4"
+          },
+          {
+            "from": "source",
+            "id": "signal5",
+            "input": "signal",
+            "to": "delay5"
+          },
+          {
+            "from": "source",
+            "id": "signal6",
+            "input": "signal",
+            "to": "delay6"
+          },
+          {
+            "from": "source",
+            "id": "signal7",
+            "input": "signal",
+            "to": "delay7"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "source",
+            "kind": "constant",
+            "params": {
+              "value": 0.5
+            }
+          },
+          {
+            "id": "delay0",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay1",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay2",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay3",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay4",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay5",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay6",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          },
+          {
+            "id": "delay7",
+            "kind": "stock_delay",
+            "params": {
+              "time": 0.30000001192092896
+            }
+          }
+        ],
+        "output": "delay0",
+        "output_port": "mix",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "trials": 33
+    }
+  ],
+  "scope": "Offline Engine state-adoption microprofile. Includes graph bookkeeping, excludes graph compilation, rendering, device scheduling and donor retirement. Independent copies retain both engines; destructive swaps require retiring each donor before processing it again. This is not a Rack CPU comparison or a complete desktop callback deadline measurement.",
+  "environment": {
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpu": "Apple M1 Max",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "profile": "release; workspace thin LTO; codegen-units=1"
+  },
+  "source_sha256": {
+    "crates/openpatch-core/examples/stock_delay_handoff_profile.rs": "f82bf51417be5f0659b9a34edbf5f3e2016de8985587480208a24ce11510842c",
+    "crates/openpatch-core/src/lib.rs": "c1417428654b40599025af60235513f5b7fd1005890b74990bcd2ab9c8bc4cc0",
+    "crates/openpatch-core/src/poly.rs": "fc7e1d43da78a5d928a1e123fd939cb9b57d131a66f2112569a3f966f2b8f3cc",
+    "crates/openpatch-core/src/stock_delay.rs": "e680c1cfb46bb34260664c2ab2bc355307885c1eb23860a04d9d7ed365dd8a3f",
+    "crates/openpatch-core/src/stock_delay/sinc.rs": "ac05cd834c8424655632f2f868c3dda9dcdadafb7ed741adf88337426a2a97d7",
+    "crates/openpatch-core/src/stock_delay/fastest_coeffs.rs": "979c4f49a2cae3eea6151f7295f191f509d0f5d883821b704b5cd43e3be729ef",
+    "Cargo.lock": "33eafe94fd8ab6c66e64c0ed81c3c43eeb2ad7b12bd9c8c715a60378f23e96bd",
+    "Cargo.toml": "98776401b2811279f8d7d16ec30353510a6b2cecc30604f5bc8f93aa814481e0"
+  }
+}

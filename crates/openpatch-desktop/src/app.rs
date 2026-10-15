@@ -2723,6 +2723,12 @@ impl OpenPatch {
                                 self.replace_from_menu(patch, "Stock VCF voice");
                                 ui.close();
                             }
+                            if ui.button("Clocked delay voice").clicked() {
+                                let patch = serde_json::from_str(include_str!("../../../examples/stock-delay-voice.json"))
+                                    .expect("valid clocked delay voice");
+                                self.replace_from_menu(patch, "Clocked delay voice");
+                                ui.close();
+                            }
                             if ui.button("Polyphonic ADSR voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/polyphonic-adsr-voice.json"
@@ -4410,6 +4416,59 @@ impl OpenPatch {
         self.status = "Actual DSP snapshot · proof lanes 0 / 6.25 / 50 / 100 / 100% · fifth input silent, full gain · no live audio".into();
     }
 
+    fn prepare_stock_delay_fixture(&mut self) {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-delay-voice.json"))
+                .expect("Valid stock delay voice");
+        let mut engine = patch.compile().expect("Stock delay fixture compiles");
+        let clock_handle = engine
+            .resolve_module_lights("echo")
+            .expect("Actual delay clock observer");
+        let mut rendered = 0;
+        let clock = loop {
+            let mut audio = [0.0; 64];
+            engine.process_block(&mut audio);
+            assert!(audio.iter().all(|value| value.is_finite()));
+            rendered += audio.len();
+            let clock = engine.module_lights(clock_handle).unwrap();
+            if rendered >= 48000 && clock.brightness[0][0] > 0.8 {
+                break clock;
+            }
+            assert!(
+                rendered < 96000,
+                "Delay fixture did not observe a real clock pulse"
+            );
+        };
+        assert_eq!(clock.count, 1);
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        assert!(scope.x[0].iter().any(|point| point.max.abs() > 0.001));
+        assert!(scope.y[0].iter().any(|point| point.max.abs() > 0.001));
+        self.smoke_motion_origin = None;
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.8,"pan":[24,12],"positions":{
+            "voice":[0,0],"amplifier":[330,0],"echo":[540,0],"out":[930,0],"guide":[1140,0],
+            "clock":[0,420],"envelope":[180,420],"scope":[570,420]}}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack
+            .set_module_states(BTreeMap::from([("echo".into(), clock)]), BTreeMap::new());
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "Delay · a clocked echo voice".into();
+        self.status = "Actual offline DSP snapshot · MIX and WET Scope traces · CLK from the delay engine · no live audio".into();
+    }
+
     fn prepare_stock_vcf_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-vcf-voice.json")).unwrap();
@@ -5851,6 +5910,25 @@ impl OpenPatch {
                 .expect("Save follow receipt");
             }
         }
+        if frame == 2184 {
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_delay_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2200 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Delay · lights out · actual CLK pulse and MIX/WET Scope traces emit; controls remain passive".into();
+        }
+        if frame == 2216 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("stock_delay", &self.catalog));
+            self.title = "Delay · shared library faceplate".into();
+            self.status =
+                "The module library uses the rack's exact delay panel and jack geometry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5958,6 +6036,9 @@ impl OpenPatch {
                 | 2140
                 | 2156
                 | 2172
+                | 2192
+                | 2208
+                | 2224
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -6069,7 +6150,10 @@ impl OpenPatch {
                 90 => path.with_file_name("cable-tension-tight.png"),
                 91 => path.with_file_name("agent-follow-before.png"),
                 92 => path.with_file_name("agent-follow-mid.png"),
-                _ => path.with_file_name("agent-follow-settled.png"),
+                93 => path.with_file_name("agent-follow-settled.png"),
+                94 => path.with_file_name("rack-stock-delay.png"),
+                95 => path.with_file_name("rack-stock-delay-lights-out.png"),
+                _ => path.with_file_name("stock-delay-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -6080,18 +6164,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/94 at frame {frame}: {}",
+                "Native smoke: capture {}/97 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 94 {
+            if captures == 97 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2186, "Native screenshot timeout");
+        assert!(frame < 2238, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6744,6 +6828,59 @@ mod project_workflow_tests {
                 clip.expand(0.5).contains_rect(bounds),
                 "VCA Notes are clipped: {bounds:?} outside {clip:?}"
             );
+        }
+    }
+
+    #[test]
+    fn stock_delay_factory_voice_and_smoke_use_real_clock_and_mix_wet_traces() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_stock_delay_fixture();
+        let echo = app
+            .patch
+            .nodes
+            .iter()
+            .find(|node| node.id == "echo")
+            .unwrap();
+        assert_eq!(echo.kind, "stock_delay");
+        assert_eq!(echo.params.len(), 8);
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|cable| cable.to == "echo" && cable.input == "clock"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|cable| cable.from == "echo" && cable.output == "mix" && cable.to == "scope"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|cable| cable.from == "echo" && cable.output == "wet" && cable.to == "scope"));
+        assert_eq!(
+            serde_json::to_value(app.shared.lock().unwrap().patch()).unwrap(),
+            serde_json::to_value(&app.patch).unwrap()
+        );
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        for room in [1.0, 0.0] {
+            app.rack.set_room_brightness(room);
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1440.0, 960.0),
+                    )),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| app.rack_workspace(ctx, None),
+            );
+            for label in ["DELAY", "CLK", "MIX", "WET", "CV DEPTH"] {
+                preset_text(&output, label);
+            }
         }
     }
 

@@ -39,6 +39,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "vca_mix"
         | "fade"
         | "crossfade"
+        | "stock_delay"
         | "stereo_delay"
         | "stereo_reverb"
         | "sidechain_compressor" => Color32::from_rgb(78, 116, 96),
@@ -67,6 +68,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "lowpass" => "LOW-PASS FILTER",
         "ladder_vcf" => "TRANSISTOR FILTER",
         "stock_vcf" => "POLYPHONIC LP / HP FILTER",
+        "stock_delay" => "CLOCKED MONO DELAY",
         "stock_vca" => "POLYPHONIC GAIN",
         "analog_vca" => "TRANSCONDUCTANCE VCA",
         "gain" => "AMPLIFIER",

@@ -10,6 +10,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
         "svf_filter" => &[("signal", "low")],
         "stock_vca" => &[("signal", "out")],
         "stock_vcf" => &[("signal", "lowpass"), ("signal", "highpass")],
+        "stock_delay" => &[("signal", "mix"), ("signal", "wet")],
         "mutes10" => &[
             ("in1", "out1"),
             ("in2", "out2"),

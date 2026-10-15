@@ -1,0 +1,2182 @@
+{
+  "reference": {
+    "fundamental_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Delay.cpp",
+    "source_sha256": "ea6e852ec72585e36cd37d9cbb3936c0afafeba35723b303b3babb482dc7f9a8",
+    "compiled_prefix_sha256": "f3c175d435eef9c8a3b6335583bd7b094c473be03b7f0b2e6d393e46c2f4a671",
+    "libsamplerate_commit": "f6730d03c3e7660bb6ecad8816f1b09c5825142a",
+    "libsamplerate_source_sha256": {
+      "src/samplerate.c": "0e676f25085c7c63727b748097dbdcdae0cbfd9413a69dfff6196a4fa2ad60b2",
+      "src/src_sinc.c": "53bd752e044200e48101dcb47a1fd4aa84e8831c5ba374652de23126eb29f1d0",
+      "src/src_linear.c": "0ae13d99610ec2dadd7efd8848b83ee37c5f45f949aaec93d33549c598e33e8c",
+      "src/src_zoh.c": "957eab31633648a9e57902313979ec74bd63850f0c2831d5bd7e8b30e09cdfbf",
+      "src/common.h": "bcaaea111ec65c000099aad323e41dc94e62418be1070daf10ae8cdb2de63312",
+      "src/float_cast.h": "27e303c46c3df4ce3c403a01be25060a7f67f566229cb5f435b7fa3c91c138c0",
+      "src/samplerate.h": "8594197c83c390291e76a3a862ca62c0970f0b1871cc8bd97d8ba04d2901f9a2",
+      "src/fastest_coeffs.h": "abcf7ce4346090488f8a5892d8e93928e3db086f0192d55f3e3e9aa9a388f6b6",
+      "src/mid_qual_coeffs.h": "8829da20f1effb5890f557c4bf0e16d1085d986bc2c205774b20bdbe182e4d72",
+      "src/high_qual_coeffs.h": "b419a81d113b1a3bb9dd5ae9164f779a5ad08b3ab56815b787adbd64f9ad2e7f",
+      "COPYING": "2c1f76ce2effdddb425018405d5690c0b1ab4e6976e35296b0a6db65c5e1a55d"
+    },
+    "sdk_library_path": "/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK/libRack.dylib",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "include/Quantity.hpp": "baed08ded185838bef32bd54cc9a8aedb780b90571338e87d59613069c2a3c3d",
+      "include/app/AudioDisplay.hpp": "73d846c20605ac4fc55fcd63ccc7af11f1f21543b18eedc7d929d6050691fb3d",
+      "include/app/Browser.hpp": "abcab3e5b709680c568cd9184f737d84a47eafc80807ef51cff6306d271f3116",
+      "include/app/CableWidget.hpp": "489ed1623af001024f879112b5b2bf3e3c4e7ae63d36820de9cb9d5513712e6f",
+      "include/app/CircularShadow.hpp": "9eb0c27b4ae7bd5c2e60f5638bb5c2d01db65a0471353660513a1bf60c041bc1",
+      "include/app/Knob.hpp": "dda6c3a7fbce19c6fdaed5b93d8317418dde0c8a7fbe19a871b3e98e6a9a60ad",
+      "include/app/LedDisplay.hpp": "ad76e5a84d03d8b8241340df9f8f64f4754515206770bfcf1a080756808da10e",
+      "include/app/LightWidget.hpp": "96af490ca6a2bf33db46478edfbb793af0a41fc722221b2d68eec6283fe7b6d2",
+      "include/app/MenuBar.hpp": "598679624608599d84232b4942c2372ec461b88d0225648ed554c3bd2e4bb1d1",
+      "include/app/MidiDisplay.hpp": "81ee2316eec0b454fda03e2ba981cbe1b0e7677b3f1423dcb8410810001171bf",
+      "include/app/ModuleLightWidget.hpp": "7037848e14281c8d3532c3e7c481db1d6a8747635e73ac162a1eae263e9287be",
+      "include/app/ModuleWidget.hpp": "7987c8321a9b49c2a966f00096d1d92dbecc631f8b0c40b64436d156a45ea764",
+      "include/app/MultiLightWidget.hpp": "26349b63c50f1fd5489827c574632765191454d481f709b7f62820f7858deddb",
+      "include/app/ParamWidget.hpp": "da9241d7b8599889f209a8a6e526a4e12b35e50ff1c2bc5d690a0bea0f574773",
+      "include/app/PortWidget.hpp": "90a1d1fb66052d4c15f3410ff550172fe7c2d061450f31dc1ec17bce0c62cda0",
+      "include/app/RackScrollWidget.hpp": "0eae4e559d0b56284750f99547dab5dfdd1c25177089d02b94c14e11030bc69e",
+      "include/app/RackWidget.hpp": "0924e57f747157cff10ddcc84e42596a9351d702b3071b5563b6b00ca6cd6230",
+      "include/app/RailWidget.hpp": "1a147812bbee1e85b6b031f8f2f26770bdc608fea03ef3b7b38d433ab9803b1f",
+      "include/app/Scene.hpp": "bae9e11db3ddbf94c5aa8571373887154694d1c72be66f2bccc27502d1418960",
+      "include/app/SliderKnob.hpp": "bc7d88a3a80118caf25f3d0a3f93b0b0930f6e532f6de4a89fe31a434ff974d6",
+      "include/app/SvgButton.hpp": "1804bb0c5b2c3a7730923306abd1a6e42dbdc13bf8ab49e71ede7e7b2fd30fda",
+      "include/app/SvgKnob.hpp": "e74b5be3d20d66bc783ddc824ad6debf896be9e6e734d052668871200df51976",
+      "include/app/SvgPanel.hpp": "dd4bec6eaf8c68b29f1161e544f6045bd3cbcf67003ecb866e2927d939b66556",
+      "include/app/SvgPort.hpp": "3ff9516d681ae3ac12ad7bcfe8d16e46bdc3e1dd2a09d9a069fd295d3a8ee3d8",
+      "include/app/SvgScrew.hpp": "380e5060e986cb35604ae8dac50ce5516105cac646ac6ca8ec492d2b4a626360",
+      "include/app/SvgSlider.hpp": "2c8460d7c0310bd139fb35f47c49b224d8b4c82ca241995286092d7f367a4158",
+      "include/app/SvgSwitch.hpp": "007e91ae9f8a7bb3560bffca24910f4642b0d477f809fb3983a8d8555539b19d",
+      "include/app/Switch.hpp": "12ceabd612d9681acb0988eaf14d87c708f25ad7e645822ad9ffb8019b736fb4",
+      "include/app/TipWindow.hpp": "f71b6d75b3a6a1e14b585e1b1388bdb934f49ecdd5ad69971ff067a9166f7f60",
+      "include/app/common.hpp": "674ffe054165b8512d556ba9aed2f20b06ade1f81f416dcc3155834c3bfc10ea",
+      "include/arch.hpp": "23db3d64e762e3d573ef28d4084394f02d7bd805d2b1bc600dd2afa0157e08de",
+      "include/asset.hpp": "73fb63781084f077cb8719facd9bc563fca9b5bdc37aafaba85fd1c7f1cda7d4",
+      "include/audio.hpp": "10b6c95796abdef951efa4d411582c4710954dd614b5b324b379beadac8432bb",
+      "include/color.hpp": "aa406ffb438ac469da9dde55eb7cabc159de7172de38c02ab993104be73f9539",
+      "include/common.hpp": "117daca440093184abcf0fe97305b1633dad574a7a0e3977dbab4bcb5656439d",
+      "include/componentlibrary.hpp": "33ac083d73fabc7798cfe8a2ecf9cf1a020a0039fe2c3153e0d74408f13d6f55",
+      "include/context.hpp": "5f83e171e6642aebc49fdc8dc3a44b093fdfd4e7a23c5dc4bcf943b8a259f791",
+      "include/dsp/approx.hpp": "1356dc25905e74ace9eeaabd72cfa663b331d8fe9e26ecd76c64671aed2025ca",
+      "include/dsp/common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+      "include/dsp/convert.hpp": "4955941a79b26619d10e2ece72a837c9697f356fd3a00a2d69447f24eda5a29b",
+      "include/dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+      "include/dsp/fft.hpp": "49ca9221619ee8d148337f3fb517ced75147ac60382b14f9a69623a1c98996c3",
+      "include/dsp/filter.hpp": "18d4d490eb754259c6c3b335445f9f5369c4a1edfe03ba7f110cf48d0665d8e1",
+      "include/dsp/fir.hpp": "c9dac7440acc9910b1c90cc38b4e190d0fcbc1147f549e63c76f201af2e16697",
+      "include/dsp/midi.hpp": "cf465dafdd32612c831ab84af88061f5117acd99fea878dc5b3938a4de182cb1",
+      "include/dsp/minblep.hpp": "0ba749aacdecc5bedbdc981b4e8b6bb046c8f630831f41f86c0e99d67497db11",
+      "include/dsp/ode.hpp": "5e3b21021e825268e19c7363f8bcdc5b78422c1cf3eb15c4a9eb5ae73842b0da",
+      "include/dsp/resampler.hpp": "54bed1d0bc5477c062f53b4dce498a0ce569c553bae858437c32bd50a31c7983",
+      "include/dsp/ringbuffer.hpp": "5a6f7c04c0bae1cfcc980a34408a4eb35a612c736e95010c34268904f022d9aa",
+      "include/dsp/vumeter.hpp": "58fc6a7fedd9419f152ef9a0c1c2572d3fa68b3bb7e029261593a1947d2dd377",
+      "include/dsp/window.hpp": "2e4e6fd1b746e775bfc7b49ca849a92a38f10d36bb83e90c68b6c74afb0bd3d4",
+      "include/engine/Cable.hpp": "0c0af168df3e81cb7802b57afda707ca3f6f6e1e7d41ee5abe0fde094c67786c",
+      "include/engine/Engine.hpp": "7bda3047858540e8941f6d6dd4f322d9076841de06965c6dbf0494591cc087dd",
+      "include/engine/Light.hpp": "70affe4a5f167d5e018633da41931d7d1666a113ea8358fa8f01a63cae46e4c2",
+      "include/engine/LightInfo.hpp": "4fd466dbf9732de9cfdfd9a701b4f0c65d1221127f9fcf80af092a76c59c90bd",
+      "include/engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df",
+      "include/engine/Param.hpp": "7f7a3a0a286cae099ad6b884d4ca1648be1bcf658f398b2a15366c27a6c373aa",
+      "include/engine/ParamHandle.hpp": "929e4581fbbdc46b84ab992d68d4393d9726f6bc9c4a03610afb4e3b233867b9",
+      "include/engine/ParamQuantity.hpp": "cb37427911a3306354987bef1506e561c5bb33e66b53d04103827bb71c974157",
+      "include/engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "include/engine/PortInfo.hpp": "21b1c84d5bb517f7327033222db5cd2602a3e99a41ff9ba941a84d44f9724611",
+      "include/gamepad.hpp": "79d32278f96bde5c1cd0dee0b0b2e8cd89c9663e0f75e0e6d7b27333cc500da8",
+      "include/helpers.hpp": "1a6d915909a7dcb581869749a4ee558b020c20e886bf068299776fae13e6b537",
+      "include/history.hpp": "b9682353155f62100977b4ced926c13a7d586a831d3d28758c4a50951a13911f",
+      "include/keyboard.hpp": "3f1cb33717feeecbeb88dffaf86d70ed64a017298a5d436e2ef5b1c391d27d70",
+      "include/library.hpp": "8e29b02484a0f42999d38df0ca988cb4743f1df4c580c4263f1dcb5ed78be060",
+      "include/logger.hpp": "b9d095bb1ebfcf84d1c75fa4505c8b1b3aa5f27f4677b3c25ba5111b6419b273",
+      "include/math.hpp": "154bf143e14071e782b28c54c5c4a0782290d5ef0428e113583cef2ba9f209de",
+      "include/midi.hpp": "2dfb1fd885006b889420e2da3bbd21e45a117e9b3026650fc396cbb6e0acb8a9",
+      "include/midiloopback.hpp": "274644f077274e3d6236c16fc1cd7bc7dad36efff96b466047dbbfb8a3755159",
+      "include/mutex.hpp": "1bb24c633704ddfa3756339687ffefe532b5624375cd6c58b447654948d7354d",
+      "include/network.hpp": "bfef07950735d47f23baea66131c2b7b5c0a85f3233dc166f0a87c687e84b8a2",
+      "include/patch.hpp": "93b4a76141d226b81fe40c59ad2979626ed9a6f5702ab381b0459a937ed278d0",
+      "include/plugin/Model.hpp": "2a72fb2ec14f2a45e4de04a1acdb077f09e98a827e0789fdc567e7c8d00ffbc4",
+      "include/plugin/Plugin.hpp": "8831907ee660c7da79fa9dc6accf5f48b15c20ebf0106439595d0d73a5e6f234",
+      "include/plugin/callbacks.hpp": "fb555bdc04dc777ea45a42c37c0f03663405221e29f4302dd9ed7620c06a6922",
+      "include/plugin.hpp": "607320ba106c2c0dc57d7c68f694cb2a4c436cc38fc9bf17084f27722be2b820",
+      "include/rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "include/rack0.hpp": "34e727218d0fda686fa5a914347e1357ccf7695d5cdc9d8910d350c537e1ba52",
+      "include/random.hpp": "2ccbca07e22d981811521beb93d8dea6b9390a5ae87452a7c39fd604ded64d34",
+      "include/rtaudio.hpp": "9757cca62669d934fe9a3cdc0848e2ef68965444f911391ef1b4aa52ed4c0914",
+      "include/rtmidi.hpp": "7b08637a427552b8f6b0fa379a13c359555f826dd2685ab5b3953c59fc0998f3",
+      "include/settings.hpp": "fc71e3ba11233e605b83f31713478d1247b92497673744046875370ed3c8a6fd",
+      "include/simd/Vector.hpp": "368c5e7a1ab8f550d689d0f11a2a9d85d71d00974bc1977a0ef3ec15c108207f",
+      "include/simd/common.hpp": "a019adabd99cedd00e8a9fc1c1276ff742adb9fbad9fa7248adf0e6e9978cc45",
+      "include/simd/functions.hpp": "5f53878b105958127813f0fe1669bbf7ff8242afdbef64c412e618b50186412d",
+      "include/string.hpp": "28cb47d6770e62e22d74cb4d079830be2daf0d5c320bf84f446ced563c68a7b0",
+      "include/system.hpp": "eaac57848af0f4a471d9e487b1ee6e52dcb1b182bcade3695a8a33d5f35057fb",
+      "include/tag.hpp": "7acd1523d81b4f1f1c39f204092a8c7502094445a6ac75ee8949b4645bf5a830",
+      "include/ui/Button.hpp": "5c082e90893428bb47d652b678e955115807889e2fd1452a4de79f71580a289a",
+      "include/ui/ChoiceButton.hpp": "8011838485570b69058594e223b6b1a277b4821ae4d6aa1ba031f941963443c9",
+      "include/ui/Label.hpp": "b3cf8adf016e36f548d811812eccd4b5409cbc9a81a2fd8ec1f2c70234787c2c",
+      "include/ui/List.hpp": "e1d7cb7e12c072cad0b8245b4a87cc80eda551cd65a678c0180530bb995ed325",
+      "include/ui/Menu.hpp": "8443a4b34d59929b3d02a106ff1737a23c0c83bac04351bc978746e55c8e3d0c",
+      "include/ui/MenuEntry.hpp": "b1e7e85f3610ce649eafb26d23363d71e0e36d2b2075c7efb2b0b43090048fc5",
+      "include/ui/MenuItem.hpp": "78eea5e682ad472a81a3326724b221d48ed4705e9d0361b39c964b58d77ca4d0",
+      "include/ui/MenuLabel.hpp": "f7d660a14073a713899aebf189fba2525238c477eb702642c3d7ce6ab81267b8",
+      "include/ui/MenuOverlay.hpp": "2ada7995c36337dd71b9f8c2fbfa87e2a44694515d0725e647c6ab5242ae1b19",
+      "include/ui/MenuSeparator.hpp": "21d66251b6ab26e343687915a96386be27dfaf39dbb278f97de57e16965a98b5",
+      "include/ui/OptionButton.hpp": "dc856547d016477106c424dfa354cbfc090ae2d4850b02b486631f2dcd344d70",
+      "include/ui/ProgressBar.hpp": "f52a0086831e903b9f4814fd502a495a50dc88acdb9b39714d44a1e293ce0e1f",
+      "include/ui/RadioButton.hpp": "7cb5086a1d60c8536fabf8f70bbb67045c43245ab1336cf7873d940db22de0be",
+      "include/ui/ScrollWidget.hpp": "20cd38f58452bb80d8efebc5239d2e4ee089285d0c782f9ad67e0d7320486b45",
+      "include/ui/Scrollbar.hpp": "cb63b088eca21a9ead1f8be300676cf56459678f791e705d918ef65b01e88fce",
+      "include/ui/SequentialLayout.hpp": "5c73ac3bd5f14ff76befbfcbe3ac0326e22020f554bee166bf34cb769c6d25f6",
+      "include/ui/Slider.hpp": "b431895b26d4fb2765958abc1755823b92c92cefcb81b6f38cf96116e356aa02",
+      "include/ui/TextField.hpp": "a50c74f1bc8e4d5fa444278310ed86b5da97afee535360e7705692c24be776b6",
+      "include/ui/Tooltip.hpp": "0463659fa90a2ea9e5f231dae3b329cee58bb8677a8a84aa5094193fef62f7aa",
+      "include/ui/TooltipOverlay.hpp": "5f7df2f2dff9247034711f96f9cbcd56c10437ef435180b9af193da15a4f9536",
+      "include/ui/common.hpp": "4ff7a3a11c8dec7177c671dc14d15eae9a6002c68106c499925959e56e9c8f2e",
+      "include/weakptr.hpp": "8ae1408c02aad745d73db763ad6a05ee1843cf358bf87d31567768effd1803fc",
+      "include/widget/FramebufferWidget.hpp": "18d66d7563c75c6a84934c6deeedac2b975c6f003103e7b40ed0d9d0fb52d2fb",
+      "include/widget/OpaqueWidget.hpp": "5ecee0603ac77626a97cb475657585dc47926a9f596ffd2287d5f853243a429c",
+      "include/widget/OpenGlWidget.hpp": "4f1ced5663ec50d0b7801165aa0439293d05a0224e53289a1a3a538c48a4f6b2",
+      "include/widget/SvgWidget.hpp": "c96c4370915521aa5fbfddfaa146663ed0ada8f63c139bf5f106354dd9c2b85f",
+      "include/widget/TransformWidget.hpp": "ff397e9e7f938503ce7d153c3a7613528f99a761fd20bb6403f78b7e63777c8b",
+      "include/widget/TransparentWidget.hpp": "d88a23e3ce278e111381477dbcedc634a058ca6031ee1f35a8698f31abf85b53",
+      "include/widget/Widget.hpp": "6834d8825bc28d3efe0b0514d3178ec59a71ea231127662986982e900ffa55e8",
+      "include/widget/ZoomWidget.hpp": "cb7fd0225a90642882ce7eb515e3e4254d49bd6c729f51c51b8e26b7e2fab8b0",
+      "include/widget/event.hpp": "c8043da670921310537ea0d39f670d2fa26404b091ca40284e65ec1b9024861d",
+      "include/window/Svg.hpp": "a0bc5532a88de58b45dbd19846b10a1f32fd81215605162df1b205fcc857668a",
+      "include/window/Window.hpp": "e02eab81061bea5680f1d7d315a722ef8271c3b4ea432cdff22df870bba9cb5c",
+      "dep/include/samplerate.h": "8594197c83c390291e76a3a862ca62c0970f0b1871cc8bd97d8ba04d2901f9a2"
+    },
+    "source_definedness_preflight": {
+      "scope": "Only actual mono calc_output_single history reads are bounds-guarded; not a general C undefined-behavior proof or a claim that arbitrary-call source UB is reachable from Delay.",
+      "guard_exit_status": 87,
+      "guarded_source_sha256": "ed375fd9bf1a9edd006b9aa8c6edcd138f187c550e0dd30c7034440b99db5391",
+      "guarded_source_exact": "/*\n** Copyright (c) 2002-2016, Erik de Castro Lopo <erikd@mega-nerd.com>\n** All rights reserved.\n**\n** This code is released under 2-clause BSD license. Please see the\n** file at : https://github.com/erikd/libsamplerate/blob/master/COPYING\n*/\n\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n#include \"config.h\"\n#include \"float_cast.h\"\n#include \"common.h\"\n\n#define\tSINC_MAGIC_MARKER\tMAKE_MAGIC (' ', 's', 'i', 'n', 'c', ' ')\n\n/*========================================================================================\n*/\n\n#define MAKE_INCREMENT_T(x) \t((increment_t) (x))\n\n#define\tSHIFT_BITS\t\t\t\t12\n#define\tFP_ONE\t\t\t\t\t((double) (((increment_t) 1) << SHIFT_BITS))\n#define\tINV_FP_ONE\t\t\t\t(1.0 / FP_ONE)\n\n/*========================================================================================\n*/\n\ntypedef int32_t increment_t ;\ntypedef float\tcoeff_t ;\n\n#include \"fastest_coeffs.h\"\n#include \"mid_qual_coeffs.h\"\n#include \"high_qual_coeffs.h\"\n\ntypedef struct\n{\tint\t\tsinc_magic_marker ;\n\n\tint\t\tchannels ;\n\tlong\tin_count, in_used ;\n\tlong\tout_count, out_gen ;\n\n\tint\t\tcoeff_half_len, index_inc ;\n\n\tdouble\tsrc_ratio, input_index ;\n\n\tcoeff_t const\t*coeffs ;\n\n\tint\t\tb_current, b_end, b_real_end, b_len ;\n\n\t/* Sure hope noone does more than 128 channels at once. */\n\tdouble left_calc [128], right_calc [128] ;\n\n\t/* C99 struct flexible array. */\n\tfloat\tbuffer [] ;\n} SINC_FILTER ;\n\nstatic int sinc_multichan_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data) ;\nstatic int sinc_hex_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data) ;\nstatic int sinc_quad_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data) ;\nstatic int sinc_stereo_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data) ;\nstatic int sinc_mono_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data) ;\n\nstatic int prepare_data (SINC_FILTER *filter, SRC_DATA *data, int half_filter_chan_len) WARN_UNUSED ;\n\nstatic void sinc_reset (SRC_PRIVATE *psrc) ;\n\nstatic inline increment_t\ndouble_to_fp (double x)\n{\treturn (lrint ((x) * FP_ONE)) ;\n} /* double_to_fp */\n\nstatic inline increment_t\nint_to_fp (int x)\n{\treturn (((increment_t) (x)) << SHIFT_BITS) ;\n} /* int_to_fp */\n\nstatic inline int\nfp_to_int (increment_t x)\n{\treturn (((x) >> SHIFT_BITS)) ;\n} /* fp_to_int */\n\nstatic inline increment_t\nfp_fraction_part (increment_t x)\n{\treturn ((x) & ((((increment_t) 1) << SHIFT_BITS) - 1)) ;\n} /* fp_fraction_part */\n\nstatic inline double\nfp_to_double (increment_t x)\n{\treturn fp_fraction_part (x) * INV_FP_ONE ;\n} /* fp_to_double */\n\n\n/*----------------------------------------------------------------------------------------\n*/\n\nconst char*\nsinc_get_name (int src_enum)\n{\n\tswitch (src_enum)\n\t{\tcase SRC_SINC_BEST_QUALITY :\n\t\t\treturn \"Best Sinc Interpolator\" ;\n\n\t\tcase SRC_SINC_MEDIUM_QUALITY :\n\t\t\treturn \"Medium Sinc Interpolator\" ;\n\n\t\tcase SRC_SINC_FASTEST :\n\t\t\treturn \"Fastest Sinc Interpolator\" ;\n\n\t\tdefault: break ;\n\t\t} ;\n\n\treturn NULL ;\n} /* sinc_get_descrition */\n\nconst char*\nsinc_get_description (int src_enum)\n{\n\tswitch (src_enum)\n\t{\tcase SRC_SINC_FASTEST :\n\t\t\treturn \"Band limited sinc interpolation, fastest, 97dB SNR, 80% BW.\" ;\n\n\t\tcase SRC_SINC_MEDIUM_QUALITY :\n\t\t\treturn \"Band limited sinc interpolation, medium quality, 121dB SNR, 90% BW.\" ;\n\n\t\tcase SRC_SINC_BEST_QUALITY :\n\t\t\treturn \"Band limited sinc interpolation, best quality, 144dB SNR, 96% BW.\" ;\n\n\t\tdefault :\n\t\t\tbreak ;\n\t\t} ;\n\n\treturn NULL ;\n} /* sinc_get_descrition */\n\nint\nsinc_set_converter (SRC_PRIVATE *psrc, int src_enum)\n{\tSINC_FILTER *filter, temp_filter ;\n\tincrement_t count ;\n\tint bits ;\n\n\t/* Quick sanity check. */\n\tif (SHIFT_BITS >= sizeof (increment_t) * 8 - 1)\n\t\treturn SRC_ERR_SHIFT_BITS ;\n\n\tif (psrc->private_data != NULL)\n\t{\tfree (psrc->private_data) ;\n\t\tpsrc->private_data = NULL ;\n\t\t} ;\n\n\tmemset (&temp_filter, 0, sizeof (temp_filter)) ;\n\n\ttemp_filter.sinc_magic_marker = SINC_MAGIC_MARKER ;\n\ttemp_filter.channels = psrc->channels ;\n\n\tif (psrc->channels > ARRAY_LEN (temp_filter.left_calc))\n\t\treturn SRC_ERR_BAD_CHANNEL_COUNT ;\n\telse if (psrc->channels == 1)\n\t{\tpsrc->const_process = sinc_mono_vari_process ;\n\t\tpsrc->vari_process = sinc_mono_vari_process ;\n\t\t}\n\telse\n\tif (psrc->channels == 2)\n\t{\tpsrc->const_process = sinc_stereo_vari_process ;\n\t\tpsrc->vari_process = sinc_stereo_vari_process ;\n\t\t}\n\telse\n\tif (psrc->channels == 4)\n\t{\tpsrc->const_process = sinc_quad_vari_process ;\n\t\tpsrc->vari_process = sinc_quad_vari_process ;\n\t\t}\n\telse\n\tif (psrc->channels == 6)\n\t{\tpsrc->const_process = sinc_hex_vari_process ;\n\t\tpsrc->vari_process = sinc_hex_vari_process ;\n\t\t}\n\telse\n\t{\tpsrc->const_process = sinc_multichan_vari_process ;\n\t\tpsrc->vari_process = sinc_multichan_vari_process ;\n\t\t} ;\n\tpsrc->reset = sinc_reset ;\n\n\tswitch (src_enum)\n\t{\tcase SRC_SINC_FASTEST :\n\t\t\t\ttemp_filter.coeffs = fastest_coeffs.coeffs ;\n\t\t\t\ttemp_filter.coeff_half_len = ARRAY_LEN (fastest_coeffs.coeffs) - 2 ;\n\t\t\t\ttemp_filter.index_inc = fastest_coeffs.increment ;\n\t\t\t\tbreak ;\n\n\t\tcase SRC_SINC_MEDIUM_QUALITY :\n\t\t\t\ttemp_filter.coeffs = slow_mid_qual_coeffs.coeffs ;\n\t\t\t\ttemp_filter.coeff_half_len = ARRAY_LEN (slow_mid_qual_coeffs.coeffs) - 2 ;\n\t\t\t\ttemp_filter.index_inc = slow_mid_qual_coeffs.increment ;\n\t\t\t\tbreak ;\n\n\t\tcase SRC_SINC_BEST_QUALITY :\n\t\t\t\ttemp_filter.coeffs = slow_high_qual_coeffs.coeffs ;\n\t\t\t\ttemp_filter.coeff_half_len = ARRAY_LEN (slow_high_qual_coeffs.coeffs) - 2 ;\n\t\t\t\ttemp_filter.index_inc = slow_high_qual_coeffs.increment ;\n\t\t\t\tbreak ;\n\n\t\tdefault :\n\t\t\t\treturn SRC_ERR_BAD_CONVERTER ;\n\t\t} ;\n\n\t/*\n\t** FIXME : This needs to be looked at more closely to see if there is\n\t** a better way. Need to look at prepare_data () at the same time.\n\t*/\n\n\ttemp_filter.b_len = lrint (2.5 * temp_filter.coeff_half_len / (temp_filter.index_inc * 1.0) * SRC_MAX_RATIO) ;\n\ttemp_filter.b_len = MAX (temp_filter.b_len, 4096) ;\n\ttemp_filter.b_len *= temp_filter.channels ;\n\n\tif ((filter = calloc (1, sizeof (SINC_FILTER) + sizeof (filter->buffer [0]) * (temp_filter.b_len + temp_filter.channels))) == NULL)\n\t\treturn SRC_ERR_MALLOC_FAILED ;\n\n\t*filter = temp_filter ;\n\tmemset (&temp_filter, 0xEE, sizeof (temp_filter)) ;\n\n\tpsrc->private_data = filter ;\n\n\tsinc_reset (psrc) ;\n\n\tcount = filter->coeff_half_len ;\n\tfor (bits = 0 ; (MAKE_INCREMENT_T (1) << bits) < count ; bits++)\n\t\tcount |= (MAKE_INCREMENT_T (1) << bits) ;\n\n\tif (bits + SHIFT_BITS - 1 >= (int) (sizeof (increment_t) * 8))\n\t\treturn SRC_ERR_FILTER_LEN ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_set_converter */\n\nstatic void\nsinc_reset (SRC_PRIVATE *psrc)\n{\tSINC_FILTER *filter ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\tif (filter == NULL)\n\t\treturn ;\n\n\tfilter->b_current = filter->b_end = 0 ;\n\tfilter->b_real_end = -1 ;\n\n\tfilter->src_ratio = filter->input_index = 0.0 ;\n\n\tmemset (filter->buffer, 0, filter->b_len * sizeof (filter->buffer [0])) ;\n\n\t/* Set this for a sanity check */\n\tmemset (filter->buffer + filter->b_len, 0xAA, filter->channels * sizeof (filter->buffer [0])) ;\n} /* sinc_reset */\n\n/*========================================================================================\n**\tBeware all ye who dare pass this point. There be dragons here.\n*/\n\nextern long reference_call_index ;\nextern long reference_frame_index ;\nstatic inline float\nreference_history_sample (SINC_FILTER *filter, int data_index, int line)\n{\n    if (data_index < 0 || data_index >= filter->b_len + filter->channels)\n    {\n        fprintf (stderr, \"{\\\"kind\\\":\\\"source_undefined\\\",\\\"frame_zero_based\\\":%ld,\\\"call_zero_based\\\":%ld,\\\"data_index\\\":%d,\\\"allocated_samples\\\":%d,\\\"current\\\":%d,\\\"output_offset\\\":%ld,\\\"line\\\":%d}\\n\",\n            reference_frame_index, reference_call_index, data_index, filter->b_len + filter->channels,\n            filter->b_current, filter->out_gen, line) ;\n        fflush (stderr) ;\n        exit (87) ;\n    }\n    return filter->buffer [data_index] ;\n}\n\nstatic inline double\ncalc_output_single (SINC_FILTER *filter, increment_t increment, increment_t start_filter_index)\n{\tdouble\t\tfraction, left, right, icoeff ;\n\tincrement_t\tfilter_index, max_filter_index ;\n\tint\t\t\tdata_index, coeff_count, indx ;\n\n\t/* Convert input parameters into fixed point. */\n\tmax_filter_index = int_to_fp (filter->coeff_half_len) ;\n\n\t/* First apply the left half of the filter. */\n\tfilter_index = start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current - coeff_count ;\n\n\tleft = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tleft += icoeff * reference_history_sample (filter, data_index, __LINE__) ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index + 1 ;\n\t\t}\n\twhile (filter_index >= MAKE_INCREMENT_T (0)) ;\n\n\t/* Now apply the right half of the filter. */\n\tfilter_index = increment - start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current + 1 + coeff_count ;\n\n\tright = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tright += icoeff * reference_history_sample (filter, data_index, __LINE__) ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index - 1 ;\n\t\t}\n\twhile (filter_index > MAKE_INCREMENT_T (0)) ;\n\n\treturn (left + right) ;\n} /* calc_output_single */\n\nstatic int\nsinc_mono_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data)\n{\tSINC_FILTER *filter ;\n\tdouble\t\tinput_index, src_ratio, count, float_increment, terminate, rem ;\n\tincrement_t\tincrement, start_filter_index ;\n\tint\t\t\thalf_filter_chan_len, samples_in_hand ;\n\n\tif (psrc->private_data == NULL)\n\t\treturn SRC_ERR_NO_PRIVATE ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\n\t/* If there is not a problem, this will be optimised out. */\n\tif (sizeof (filter->buffer [0]) != sizeof (data->data_in [0]))\n\t\treturn SRC_ERR_SIZE_INCOMPATIBILITY ;\n\n\tfilter->in_count = data->input_frames * filter->channels ;\n\tfilter->out_count = data->output_frames * filter->channels ;\n\tfilter->in_used = filter->out_gen = 0 ;\n\n\tsrc_ratio = psrc->last_ratio ;\n\n\tif (is_bad_src_ratio (src_ratio))\n\t\treturn SRC_ERR_BAD_INTERNAL_STATE ;\n\n\t/* Check the sample rate ratio wrt the buffer len. */\n\tcount = (filter->coeff_half_len + 2.0) / filter->index_inc ;\n\tif (MIN (psrc->last_ratio, data->src_ratio) < 1.0)\n\t\tcount /= MIN (psrc->last_ratio, data->src_ratio) ;\n\n\t/* Maximum coefficientson either side of center point. */\n\thalf_filter_chan_len = filter->channels * (lrint (count) + 1) ;\n\n\tinput_index = psrc->last_position ;\n\tfloat_increment = filter->index_inc ;\n\n\trem = fmod_one (input_index) ;\n\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\tinput_index = rem ;\n\n\tterminate = 1.0 / src_ratio + 1e-20 ;\n\n\t/* Main processing loop. */\n\twhile (filter->out_gen < filter->out_count)\n\t{\n\t\t/* Need to reload buffer? */\n\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\n\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t{\tif ((psrc->error = prepare_data (filter, data, half_filter_chan_len)) != 0)\n\t\t\t\treturn psrc->error ;\n\n\t\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\t\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\t/* This is the termination condition. */\n\t\tif (filter->b_real_end >= 0)\n\t\t{\tif (filter->b_current + input_index + terminate > filter->b_real_end)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\tif (filter->out_count > 0 && fabs (psrc->last_ratio - data->src_ratio) > 1e-10)\n\t\t\tsrc_ratio = psrc->last_ratio + filter->out_gen * (data->src_ratio - psrc->last_ratio) / filter->out_count ;\n\n\t\tfloat_increment = filter->index_inc * (src_ratio < 1.0 ? src_ratio : 1.0) ;\n\t\tincrement = double_to_fp (float_increment) ;\n\n\t\tstart_filter_index = double_to_fp (input_index * float_increment) ;\n\n\t\tdata->data_out [filter->out_gen] = (float) ((float_increment / filter->index_inc) *\n\t\t\t\t\t\t\t\t\t\tcalc_output_single (filter, increment, start_filter_index)) ;\n\t\tfilter->out_gen ++ ;\n\n\t\t/* Figure out the next index. */\n\t\tinput_index += 1.0 / src_ratio ;\n\t\trem = fmod_one (input_index) ;\n\n\t\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\t\tinput_index = rem ;\n\t\t} ;\n\n\tpsrc->last_position = input_index ;\n\n\t/* Save current ratio rather then target ratio. */\n\tpsrc->last_ratio = src_ratio ;\n\n\tdata->input_frames_used = filter->in_used / filter->channels ;\n\tdata->output_frames_gen = filter->out_gen / filter->channels ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_mono_vari_process */\n\nstatic inline void\ncalc_output_stereo (SINC_FILTER *filter, increment_t increment, increment_t start_filter_index, double scale, float * output)\n{\tdouble\t\tfraction, left [2], right [2], icoeff ;\n\tincrement_t\tfilter_index, max_filter_index ;\n\tint\t\t\tdata_index, coeff_count, indx ;\n\n\t/* Convert input parameters into fixed point. */\n\tmax_filter_index = int_to_fp (filter->coeff_half_len) ;\n\n\t/* First apply the left half of the filter. */\n\tfilter_index = start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current - filter->channels * coeff_count ;\n\n\tleft [0] = left [1] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tleft [0] += icoeff * filter->buffer [data_index] ;\n\t\tleft [1] += icoeff * filter->buffer [data_index + 1] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index + 2 ;\n\t\t}\n\twhile (filter_index >= MAKE_INCREMENT_T (0)) ;\n\n\t/* Now apply the right half of the filter. */\n\tfilter_index = increment - start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current + filter->channels * (1 + coeff_count) ;\n\n\tright [0] = right [1] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tright [0] += icoeff * filter->buffer [data_index] ;\n\t\tright [1] += icoeff * filter->buffer [data_index + 1] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index - 2 ;\n\t\t}\n\twhile (filter_index > MAKE_INCREMENT_T (0)) ;\n\n\toutput [0] = scale * (left [0] + right [0]) ;\n\toutput [1] = scale * (left [1] + right [1]) ;\n} /* calc_output_stereo */\n\nstatic int\nsinc_stereo_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data)\n{\tSINC_FILTER *filter ;\n\tdouble\t\tinput_index, src_ratio, count, float_increment, terminate, rem ;\n\tincrement_t\tincrement, start_filter_index ;\n\tint\t\t\thalf_filter_chan_len, samples_in_hand ;\n\n\tif (psrc->private_data == NULL)\n\t\treturn SRC_ERR_NO_PRIVATE ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\n\t/* If there is not a problem, this will be optimised out. */\n\tif (sizeof (filter->buffer [0]) != sizeof (data->data_in [0]))\n\t\treturn SRC_ERR_SIZE_INCOMPATIBILITY ;\n\n\tfilter->in_count = data->input_frames * filter->channels ;\n\tfilter->out_count = data->output_frames * filter->channels ;\n\tfilter->in_used = filter->out_gen = 0 ;\n\n\tsrc_ratio = psrc->last_ratio ;\n\n\tif (is_bad_src_ratio (src_ratio))\n\t\treturn SRC_ERR_BAD_INTERNAL_STATE ;\n\n\t/* Check the sample rate ratio wrt the buffer len. */\n\tcount = (filter->coeff_half_len + 2.0) / filter->index_inc ;\n\tif (MIN (psrc->last_ratio, data->src_ratio) < 1.0)\n\t\tcount /= MIN (psrc->last_ratio, data->src_ratio) ;\n\n\t/* Maximum coefficientson either side of center point. */\n\thalf_filter_chan_len = filter->channels * (lrint (count) + 1) ;\n\n\tinput_index = psrc->last_position ;\n\tfloat_increment = filter->index_inc ;\n\n\trem = fmod_one (input_index) ;\n\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\tinput_index = rem ;\n\n\tterminate = 1.0 / src_ratio + 1e-20 ;\n\n\t/* Main processing loop. */\n\twhile (filter->out_gen < filter->out_count)\n\t{\n\t\t/* Need to reload buffer? */\n\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\n\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t{\tif ((psrc->error = prepare_data (filter, data, half_filter_chan_len)) != 0)\n\t\t\t\treturn psrc->error ;\n\n\t\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\t\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\t/* This is the termination condition. */\n\t\tif (filter->b_real_end >= 0)\n\t\t{\tif (filter->b_current + input_index + terminate >= filter->b_real_end)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\tif (filter->out_count > 0 && fabs (psrc->last_ratio - data->src_ratio) > 1e-10)\n\t\t\tsrc_ratio = psrc->last_ratio + filter->out_gen * (data->src_ratio - psrc->last_ratio) / filter->out_count ;\n\n\t\tfloat_increment = filter->index_inc * (src_ratio < 1.0 ? src_ratio : 1.0) ;\n\t\tincrement = double_to_fp (float_increment) ;\n\n\t\tstart_filter_index = double_to_fp (input_index * float_increment) ;\n\n\t\tcalc_output_stereo (filter, increment, start_filter_index, float_increment / filter->index_inc, data->data_out + filter->out_gen) ;\n\t\tfilter->out_gen += 2 ;\n\n\t\t/* Figure out the next index. */\n\t\tinput_index += 1.0 / src_ratio ;\n\t\trem = fmod_one (input_index) ;\n\n\t\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\t\tinput_index = rem ;\n\t\t} ;\n\n\tpsrc->last_position = input_index ;\n\n\t/* Save current ratio rather then target ratio. */\n\tpsrc->last_ratio = src_ratio ;\n\n\tdata->input_frames_used = filter->in_used / filter->channels ;\n\tdata->output_frames_gen = filter->out_gen / filter->channels ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_stereo_vari_process */\n\nstatic inline void\ncalc_output_quad (SINC_FILTER *filter, increment_t increment, increment_t start_filter_index, double scale, float * output)\n{\tdouble\t\tfraction, left [4], right [4], icoeff ;\n\tincrement_t\tfilter_index, max_filter_index ;\n\tint\t\t\tdata_index, coeff_count, indx ;\n\n\t/* Convert input parameters into fixed point. */\n\tmax_filter_index = int_to_fp (filter->coeff_half_len) ;\n\n\t/* First apply the left half of the filter. */\n\tfilter_index = start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current - filter->channels * coeff_count ;\n\n\tleft [0] = left [1] = left [2] = left [3] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tleft [0] += icoeff * filter->buffer [data_index] ;\n\t\tleft [1] += icoeff * filter->buffer [data_index + 1] ;\n\t\tleft [2] += icoeff * filter->buffer [data_index + 2] ;\n\t\tleft [3] += icoeff * filter->buffer [data_index + 3] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index + 4 ;\n\t\t}\n\twhile (filter_index >= MAKE_INCREMENT_T (0)) ;\n\n\t/* Now apply the right half of the filter. */\n\tfilter_index = increment - start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current + filter->channels * (1 + coeff_count) ;\n\n\tright [0] = right [1] = right [2] = right [3] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tright [0] += icoeff * filter->buffer [data_index] ;\n\t\tright [1] += icoeff * filter->buffer [data_index + 1] ;\n\t\tright [2] += icoeff * filter->buffer [data_index + 2] ;\n\t\tright [3] += icoeff * filter->buffer [data_index + 3] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index - 4 ;\n\t\t}\n\twhile (filter_index > MAKE_INCREMENT_T (0)) ;\n\n\toutput [0] = scale * (left [0] + right [0]) ;\n\toutput [1] = scale * (left [1] + right [1]) ;\n\toutput [2] = scale * (left [2] + right [2]) ;\n\toutput [3] = scale * (left [3] + right [3]) ;\n} /* calc_output_quad */\n\nstatic int\nsinc_quad_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data)\n{\tSINC_FILTER *filter ;\n\tdouble\t\tinput_index, src_ratio, count, float_increment, terminate, rem ;\n\tincrement_t\tincrement, start_filter_index ;\n\tint\t\t\thalf_filter_chan_len, samples_in_hand ;\n\n\tif (psrc->private_data == NULL)\n\t\treturn SRC_ERR_NO_PRIVATE ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\n\t/* If there is not a problem, this will be optimised out. */\n\tif (sizeof (filter->buffer [0]) != sizeof (data->data_in [0]))\n\t\treturn SRC_ERR_SIZE_INCOMPATIBILITY ;\n\n\tfilter->in_count = data->input_frames * filter->channels ;\n\tfilter->out_count = data->output_frames * filter->channels ;\n\tfilter->in_used = filter->out_gen = 0 ;\n\n\tsrc_ratio = psrc->last_ratio ;\n\n\tif (is_bad_src_ratio (src_ratio))\n\t\treturn SRC_ERR_BAD_INTERNAL_STATE ;\n\n\t/* Check the sample rate ratio wrt the buffer len. */\n\tcount = (filter->coeff_half_len + 2.0) / filter->index_inc ;\n\tif (MIN (psrc->last_ratio, data->src_ratio) < 1.0)\n\t\tcount /= MIN (psrc->last_ratio, data->src_ratio) ;\n\n\t/* Maximum coefficientson either side of center point. */\n\thalf_filter_chan_len = filter->channels * (lrint (count) + 1) ;\n\n\tinput_index = psrc->last_position ;\n\tfloat_increment = filter->index_inc ;\n\n\trem = fmod_one (input_index) ;\n\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\tinput_index = rem ;\n\n\tterminate = 1.0 / src_ratio + 1e-20 ;\n\n\t/* Main processing loop. */\n\twhile (filter->out_gen < filter->out_count)\n\t{\n\t\t/* Need to reload buffer? */\n\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\n\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t{\tif ((psrc->error = prepare_data (filter, data, half_filter_chan_len)) != 0)\n\t\t\t\treturn psrc->error ;\n\n\t\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\t\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\t/* This is the termination condition. */\n\t\tif (filter->b_real_end >= 0)\n\t\t{\tif (filter->b_current + input_index + terminate >= filter->b_real_end)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\tif (filter->out_count > 0 && fabs (psrc->last_ratio - data->src_ratio) > 1e-10)\n\t\t\tsrc_ratio = psrc->last_ratio + filter->out_gen * (data->src_ratio - psrc->last_ratio) / filter->out_count ;\n\n\t\tfloat_increment = filter->index_inc * (src_ratio < 1.0 ? src_ratio : 1.0) ;\n\t\tincrement = double_to_fp (float_increment) ;\n\n\t\tstart_filter_index = double_to_fp (input_index * float_increment) ;\n\n\t\tcalc_output_quad (filter, increment, start_filter_index, float_increment / filter->index_inc, data->data_out + filter->out_gen) ;\n\t\tfilter->out_gen += 4 ;\n\n\t\t/* Figure out the next index. */\n\t\tinput_index += 1.0 / src_ratio ;\n\t\trem = fmod_one (input_index) ;\n\n\t\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\t\tinput_index = rem ;\n\t\t} ;\n\n\tpsrc->last_position = input_index ;\n\n\t/* Save current ratio rather then target ratio. */\n\tpsrc->last_ratio = src_ratio ;\n\n\tdata->input_frames_used = filter->in_used / filter->channels ;\n\tdata->output_frames_gen = filter->out_gen / filter->channels ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_quad_vari_process */\n\nstatic inline void\ncalc_output_hex (SINC_FILTER *filter, increment_t increment, increment_t start_filter_index, double scale, float * output)\n{\tdouble\t\tfraction, left [6], right [6], icoeff ;\n\tincrement_t\tfilter_index, max_filter_index ;\n\tint\t\t\tdata_index, coeff_count, indx ;\n\n\t/* Convert input parameters into fixed point. */\n\tmax_filter_index = int_to_fp (filter->coeff_half_len) ;\n\n\t/* First apply the left half of the filter. */\n\tfilter_index = start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current - filter->channels * coeff_count ;\n\n\tleft [0] = left [1] = left [2] = left [3] = left [4] = left [5] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tleft [0] += icoeff * filter->buffer [data_index] ;\n\t\tleft [1] += icoeff * filter->buffer [data_index + 1] ;\n\t\tleft [2] += icoeff * filter->buffer [data_index + 2] ;\n\t\tleft [3] += icoeff * filter->buffer [data_index + 3] ;\n\t\tleft [4] += icoeff * filter->buffer [data_index + 4] ;\n\t\tleft [5] += icoeff * filter->buffer [data_index + 5] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index + 6 ;\n\t\t}\n\twhile (filter_index >= MAKE_INCREMENT_T (0)) ;\n\n\t/* Now apply the right half of the filter. */\n\tfilter_index = increment - start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current + filter->channels * (1 + coeff_count) ;\n\n\tright [0] = right [1] = right [2] = right [3] = right [4] = right [5] = 0.0 ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tright [0] += icoeff * filter->buffer [data_index] ;\n\t\tright [1] += icoeff * filter->buffer [data_index + 1] ;\n\t\tright [2] += icoeff * filter->buffer [data_index + 2] ;\n\t\tright [3] += icoeff * filter->buffer [data_index + 3] ;\n\t\tright [4] += icoeff * filter->buffer [data_index + 4] ;\n\t\tright [5] += icoeff * filter->buffer [data_index + 5] ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index - 6 ;\n\t\t}\n\twhile (filter_index > MAKE_INCREMENT_T (0)) ;\n\n\toutput [0] = scale * (left [0] + right [0]) ;\n\toutput [1] = scale * (left [1] + right [1]) ;\n\toutput [2] = scale * (left [2] + right [2]) ;\n\toutput [3] = scale * (left [3] + right [3]) ;\n\toutput [4] = scale * (left [4] + right [4]) ;\n\toutput [5] = scale * (left [5] + right [5]) ;\n} /* calc_output_hex */\n\nstatic int\nsinc_hex_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data)\n{\tSINC_FILTER *filter ;\n\tdouble\t\tinput_index, src_ratio, count, float_increment, terminate, rem ;\n\tincrement_t\tincrement, start_filter_index ;\n\tint\t\t\thalf_filter_chan_len, samples_in_hand ;\n\n\tif (psrc->private_data == NULL)\n\t\treturn SRC_ERR_NO_PRIVATE ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\n\t/* If there is not a problem, this will be optimised out. */\n\tif (sizeof (filter->buffer [0]) != sizeof (data->data_in [0]))\n\t\treturn SRC_ERR_SIZE_INCOMPATIBILITY ;\n\n\tfilter->in_count = data->input_frames * filter->channels ;\n\tfilter->out_count = data->output_frames * filter->channels ;\n\tfilter->in_used = filter->out_gen = 0 ;\n\n\tsrc_ratio = psrc->last_ratio ;\n\n\tif (is_bad_src_ratio (src_ratio))\n\t\treturn SRC_ERR_BAD_INTERNAL_STATE ;\n\n\t/* Check the sample rate ratio wrt the buffer len. */\n\tcount = (filter->coeff_half_len + 2.0) / filter->index_inc ;\n\tif (MIN (psrc->last_ratio, data->src_ratio) < 1.0)\n\t\tcount /= MIN (psrc->last_ratio, data->src_ratio) ;\n\n\t/* Maximum coefficientson either side of center point. */\n\thalf_filter_chan_len = filter->channels * (lrint (count) + 1) ;\n\n\tinput_index = psrc->last_position ;\n\tfloat_increment = filter->index_inc ;\n\n\trem = fmod_one (input_index) ;\n\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\tinput_index = rem ;\n\n\tterminate = 1.0 / src_ratio + 1e-20 ;\n\n\t/* Main processing loop. */\n\twhile (filter->out_gen < filter->out_count)\n\t{\n\t\t/* Need to reload buffer? */\n\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\n\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t{\tif ((psrc->error = prepare_data (filter, data, half_filter_chan_len)) != 0)\n\t\t\t\treturn psrc->error ;\n\n\t\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\t\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\t/* This is the termination condition. */\n\t\tif (filter->b_real_end >= 0)\n\t\t{\tif (filter->b_current + input_index + terminate >= filter->b_real_end)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\tif (filter->out_count > 0 && fabs (psrc->last_ratio - data->src_ratio) > 1e-10)\n\t\t\tsrc_ratio = psrc->last_ratio + filter->out_gen * (data->src_ratio - psrc->last_ratio) / filter->out_count ;\n\n\t\tfloat_increment = filter->index_inc * (src_ratio < 1.0 ? src_ratio : 1.0) ;\n\t\tincrement = double_to_fp (float_increment) ;\n\n\t\tstart_filter_index = double_to_fp (input_index * float_increment) ;\n\n\t\tcalc_output_hex (filter, increment, start_filter_index, float_increment / filter->index_inc, data->data_out + filter->out_gen) ;\n\t\tfilter->out_gen += 6 ;\n\n\t\t/* Figure out the next index. */\n\t\tinput_index += 1.0 / src_ratio ;\n\t\trem = fmod_one (input_index) ;\n\n\t\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\t\tinput_index = rem ;\n\t\t} ;\n\n\tpsrc->last_position = input_index ;\n\n\t/* Save current ratio rather then target ratio. */\n\tpsrc->last_ratio = src_ratio ;\n\n\tdata->input_frames_used = filter->in_used / filter->channels ;\n\tdata->output_frames_gen = filter->out_gen / filter->channels ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_hex_vari_process */\n\nstatic inline void\ncalc_output_multi (SINC_FILTER *filter, increment_t increment, increment_t start_filter_index, int channels, double scale, float * output)\n{\tdouble\t\tfraction, icoeff ;\n\t/* The following line is 1999 ISO Standard C. If your compiler complains, get a better compiler. */\n\tdouble\t\t*left, *right ;\n\tincrement_t\tfilter_index, max_filter_index ;\n\tint\t\t\tdata_index, coeff_count, indx, ch ;\n\n\tleft = filter->left_calc ;\n\tright = filter->right_calc ;\n\n\t/* Convert input parameters into fixed point. */\n\tmax_filter_index = int_to_fp (filter->coeff_half_len) ;\n\n\t/* First apply the left half of the filter. */\n\tfilter_index = start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current - channels * coeff_count ;\n\n\tmemset (left, 0, sizeof (left [0]) * channels) ;\n\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\t/*\n\t\t**\tDuff's Device.\n\t\t**\tSee : http://en.wikipedia.org/wiki/Duff's_device\n\t\t*/\n\t\tch = channels ;\n\t\tdo\n\t\t{\n\t\t\tswitch (ch % 8)\n\t\t\t{\tdefault :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 7 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 6 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 5 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 4 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 3 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 2 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 1 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tleft [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\t} ;\n\t\t\t}\n\t\twhile (ch > 0) ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index + channels ;\n\t\t}\n\twhile (filter_index >= MAKE_INCREMENT_T (0)) ;\n\n\t/* Now apply the right half of the filter. */\n\tfilter_index = increment - start_filter_index ;\n\tcoeff_count = (max_filter_index - filter_index) / increment ;\n\tfilter_index = filter_index + coeff_count * increment ;\n\tdata_index = filter->b_current + channels * (1 + coeff_count) ;\n\n\tmemset (right, 0, sizeof (right [0]) * channels) ;\n\tdo\n\t{\tfraction = fp_to_double (filter_index) ;\n\t\tindx = fp_to_int (filter_index) ;\n\n\t\ticoeff = filter->coeffs [indx] + fraction * (filter->coeffs [indx + 1] - filter->coeffs [indx]) ;\n\n\t\tch = channels ;\n\t\tdo\n\t\t{\n\t\t\tswitch (ch % 8)\n\t\t\t{\tdefault :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 7 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 6 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 5 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 4 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 3 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 2 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\tcase 1 :\n\t\t\t\t\tch -- ;\n\t\t\t\t\tright [ch] += icoeff * filter->buffer [data_index + ch] ;\n\t\t\t\t} ;\n\t\t\t}\n\t\twhile (ch > 0) ;\n\n\t\tfilter_index -= increment ;\n\t\tdata_index = data_index - channels ;\n\t\t}\n\twhile (filter_index > MAKE_INCREMENT_T (0)) ;\n\n\tch = channels ;\n\tdo\n\t{\n\t\tswitch (ch % 8)\n\t\t{\tdefault :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 7 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 6 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 5 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 4 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 3 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 2 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\tcase 1 :\n\t\t\t\tch -- ;\n\t\t\t\toutput [ch] = scale * (left [ch] + right [ch]) ;\n\t\t\t} ;\n\t\t}\n\twhile (ch > 0) ;\n\n\treturn ;\n} /* calc_output_multi */\n\nstatic int\nsinc_multichan_vari_process (SRC_PRIVATE *psrc, SRC_DATA *data)\n{\tSINC_FILTER *filter ;\n\tdouble\t\tinput_index, src_ratio, count, float_increment, terminate, rem ;\n\tincrement_t\tincrement, start_filter_index ;\n\tint\t\t\thalf_filter_chan_len, samples_in_hand ;\n\n\tif (psrc->private_data == NULL)\n\t\treturn SRC_ERR_NO_PRIVATE ;\n\n\tfilter = (SINC_FILTER*) psrc->private_data ;\n\n\t/* If there is not a problem, this will be optimised out. */\n\tif (sizeof (filter->buffer [0]) != sizeof (data->data_in [0]))\n\t\treturn SRC_ERR_SIZE_INCOMPATIBILITY ;\n\n\tfilter->in_count = data->input_frames * filter->channels ;\n\tfilter->out_count = data->output_frames * filter->channels ;\n\tfilter->in_used = filter->out_gen = 0 ;\n\n\tsrc_ratio = psrc->last_ratio ;\n\n\tif (is_bad_src_ratio (src_ratio))\n\t\treturn SRC_ERR_BAD_INTERNAL_STATE ;\n\n\t/* Check the sample rate ratio wrt the buffer len. */\n\tcount = (filter->coeff_half_len + 2.0) / filter->index_inc ;\n\tif (MIN (psrc->last_ratio, data->src_ratio) < 1.0)\n\t\tcount /= MIN (psrc->last_ratio, data->src_ratio) ;\n\n\t/* Maximum coefficientson either side of center point. */\n\thalf_filter_chan_len = filter->channels * (lrint (count) + 1) ;\n\n\tinput_index = psrc->last_position ;\n\tfloat_increment = filter->index_inc ;\n\n\trem = fmod_one (input_index) ;\n\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\tinput_index = rem ;\n\n\tterminate = 1.0 / src_ratio + 1e-20 ;\n\n\t/* Main processing loop. */\n\twhile (filter->out_gen < filter->out_count)\n\t{\n\t\t/* Need to reload buffer? */\n\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\n\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t{\tif ((psrc->error = prepare_data (filter, data, half_filter_chan_len)) != 0)\n\t\t\t\treturn psrc->error ;\n\n\t\t\tsamples_in_hand = (filter->b_end - filter->b_current + filter->b_len) % filter->b_len ;\n\t\t\tif (samples_in_hand <= half_filter_chan_len)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\t/* This is the termination condition. */\n\t\tif (filter->b_real_end >= 0)\n\t\t{\tif (filter->b_current + input_index + terminate >= filter->b_real_end)\n\t\t\t\tbreak ;\n\t\t\t} ;\n\n\t\tif (filter->out_count > 0 && fabs (psrc->last_ratio - data->src_ratio) > 1e-10)\n\t\t\tsrc_ratio = psrc->last_ratio + filter->out_gen * (data->src_ratio - psrc->last_ratio) / filter->out_count ;\n\n\t\tfloat_increment = filter->index_inc * (src_ratio < 1.0 ? src_ratio : 1.0) ;\n\t\tincrement = double_to_fp (float_increment) ;\n\n\t\tstart_filter_index = double_to_fp (input_index * float_increment) ;\n\n\t\tcalc_output_multi (filter, increment, start_filter_index, filter->channels, float_increment / filter->index_inc, data->data_out + filter->out_gen) ;\n\t\tfilter->out_gen += psrc->channels ;\n\n\t\t/* Figure out the next index. */\n\t\tinput_index += 1.0 / src_ratio ;\n\t\trem = fmod_one (input_index) ;\n\n\t\tfilter->b_current = (filter->b_current + filter->channels * lrint (input_index - rem)) % filter->b_len ;\n\t\tinput_index = rem ;\n\t\t} ;\n\n\tpsrc->last_position = input_index ;\n\n\t/* Save current ratio rather then target ratio. */\n\tpsrc->last_ratio = src_ratio ;\n\n\tdata->input_frames_used = filter->in_used / filter->channels ;\n\tdata->output_frames_gen = filter->out_gen / filter->channels ;\n\n\treturn SRC_ERR_NO_ERROR ;\n} /* sinc_multichan_vari_process */\n\n/*----------------------------------------------------------------------------------------\n*/\n\nstatic int\nprepare_data (SINC_FILTER *filter, SRC_DATA *data, int half_filter_chan_len)\n{\tint len = 0 ;\n\n\tif (filter->b_real_end >= 0)\n\t\treturn 0 ;\t/* Should be terminating. Just return. */\n\n\tif (filter->b_current == 0)\n\t{\t/* Initial state. Set up zeros at the start of the buffer and\n\t\t** then load new data after that.\n\t\t*/\n\t\tlen = filter->b_len - 2 * half_filter_chan_len ;\n\n\t\tfilter->b_current = filter->b_end = half_filter_chan_len ;\n\t\t}\n\telse if (filter->b_end + half_filter_chan_len + filter->channels < filter->b_len)\n\t{\t/*  Load data at current end position. */\n\t\tlen = MAX (filter->b_len - filter->b_current - half_filter_chan_len, 0) ;\n\t\t}\n\telse\n\t{\t/* Move data at end of buffer back to the start of the buffer. */\n\t\tlen = filter->b_end - filter->b_current ;\n\t\tmemmove (filter->buffer, filter->buffer + filter->b_current - half_filter_chan_len,\n\t\t\t\t\t\t(half_filter_chan_len + len) * sizeof (filter->buffer [0])) ;\n\n\t\tfilter->b_current = half_filter_chan_len ;\n\t\tfilter->b_end = filter->b_current + len ;\n\n\t\t/* Now load data at current end of buffer. */\n\t\tlen = MAX (filter->b_len - filter->b_current - half_filter_chan_len, 0) ;\n\t\t} ;\n\n\tlen = MIN (filter->in_count - filter->in_used, len) ;\n\tlen -= (len % filter->channels) ;\n\n\tif (len < 0 || filter->b_end + len > filter->b_len)\n\t\treturn SRC_ERR_SINC_PREPARE_DATA_BAD_LEN ;\n\n\tmemcpy (filter->buffer + filter->b_end, data->data_in + filter->in_used,\n\t\t\t\t\t\tlen * sizeof (filter->buffer [0])) ;\n\n\tfilter->b_end += len ;\n\tfilter->in_used += len ;\n\n\tif (filter->in_used == filter->in_count &&\n\t\t\tfilter->b_end - filter->b_current < 2 * half_filter_chan_len && data->end_of_input)\n\t{\t/* Handle the case where all data in the current buffer has been\n\t\t** consumed and this is the last buffer.\n\t\t*/\n\n\t\tif (filter->b_len - filter->b_end < half_filter_chan_len + 5)\n\t\t{\t/* If necessary, move data down to the start of the buffer. */\n\t\t\tlen = filter->b_end - filter->b_current ;\n\t\t\tmemmove (filter->buffer, filter->buffer + filter->b_current - half_filter_chan_len,\n\t\t\t\t\t\t\t(half_filter_chan_len + len) * sizeof (filter->buffer [0])) ;\n\n\t\t\tfilter->b_current = half_filter_chan_len ;\n\t\t\tfilter->b_end = filter->b_current + len ;\n\t\t\t} ;\n\n\t\tfilter->b_real_end = filter->b_end ;\n\t\tlen = half_filter_chan_len + 5 ;\n\n\t\tif (len < 0 || filter->b_end + len > filter->b_len)\n\t\t\tlen = filter->b_len - filter->b_end ;\n\n\t\tmemset (filter->buffer + filter->b_end, 0, len * sizeof (filter->buffer [0])) ;\n\t\tfilter->b_end += len ;\n\t\t} ;\n\n\treturn 0 ;\n} /* prepare_data */\n\n\n",
+      "config_sha256": "e41b134640a9224b8e2705e93a454541b21f41689dea6a30f9752edfbdc59fc1",
+      "config_exact": "/* SPDX-License-Identifier: MIT\n * Minimal platform configuration for a source-definedness preflight only.\n * No autotools/configure invocation or compiler feature probes are needed on\n * the supported C99 macOS/Linux hosts. Numerical oracle remains the SDK.\n */\n#define HAVE_STDINT_H 1\n#define HAVE_LRINT 1\n#define HAVE_LRINTF 1\n#define CPU_CLIPS_POSITIVE 0\n#define CPU_CLIPS_NEGATIVE 0\n#define PACKAGE \"libsamplerate\"\n#define VERSION \"0.1.9\"\n",
+      "analytic_extension_predeclaration": {
+        "name": "analytic_1_to_quarter",
+        "calls": 8192,
+        "input_frames": 16,
+        "output_frames": 16,
+        "first_target_ratio": 1.0,
+        "subsequent_target_ratio": 0.25,
+        "predicted_call_zero_based": 5,
+        "predicted_output_offset": 10,
+        "predicted_data_index": -1,
+        "predicted_current": 35
+      },
+      "private_api_renames": {
+        "linear_get_description": "reference_guarded_linear_get_description",
+        "linear_get_name": "reference_guarded_linear_get_name",
+        "linear_set_converter": "reference_guarded_linear_set_converter",
+        "sinc_get_description": "reference_guarded_sinc_get_description",
+        "sinc_get_name": "reference_guarded_sinc_get_name",
+        "sinc_set_converter": "reference_guarded_sinc_set_converter",
+        "src_callback_new": "reference_guarded_src_callback_new",
+        "src_callback_read": "reference_guarded_src_callback_read",
+        "src_delete": "reference_guarded_src_delete",
+        "src_error": "reference_guarded_src_error",
+        "src_float_to_int_array": "reference_guarded_src_float_to_int_array",
+        "src_float_to_short_array": "reference_guarded_src_float_to_short_array",
+        "src_get_channels": "reference_guarded_src_get_channels",
+        "src_get_description": "reference_guarded_src_get_description",
+        "src_get_name": "reference_guarded_src_get_name",
+        "src_get_version": "reference_guarded_src_get_version",
+        "src_int_to_float_array": "reference_guarded_src_int_to_float_array",
+        "src_is_valid_ratio": "reference_guarded_src_is_valid_ratio",
+        "src_new": "reference_guarded_src_new",
+        "src_process": "reference_guarded_src_process",
+        "src_reset": "reference_guarded_src_reset",
+        "src_set_converter": "reference_guarded_src_set_converter",
+        "src_set_ratio": "reference_guarded_src_set_ratio",
+        "src_short_to_float_array": "reference_guarded_src_short_to_float_array",
+        "src_simple": "reference_guarded_src_simple",
+        "src_strerror": "reference_guarded_src_strerror",
+        "zoh_get_description": "reference_guarded_zoh_get_description",
+        "zoh_get_name": "reference_guarded_zoh_get_name",
+        "zoh_set_converter": "reference_guarded_zoh_set_converter"
+      },
+      "whole_delay_method": "Compile the same actual Delay class prefix and SDK adapter against privately renamed guarded C0.1.9 SRC symbols. The executable owns its private converter; libRack supplies Module and engine support. No dylib interposition assumption. Every whole-Delay fixture preflights before genuine SDK numerical execution. Actual outBuffer.empty() is read only to label SRC calls in diagnostics.",
+      "object_sha256": {
+        "samplerate.o": "df841c7cc5216842d7b3bc6dc0af0ebffda29954e74151293c323b7ce549fb80",
+        "src_sinc.o": "c42aeee7383384892c8bd848e889c177b78759aa801cfb45a9fc6a239d5a54da",
+        "src_linear.o": "777ff9cc32018abc8452d43f413736db5d11f53d9d81292bf57d102f5eb994db",
+        "src_zoh.o": "df324d1429ed2cfa81a7cb80f23f75a513f66db64e423e0d5ea809886b138ba9"
+      }
+    },
+    "sdk_src_identity": "libsamplerate-0.1.9 (c) 2002-2008 Erik de Castro Lopo\nFastest Sinc Interpolator\nBand limited sinc interpolation, fastest, 97dB SNR, 80% BW.",
+    "sdk_actual_bypass_width_observation": [
+      {
+        "audio_channels": 0,
+        "outputs": [
+          {
+            "channels": 1,
+            "voltages": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "channels": 1,
+            "voltages": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "audio_channels": 1,
+        "outputs": [
+          {
+            "channels": 1,
+            "voltages": [
+              0.25,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "channels": 1,
+            "voltages": [
+              0.25,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "audio_channels": 5,
+        "outputs": [
+          {
+            "channels": 5,
+            "voltages": [
+              0.25,
+              0.5,
+              0.75,
+              1,
+              1.25,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "channels": 5,
+            "voltages": [
+              0.25,
+              0.5,
+              0.75,
+              1,
+              1.25,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "audio_channels": 16,
+        "outputs": [
+          {
+            "channels": 16,
+            "voltages": [
+              0.25,
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2,
+              2.25,
+              2.5,
+              2.75,
+              3,
+              3.25,
+              3.5,
+              3.75,
+              4
+            ]
+          },
+          {
+            "channels": 16,
+            "voltages": [
+              0.25,
+              0.5,
+              0.75,
+              1,
+              1.25,
+              1.5,
+              1.75,
+              2,
+              2.25,
+              2.5,
+              2.75,
+              3,
+              3.25,
+              3.5,
+              3.75,
+              4
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "acceptance": {
+    "version": 1,
+    "declared_before_first_rust_comparison": true,
+    "sample_rates": [
+      44100,
+      48000,
+      96000
+    ],
+    "delay": {
+      "absolute_volts": 0.002,
+      "relative": 1e-05,
+      "comparison": "Every output sample from frame zero at the same frame; no alignment, warmup exclusion, envelope substitution or frequency-only qualification.",
+      "channel_counts": "Both connected source outputs and both native outputs must be exactly mono; unused native storage must be numerical zero.",
+      "finite": "Every visible and padded output value must be finite.",
+      "signed_zero": "Positive and negative zero are numerically equivalent; no bitwise zero-sign requirement.",
+      "justification": "Fixed 2 mV absolute plus 10 ppm relative permits ordinary f32 platform math differences while requiring startup, timing, feedback, tone and mix to remain pointwise close. Long feedback traces receive the identical bound."
+    },
+    "resampler": {
+      "absolute": 2e-06,
+      "relative": 2e-06,
+      "counts": "input_frames_used and output_frames_gen must match on every individual process call, including calls producing no output.",
+      "comparison": "Compare every emitted output at identical call and offset, with persistent state and no reset except a declared new scenario; end_of_input always false.",
+      "ratios": [
+        0.25,
+        0.5,
+        0.9999,
+        1.0,
+        1.0001,
+        2.0,
+        4.0
+      ],
+      "calls_per_scenario": 8192,
+      "scenarios": [
+        "constant_min",
+        "constant_unity",
+        "constant_max",
+        "steps",
+        "smooth",
+        "capacity_and_short_input"
+      ],
+      "justification": "Direct SRC qualification removes the delay feedback loop as a possible source of count or interpolation errors. Fixed 2 micro-unit absolute plus 2 ppm relative is stricter than the whole-module voltage bound."
+    },
+    "cases": [
+      {
+        "name": "startup_impulse",
+        "seconds": 2.0
+      },
+      {
+        "name": "startup_dc",
+        "seconds": 2.0
+      },
+      {
+        "name": "minimum_delay",
+        "seconds": 0.5
+      },
+      {
+        "name": "maximum_delay",
+        "seconds": 12.0
+      },
+      {
+        "name": "tone_feedback_extremes",
+        "seconds": 4.0
+      },
+      {
+        "name": "signed_cv",
+        "seconds": 2.0
+      },
+      {
+        "name": "cv_zero_depth",
+        "seconds": 2.0
+      },
+      {
+        "name": "time_jumps",
+        "seconds": 3.0
+      },
+      {
+        "name": "clock_connected_startup",
+        "seconds": 3.0
+      },
+      {
+        "name": "clock_tempo_change",
+        "seconds": 5.0
+      },
+      {
+        "name": "clock_unpatch_reconnect",
+        "seconds": 5.0
+      },
+      {
+        "name": "clock_thresholds",
+        "seconds": 2.0
+      },
+      {
+        "name": "poly_sum_aux_first_lane",
+        "seconds": 2.0
+      },
+      {
+        "name": "parameter_adoption",
+        "seconds": 3.0
+      },
+      {
+        "name": "history_wrap",
+        "frames": 2200000,
+        "rates": [
+          44100
+        ]
+      }
+    ],
+    "history_wrap": "2,200,000 frames exceeds the 2^21 logical ring position. It exercises repeated physical wrap under ordinary short delay, and does not claim the history queue can become full at the supported 10-second delay.",
+    "lifecycle": "Parameter changes rebuild the native module and adopt the prior state. A separate explicit adoption case rebuilds with unchanged parameters at non-buffer-aligned frame numbers. The source class continues untouched across those events.",
+    "scope": "Actual pinned Delay class prefix with only plugin.hpp replaced by rack.hpp; actual SDK src_new/src_process SRC_SINC_FASTEST. Bypass, host graph/cable timing, finite-voltage policy and sample-rate rebuilds require separate host tests and are not qualified by the DSP oracle.",
+    "no_post_observation_relaxation": true
+  },
+  "acceptance_sha256": "4e274862e9e8effa4a177eeb4d737005fd25a07e66d272dd4d5833cc52e36e50",
+  "production_source_sha256": {
+    "crates/openpatch-core/src/stock_delay.rs": "e680c1cfb46bb34260664c2ab2bc355307885c1eb23860a04d9d7ed365dd8a3f",
+    "crates/openpatch-core/src/stock_delay/sinc.rs": "ac05cd834c8424655632f2f868c3dda9dcdadafb7ed741adf88337426a2a97d7",
+    "crates/openpatch-core/src/stock_delay/fastest_coeffs.rs": "979c4f49a2cae3eea6151f7295f191f509d0f5d883821b704b5cd43e3be729ef"
+  },
+  "driver_sha256": {
+    "README.md": "b6ddf664dbd30bbfc6844f3fde7d5e008ff61b7d1eddb597a3b4ce173fbb9a79",
+    "acceptance.json": "4e274862e9e8effa4a177eeb4d737005fd25a07e66d272dd4d5833cc52e36e50",
+    "preflight_config.h": "e41b134640a9224b8e2705e93a454541b21f41689dea6a30f9752edfbdc59fc1",
+    "run.py": "7fcb85dbb2199eda266289d2472eb07219eea11aae6725702595ec5e0d35598d",
+    "rust_probe.rs": "785f918740d45c144925ac27d09cfc69089cb8c2f80fc0f9a11fe6f1ca374b13",
+    "rust_src_probe.rs": "3aac1249026f164a28e0d4e72082ce8b2230cacb337d1f793a0c0af79f76dee4",
+    "sdk_probe.cpp": "32dcad24f8e26f9545d19e59d2a6cfab7f11608919b1aa743bb71b652cf7d8f9",
+    "src_guard_probe.c": "accb5b8d5c6005f8393812ff02fe51e89593e202aba29589b9fb54d2e6fe9f6b",
+    "src_probe.cpp": "f3d2d299f65fe1ff684d5614b22b0b20fc0b3dcd3ae7d2e50f64029950c04f02"
+  },
+  "dependency": {
+    "serde_json_rlib_path": "/Users/dbrewer/Projects/openpatch-macro-validation/target/debug/deps/libserde_json-8c08f8c1dd2ce75e.rlib",
+    "serde_json_rlib_sha256": "ae1d68e77cedb91ca98f665cb49a6cc37562f0efdee7936971fd15057471e3c8"
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "python": "3.11.4 (v3.11.4:d2340ef257, Jun  6 2023, 19:15:51) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "preflight_c_flags": [
+      "-std=c99",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O"
+    ],
+    "macos_sdk": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+  },
+  "method": "Actual pinned Delay class prefix compiled against actual SDK. Only plugin.hpp include replaced; widgets omitted. Actual pinned C0.1.9 mono history-read guard preflights every artificial SRC stream and every whole-Delay trace before its SDK call. Source-undefined scenarios receive no SDK fidelity pass and still require a complete finite/count-bounded native safety trace. Every source-defined scenario requires genuine SDK SRC_SINC_FASTEST exact counts and frozen sample comparison. No Cargo/plugin/runtime/device/GUI execution. In-place validated parameter updates; fresh-build/adopt at explicit lifecycle markers; source remains continuous. Exact binary f32 traces, identical sample indices from startup, mono outputs, all native padding asserted zero. No alignment/warmup exclusions.",
+  "authorized_adapter_amendment": "After acceptance freeze but before any execution, the owning agent requested parameter-only updates use production set_parameters to match actual SDK parameter updates and avoid allocations. Explicit control==1 fresh-build/adopt markers remain unchanged. The frozen acceptance lifecycle sentence describes the earlier adapter; every input, numerical bound and declared explicit adoption marker is unchanged.",
+  "limitations": [
+    "Only recorded SDK/toolchain/platform qualified",
+    "DSP adapter does not exercise host graph/cable delay, public validation, bypass, initialize/reset or sample-rate changes; qualify separately with host tests",
+    "Clock lamp visual smoothing is not observed by this audio-only adapter; source clock behavior is exercised through delay audio"
+  ],
+  "resampler_cases": [
+    {
+      "name": "constant_min",
+      "calls": 8192,
+      "input_sha256": "7f7cdc9b80bb9c7de72ec27a6cb0eefcb3ba3b657d20e6e59eff58dcbf82e4f7",
+      "preflight_output_sha256": "56716cfa6331586f0be7cec6f055d00dcc6842b8524ea572c539c2e08a966022",
+      "output_sha256": {
+        "sdk": "56716cfa6331586f0be7cec6f055d00dcc6842b8524ea572c539c2e08a966022",
+        "rust": "56716cfa6331586f0be7cec6f055d00dcc6842b8524ea572c539c2e08a966022"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 32749,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "constant_unity",
+      "calls": 8192,
+      "input_sha256": "ebdbd3bb2c69b2534ef16418ffd10ec5b8b65f6a392a7ec446894885d10279c8",
+      "preflight_output_sha256": "afc2d19e443dcd7f2216083f2d05110267f05c59820ea1663c73702a906c60ad",
+      "output_sha256": {
+        "sdk": "afc2d19e443dcd7f2216083f2d05110267f05c59820ea1663c73702a906c60ad",
+        "rust": "afc2d19e443dcd7f2216083f2d05110267f05c59820ea1663c73702a906c60ad"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 131052,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "constant_max",
+      "calls": 8192,
+      "input_sha256": "029686916bdbb81f892c6a9469959a37d0a9948325dd7f8afc9ca55ad6e67780",
+      "preflight_output_sha256": "9f768f362eb7a4161d336a17aa2749f344015d89a652c7fa143abde5415fccb1",
+      "output_sha256": {
+        "sdk": "9f768f362eb7a4161d336a17aa2749f344015d89a652c7fa143abde5415fccb1",
+        "rust": "9f768f362eb7a4161d336a17aa2749f344015d89a652c7fa143abde5415fccb1"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 131056,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "steps",
+      "calls": 8192,
+      "input_sha256": "dc3b22aa7786b80f28507126acc359edcbe07f9a812c95f3f6ee5fb559a40c72",
+      "preflight_output_sha256": "1112c712e2298fe4d55cdf5ab372788470932b3418d6bb50aef517a526b46437",
+      "output_sha256": {
+        "sdk": "1112c712e2298fe4d55cdf5ab372788470932b3418d6bb50aef517a526b46437",
+        "rust": "1112c712e2298fe4d55cdf5ab372788470932b3418d6bb50aef517a526b46437"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 108119,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "smooth",
+      "calls": 8192,
+      "input_sha256": "f0a14a586e24240ab84b9e42ef7edc8556f4897a6e2e51bea3a9265903b360fe",
+      "preflight_output_sha256": "f561827f9c7a7afcdd57fb8103071d046cbbeb837dd3b4ab3bb9b4e63311bc3e",
+      "output_sha256": {
+        "sdk": "f561827f9c7a7afcdd57fb8103071d046cbbeb837dd3b4ab3bb9b4e63311bc3e",
+        "rust": "f561827f9c7a7afcdd57fb8103071d046cbbeb837dd3b4ab3bb9b4e63311bc3e"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 96338,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "capacity_and_short_input",
+      "calls": 8192,
+      "input_sha256": "5102c1624b003ffa4329330083cbe9da5bd2147bc7659f77f0271a05760f4f55",
+      "preflight_output_sha256": "6c396289df68c2d93b2f35a06961fccc4740f60cd550b7305f5ac5bdf0ba847b",
+      "output_sha256": {
+        "sdk": "6c396289df68c2d93b2f35a06961fccc4740f60cd550b7305f5ac5bdf0ba847b",
+        "rust": "6c396289df68c2d93b2f35a06961fccc4740f60cd550b7305f5ac5bdf0ba847b"
+      },
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 27548,
+        "counts_within_supplied_slices": true
+      }
+    },
+    {
+      "name": "analytic_1_to_quarter",
+      "calls": 8192,
+      "input_sha256": "16f6cb11d1933b61770a5769224fdc38e6c5faefca42e6f1f63323b2e9c76375",
+      "preflight_output_sha256": "9e7e41c26fff0d5d12fe0f8707a3fced8d3cdc95eaacaf0194cae4b48c60fbe5",
+      "output_sha256": {
+        "rust": "b7271a130b5d5bfd55489711b082b3ac1d928ef63072359fad109349abfabdf8"
+      },
+      "preflight_exit_status": 87,
+      "status": "source_undefined",
+      "passed": null,
+      "fidelity_passed": null,
+      "source_undefined": {
+        "kind": "source_undefined",
+        "frame_zero_based": -1,
+        "call_zero_based": 5,
+        "data_index": -1,
+        "allocated_samples": 12311,
+        "current": 35,
+        "output_offset": 10,
+        "line": 298
+      },
+      "sdk_execution_skipped": true,
+      "native_safety": {
+        "passed": true,
+        "calls": 8192,
+        "finite_samples": 32769,
+        "counts_within_supplied_slices": true
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "startup_impulse",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "a3ee49511d269d83e1f4281253314e90789e9f7d839b0f1f1ad808347f4f450d",
+      "output_sha256": {
+        "sdk": "06167ac6eaeda8816409a4226e79b8e665bd5d2ea39ce3a8cafe09e243bd330a",
+        "rust": "06167ac6eaeda8816409a4226e79b8e665bd5d2ea39ce3a8cafe09e243bd330a"
+      },
+      "preflight_output_sha256": "06167ac6eaeda8816409a4226e79b8e665bd5d2ea39ce3a8cafe09e243bd330a",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 1.75,
+        "actual_volts": 1.75,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020175
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "startup_dc",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "2ca245205abd7a6aae26437be28b964b18075c10e9038b0e6edf89da7d447110",
+      "output_sha256": {
+        "sdk": "af59376740fc47cbd617c718f4d3e4ac08b2b35998ef5d3ba4d93150b92309f4",
+        "rust": "af59376740fc47cbd617c718f4d3e4ac08b2b35998ef5d3ba4d93150b92309f4"
+      },
+      "preflight_output_sha256": "af59376740fc47cbd617c718f4d3e4ac08b2b35998ef5d3ba4d93150b92309f4",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.7000000476837158,
+        "actual_volts": 0.7000000476837158,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002007000000476837
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "minimum_delay",
+      "sample_rate": 44100,
+      "frames": 22050,
+      "input_sha256": "94c54d93e52759a83ccb03e19c69cc3521e10894b0cdfa80df08c446414cce65",
+      "output_sha256": {
+        "sdk": "a0b12f2ce61d20b7ef411c33348da9155783c844e14c2d89890d4e7e7defc33b",
+        "rust": "a0b12f2ce61d20b7ef411c33348da9155783c844e14c2d89890d4e7e7defc33b"
+      },
+      "preflight_output_sha256": "a0b12f2ce61d20b7ef411c33348da9155783c844e14c2d89890d4e7e7defc33b",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 22050,
+        "finite_visible_samples": 44100,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "maximum_delay",
+      "sample_rate": 44100,
+      "frames": 529200,
+      "input_sha256": "066c294b858163c8be5dd4577da5e427d5498697d904d300d23d9d68281789cb",
+      "output_sha256": {
+        "sdk": "2afc915f42a289e4508c561d8a008e62bb5ae29d8089f7a9dc0c6a34e5bcb278",
+        "rust": "2afc915f42a289e4508c561d8a008e62bb5ae29d8089f7a9dc0c6a34e5bcb278"
+      },
+      "preflight_output_sha256": "2afc915f42a289e4508c561d8a008e62bb5ae29d8089f7a9dc0c6a34e5bcb278",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 529200,
+        "finite_visible_samples": 1058400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "tone_feedback_extremes",
+      "sample_rate": 44100,
+      "frames": 176400,
+      "input_sha256": "2af9ef53308a9d50e5331e61deef1a03415a61645b8fe54eed1fa05dae65cb43",
+      "output_sha256": {
+        "sdk": "9aff23da7a710c50a7430d53115ede225f5b48f1a210ffb1743e61ec930028a8",
+        "rust": "9aff23da7a710c50a7430d53115ede225f5b48f1a210ffb1743e61ec930028a8"
+      },
+      "preflight_output_sha256": "9aff23da7a710c50a7430d53115ede225f5b48f1a210ffb1743e61ec930028a8",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 500.0,
+        "actual_volts": 500.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.007
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 176400,
+        "finite_visible_samples": 352800,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "signed_cv",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "434ff6d942e91aa47a4e9c6ad395a8237cfff88ef992897a22b16e9df2abc6a4",
+      "output_sha256": {
+        "sdk": "fa705c9d39b1085b7bcdcf24572b146767a0c6de9f543d8b9ae0f5a63efd69c4",
+        "rust": "fa705c9d39b1085b7bcdcf24572b146767a0c6de9f543d8b9ae0f5a63efd69c4"
+      },
+      "preflight_output_sha256": "fa705c9d39b1085b7bcdcf24572b146767a0c6de9f543d8b9ae0f5a63efd69c4",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "cv_zero_depth",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "1771244beb6ae0cca2bc0f8c2482be2154af36bb45fff3f508924b3c6e95111f",
+      "output_sha256": {
+        "sdk": "e57a9cb131c03514484d6af1aa7d3c1d249c541b2b47cdad487fb86f448b44e3",
+        "rust": "e57a9cb131c03514484d6af1aa7d3c1d249c541b2b47cdad487fb86f448b44e3"
+      },
+      "preflight_output_sha256": "e57a9cb131c03514484d6af1aa7d3c1d249c541b2b47cdad487fb86f448b44e3",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "time_jumps",
+      "sample_rate": 44100,
+      "frames": 132300,
+      "input_sha256": "11eb7ec8a32ceebf6072ef1a79a87199763b1c3e121803461173d9b199486145",
+      "output_sha256": {
+        "sdk": "b04fed818c3b5def437fd3abd38138ae5ee92947d0f08237c7906629b55339fe",
+        "rust": "b04fed818c3b5def437fd3abd38138ae5ee92947d0f08237c7906629b55339fe"
+      },
+      "preflight_output_sha256": "b04fed818c3b5def437fd3abd38138ae5ee92947d0f08237c7906629b55339fe",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 132300,
+        "finite_visible_samples": 264600,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_connected_startup",
+      "sample_rate": 44100,
+      "frames": 132300,
+      "input_sha256": "7140054d2c16697fa4f5ad942f1369dd321436ed0f6849f2362f0a4fd3a439f3",
+      "output_sha256": {
+        "sdk": "96d81a6d84534c32d765d4f3f230f102b5d58c90b5c6cbdf70e4fb6e592f7a4b",
+        "rust": "96d81a6d84534c32d765d4f3f230f102b5d58c90b5c6cbdf70e4fb6e592f7a4b"
+      },
+      "preflight_output_sha256": "96d81a6d84534c32d765d4f3f230f102b5d58c90b5c6cbdf70e4fb6e592f7a4b",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 132300,
+        "finite_visible_samples": 264600,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_tempo_change",
+      "sample_rate": 44100,
+      "frames": 220500,
+      "input_sha256": "59144f9b83502888e0bb1f19a76d417c78c1d1e48b096dae927412a8ca0fe8fa",
+      "output_sha256": {
+        "sdk": "efd661ec620a83096996bdf1004a7522ae3130d910a1575b8ff97ec65572b35d",
+        "rust": "efd661ec620a83096996bdf1004a7522ae3130d910a1575b8ff97ec65572b35d"
+      },
+      "preflight_output_sha256": "efd661ec620a83096996bdf1004a7522ae3130d910a1575b8ff97ec65572b35d",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 220500,
+        "finite_visible_samples": 441000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_unpatch_reconnect",
+      "sample_rate": 44100,
+      "frames": 220500,
+      "input_sha256": "e244187e375ec662a57ad9da8d381cb6586a7e060dcc56e0303aa117e01e07f3",
+      "output_sha256": {
+        "sdk": "c674bb0f8db1ddcd0e6217fc921ddfd8f6ad757b8b619e18718e94e7a589c182",
+        "rust": "c674bb0f8db1ddcd0e6217fc921ddfd8f6ad757b8b619e18718e94e7a589c182"
+      },
+      "preflight_output_sha256": "c674bb0f8db1ddcd0e6217fc921ddfd8f6ad757b8b619e18718e94e7a589c182",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 220500,
+        "finite_visible_samples": 441000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_thresholds",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "186d50d9451af06aa5d8331cae1553c38822db518deccd5260f9b5a4dacf78bc",
+      "output_sha256": {
+        "sdk": "57ef6549e353abd41c3fccd77757346be2c4bec9be71ecff334d70ce52ca6eb9",
+        "rust": "57ef6549e353abd41c3fccd77757346be2c4bec9be71ecff334d70ce52ca6eb9"
+      },
+      "preflight_output_sha256": "57ef6549e353abd41c3fccd77757346be2c4bec9be71ecff334d70ce52ca6eb9",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "poly_sum_aux_first_lane",
+      "sample_rate": 44100,
+      "frames": 88200,
+      "input_sha256": "6452228f0f6f2cf56d35297d0672fddb61239c85b02129d93bd0a3a8fe371993",
+      "output_sha256": {
+        "sdk": "3f7734d0e13127037ec9ea6dc56e445f6d4ffad9b5ed2bbb3b66c07760b57f8d",
+        "rust": "3f7734d0e13127037ec9ea6dc56e445f6d4ffad9b5ed2bbb3b66c07760b57f8d"
+      },
+      "preflight_output_sha256": "3f7734d0e13127037ec9ea6dc56e445f6d4ffad9b5ed2bbb3b66c07760b57f8d",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 88200,
+        "finite_visible_samples": 176400,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 44100,
+      "frames": 132300,
+      "input_sha256": "9a92a2658132920a5ec30ccba6830f47cbfdfef0635d2249c496d53232d24e4b",
+      "output_sha256": {
+        "sdk": "d752139e2631d4adab659ec087e975fd1507a8a26fc4b2ca6f47477aa6f0e571",
+        "rust": "d752139e2631d4adab659ec087e975fd1507a8a26fc4b2ca6f47477aa6f0e571"
+      },
+      "preflight_output_sha256": "d752139e2631d4adab659ec087e975fd1507a8a26fc4b2ca6f47477aa6f0e571",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 132300,
+        "finite_visible_samples": 264600,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "history_wrap",
+      "sample_rate": 44100,
+      "frames": 2200000,
+      "input_sha256": "99e9e773e4343a68ce081c586299debd0e7eb598abcdf1520faa9847e0052036",
+      "output_sha256": {
+        "sdk": "a3c9ece53514038512f0f6e2091b3893567426b0b05ff7a1de1e35a872af77e5",
+        "rust": "a3c9ece53514038512f0f6e2091b3893567426b0b05ff7a1de1e35a872af77e5"
+      },
+      "preflight_output_sha256": "a3c9ece53514038512f0f6e2091b3893567426b0b05ff7a1de1e35a872af77e5",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 1.0500000715255737,
+        "actual_volts": 1.0500000715255737,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020105000007152557
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 2200000,
+        "finite_visible_samples": 4400000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "startup_impulse",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "f0a7e6cdabb1c54ad1c95422f214c8257b8c5ac9513760143a778b827a0a4431",
+      "output_sha256": {
+        "sdk": "b860314fac87697f4575eb4cb900e65bd3a95faf4d16ebda3c3aa248f6ffd76b",
+        "rust": "b860314fac87697f4575eb4cb900e65bd3a95faf4d16ebda3c3aa248f6ffd76b"
+      },
+      "preflight_output_sha256": "b860314fac87697f4575eb4cb900e65bd3a95faf4d16ebda3c3aa248f6ffd76b",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 1.75,
+        "actual_volts": 1.75,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020175
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "startup_dc",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "aa2741d566d80a2673d364ed9f1cf76b532ec1de38098991c2e2986426fa9b1d",
+      "output_sha256": {
+        "sdk": "9cba1f42cb28369baec2c53129bf851b11cef501b50097574684d18082ef2705",
+        "rust": "9cba1f42cb28369baec2c53129bf851b11cef501b50097574684d18082ef2705"
+      },
+      "preflight_output_sha256": "9cba1f42cb28369baec2c53129bf851b11cef501b50097574684d18082ef2705",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.7000000476837158,
+        "actual_volts": 0.7000000476837158,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002007000000476837
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "minimum_delay",
+      "sample_rate": 48000,
+      "frames": 24000,
+      "input_sha256": "cf5bb20393b88773e00172437985b9e53ad4e7093d6bf09dccd279a04fbdf4c4",
+      "output_sha256": {
+        "sdk": "2a81fd614686c5937ec3aa719d241ecc08ee3928e87eeb9c21c8c814c8ecd287",
+        "rust": "2a81fd614686c5937ec3aa719d241ecc08ee3928e87eeb9c21c8c814c8ecd287"
+      },
+      "preflight_output_sha256": "2a81fd614686c5937ec3aa719d241ecc08ee3928e87eeb9c21c8c814c8ecd287",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 24000,
+        "finite_visible_samples": 48000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "maximum_delay",
+      "sample_rate": 48000,
+      "frames": 576000,
+      "input_sha256": "90d070d6164a14a33f3f0166cbff3a956a06e2f6e626533ddc423bd827cd8970",
+      "output_sha256": {
+        "sdk": "d721d37286d6d3ae91c8a7a56ead48f5d20ab6c976c6d33f1945c2ad15d224d8",
+        "rust": "d721d37286d6d3ae91c8a7a56ead48f5d20ab6c976c6d33f1945c2ad15d224d8"
+      },
+      "preflight_output_sha256": "d721d37286d6d3ae91c8a7a56ead48f5d20ab6c976c6d33f1945c2ad15d224d8",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 576000,
+        "finite_visible_samples": 1152000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "tone_feedback_extremes",
+      "sample_rate": 48000,
+      "frames": 192000,
+      "input_sha256": "e418ce1cd267a72e58d3c99f66dd3fbd4d5b8c6984cff85b0ab96e43ed5ee2e2",
+      "output_sha256": {
+        "sdk": "ce0ea416d3adb55d21d8839778f0e57075a9c3ea98b05aabde9d6051eef3725d",
+        "rust": "ce0ea416d3adb55d21d8839778f0e57075a9c3ea98b05aabde9d6051eef3725d"
+      },
+      "preflight_output_sha256": "ce0ea416d3adb55d21d8839778f0e57075a9c3ea98b05aabde9d6051eef3725d",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 500.0,
+        "actual_volts": 500.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.007
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "signed_cv",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "7bc50feea0d83690e0f8949567531f11fb58a37bfe8d74232d6b33fa667907da",
+      "output_sha256": {
+        "sdk": "8044e5ac60d63de64c5eaad9f5254b18b6a19c4806f5f7454e6a15cedef062d9",
+        "rust": "8044e5ac60d63de64c5eaad9f5254b18b6a19c4806f5f7454e6a15cedef062d9"
+      },
+      "preflight_output_sha256": "8044e5ac60d63de64c5eaad9f5254b18b6a19c4806f5f7454e6a15cedef062d9",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "cv_zero_depth",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "bf83e29c2c65410fb876371d86f33ffcf7e66e0698147125b608ba5d5ec080de",
+      "output_sha256": {
+        "sdk": "871a6bbafb9d186d8f1eace628158869f6eb6e19702df229fdb76150488837ab",
+        "rust": "871a6bbafb9d186d8f1eace628158869f6eb6e19702df229fdb76150488837ab"
+      },
+      "preflight_output_sha256": "871a6bbafb9d186d8f1eace628158869f6eb6e19702df229fdb76150488837ab",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "time_jumps",
+      "sample_rate": 48000,
+      "frames": 144000,
+      "input_sha256": "5cec0236f6b12a82be846f2287435e402a56b27962a02e1967f890305689cb19",
+      "output_sha256": {
+        "sdk": "57a68fd79af08cf9134444d2a2c1c6fbb553a5ec9b7be6fae79dc2ba98ad5376",
+        "rust": "57a68fd79af08cf9134444d2a2c1c6fbb553a5ec9b7be6fae79dc2ba98ad5376"
+      },
+      "preflight_output_sha256": "57a68fd79af08cf9134444d2a2c1c6fbb553a5ec9b7be6fae79dc2ba98ad5376",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 144000,
+        "finite_visible_samples": 288000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_connected_startup",
+      "sample_rate": 48000,
+      "frames": 144000,
+      "input_sha256": "3638b2391178fc29e4e15ff1425f28544047a5788e246bc3152db9eb8da30674",
+      "output_sha256": {
+        "sdk": "710a9e4af65d88c1b80d1aa0534657a21d5f3fb41e8dee43dcd60f0886f79098",
+        "rust": "710a9e4af65d88c1b80d1aa0534657a21d5f3fb41e8dee43dcd60f0886f79098"
+      },
+      "preflight_output_sha256": "710a9e4af65d88c1b80d1aa0534657a21d5f3fb41e8dee43dcd60f0886f79098",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 144000,
+        "finite_visible_samples": 288000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_tempo_change",
+      "sample_rate": 48000,
+      "frames": 240000,
+      "input_sha256": "e4d9995a8a446a75a5e3ddf4232f049c26fa24db71604cdba5f264bde947d03a",
+      "output_sha256": {
+        "sdk": "77f76b544383b06cc4e1bcef63929882e7eefea3ffa18b88a2723494afeab22f",
+        "rust": "77f76b544383b06cc4e1bcef63929882e7eefea3ffa18b88a2723494afeab22f"
+      },
+      "preflight_output_sha256": "77f76b544383b06cc4e1bcef63929882e7eefea3ffa18b88a2723494afeab22f",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 240000,
+        "finite_visible_samples": 480000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_unpatch_reconnect",
+      "sample_rate": 48000,
+      "frames": 240000,
+      "input_sha256": "44272266ecf97e867936f000b38ae6127538841bbf595abd92d6230fd6af9453",
+      "output_sha256": {
+        "sdk": "8b4ec420cc39f5f5292250f11ac5606e5aee3a509ef03e38376f7f698f9afd32",
+        "rust": "8b4ec420cc39f5f5292250f11ac5606e5aee3a509ef03e38376f7f698f9afd32"
+      },
+      "preflight_output_sha256": "8b4ec420cc39f5f5292250f11ac5606e5aee3a509ef03e38376f7f698f9afd32",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 240000,
+        "finite_visible_samples": 480000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_thresholds",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "c27de0e20d377a0053f1a94d6fd8fb667f8e7c37e1db05be3a911fdd29715aa0",
+      "output_sha256": {
+        "sdk": "6b86ad8706ab05951fb700a301c823a7affca58f6a0b3ebe78c01cc45d63e6a5",
+        "rust": "6b86ad8706ab05951fb700a301c823a7affca58f6a0b3ebe78c01cc45d63e6a5"
+      },
+      "preflight_output_sha256": "6b86ad8706ab05951fb700a301c823a7affca58f6a0b3ebe78c01cc45d63e6a5",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "poly_sum_aux_first_lane",
+      "sample_rate": 48000,
+      "frames": 96000,
+      "input_sha256": "28254bfcc82ada09e27337df990438ca4cb7d81e37ce541d2103667210edda91",
+      "output_sha256": {
+        "sdk": "6fbb879027696249d37b2b0db9bb57c72ae3fe543a014f1b8f631b851741c96e",
+        "rust": "6fbb879027696249d37b2b0db9bb57c72ae3fe543a014f1b8f631b851741c96e"
+      },
+      "preflight_output_sha256": "6fbb879027696249d37b2b0db9bb57c72ae3fe543a014f1b8f631b851741c96e",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 96000,
+        "finite_visible_samples": 192000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 48000,
+      "frames": 144000,
+      "input_sha256": "c76c86860655fc37c38ecf7a474bebecf7d039213728e249e86594bb0c4c118f",
+      "output_sha256": {
+        "sdk": "1039e02af603315efbe2771566ebcc24d53c6a992329422431cae67252b5bbd2",
+        "rust": "1039e02af603315efbe2771566ebcc24d53c6a992329422431cae67252b5bbd2"
+      },
+      "preflight_output_sha256": "1039e02af603315efbe2771566ebcc24d53c6a992329422431cae67252b5bbd2",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 144000,
+        "finite_visible_samples": 288000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "startup_impulse",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "7fb92680fd465cf647a4157400e66bed8790136cc745091bd6e15584dc04c5af",
+      "output_sha256": {
+        "sdk": "134fb09acb55d2796c7f8e69f0083ea411f898b9e8cc6f41ce7df37f080d39eb",
+        "rust": "134fb09acb55d2796c7f8e69f0083ea411f898b9e8cc6f41ce7df37f080d39eb"
+      },
+      "preflight_output_sha256": "134fb09acb55d2796c7f8e69f0083ea411f898b9e8cc6f41ce7df37f080d39eb",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 1.75,
+        "actual_volts": 1.75,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020175
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "startup_dc",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "3dea0936c2cf4fb027834548a59b3c75c5de93ebdb2e8d0d6aa61778e8386dc7",
+      "output_sha256": {
+        "sdk": "ac0739ecf49b5a2c10a43e92f9db8482be1c7b29c9541c2702f53de5340e3f21",
+        "rust": "ac0739ecf49b5a2c10a43e92f9db8482be1c7b29c9541c2702f53de5340e3f21"
+      },
+      "preflight_output_sha256": "ac0739ecf49b5a2c10a43e92f9db8482be1c7b29c9541c2702f53de5340e3f21",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.7000000476837158,
+        "actual_volts": 0.7000000476837158,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002007000000476837
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "minimum_delay",
+      "sample_rate": 96000,
+      "frames": 48000,
+      "input_sha256": "8262e709bbe2836fa5c9f60e39c2b83f25913f2fddf4e1e889e7eebbd68c3979",
+      "output_sha256": {
+        "sdk": "29be0b095e285fc0a6efc8c05a7f27e1e54fae8fde8261f4c018bb19b94c065d",
+        "rust": "29be0b095e285fc0a6efc8c05a7f27e1e54fae8fde8261f4c018bb19b94c065d"
+      },
+      "preflight_output_sha256": "29be0b095e285fc0a6efc8c05a7f27e1e54fae8fde8261f4c018bb19b94c065d",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 48000,
+        "finite_visible_samples": 96000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "maximum_delay",
+      "sample_rate": 96000,
+      "frames": 1152000,
+      "input_sha256": "3277d63c99209b9fb7ea7231381ad88f7325b1ee045c076f13ebf5b804357152",
+      "output_sha256": {
+        "sdk": "5c97b28200209074d9c74262f7e3d9c5ee2245d2db62b1eb56966165d83330b2",
+        "rust": "5c97b28200209074d9c74262f7e3d9c5ee2245d2db62b1eb56966165d83330b2"
+      },
+      "preflight_output_sha256": "5c97b28200209074d9c74262f7e3d9c5ee2245d2db62b1eb56966165d83330b2",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 1152000,
+        "finite_visible_samples": 2304000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "tone_feedback_extremes",
+      "sample_rate": 96000,
+      "frames": 384000,
+      "input_sha256": "ba438715d6ec2e6c7425524c1dd86eff813499a7643f566e5a3d52321d2e52a2",
+      "output_sha256": {
+        "sdk": "8fff0c9b3e3fce3967ad772b43c65b3db71c1ebb1ad7b63a1ed760024b4a66fd",
+        "rust": "8fff0c9b3e3fce3967ad772b43c65b3db71c1ebb1ad7b63a1ed760024b4a66fd"
+      },
+      "preflight_output_sha256": "8fff0c9b3e3fce3967ad772b43c65b3db71c1ebb1ad7b63a1ed760024b4a66fd",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 500.0,
+        "actual_volts": 500.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.007
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 384000,
+        "finite_visible_samples": 768000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "signed_cv",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "c65806897a7501056fc85bda6a3aedfb2e5959c6882e34ad6aa20a2d77f020dc",
+      "output_sha256": {
+        "sdk": "25295944a12add2e5271efc5f344231088277376d219801c1a1de865bce3066e",
+        "rust": "25295944a12add2e5271efc5f344231088277376d219801c1a1de865bce3066e"
+      },
+      "preflight_output_sha256": "25295944a12add2e5271efc5f344231088277376d219801c1a1de865bce3066e",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "cv_zero_depth",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "4e4dffd7bb4ce65bb3980a9376461ccc7b91a15533b9519a3161b29ab7da516d",
+      "output_sha256": {
+        "sdk": "a0f33eb1d9e13dcfcfbf164808d841cd7715af6d41ac0599c6d678e48533f57a",
+        "rust": "a0f33eb1d9e13dcfcfbf164808d841cd7715af6d41ac0599c6d678e48533f57a"
+      },
+      "preflight_output_sha256": "a0f33eb1d9e13dcfcfbf164808d841cd7715af6d41ac0599c6d678e48533f57a",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "time_jumps",
+      "sample_rate": 96000,
+      "frames": 288000,
+      "input_sha256": "f735ff76450fdbb52c584c3d6db4eae954b95f2fa8b4e3454167224ab1769c72",
+      "output_sha256": {
+        "sdk": "c7801b34f75203b67483ed6da687237a72b56b7f5a48f71609bbee68b43c2562",
+        "rust": "c7801b34f75203b67483ed6da687237a72b56b7f5a48f71609bbee68b43c2562"
+      },
+      "preflight_output_sha256": "c7801b34f75203b67483ed6da687237a72b56b7f5a48f71609bbee68b43c2562",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 288000,
+        "finite_visible_samples": 576000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_connected_startup",
+      "sample_rate": 96000,
+      "frames": 288000,
+      "input_sha256": "1f011dcec80533513001bd4bf5f5e80d069127da2f80cac7f232261d208350cd",
+      "output_sha256": {
+        "sdk": "92e4be7a04cb748347c5459dd7b416fe95169be9d89683ed61b5777abee7cf83",
+        "rust": "92e4be7a04cb748347c5459dd7b416fe95169be9d89683ed61b5777abee7cf83"
+      },
+      "preflight_output_sha256": "92e4be7a04cb748347c5459dd7b416fe95169be9d89683ed61b5777abee7cf83",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 288000,
+        "finite_visible_samples": 576000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_tempo_change",
+      "sample_rate": 96000,
+      "frames": 480000,
+      "input_sha256": "ef9ba3a8691151da94be902023b8c6071435f686b859aa5577a0b7a7188053b9",
+      "output_sha256": {
+        "sdk": "d54724425eeba5df253a54bb62f700796bf5b8f321562b25c2278194473df73f",
+        "rust": "d54724425eeba5df253a54bb62f700796bf5b8f321562b25c2278194473df73f"
+      },
+      "preflight_output_sha256": "d54724425eeba5df253a54bb62f700796bf5b8f321562b25c2278194473df73f",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 480000,
+        "finite_visible_samples": 960000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_unpatch_reconnect",
+      "sample_rate": 96000,
+      "frames": 480000,
+      "input_sha256": "1f49d433e88a1a67e4501805f741e57e933c5ef9871ff7d1a9d23f6b22239a38",
+      "output_sha256": {
+        "sdk": "f50b73151c53ea34fb5fa3bbcf892a8c81096fec9a3e7cb0e2e92bcf24ed591a",
+        "rust": "f50b73151c53ea34fb5fa3bbcf892a8c81096fec9a3e7cb0e2e92bcf24ed591a"
+      },
+      "preflight_output_sha256": "f50b73151c53ea34fb5fa3bbcf892a8c81096fec9a3e7cb0e2e92bcf24ed591a",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 480000,
+        "finite_visible_samples": 960000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "clock_thresholds",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "c2816e99c161283f5121324fe5007fe0c3eb5c6efe00938a39fb9acc63d816ce",
+      "output_sha256": {
+        "sdk": "6cd825c119e387a13db09c2bde7104207d1a9bf8f89d7f9f8e4b13ac8c61f892",
+        "rust": "6cd825c119e387a13db09c2bde7104207d1a9bf8f89d7f9f8e4b13ac8c61f892"
+      },
+      "preflight_output_sha256": "6cd825c119e387a13db09c2bde7104207d1a9bf8f89d7f9f8e4b13ac8c61f892",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "poly_sum_aux_first_lane",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "input_sha256": "34639a822439ee2392efa74cc1754e8eee80599e0ce48362e4bae8b6d3f027ce",
+      "output_sha256": {
+        "sdk": "8c3bd75d86afd96bfc2421a368348d4e652f8e691fe1cf553d58cdfc34eb1c53",
+        "rust": "8c3bd75d86afd96bfc2421a368348d4e652f8e691fe1cf553d58cdfc34eb1c53"
+      },
+      "preflight_output_sha256": "8c3bd75d86afd96bfc2421a368348d4e652f8e691fe1cf553d58cdfc34eb1c53",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 192000,
+        "finite_visible_samples": 384000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 96000,
+      "frames": 288000,
+      "input_sha256": "3f34c0404b68460bb93db1db8d49706d5ffffa0d54e38b990e73b4b14b2fc279",
+      "output_sha256": {
+        "sdk": "007676ca049ff97ebfffc5a90be692d4133ee3854a8e090f235f94efdf558f55",
+        "rust": "007676ca049ff97ebfffc5a90be692d4133ee3854a8e090f235f94efdf558f55"
+      },
+      "preflight_output_sha256": "007676ca049ff97ebfffc5a90be692d4133ee3854a8e090f235f94efdf558f55",
+      "preflight_exit_status": 0,
+      "status": "source_defined",
+      "passed": true,
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "first_failures": [],
+      "fidelity_passed": true,
+      "sdk_execution_skipped": false,
+      "native_safety": {
+        "passed": true,
+        "frames": 288000,
+        "finite_visible_samples": 576000,
+        "mono_outputs": true,
+        "padding_zero_asserted_by_probe": true
+      }
+    }
+  ],
+  "production_source_end_sha256": {
+    "crates/openpatch-core/src/stock_delay.rs": "e680c1cfb46bb34260664c2ab2bc355307885c1eb23860a04d9d7ed365dd8a3f",
+    "crates/openpatch-core/src/stock_delay/sinc.rs": "ac05cd834c8424655632f2f868c3dda9dcdadafb7ed741adf88337426a2a97d7",
+    "crates/openpatch-core/src/stock_delay/fastest_coeffs.rs": "979c4f49a2cae3eea6151f7295f191f509d0f5d883821b704b5cd43e3be729ef"
+  },
+  "production_sources_stable_during_run": true,
+  "final_rerun_required_due_to_production_changes": false,
+  "passed": true,
+  "passed_scope": "Every source-defined direct SRC and whole-Delay comparison, every native safety trace, and unchanged production source hashes throughout the run; source-undefined scenarios do not receive a fidelity pass.",
+  "source_undefined_resampler_cases": [
+    "analytic_1_to_quarter"
+  ],
+  "all_resampler_scenarios_fidelity_passed": false,
+  "source_undefined_whole_delay_cases": [],
+  "all_whole_delay_cases_fidelity_passed": true,
+  "whole_delay_skipped_due_to_src_failure": false,
+  "selection": {
+    "rates": null,
+    "cases": null,
+    "resampler_only": false
+  },
+  "full_matrix_exercised": true,
+  "full_matrix": true,
+  "total_delay_frames": 11134750
+}

@@ -95,6 +95,7 @@ impl Category {
             | "vca_mix"
             | "fade"
             | "crossfade"
+            | "stock_delay"
             | "stereo_delay"
             | "stereo_reverb"
             | "sidechain_compressor" => Self::Mixing,
@@ -1339,6 +1340,7 @@ mod tests {
         assert_eq!(library.filtered(&catalog)[0]["kind"], "analog_vco");
         assert_eq!(Category::of_kind("ladder_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("stock_vcf"), Category::Filters);
+        assert_eq!(Category::of_kind("stock_delay"), Category::Mixing);
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
         assert_eq!(Category::of_kind("push"), Category::Utilities);

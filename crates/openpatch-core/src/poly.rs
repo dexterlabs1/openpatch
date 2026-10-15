@@ -22,6 +22,7 @@ use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
+use crate::stock_delay::{self, StockDelay};
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
 use crate::studio_fx::{self, StudioFx};
@@ -102,6 +103,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "adsr_eg"
                 | "stock_vcf"
                 | "stock_vca"
+                | "stock_delay"
                 | "random_values"
                 | "sh_asr"
                 | "scope"
@@ -152,6 +154,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
         "stock_vcf" => stock_vcf::INPUTS.iter().position(|port| *port == name),
         "stock_vca" => stock_vca::INPUTS.iter().position(|port| *port == name),
+        "stock_delay" => stock_delay::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
@@ -213,6 +216,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         random_values::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_vcf" {
         stock_vcf::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_delay" {
+        stock_delay::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "adsr_eg" {
         adsr_eg::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
@@ -342,6 +347,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "stock_vcf" {
         stock_vcf::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_delay" {
+        stock_delay::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -547,6 +557,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_vcf" {
         stock_vcf::annotate(module);
     }
+    if kind == "stock_delay" {
+        stock_delay::annotate(module);
+    }
     if kind == "adsr_eg" {
         adsr_eg::annotate(module);
     }
@@ -596,6 +609,7 @@ enum Model {
     Push(Box<Push>),
     AdsrEg(Box<AdsrEg>),
     StockVcf(Box<StockVcf>),
+    StockDelay(Box<StockDelay>),
     StockVca(Box<StockVca>),
     ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
@@ -661,6 +675,9 @@ impl Model {
         }
         if node.kind == "stock_vcf" {
             return Ok(Self::StockVcf(Box::new(StockVcf::build(node, rate)?)));
+        }
+        if node.kind == "stock_delay" {
+            return Ok(Self::StockDelay(Box::new(StockDelay::build(node, rate)?)));
         }
         if node.kind == "adsr_eg" {
             return Ok(Self::AdsrEg(Box::new(AdsrEg::build(node, rate)?)));
@@ -870,7 +887,7 @@ impl PolyEngine {
             None
         }
     }
-    pub(crate) fn begin_taps(&mut self, taps: &[Option<usize>; 2]) {
+    pub(crate) fn begin_taps(&mut self, taps: &[Option<usize>]) {
         for node in &mut self.nodes {
             for tap in taps.iter().flatten() {
                 if matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_))
@@ -950,6 +967,14 @@ impl PolyEngine {
             Some(Model::Push(p)) => Some(p.lights()),
             Some(Model::AdsrEg(p)) => Some(p.lights()),
             Some(Model::StockVca(p)) => Some(p.lights()),
+            Some(Model::StockDelay(p)) => {
+                let mut lights = ModuleLightState {
+                    count: 1,
+                    ..ModuleLightState::default()
+                };
+                lights.brightness[0][0] = p.clock_light();
+                Some(lights)
+            }
             Some(Model::ShiftRegister(p)) => Some(p.lights()),
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
@@ -1201,6 +1226,10 @@ impl PolyEngine {
                 p.initialize_state();
                 stock_vcf::OUTPUTS.len()
             }
+            Model::StockDelay(p) => {
+                p.reset_state();
+                stock_delay::OUTPUTS.len()
+            }
             Model::AdsrEg(p) => {
                 p.reset_state();
                 adsr_eg::OUTPUTS.len()
@@ -1254,6 +1283,7 @@ impl PolyEngine {
             Model::AdsrEg(p) => p.initialize_state(),
             Model::StockVcf(p) => p.initialize_state(),
             Model::StockVca(p) => p.initialize_state(),
+            Model::StockDelay(p) => p.initialize_state(),
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
@@ -1397,6 +1427,7 @@ impl PolyEngine {
                     "push" => push::OUTPUTS.len(),
                     "adsr_eg" => adsr_eg::OUTPUTS.len(),
                     "stock_vcf" => stock_vcf::OUTPUTS.len(),
+                    "stock_delay" => stock_delay::OUTPUTS.len(),
                     "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
@@ -1730,6 +1761,16 @@ impl PolyEngine {
                 ),
                 Model::StockVca(p) => {
                     self.outputs[node.output_start] = p.process(&[a, b]);
+                }
+                Model::StockDelay(p) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    self.outputs[node.output_start..node.output_start + 2]
+                        .copy_from_slice(&p.process(&inputs));
                 }
                 Model::StockVcf(p) => {
                     let mut inputs = [PortFrame::default(); 4];
@@ -2220,6 +2261,48 @@ impl PolyEngine {
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
     ) {
+        self.adopt_state_impl(old, excluded, excluded_cables, true);
+    }
+    /// Transfer large Delay allocations instead of copying them. Once this
+    /// returns true, the retiring engine must not process any more samples.
+    pub(crate) fn handoff_state_from_excluding(
+        &mut self,
+        old: &mut Self,
+        excluded: &[bool; MAX_NODES],
+        excluded_cables: &[bool; MAX_CABLES],
+    ) -> bool {
+        self.adopt_state_impl(old, excluded, excluded_cables, false);
+        if self.rate != old.rate {
+            return false;
+        }
+        let mut moved = false;
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&old_index) = old.node_lookup.get(id) else {
+                continue;
+            };
+            let node = &mut self.nodes[index];
+            let previous = &mut old.nodes[old_index];
+            if node.kind != previous.kind {
+                continue;
+            }
+            if let (Model::StockDelay(current), Model::StockDelay(previous)) =
+                (&mut node.model, &mut previous.model)
+            {
+                moved |= current.adopt(previous);
+            }
+        }
+        moved
+    }
+    fn adopt_state_impl(
+        &mut self,
+        old: &Self,
+        excluded: &[bool; MAX_NODES],
+        excluded_cables: &[bool; MAX_CABLES],
+        copy_delay: bool,
+    ) {
         if self.rate != old.rate {
             self.port_lights.reset_epoch();
             return;
@@ -2350,6 +2433,13 @@ impl PolyEngine {
                 (&mut node.model, &previous.model)
             {
                 p.adopt(previous);
+            }
+            if copy_delay {
+                if let (Model::StockDelay(p), Model::StockDelay(previous)) =
+                    (&mut node.model, &previous.model)
+                {
+                    p.copy_state_from(previous);
+                }
             }
             if let (Model::AdsrEg(p), Model::AdsrEg(previous)) = (&mut node.model, &previous.model)
             {

@@ -4,7 +4,7 @@ Inventory verified **2026-10-12** against the official [VCV Core manual](https:/
 
 The first bounded compatibility target is the **12 Core modules plus 37 VCV Free modules** listed below. Core is built into Rack; Free is its included synthesis collection. This is an inventory and implementation plan, not a claim that OpenPatch implements 49 equivalents. The wider third-party plugin ecosystem is open-ended and is not covered by this inventory. Additional plugins need individually specified behavior, implementation scope, and validation.
 
-OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified circuit, and compatibility with VCV behavior are separate acceptance criteria. It does not currently load VCV plugin binaries or import complete VCV patches. A matching module name, panel, or musical role does not establish equivalence.
+OpenPatch uses Rust DSP, including explicitly attributed licensed algorithm adaptations. Functional coverage, fidelity to a specified circuit, and compatibility with VCV behavior are separate acceptance criteria. It does not currently load VCV plugin binaries or import complete VCV patches. A matching module name, panel, or musical role does not establish equivalence.
 
 ## Current implementation baseline
 
@@ -74,11 +74,32 @@ Native macOS/Windows window input, physical MIDI/audio I/O and complete Rack
 host/import parity remain open.
 
 [MACRO VOICE](MACRO_VOICE.md) adds eight synthesis engines in one native kind,
-bringing the current catalog to **65 kinds**. Its sixteen independent voices,
+bringing the catalog to **65 kinds at that milestone**. Its sixteen independent voices,
 OUT/AUX outputs and trigger-driven low-pass gate are an original OpenPatch
 instrument. FM feedback and additive shaping adapt MIT-licensed Plaits
 algorithms; this is neither a sample-identical Plaits port nor an additional
 completed stock VCV target.
+
+[Stock Delay](STOCK_DELAY.md) adds a separate clock-synchronized mono delay,
+MIX/WET outputs, feedback/tone controls and four signed CV depths, bringing the
+current catalog to **66 kinds**. The existing original stereo delay keeps its
+own contract. The mono sinc adaptation credits BSD-2-Clause libsamplerate
+0.1.9. The original 24 HP rack/browser panel uses actual CLK telemetry.
+Live Delay runtime handoff avoids copying its 8 MiB history; borrowed adoption
+still copies it, and this is not a universal constant-time graph-adoption claim.
+The final [guarded report](benchmarks/stock-delay-reference.json) passes all
+43 source-defined whole-Delay cases over 11,134,750 frames at 44.1/48/96 kHz,
+with zero worst absolute error and stable production hashes. Six defined SRC
+scenarios also match counts/samples exactly. The independent source-undefined
+startup case passes native safety checks and receives no fidelity pass.
+The release workspace build, 79 Python/MCP tests and 1,580 Rust tests pass
+(six existing Rust tests ignored), as does strict Clippy. The
+[adoption microprofile](benchmarks/stock-delay-handoff.json) records one/eight
+Delay ownership transfers; it is not a full callback-deadline or Rack CPU
+comparison. The macOS ARM bundle's ad-hoc signature/notices are verified,
+without installing or launching it. Platform CI and the configured 97 native
+captures remain release gates. Native input/device and full callback-deadline
+qualification remain open; this bounded DSP result does not complete host parity.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -203,7 +224,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
 | LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
-| Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
+| Delay | Effect | Implemented bounded `stock_delay`: clock-synchronized mono sinc delay, feedback/tone, MIX/WET, four signed depths and shared native panel | Final guarded source-defined DSP matrix, Rust/MCP checks and release build pass; source-undefined analytic SRC case has safety evidence only. Adoption microprofile is separate from callback deadlines. Platform CI/capture verification are release gates; native input/device remains open; [contract](STOCK_DELAY.md) |
 | ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |
 | Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity and VCV differential acceptance remain open |
 | VCA Mix | Mixing | Implemented signal role: `vca_mix`, four squared-gain strips, independent outputs, master VCA, linear/quartic CV and live meters | Direct reference traces, Rack import/state mapping, native qualification; [contract](VOLTAGE_MIXING.md) |

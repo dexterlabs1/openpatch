@@ -2919,6 +2919,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_delay" {
+                if let Some(edit) = self.stock_delay_panel(ui, node, rect, revision) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "stock_vcf" {
                 if let Some(edit) = self.stock_vcf_panel(ui, node, rect, revision) {
                     action = Some(edit);
@@ -2989,6 +2994,7 @@ impl Rack {
                     || node.kind == "sh_asr"
                     || node.kind == "adsr_eg"
                     || node.kind == "stock_vcf"
+                    || node.kind == "stock_delay"
                     || node.kind == "stock_vca"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
@@ -3812,6 +3818,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if node.kind == "stock_delay" {
+                            stock_delay_port_label(port)
                         } else {
                             port
                         },
@@ -3831,6 +3839,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if node.kind == "stock_delay" {
+                        stock_delay_port_label(port)
                     } else {
                         port
                     },
@@ -3935,6 +3945,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if node.kind == "stock_delay" {
+                            stock_delay_port_label(port)
                         } else {
                             port
                         },
@@ -3966,6 +3978,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if node.kind == "stock_delay" {
+                        stock_delay_port_label(port)
                     } else {
                         port
                     },
@@ -7712,6 +7726,7 @@ include!("annotation_panel.rs");
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
 include!("stock_vcf_panel.rs");
+include!("stock_delay_panel.rs");
 include!("stock_vca_panel.rs");
 include!("midi_cc_panel.rs");
 include!("midi_gate_panel.rs");
@@ -7758,8 +7773,10 @@ fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
         stock_vcf_frequency_raw(parsed)
     } else if edit.kind == "stock_vcf" && edit.parameter == "drive" {
         parsed / 100.0 - 1.0
-    } else if adsr_eg_time_edit(edit) {
+    } else if adsr_eg_time_edit(edit) || stock_delay_time_edit(edit) {
         parsed.log10() / 4.0
+    } else if edit.kind == "stock_delay" && edit.parameter == "tone" {
+        parsed / 200.0 + 0.5
     } else if let Some(power) = edit.gain_power {
         if parsed == f32::NEG_INFINITY {
             0.0
@@ -7833,6 +7850,9 @@ fn parameter_editor_contents_with_navigation(
             "resonance" => "Enter resonance from 0% to 100%.",
             _ => "Enter CV depth from −100% to +100%. Negative depth inverts modulation.",
         });
+    }
+    if edit.kind == "stock_delay" {
+        ui.label(if stock_delay_time_edit(edit) { "Enter delay time in milliseconds (1–10,000 ms), or add s for seconds. The clock input sets time from incoming edges." } else if edit.parameter == "tone" { "Tone −100% to +100%, dark to bright; center is neutral." } else if edit.parameter.ends_with("_cv_amount") { "CV depth −100% to +100%. Negative depth inverts modulation." } else { "Enter a value from 0% to 100%." });
     }
     if edit.kind == "stock_vca" {
         ui.label(if edit.parameter == "level" { "Level 0–100%. The meter shows effective gain, including silent voices." } else { "Response: 0 = EXP (fourth power), 1 = LIN. Bypass freezes gain telemetry and passes raw signal." });
@@ -8265,6 +8285,21 @@ fn is_signal_utility(kind: &str) -> bool {
 
 fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     let mut text = edit.text.trim();
+    let mut unit_scale = 1.0;
+    if stock_delay_time_edit(edit) {
+        if text
+            .get(text.len().saturating_sub(2)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case("ms"))
+        {
+            text = text[..text.len() - 2].trim_end();
+        } else if text
+            .get(text.len().saturating_sub(1)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case("s"))
+        {
+            text = text[..text.len() - 1].trim_end();
+            unit_scale = 1000.0;
+        }
+    }
     if edit.gain_power.is_some()
         && text.len() > 2
         && text
@@ -8273,10 +8308,10 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     {
         text = text[..text.len() - 2].trim_end();
     }
-    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf")
+    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf" | "stock_delay")
         || (edit.kind == "stock_vca" && edit.parameter == "level")
     {
-        let suffix = if adsr_eg_time_edit(edit) {
+        let suffix = if adsr_eg_time_edit(edit) || stock_delay_time_edit(edit) {
             "ms"
         } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
             "Hz"
@@ -8290,7 +8325,8 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
-    let evaluated = crate::expression::evaluate(text).map_err(|error| error.to_string())?;
+    let evaluated =
+        crate::expression::evaluate(text).map_err(|error| error.to_string())? * unit_scale;
     let gain_zero = edit.gain_power.is_some() && evaluated == f64::NEG_INFINITY;
     let value = evaluated as f32;
     if !gain_zero && (!evaluated.is_finite() || !value.is_finite()) {
@@ -8487,6 +8523,15 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 },
                 365.0,
             )
+        }
+        "stock_delay" => {
+            return if input && index < 4 {
+                pos2(stock_delay_column(index), 344.0)
+            } else if input {
+                pos2(stock_delay_column(index - 4), 380.0)
+            } else {
+                pos2(stock_delay_column(index + 2), 380.0)
+            };
         }
         "stock_vcf" => {
             return if input {
@@ -9609,6 +9654,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
         "stock_vcf" => HP * 18.0,
+        "stock_delay" => HP * 24.0,
         "stock_vca" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
@@ -9671,6 +9717,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
         "stock_vcf" => "VCF",
+        "stock_delay" => "DELAY",
         "stock_vca" => "VCA",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
@@ -9917,6 +9964,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
         "stock_vcf" => &STOCK_VCF_PARAMS,
+        "stock_delay" => &STOCK_DELAY_PARAMS,
         "stock_vca" => &STOCK_VCA_PARAMS,
         "adsr" => &["attack", "decay", "sustain", "release"],
         "adsr_eg" => &[
@@ -11584,7 +11632,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            65,
+            66,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -18239,6 +18287,9 @@ mod tests {
         include!("generic_fader_geometry_tests.rs");
     }
 
+    mod stock_delay_ui_tests {
+        include!("stock_delay_ui_tests.rs");
+    }
     mod stock_vcf_ui_tests {
         include!("stock_vcf_ui_tests.rs");
     }

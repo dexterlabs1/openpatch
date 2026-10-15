@@ -30,9 +30,9 @@ start opacity at 50% and tension at 100%. OpenPatch retains its existing fully
 visible cables and half-tension curves by default. Its own cubic artwork is
 unchanged at 50%; all other tensions use the same curve for committed routes,
 drafts, stacked fan-out, construction prefixes/tips and decorative hover tests.
-At 100% the cubic is straight; at 0% the hanging curve is longer. Short, reversed
-and coincident endpoints remain finite. The route and electrical cable delay
-are independent of this geometry.
+At 100% the curve stays taut with a restrained, distance-dependent gravity bow;
+at 0% it hangs lower. Short, reversed and coincident endpoints remain finite.
+The route and electrical cable delay are independent of this geometry.
 
 Plug brightness with observation disabled at zero is an OpenPatch extension.
 Rack's [pinned Light bloom control](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/app/MenuBar.cpp#L204-L335)

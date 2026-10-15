@@ -50,6 +50,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("macro_voice", _) => Linear,
         ("stock_vca", "level") => Linear,
         ("stock_vca", "response") => Enum,
+        ("stock_delay", "time" | "feedback" | "tone" | "mix") => Linear,
+        ("stock_delay", _) => Disabled,
         ("adsr_eg", "attack" | "decay" | "sustain" | "release") => Linear,
         ("adsr_eg", _) => Disabled,
         ("seq3", name) if seq_row(name) => Linear,

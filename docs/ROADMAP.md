@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 65 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 66 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -53,7 +53,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 65 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 65 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 66 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 66 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -84,7 +84,7 @@ This plan starts from the code inspected on the baseline date:
 | Stacked input cables | Foundation implemented in v2: summed delayed frames, stable IDs, per-cable editing and incarnation-aware history | Qualify native device workflows and broader large-rack performance; qualify independent plug ordering on physical devices and complete duplication placement parity. [Contract and controls](STACKED_CABLES.md). |
 | Cable timing and feedback | Foundation implemented; per-cable value/count delay and deterministic loops tested | Retain node-order/callback invariance; add clock/reset and longer modulated feedback fixtures as those modules arrive; test feedback during live graph replacement. |
 | Voltage and event contracts | Partial; reference modules use volts | Catalog every port's units, normaling, thresholds and channel policy; test gate/trigger edges, clock/reset ordering, pitch calibration and legacy conversions. |
-| DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade | Define sample-timed parameter events; expand edit tests through envelope release, circuit transients, feedback and future delay tails; keep sample-rate and incompatible-model reset rules explicit. |
+| DSP state and parameters | Partial; compatible per-voice/edge adoption, retirement resets and crossfade; Stock Delay runtime moves without copying its large history, using cached-output fade for the retired graph | Qualify live Delay tails and callback deadlines, expand effects coverage and sample-timed parameter events; borrowed Delay adoption and existing StudioFx can still copy large state. Keep rate/incarnation rules explicit. |
 | Engine rate, diagnostics and scheduling | Partial; device-rate compilation, offline benchmark | User-selected engine/device rates, rate conversion, per-module timing and overload reporting; concurrency and SIMD changes must preserve the timing contract. |
 | Stock module coverage | Partial; 49-entry inventory remains open | Every inventory row has complete port/parameter/state behavior, persistence and functional tests; publish differences rather than claiming equivalence for a substitute. |
 | Rack construction | Partial; group selection, selected-group and hovered-module duplication with explicit cable policies, group movement/deletion, Initialize/Randomize, a native module preset library and saved bypass | Rack preset conversion/templates, exact duplication placement and complete layout history remain open; [editing contract](RACK_EDITING.md). |
@@ -408,3 +408,38 @@ guard pass. Fifteen desktop callback/panel tests pass. Actual Linux captures
 and platform CI are release gates; native macOS window/input/playback qualification remains
 separate outstanding work. This finite digital result is not measured hardware
 fidelity, a completed VCV inventory row or release qualification.
+
+## Stock Delay milestone
+
+`stock_delay` brings the catalog to 66 kinds with a separate clock-synchronized
+mono delay, filtered feedback, MIX/WET outputs and four signed CV depths.
+Its original 24 HP rack/browser faceplate provides direct faders, ms/s entry
+and an actual engine CLK lamp. **File → Clocked delay voice** connects the
+delay to an envelope/VCA voice and Scope. The original stereo delay retains
+its independent contract.
+
+The [frozen numerical contract](STOCK_DELAY.md) pins Fundamental's Delay class
+and BSD-2-Clause libsamplerate 0.1.9. Source-defined whole-module traces must
+retain the 2 mV + 10 ppm gate from frame zero; defined SRC calls require exact
+counts and 2e-6 + 2 ppm samples. An undefined upstream ratio-1→0.25 history
+read receives native zero-history safety behavior, never a source-fidelity
+pass. The final [guarded report](benchmarks/stock-delay-reference.json) passes
+all 43 whole-Delay cases over 11,134,750 frames at 44.1/48/96 kHz, with zero
+worst absolute error and no source-undefined whole-Delay cases. Six defined
+direct SRC scenarios match counts/samples exactly over 8,192 calls each.
+The separate analytic source-undefined startup case passes native safety
+checks with null fidelity. Production hashes remained stable and were rechecked.
+
+Each instance owns an 8 MiB history plus approximately 49 KB of SRC state.
+Live compatible handoff swaps runtime ownership and retires the whole donor
+graph with a cached raw-output fade; borrowed adoption and existing StudioFx
+can still copy large state. The [release adoption microprofile](benchmarks/stock-delay-handoff.json)
+records one/eight-Delay Engine transfer costs without claiming a full callback
+deadline or Rack CPU comparison. Actual callback tests check no heap activity.
+The Rust checks pass 1,580 tests with six existing ignored tests, strict Clippy
+passes, the release workspace builds, and all 79 Python/MCP tests pass.
+The macOS ARM bundle's ad-hoc signature and notices are verified; the bundle
+has not been installed or launched. Platform CI and native capture verification
+are release gates, with 97 screenshots configured (the previous 94 plus three
+Delay views). Full callback-budget and macOS ARM window/input/playback
+acceptance remain open.

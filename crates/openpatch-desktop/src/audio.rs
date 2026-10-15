@@ -974,6 +974,10 @@ struct Callback {
     gain: Gain,
     fade_length: usize,
     fade_position: usize,
+    // Raw active-engine output, before host gain, clipping or device mapping.
+    last_active_raw: [f32; 2],
+    last_active_stereo: bool,
+    frozen_previous: Option<([f32; 2], bool)>,
     scope_cursor: usize,
     scope_decimation: usize,
     midi: MidiQueues,
@@ -1001,6 +1005,7 @@ impl Callback {
         let midi = MidiQueues::new(shared.clone());
         let (scope, scope_packets) = ScopeCapture::new(rate);
         let (performance, module_events, timing) = Performance::new(rate);
+        let last_active_stereo = engine.output_channels() == 2;
         Self {
             performance,
             module_events,
@@ -1020,6 +1025,9 @@ impl Callback {
             gain: Gain::new(rate),
             fade_length: (rate as usize / 200).max(1),
             fade_position: 0,
+            last_active_raw: [0.0; 2],
+            last_active_stereo,
+            frozen_previous: None,
             scope_cursor: 0,
             scope_decimation: 0,
             next_port_publish_frame: 0,
@@ -1055,11 +1063,14 @@ impl Callback {
             .active
             .sync_port_light_control(control, control_changed);
         if adopted {
-            if let Some(previous) = self.graphs.previous.as_ref() {
+            let mut moved = false;
+            if let Some(previous) = self.graphs.previous.as_mut() {
                 let active = &mut self.graphs.active;
-                active
-                    .modules
-                    .adopt_state(&mut active.engine, &previous.modules, &previous.engine);
+                moved = active.modules.handoff_state(
+                    &mut active.engine,
+                    &previous.modules,
+                    &mut previous.engine,
+                );
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]
@@ -1073,8 +1084,9 @@ impl Callback {
                     }
                 }
             }
-            // The retiring crossfade graph is still processed for sound, but
-            // only the active displayed graph pays passive observer cost.
+            self.frozen_previous = moved.then_some((self.last_active_raw, self.last_active_stereo));
+            // A donor with transferred Delay state is frozen; ordinary donors
+            // still render the fade. Only the active graph runs observers.
             if let Some(previous) = self.graphs.previous.as_mut() {
                 previous.engine.set_port_lights_enabled(false);
             }
@@ -1210,13 +1222,23 @@ impl Callback {
                     active.engine.process_audio_block(&mut current[..count]);
                 }
                 let active_stereo = self.graphs.active.output_channels() == 2;
-                let previous_stereo = self
-                    .graphs
-                    .previous
-                    .as_ref()
-                    .is_some_and(|g| g.output_channels() == 2);
+                let previous_stereo = self.frozen_previous.map_or_else(
+                    || {
+                        self.graphs
+                            .previous
+                            .as_ref()
+                            .is_some_and(|g| g.output_channels() == 2)
+                    },
+                    |(_, stereo)| stereo,
+                );
                 if let Some(engine) = self.graphs.previous.as_mut() {
-                    engine.process_audio_block(&mut previous[..count]);
+                    if let Some((raw, _)) = self.frozen_previous {
+                        // Its Delay histories now belong to the active engine.
+                        // Never advance any part of the donor graph again.
+                        previous[..count].fill(raw);
+                    } else {
+                        engine.process_audio_block(&mut previous[..count]);
+                    }
                 }
                 for index in 0..count {
                     if self.graphs.active.scope.enabled {
@@ -1232,6 +1254,8 @@ impl Callback {
                         1.0
                     };
                     let gain = self.gain.next(target);
+                    self.last_active_raw = current[index];
+                    self.last_active_stereo = active_stereo;
                     let sample = std::array::from_fn::<_, 2, _>(|channel| {
                         finite_sample(
                             (old.map_or(0.0, |v| v[channel] * (1.0 - mix))
@@ -1266,6 +1290,7 @@ impl Callback {
                     .store(self.frame_clock, Ordering::Release);
                 if self.graphs.previous.is_some() && self.fade_position >= self.fade_length {
                     self.graphs.finish_transition();
+                    self.frozen_previous = None;
                 }
             }
             // CPAL normally supplies complete frames; incomplete tails are silence.
@@ -5671,6 +5696,7 @@ mod tests {
     include!("midi_gate_host_tests.rs");
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
+    include!("stock_delay_audio_tests.rs");
     include!("port_light_host_tests.rs");
 }
 

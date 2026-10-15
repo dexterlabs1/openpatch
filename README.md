@@ -31,6 +31,7 @@
 - **Explore macro synthesis.** MACRO VOICE offers eight engines: detuned analog, wavefolding, feedback FM, harmonic spectra, spectral wavetables, four-note chords, swarm, and metallic tones. It supports 16 independent voices, OUT/AUX outputs, three timbral CVs, and a trigger-driven decaying low-pass gate. Leave TRIG unpatched for sustained sounds. Its FM and additive shaping adapt MIT-licensed Plaits algorithms; this native instrument is not a sample-identical Plaits port. [Signal contract and validation →](docs/MACRO_VOICE.md)
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
 - **Build longer arrangements.** Use SCORE through MCP for chords, ratchets and automation, then shape the mix with native drums, stereo delay, reverb and sidechain compression. A [bounded patch reconstruction](docs/STIW_RECONSTRUCTION.md) now maps matching VCA, ADSR and VCF roles to the qualified stock models. [Scores and studio modules →](docs/SCORE_AND_STUDIO.md)
+- **Clock an echo.** Stock Delay adds a mono clock-synchronized delay with tone, feedback, independent MIX/WET outputs and four signed CV depths. Its shared rack/browser panel accepts milliseconds or seconds directly. The final guarded DSP matrix passes; native device and remaining host qualification are tracked in the [Delay contract](docs/STOCK_DELAY.md).
 - **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **See the signal in each plug.** Green/red lights follow positive/negative mono signals; blue follows polyphonic signal energy. Stacked inputs show their actual sum, and the lights keep emitting in dark-room mode. [Signal lights →](docs/PORT_LIGHTS.md)
@@ -83,6 +84,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Play manual gates and triggers | **File → Manual pulses voice** |
 | Latch and interrupt a note | **File → Manual push voice** |
 | Delay and reshape gates | **File → Delayed gate voice** |
+| Hear clocked audio repeats | **File → Clocked delay voice** |
 | Bypass a module | Right-click its panel → **Bypass module** |
 | Clock a stereo routing pattern | **File → Switched stereo voice** |
 | Play the sequencer example | **File → Sequenced analog voice** |
@@ -392,7 +394,7 @@ and Off modes. The toolbar **MCP** button starts the local bridge and provides
 Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
 and [session controls](docs/MCP_SESSIONS.md).
 
-**65 built-in kinds:** an eight-engine [MACRO VOICE](docs/MACRO_VOICE.md), a separate [stock-style VCA](docs/STOCK_VCA.md) with linear/fourth-power CV response and per-channel gain columns, a separate [stock-style VCF](docs/STOCK_VCF.md) with low-pass/high-pass outputs and signed CV depths, editable [Notes and resizable Blank](docs/ANNOTATIONS.md), sixteen-pad [MIDI → Gate](docs/MIDI_GATE.md), sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+**66 built-in kinds:** an eight-engine [MACRO VOICE](docs/MACRO_VOICE.md), a separate [stock-style VCA](docs/STOCK_VCA.md) with linear/fourth-power CV response and per-channel gain columns, a separate [stock-style VCF](docs/STOCK_VCF.md) with low-pass/high-pass outputs and signed CV depths, a clock-synchronized [Stock Delay](docs/STOCK_DELAY.md) with MIX/WET outputs, editable [Notes and resizable Blank](docs/ANNOTATIONS.md), sixteen-pad [MIDI → Gate](docs/MIDI_GATE.md), sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 
 The new Stock VCA's [pinned actual-class comparison](docs/benchmarks/stock-vca-reference.json)
 passes 72 traces at three sample rates: 55,872 frames and 800,328 active
@@ -401,6 +403,16 @@ output/gain comparisons, with maximum absolute error 9.54e-7 under the frozen
 includes passing callback/panel tests, reviewed Linux screenshots and macOS ARM,
 Windows and Linux CI. Native macOS/Windows window input, physical MIDI/audio I/O,
 and complete Rack host/import parity remain open.
+
+Stock Delay's [final guarded DSP report](docs/benchmarks/stock-delay-reference.json)
+passes all 43 whole-module cases at three rates with zero measured error.
+Its [Engine adoption microprofile](docs/benchmarks/stock-delay-handoff.json)
+measures ownership transfer separately from full callback deadlines. The
+release workspace, Rust checks and 79 Python/MCP tests pass; the macOS ARM
+bundle's ad-hoc signature and notices are verified without installing or
+launching it. Platform CI and verification of the configured 97 native
+screenshots are release gates. Native Mac window/input/playback and physical
+device qualification remain open.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
@@ -425,6 +437,7 @@ Factory patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
 | [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |
 | [Stock VCA](docs/STOCK_VCA.md) | Percentage level, CV response modes, per-channel effective gain and bounded DSP qualification |
+| [Stock Delay](docs/STOCK_DELAY.md) | Clocked mono repeats, ms/s entry, MIX/WET routing, state handoff and final bounded DSP evidence |
 | [Audio oscillator](docs/AUDIO_OSCILLATOR.md) | Polyphonic FM, PWM, sync and measured compatibility gaps |
 | [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
 | [MCP integration](docs/MCP.md) | Client configuration, tools, revision checks, and file safety |
@@ -459,4 +472,4 @@ See the [CI workflow](.github/workflows/ci.yml) for the platform build matrix an
 
 ---
 
-[MIT licensed](LICENSE). Original Rust code and artwork. OpenPatch is independent of VCV and is not affiliated with or endorsed by VCV. Dependency licenses remain with their respective authors. Panel typography uses [Barlow Semi Condensed](crates/openpatch-desktop/assets/fonts/README.md) under the SIL Open Font License; its notice is bundled with the Mac app and available with `openpatch-desktop --font-license`.
+[MIT licensed](LICENSE). Original native artwork; Rust DSP includes attributed algorithm adaptations under their respective licenses. OpenPatch is independent of VCV and is not affiliated with or endorsed by VCV. Dependency licenses remain with their respective authors. Stock Delay's mono sinc adaptation credits [BSD-2-Clause libsamplerate](docs/licenses/libsamplerate-0.1.9.txt); its notice is bundled and available with `openpatch-desktop --third-party-licenses`. Panel typography uses [Barlow Semi Condensed](crates/openpatch-desktop/assets/fonts/README.md) under the SIL Open Font License; its notice is bundled with the Mac app and available with `openpatch-desktop --font-license`.
