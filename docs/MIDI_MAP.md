@@ -5,6 +5,11 @@ implementation boundary and acceptance work for Core MIDI-Map. Root review and
 actual-class probes must settle the provisional decisions below before fixtures,
 numerical gates or lifecycle behavior are frozen. No passing result is claimed.
 
+Scheduling: **deferred to the final MIDI/live-performance phase** by user
+direction on 2026-10-15. This design is retained research, not the next
+implementation task. Design/patching, synthesis fidelity, projects/compatibility
+and MCP/visual work take priority; see [delivery order](ROADMAP.md#delivery-order).
+
 The completion target is at least the Core MIDI-Map function: hardware CC controls
 eligible parameters throughout the current OpenPatch catalog, with learning,
 persistence, effective-value feedback and coherent save/capture authority. A
