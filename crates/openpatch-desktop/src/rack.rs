@@ -19,6 +19,8 @@ include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
+#[path = "agent_follow.rs"]
+mod agent_follow;
 
 #[cfg(test)]
 #[path = "panel_toggle_scale_tests.rs"]
@@ -417,6 +419,7 @@ pub struct Rack {
     construction_animation: crate::construction_motion::Tracker,
     construction_anchors: BTreeMap<(String, String), crate::construction_motion::Anchor>,
     construction_clock: Option<std::time::Instant>,
+    agent_follow: agent_follow::State,
 }
 
 impl Default for Rack {
@@ -472,6 +475,7 @@ impl Default for Rack {
             construction_animation: crate::construction_motion::Tracker::default(),
             construction_anchors: BTreeMap::new(),
             construction_clock: None,
+            agent_follow: agent_follow::State::default(),
         }
     }
 }
@@ -490,11 +494,13 @@ impl Rack {
 
     /// Suppress only this successful human edit, even if synchronization is delayed.
     pub(crate) fn suppress_cable_move_revision(&mut self, revision: u64) {
+        self.suspend_agent_follow();
         self.construction_animation
             .suppress_cable_move_revision(revision);
     }
 
     pub(crate) fn clear_construction_animation(&mut self) {
+        self.suspend_agent_follow();
         self.construction_animation.clear();
     }
 
@@ -525,6 +531,7 @@ impl Rack {
         mode: crate::construction_motion::MotionMode,
     ) {
         if self.construction_animation.set_mode(mode) {
+            self.suspend_agent_follow();
             self.construction_anchors.clear();
         }
     }
@@ -549,7 +556,7 @@ impl Rack {
     ) {
         static MOTION_CATALOG: OnceLock<Value> = OnceLock::new();
         self.set_construction_motion_mode(mode);
-        self.construction_animation.observe(
+        let observation = self.construction_animation.observe(
             before,
             after,
             previous_revision,
@@ -558,6 +565,14 @@ impl Rack {
             MOTION_CATALOG.get_or_init(openpatch_core::catalog),
             now,
         );
+        match observation {
+            crate::construction_motion::Observation::Commit => {
+                self.agent_follow
+                    .queue(self.construction_animation.latest_targets(), revision, now)
+            }
+            crate::construction_motion::Observation::Clear => self.suspend_agent_follow(),
+            crate::construction_motion::Observation::Preserve => {}
+        }
     }
     pub(crate) fn observe_construction_transition_with_mode(
         &mut self,
@@ -677,6 +692,7 @@ impl Rack {
 
     pub(crate) fn set_shortcuts_enabled(&mut self, enabled: bool) {
         if !enabled {
+            self.suspend_agent_follow();
             self.cancel_module_drag();
         }
         self.shortcuts_enabled = enabled;
@@ -1113,9 +1129,11 @@ impl Rack {
 
     pub fn reset_view(&mut self) {
         self.pending_center_zoom_ratio = 1.0;
-        if self.pan != vec2(24.0, 12.0) || self.zoom != 1.0 {
+        if self.agent_follow.persisted_pan(self.pan) != vec2(24.0, 12.0) || self.zoom != 1.0 {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
+        self.set_agent_follow(false);
+        self.agent_follow.promote_view();
         self.pan = vec2(24.0, 12.0);
         self.zoom = 1.0;
     }
@@ -1143,6 +1161,8 @@ impl Rack {
         if zoom == self.zoom {
             return;
         }
+        self.set_agent_follow(false);
+        self.agent_follow.promote_view();
         if self.viewport.is_some() {
             let world = (pivot - self.pan) / self.zoom;
             self.pan = bounded_pan(pivot - world * zoom);
@@ -1224,7 +1244,8 @@ impl Rack {
                 (id, [committed.x, committed.y])
             })
             .collect();
-        json!({"version":1,"zoom":self.zoom,"pan":[self.pan.x,self.pan.y],"positions":positions})
+        let pan = self.agent_follow.persisted_pan(self.pan);
+        json!({"version":1,"zoom":self.zoom,"pan":[pan.x,pan.y],"positions":positions})
     }
 
     pub(crate) fn cancel_module_drag(&mut self) {
@@ -1294,6 +1315,8 @@ impl Rack {
         }
         self.layout_revision = self.layout_revision.wrapping_add(1);
         self.positions = positions;
+        self.suspend_agent_follow();
+        self.agent_follow.promote_view();
         self.pan = pan;
         self.zoom = zoom;
         self.pending_center_zoom_ratio = 1.0;
@@ -1419,6 +1442,41 @@ impl Rack {
         }
         self.pending_center_zoom_ratio = 1.0;
         self.viewport = Some(canvas);
+        let blocked = !interactive
+            || !self.shortcuts_enabled
+            || !ui.input(|i| i.focused)
+            || popup_open_at_frame_start
+            || !self.navigation_idle();
+        let manual = !blocked
+            && ui.input(|i| {
+                i.key_pressed(egui::Key::Escape)
+                    || (canvas.contains(
+                        i.pointer
+                            .interact_pos()
+                            .or(i.pointer.hover_pos())
+                            .unwrap_or(Pos2::ZERO),
+                    ) && (i.pointer.any_down()
+                        || i.pointer.any_pressed()
+                        || i.raw_scroll_delta != Vec2::ZERO
+                        || i.zoom_delta() != 1.0))
+                    || i.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            egui::Event::Key { pressed: true, .. } | egui::Event::Text(_)
+                        )
+                    })
+            });
+        if manual {
+            self.set_agent_follow(false);
+        } else if blocked {
+            self.suspend_agent_follow();
+        }
+        let pan_before_follow = self.pan;
+        if self.tick_agent_follow(patch, revision, animation_now) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        }
+        let camera_pan = self.pan;
         if !suppress_reveal {
             if std::mem::take(&mut self.reveal_group_once) {
                 self.reveal_selected_group(patch, canvas);
@@ -2213,8 +2271,16 @@ impl Rack {
             );
         }
         self.pan = bounded_pan(self.pan);
-        if self.pan != initial_pan {
+        if pan_before_follow != initial_pan || self.pan != camera_pan {
+            self.set_agent_follow(false);
+            self.agent_follow.promote_view();
             self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+        if !blocked && !manual {
+            self.resolve_agent_follow(patch, catalog, canvas, animation_now);
+            if self.agent_follow.active() {
+                ui.ctx().request_repaint();
+            }
         }
         if self.editing.as_ref().is_some_and(|edit| {
             edit.surface == ParameterEditSurface::KnobMenu
@@ -2363,7 +2429,17 @@ impl Rack {
                 .blank_resize
                 .as_ref()
                 .is_some_and(|d| d.proposal.id == node.id);
-            if !rect.intersects(canvas) && !resizing {
+            // Resolve a pending follow target through the actual control
+            // renderer even offscreen; painters remain clipped to the canvas.
+            let follow_parameter = self.agent_follow.pending.iter().any(|target| {
+                target.id == node.id
+                    && target.kind == node.kind
+                    && matches!(
+                        target.focus,
+                        crate::construction_motion::FollowFocus::Parameter(_)
+                    )
+            });
+            if !rect.intersects(canvas) && !resizing && !follow_parameter {
                 continue;
             }
             let description = module
@@ -18177,5 +18253,8 @@ mod tests {
     include!("cable_move_render_tests.rs");
     mod construction_motion_render_tests {
         include!("construction_motion_render_tests.rs");
+    }
+    mod agent_follow_tests {
+        include!("agent_follow_tests.rs");
     }
 }

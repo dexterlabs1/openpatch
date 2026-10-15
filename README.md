@@ -37,7 +37,7 @@
 - **Clear space to work.** Adjust cable transparency and tension in View, reveal routes by hovering a port, and set plug-light brightness independently. Turning plug lights off stops their observation work. [Cable presentation →](docs/CABLE_PRESENTATION.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
-- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, shared undo, and Pause, Resume and Cancel. Existing cables unplug, travel and settle when MCP repatches them, including direct tool calls. **View → Agent motion** offers Full, Reduced or Off for the [module, cable and parameter cues](docs/CONSTRUCTION_MOTION.md).
+- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, shared undo, and Pause, Resume and Cancel. Existing cables unplug, travel and settle when MCP repatches them, including direct tool calls. **View → Agent motion** offers Full, Reduced or Off for the [module, cable and parameter cues](docs/CONSTRUCTION_MOTION.md). Opt into [Follow agent edits](docs/AGENT_FOLLOW.md) to reveal offscreen work while preserving your zoom and saved project view.
 
 ## Get started on macOS
 

@@ -31,7 +31,9 @@ sockets and hit targets already reflect the committed patch. Parameters sent to
 DSP are not interpolated by this feature. A faint complete cable route and its
 real plugs remain visible during the reveal. Hovering or picking up a cable
 shows its ordinary complete form. Editing a highlighted control yields to the
-user immediately. Motion does not move the camera or change selection.
+user immediately. Effects do not change selection. Camera movement requires the
+separate, default-off [Follow agent edits](AGENT_FOLLOW.md) option, which reveals
+fresh eligible work without changing zoom or the saved project view.
 The final cable route, sockets and signal lights are already correct during a
 move. Traveling plugs are passive decoration and do not emit fake signal lights.
 Pointing at or picking up the cable immediately ends its decorative motion.

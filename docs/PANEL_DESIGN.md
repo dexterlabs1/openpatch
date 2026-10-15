@@ -50,6 +50,11 @@ the default 50% curve and looser settings keep their established appearance.
 Committed wires, drag previews, stacked routes and agent motion use the same
 geometry. This is a visual model, not a simulation of cable elasticity.
 
+Optional [Follow agent edits](AGENT_FOLLOW.md) reveals fresh committed agent work
+outside the viewport. It uses actual control and port geometry, preserves zoom,
+and yields to manual interaction. Its transient camera does not change the saved
+project view or module layout. It starts off for each window.
+
 Five categorical parameters have horizontal segments driven by explicit catalog
 `values` and `labels`: Analog VCO waveform (Saw/Pulse), Crossfade law
 (Linear/Power), Stereo Audio DC block and Score running (Off/On), and Drum Voice
@@ -81,7 +86,7 @@ and presentation state; a catalog change replaces it. No thumbnail image
 assets or separately maintained miniature control layouts are used.
 
 The shared-renderer regressions compare primitive geometry and drawing for all
-64 built-in kinds at default settings at 42%, 85%, and 100% scale, including
+built-in kinds at default settings at 42%, 85%, and 100% scale, including
 real rack instance IDs. Interaction tests cover full-width and narrow cards, preview input
 isolation and card click/drag behavior over specialized controls. Categorical
 segments use that same passive preview path and cannot edit the live patch.

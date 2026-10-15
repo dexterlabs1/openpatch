@@ -113,7 +113,7 @@ impl Panel {
                     ui.label(RichText::new("Motion").small().weak());
                     for mode in [crate::construction_motion::MotionMode::Full,crate::construction_motion::MotionMode::Reduced,crate::construction_motion::MotionMode::Off] {
                         ui.selectable_value(&mut selected_mode,mode,mode.label())
-                            .on_hover_text("Presentation of committed edits only. Full adds short movement accents; Reduced uses static accents; Off settles everything immediately. Changing modes affects future steps. No audio or camera changes. Remembered for this window.");
+                            .on_hover_text("Presentation of committed edits only. Full adds short movement accents; Reduced uses static accents; Off settles everything immediately. Changing modes affects future steps. Playback stays under your control. Enable Follow agent edits in View → Agent motion to reveal future edits. Remembered for this window.");
                     }
                 });
                 if let Some(error) = self.snapshot["error"].as_str() {

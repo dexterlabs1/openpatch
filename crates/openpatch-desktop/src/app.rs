@@ -2885,17 +2885,7 @@ impl OpenPatch {
                             ui.separator();
                             self.cable_presentation_controls(ui);
                             ui.separator();
-                            ui.label("Agent motion");
-                            ui.horizontal(|ui| {
-                                for mode in [crate::construction_motion::MotionMode::Full,
-                                    crate::construction_motion::MotionMode::Reduced,
-                                    crate::construction_motion::MotionMode::Off] {
-                                    if ui.selectable_label(self.construction.motion_mode() == mode, mode.label()).clicked() {
-                                        self.construction.set_motion_mode(mode);
-                                        self.rack.set_construction_motion_mode(mode);
-                                    }
-                                }
-                            });
+                            ui.menu_button("Agent motion", |ui| self.agent_motion_controls(ui));
                             ui.separator();
                             let mut locked = self.rack.positions_locked();
                             if ui.checkbox(&mut locked, "Lock module positions").changed() {
@@ -3199,7 +3189,49 @@ impl OpenPatch {
             });
     }
 
+    fn agent_motion_controls(&mut self, ui: &mut egui::Ui) {
+        use crate::construction_motion::MotionMode;
+        let allowed = self.library_enabled()
+            && ui.ctx().input(|input| input.focused)
+            && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ui.ctx());
+        ui.add_enabled_ui(allowed, |ui| {
+            ui.horizontal(|ui| {
+                for mode in [MotionMode::Full, MotionMode::Reduced, MotionMode::Off] {
+                    if ui.selectable_label(self.construction.motion_mode() == mode, mode.label()).clicked() {
+                        self.construction.set_motion_mode(mode);
+                        self.rack.set_construction_motion_mode(mode);
+                    }
+                }
+            });
+            // Read Rack every pass: manual navigation turns follow off immediately.
+            let mut follow = self.rack.agent_follow_enabled();
+            if ui.add_enabled(self.construction.motion_mode() != MotionMode::Off,
+                egui::Checkbox::new(&mut follow, "Follow agent edits"))
+                .on_hover_text("Reveal future agent edits with a small camera pan. Full moves smoothly; Reduced reveals immediately. Manual rack navigation turns follow off. Remembered for this window.")
+                .on_disabled_hover_text("Choose Full or Reduced motion to follow agent edits.")
+                .changed()
+            {
+                self.rack.set_agent_follow(follow);
+            }
+        });
+    }
+
+    fn service_agent_follow(&mut self, ctx: &egui::Context) {
+        if !self.library_enabled()
+            || !ctx.input(|input| input.focused)
+            || ctx.wants_keyboard_input()
+            || self.rack.annotation_keyboard_active()
+            || self.cable_palette_ui.keyboard_active()
+            || (self.browser_open && self.library.keyboard_active())
+            || egui::Popup::is_any_open(ctx)
+            || egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
+        {
+            self.rack.suspend_agent_follow();
+        }
+    }
+
     fn rack_workspace(&mut self, ctx: &egui::Context, library_action: Option<LibraryAction>) {
+        self.service_agent_follow(ctx);
         let mut action = None;
         let mut pending_add = None;
         self.rack.set_cable_palette(
@@ -5710,6 +5742,114 @@ impl OpenPatch {
             self.title = "Taut cables · a little gravity".into();
             self.status = "Maximum tension · restrained distance-dependent bow · actual shared cable geometry".into();
         }
+        if frame == 2132 {
+            egui::Popup::close_all(ctx);
+            self.smoke_motion_origin = None;
+            assert!(self.command(
+                "replace_patch",
+                json!({"patch":{"version":2,"nodes":[
+                    {"id":"near-voice","kind":"multi_vco","params":{"frequency":110}},
+                    {"id":"far-voice","kind":"multi_vco","params":{"frequency":220}}
+                ]}})
+            ));
+            self.replace_rack(Rack::default());
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[72,48],
+                "positions":{"near-voice":[0,0],"far-voice":[1500,0]}}))
+                .unwrap();
+            self.construction
+                .set_motion_mode(crate::construction_motion::MotionMode::Full);
+            self.rack
+                .set_construction_motion_mode(crate::construction_motion::MotionMode::Full);
+            self.rack.set_agent_follow(true);
+            self.browser_open = false;
+            self.select_analysis(None);
+            self.title = "Follow agent edits".into();
+            self.status = "Follow enabled · the next edit is beyond the right edge".into();
+        }
+        if frame == 2140 {
+            let pan = self.rack.agent_follow_view_pan();
+            ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("smoke-follow-receipt"),
+                    json!({
+                        "baseline_layout":self.rack.layout(),"before_revision":self.revision,
+                        "before_pan":[pan.x,pan.y],"zoom":self.rack.zoom(),"phases_ms":[0,110,260]
+                    }),
+                )
+            });
+        }
+        if frame == 2144 {
+            let origin = Instant::now();
+            self.smoke_motion_origin = Some(origin);
+            self.rack.set_construction_clock_override(Some(origin));
+            let before = self.revision;
+            execute_shared(&self.shared, "start_construction", json!({
+                "title":"Tune the far voice","expected_revision":before,"interval_ms":100,
+                "steps":[{"label":"Tune the offscreen oscillator","edits":[
+                    {"tool":"set_parameter","arguments":{"id":"far-voice","parameter":"frequency","value":440}}
+                ]}]
+            })).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let receipt = loop {
+                let state = self.shared.lock().unwrap().construction_snapshot();
+                if state["status"] == "completed" {
+                    break state["last_commit"].clone();
+                }
+                assert_eq!(state["status"], "running", "{state}");
+                assert!(Instant::now() < deadline, "Follow fixture did not complete");
+                std::thread::sleep(Duration::from_millis(2));
+            };
+            assert_eq!(receipt["before_revision"], before);
+            while self.revision < receipt["revision"].as_u64().unwrap() {
+                self.sync();
+                assert!(
+                    Instant::now() < deadline,
+                    "Follow fixture could not observe commit"
+                );
+                std::thread::yield_now();
+            }
+            ctx.data_mut(|data| {
+                let mut log = data
+                    .get_temp::<Value>(egui::Id::new("smoke-follow-receipt"))
+                    .unwrap();
+                log["commit"] = receipt;
+                data.insert_temp(egui::Id::new("smoke-follow-receipt"), log);
+            });
+            self.status = "Follow enabled · revealing the newly tuned oscillator".into();
+        }
+        if matches!(frame, 2148 | 2164) {
+            self.rack.set_construction_clock_override(Some(
+                self.smoke_motion_origin.unwrap()
+                    + Duration::from_millis(if frame == 2148 { 110 } else { 260 }),
+            ));
+        }
+        if matches!(frame, 2156 | 2172) {
+            let pan = self.rack.agent_follow_view_pan();
+            let log = ctx.data_mut(|data| {
+                let mut log = data
+                    .get_temp::<Value>(egui::Id::new("smoke-follow-receipt"))
+                    .unwrap();
+                log[if frame == 2156 {
+                    "mid_pan"
+                } else {
+                    "settled_pan"
+                }] = json!([pan.x, pan.y]);
+                log["final_layout"] = self.rack.layout();
+                log["final_revision"] = json!(self.revision);
+                data.insert_temp(egui::Id::new("smoke-follow-receipt"), log.clone());
+                log
+            });
+            if frame == 2172 {
+                assert_eq!(log["baseline_layout"], log["final_layout"]);
+                assert_ne!(log["before_pan"], log["settled_pan"]);
+                std::fs::write(
+                    path.with_file_name("agent-follow-receipt.json"),
+                    serde_json::to_vec_pretty(&log).unwrap(),
+                )
+                .expect("Save follow receipt");
+            }
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5814,6 +5954,9 @@ impl OpenPatch {
                 | 2092
                 | 2108
                 | 2124
+                | 2140
+                | 2156
+                | 2172
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5922,7 +6065,10 @@ impl OpenPatch {
                 87 => path.with_file_name("cable-move-travel.png"),
                 88 => path.with_file_name("cable-move-settle.png"),
                 89 => path.with_file_name("cable-move-complete.png"),
-                _ => path.with_file_name("cable-tension-tight.png"),
+                90 => path.with_file_name("cable-tension-tight.png"),
+                91 => path.with_file_name("agent-follow-before.png"),
+                92 => path.with_file_name("agent-follow-mid.png"),
+                _ => path.with_file_name("agent-follow-settled.png"),
             };
             image::save_buffer(
                 &target,
@@ -5933,18 +6079,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/91 at frame {frame}: {}",
+                "Native smoke: capture {}/94 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 91 {
+            if captures == 94 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2138, "Native screenshot timeout");
+        assert!(frame < 2186, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6046,6 +6192,7 @@ impl eframe::App for OpenPatch {
                 style.animation_time = 0.0;
             });
         }
+        self.service_agent_follow(ctx);
         self.sync();
         self.service_manual_release(ctx);
         self.observe_document();
@@ -6208,6 +6355,9 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod agent_follow_app_tests {
+        include!("agent_follow_app_tests.rs");
+    }
     mod annotation_app_tests {
         include!("annotation_app_tests.rs");
     }

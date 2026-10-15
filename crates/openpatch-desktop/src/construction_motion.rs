@@ -38,6 +38,19 @@ pub(crate) struct ParameterCue {
     pub new: f32,
     pub started: Instant,
 }
+#[derive(Clone, Debug)]
+pub(crate) enum FollowFocus {
+    Module,
+    Parameter(String),
+    Port { input: bool, name: String },
+}
+#[derive(Clone, Debug)]
+pub(crate) struct FollowTarget {
+    pub id: String,
+    pub kind: String,
+    pub focus: FollowFocus,
+    pub started: Instant,
+}
 #[derive(Default)]
 pub(crate) struct Tracker {
     pub mode: MotionMode,
@@ -49,6 +62,7 @@ pub(crate) struct Tracker {
     pub modules: Vec<ModuleCue>,
     pub parameters: Vec<ParameterCue>,
     pub focus: Vec<ModuleCue>,
+    latest_targets: Vec<FollowTarget>,
 }
 pub(crate) enum Observation {
     Preserve,
@@ -131,6 +145,45 @@ fn moved_ids(before: &Patch, after: &Patch, moves: &[Value]) -> Option<Vec<Strin
 }
 
 impl Tracker {
+    pub(crate) fn latest_targets(&self) -> &[FollowTarget] {
+        &self.latest_targets
+    }
+    fn follow_cables(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        ids: &[String],
+        moved: bool,
+        started: Instant,
+    ) {
+        for id in ids {
+            let Some(cable) = after.cables.iter().find(|c| c.id.as_ref() == Some(id)) else {
+                continue;
+            };
+            let input = !moved
+                || before
+                    .cables
+                    .iter()
+                    .find(|c| c.id.as_ref() == Some(id))
+                    .is_none_or(|old| old.to != cable.to || old.input != cable.input);
+            let (id, name) = if input {
+                (&cable.to, &cable.input)
+            } else {
+                (&cable.from, &cable.output)
+            };
+            if let Some(node) = after.nodes.iter().find(|n| &n.id == id) {
+                self.latest_targets.push(FollowTarget {
+                    id: id.clone(),
+                    kind: node.kind.clone(),
+                    focus: FollowFocus::Port {
+                        input,
+                        name: name.clone(),
+                    },
+                    started,
+                });
+            }
+        }
+    }
     pub(crate) fn suppress_cable_move_revision(&mut self, revision: u64) {
         self.suppressed_move = Some(revision);
         self.clear();
@@ -190,6 +243,7 @@ impl Tracker {
             return Observation::Clear;
         };
         self.cables.observe_moves(before, after, &ids, started);
+        self.follow_cables(before, after, &ids, true, started);
         Observation::Commit
     }
     pub fn clear(&mut self) {
@@ -197,6 +251,7 @@ impl Tracker {
         self.modules.clear();
         self.parameters.clear();
         self.focus.clear();
+        self.latest_targets.clear();
     }
     pub fn set_mode(&mut self, mode: MotionMode) -> bool {
         if self.mode == mode {
@@ -452,6 +507,31 @@ impl Tracker {
         if self.modules.len() + self.parameters.len() + self.cables.len() + incoming > MAX_TARGETS {
             self.clear();
         }
+        self.latest_targets.clear();
+        // Only this validated commit, never overlapping cues from older steps.
+        if age_ms < if reduced { 300 } else { 360 } {
+            self.latest_targets
+                .extend(changes.iter().map(|p| FollowTarget {
+                    id: p.id.clone(),
+                    kind: p.kind.clone(),
+                    focus: FollowFocus::Parameter(p.parameter.clone()),
+                    started,
+                }));
+        }
+        if age_ms < if reduced { 300 } else { 420 } {
+            self.follow_cables(before, after, &cable_ids, false, started);
+            self.follow_cables(before, after, &move_ids, true, started);
+        }
+        if age_ms < if reduced { 300 } else { 320 } {
+            self.latest_targets
+                .extend(arrivals.iter().map(|m| FollowTarget {
+                    id: m.id.clone(),
+                    kind: m.kind.clone(),
+                    focus: FollowFocus::Module,
+                    started,
+                }));
+        }
+        self.latest_targets.truncate(MAX_TARGETS);
         for m in arrivals {
             self.modules.retain(|old| old.id != m.id);
             self.parameters.retain(|p| p.id != m.id);
