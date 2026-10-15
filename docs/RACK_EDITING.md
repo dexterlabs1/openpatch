@@ -59,6 +59,13 @@ a modal dialog, a blocked/no-op drop, or a newer graph revision cancels the
 preview without adding history. Pan/zoom remain persisted view settings without
 separate undo entries.
 
+While dragging a cable, nearby guidance names the route and the action the
+current release will perform. It distinguishes creating or stacking a cable,
+deleting a moved cable, and discarding a new or cloned draft. Press modifiers
+keep their captured operation; changing Shift at drop updates duplicate-route
+guidance. Unrelated routes soften during the gesture. **Esc** cancels. Guidance
+uses the existing gesture rules and does not change the patch.
+
 ## Rack navigation
 
 Zoom spans **25–400%**. Pinch or Cmd-scroll zooms around the pointer; mouse

@@ -59,13 +59,14 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Play / pause | **Space** or the transport toolbar button |
 | Open the library | **Enter**, the library toolbar icon, **Edit → Add module**, or right-click empty rack space |
 | Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
+| Inspect a library panel | Click **Inspect**, or **Cmd/Ctrl-I** while the library has focus; **Esc** closes inspection first |
 | Patch / unplug | Drag or click between jacks; an occupied output picks its top plug for moving to another output; right-click an input to unplug |
 | Add / clone a cable | **Cmd-drag** either jack adds a cable; **Cmd-Shift-drag** clones its top cable |
 | Stack / remove cables | Drop onto a version-2 input to add a signal; **Shift-click** a jack deletes its top cable |
 | Bring a buried plug forward | Right-click its jack → select the cable → **Move this cable**, then return it to the same jack; the opposite end keeps its order |
 | Edit cable bundles / colours | Right-click either jack → **Move all cables**, individual cable actions, or **Custom RGB…**; each operation is undoable |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
-| Type a value or expression | Right-click a knob, or double-click its displayed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
+| Type a value or expression | Right-click a knob, or click a printed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
 | Blend and synchronize audio waveforms | **File → Synced waveform voice** |
 | Layer voices with CV-controlled mixing | **File → Layered stereo morph** |
 | Add transpose and vibrato to a chord | **File → Stacked pitch voice** |
@@ -338,7 +339,9 @@ normaling, and voice behavior explicitly.
 
 Search module names, controls and ports, filter by musical role, and star favorites.
 Drag a tile onto the rack to preview its placement; adding a module is one undo step.
-The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, knobs, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view of the complete panel. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
+In the floating precision editor, **Apply & Next / Tab** and **Previous / Shift-Tab** apply the draft and continue through type-entry controls in the same module.
+
+The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, knobs, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view, or click **Inspect** to pin its natural-size panel in a separate window. Wide panels scroll horizontally; details list ports and visible controls. Search and filters leave the pin on that module. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
 
 <sub>Actual native Linux / Mesa CI render. macOS is the primary design target.</sub>
 

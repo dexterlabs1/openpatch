@@ -44,6 +44,7 @@ enum FocusKind {
     Search,
     Tile,
     Other,
+    Inspection,
 }
 
 impl Category {
@@ -116,9 +117,21 @@ pub struct ModuleLibrary {
     focused_last_frame: Option<FocusKind>,
     scroll_to_kind: Option<String>,
     previews: BTreeMap<String, ModulePreview>,
+    inspected: Option<String>,
 }
 
 impl ModuleLibrary {
+    /// Pin a catalog module for inspection without inserting it or changing selection.
+    /// Used by explicit Inspect controls; unknown/removed kinds are ignored.
+    pub fn inspect(&mut self, kind: &str, catalog: &Value) -> bool {
+        if modules(catalog).any(|module| module["kind"].as_str() == Some(kind)) {
+            self.inspected = Some(kind.to_owned());
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn request_focus(&mut self) {
         self.focus_search = true;
         self.focused_last_frame = None;
@@ -238,6 +251,9 @@ impl ModuleLibrary {
                 input.key_pressed(egui::Key::ArrowRight),
                 input.key_pressed(egui::Key::ArrowUp),
                 input.key_pressed(egui::Key::ArrowDown),
+                input.key_pressed(egui::Key::I)
+                    && (input.modifiers.command || input.modifiers.ctrl)
+                    && !input.modifiers.alt,
             )
         });
         let mut action = None;
@@ -391,7 +407,7 @@ impl ModuleLibrary {
                                     for module in &visible[index..index + count] {
                                         if let Some(kind) = module["kind"].as_str() {
                                             visible_kinds.push(kind);
-                                            let (tile_action, id, star_id) = self.tile(
+                                            let (tile_action, id, star_id, inspect_id) = self.tile(
                                                 ui,
                                                 module,
                                                 catalog,
@@ -399,7 +415,7 @@ impl ModuleLibrary {
                                                 patch_version,
                                             );
                                             tile_ids.push((kind, id));
-                                            other_ids.push(star_id);
+                                            other_ids.extend([star_id, inspect_id]);
                                             if tile_action.is_some() {
                                                 action = tile_action;
                                             }
@@ -412,16 +428,17 @@ impl ModuleLibrary {
                         });
                 });
             });
+        let (inspection_rect, inspection_ids) = self.show_inspection(ctx, catalog, enabled);
         if !enabled {
             self.focused_last_frame = None;
             return None;
         }
         let outside_press = ctx.input(|input| {
             input.pointer.any_pressed()
-                && input
-                    .pointer
-                    .interact_pos()
-                    .is_some_and(|pos| !panel.response.rect.contains(pos))
+                && input.pointer.interact_pos().is_some_and(|pos| {
+                    !panel.response.rect.contains(pos)
+                        && !inspection_rect.is_some_and(|rect| rect.contains(pos))
+                })
         });
         let focused_id = ctx.memory(|memory| memory.focused());
         let focus = focused_id.and_then(|id| {
@@ -429,6 +446,8 @@ impl ModuleLibrary {
                 Some(FocusKind::Search)
             } else if tile_ids.iter().any(|(_, tile_id)| *tile_id == id) {
                 Some(FocusKind::Tile)
+            } else if inspection_ids.contains(&id) {
+                Some(FocusKind::Inspection)
             } else if other_ids.contains(&id) {
                 Some(FocusKind::Other)
             } else {
@@ -448,6 +467,7 @@ impl ModuleLibrary {
                 (keys.0, egui::Key::Enter),
                 (keys.1, egui::Key::Space),
                 (keys.2, egui::Key::Escape),
+                (keys.7, egui::Key::I),
             ] {
                 if pressed {
                     consume_key(ctx, key);
@@ -467,14 +487,27 @@ impl ModuleLibrary {
             };
             return action;
         }
+        if keys.2 && self.inspected.take().is_some() {
+            self.request_focus();
+            return None;
+        }
         if keys.2 {
             *open = false;
             self.focused_last_frame = None;
             return None;
         }
+        if keys.7 {
+            if let Some(kind) = self.highlighted.clone() {
+                self.inspect(&kind, catalog);
+            }
+        }
+        let inspection_has_focus =
+            focus == Some(FocusKind::Inspection) || previous_focus == Some(FocusKind::Inspection);
         let tile_has_focus =
             focus == Some(FocusKind::Tile) || previous_focus == Some(FocusKind::Tile);
-        let step = if keys.5 || (tile_has_focus && keys.3) {
+        let step = if inspection_has_focus {
+            0
+        } else if keys.5 || (tile_has_focus && keys.3) {
             -1
         } else if keys.6 || (tile_has_focus && keys.4) {
             1
@@ -518,6 +551,7 @@ impl ModuleLibrary {
         }
         if keys.0
             && action.is_none()
+            && !inspection_has_focus
             && focus != Some(FocusKind::Other)
             && previous_focus != Some(FocusKind::Other)
         {
@@ -544,6 +578,8 @@ impl ModuleLibrary {
                 Some(FocusKind::Search)
             } else if tile_ids.iter().any(|(_, tile_id)| *tile_id == id) {
                 Some(FocusKind::Tile)
+            } else if inspection_ids.contains(&id) {
+                Some(FocusKind::Inspection)
             } else if other_ids.contains(&id) {
                 Some(FocusKind::Other)
             } else {
@@ -553,6 +589,151 @@ impl ModuleLibrary {
         action
     }
 
+    fn show_inspection(
+        &mut self,
+        ctx: &egui::Context,
+        catalog: &Value,
+        enabled: bool,
+    ) -> (Option<Rect>, Vec<egui::Id>) {
+        let Some(kind) = self.inspected.clone() else {
+            return (None, Vec::new());
+        };
+        let Some(module) =
+            modules(catalog).find(|module| module["kind"].as_str() == Some(kind.as_str()))
+        else {
+            self.inspected = None;
+            return (None, Vec::new());
+        };
+        let preview = self
+            .previews
+            .entry(kind.clone())
+            .or_insert_with(|| ModulePreview::new(module));
+        if !preview.matches(module) {
+            *preview = ModulePreview::new(module);
+        }
+        let viewport = ctx.content_rect();
+        let mut ids = Vec::new();
+        let mut close = false;
+        let shown = egui::Window::new("Module inspection")
+            .id(egui::Id::new("module-library-inspection"))
+            .default_pos(viewport.min + vec2(22.0, 54.0))
+            .default_width(600.0)
+            .default_height((viewport.height() - 120.0).clamp(320.0, 620.0))
+            .min_width(240.0)
+            .max_width((viewport.width() - 32.0).max(240.0))
+            .max_height((viewport.height() - 32.0).max(160.0))
+            .constrain_to(viewport)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.add_enabled_ui(enabled, |ui| {
+                    // A dedicated focus target represents the display area;
+                    // disabled panel controls never become keyboard targets.
+                    let background = ui.interact(
+                        ui.max_rect(),
+                        ui.make_persistent_id("inspection-focus"),
+                        Sense::focusable_noninteractive(),
+                    );
+                    ids.push(background.id);
+                    ui.horizontal(|ui| {
+                        ui.strong(
+                            module["title"]
+                                .as_str()
+                                .unwrap_or_else(|| crate::rack::title(&kind)),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let button = ui.button("Close inspection");
+                            ids.push(button.id);
+                            close = button.clicked();
+                        });
+                    });
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Pinned · {} · Display only",
+                            Category::of_kind(&kind).label()
+                        ))
+                        .size(11.0),
+                    );
+                    egui::ScrollArea::vertical()
+                        .id_salt(("inspection-details", &kind))
+                        .max_height((viewport.height() - 168.0).max(80.0))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new("Scroll to see the full panel and details.")
+                                    .small(),
+                            );
+                            // Keep the real hardware at its natural, readable scale.
+                            // Wide panels scroll horizontally rather than shrinking.
+                            egui::ScrollArea::both()
+                                .id_salt(("inspection-panel", &kind))
+                                .max_height(416.0)
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    let size = preview.size();
+                                    let (bounds, _) = ui.allocate_exact_size(size, Sense::hover());
+                                    preview.show(ui, bounds, catalog);
+                                });
+                            ui.separator();
+                            if let Some(description) = module["description"].as_str() {
+                                ui.label(description);
+                            }
+                            for (field, label) in [("inputs", "Inputs"), ("outputs", "Outputs")] {
+                                let ports = module[field]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter_map(Value::as_str)
+                                    .collect::<Vec<_>>();
+                                ui.label(format!(
+                                    "{label}: {}",
+                                    if ports.is_empty() {
+                                        "None".to_owned()
+                                    } else {
+                                        ports.join(", ")
+                                    }
+                                ));
+                            }
+                            ui.label(format!(
+                                "Engine: v{} or later",
+                                module["min_patch_version"].as_u64().unwrap_or(1)
+                            ));
+                            let controls = visible_parameter_details(module);
+                            ui.strong(format!("Controls ({})", controls.len()));
+                            if controls.is_empty() {
+                                ui.label("No adjustable controls.");
+                            }
+                            for (name, details) in controls {
+                                ui.label(egui::RichText::new(name).strong());
+                                ui.label(details);
+                                ui.add_space(3.0);
+                            }
+                        });
+                });
+            });
+        if enabled && !close {
+            if let Some(shown) = shown.as_ref() {
+                let pointer = ctx.input(|input| {
+                    (input.pointer.any_pressed() || input.pointer.any_released())
+                        .then(|| input.pointer.interact_pos())
+                        .flatten()
+                });
+                if pointer.is_some_and(|pos| {
+                    shown.response.rect.contains(pos)
+                        && ctx.layer_id_at(pos) == Some(shown.response.layer_id)
+                }) {
+                    if let Some(id) = ids.first() {
+                        ctx.memory_mut(|memory| memory.request_focus(*id));
+                    }
+                }
+            }
+        }
+        if close {
+            self.inspected = None;
+            // Return focus only after an explicit library control closes it.
+            self.request_focus();
+        }
+        (shown.map(|shown| shown.response.rect), ids)
+    }
+
     fn tile(
         &mut self,
         ui: &mut egui::Ui,
@@ -560,7 +741,7 @@ impl ModuleLibrary {
         catalog: &Value,
         width: f32,
         patch_version: u32,
-    ) -> (Option<LibraryAction>, egui::Id, egui::Id) {
+    ) -> (Option<LibraryAction>, egui::Id, egui::Id, egui::Id) {
         let kind = module["kind"].as_str().unwrap_or("");
         let title = module["title"]
             .as_str()
@@ -568,7 +749,10 @@ impl ModuleLibrary {
         let supported = available(module, patch_version);
         let (_, rect) = ui.allocate_space(vec2(width, 261.0));
         let id = ui.make_persistent_id(("module-library-tile", kind));
-        let response = ui.interact(rect, id, Sense::click_and_drag());
+        // Only the hardware/title region adds or drags. Footer controls have
+        // disjoint hit rectangles and can never accidentally insert a module.
+        let add_rect = Rect::from_min_max(rect.min, rect.max - vec2(0.0, 30.0));
+        let response = ui.interact(add_rect, id, Sense::click_and_drag());
         if self.scroll_to_kind.as_deref() == Some(kind) {
             response.scroll_to_me(None);
             self.scroll_to_kind = None;
@@ -595,7 +779,7 @@ impl ModuleLibrary {
                 supported,
             );
             let preview_bounds =
-                Rect::from_min_max(rect.min + vec2(8.0, 30.0), rect.max - vec2(8.0, 21.0));
+                Rect::from_min_max(rect.min + vec2(8.0, 30.0), rect.max - vec2(8.0, 32.0));
             let preview = self
                 .previews
                 .entry(kind.to_owned())
@@ -608,7 +792,7 @@ impl ModuleLibrary {
                 ui.painter()
                     .rect_filled(preview_bounds, 0, Color32::from_black_alpha(105));
                 ui.painter().text(
-                    rect.center_bottom() - vec2(0.0, 11.0),
+                    preview_bounds.center_bottom() - vec2(0.0, 11.0),
                     Align2::CENTER_CENTER,
                     "ENGINE V2",
                     FontId::proportional(10.0),
@@ -617,9 +801,20 @@ impl ModuleLibrary {
             }
         }
         let star_rect =
-            Rect::from_center_size(rect.right_top() + vec2(-15.0, 16.0), Vec2::splat(25.0));
+            Rect::from_center_size(rect.right_bottom() + vec2(-16.0, -15.0), Vec2::splat(25.0));
         let star = ui.interact(star_rect, id.with("favorite"), Sense::click());
         let favorite = self.favorites.contains(kind);
+        star.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                enabled,
+                format!(
+                    "{} {title} {} favorites",
+                    if favorite { "Remove" } else { "Add" },
+                    if favorite { "from" } else { "to" }
+                ),
+            )
+        });
         ui.painter().text(
             star_rect.center(),
             Align2::CENTER_CENTER,
@@ -632,8 +827,38 @@ impl ModuleLibrary {
         } else {
             "Add to favorites"
         });
+        let inspect_rect =
+            Rect::from_min_size(rect.left_bottom() + vec2(6.0, -28.0), vec2(62.0, 25.0));
+        let inspect = ui.interact(inspect_rect, id.with("inspect"), Sense::click());
+        inspect.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                enabled,
+                format!("Inspect {title} module"),
+            )
+        });
+        let visuals = ui.style().interact(&inspect);
+        ui.painter().rect(
+            inspect_rect,
+            3.0,
+            visuals.bg_fill,
+            visuals.bg_stroke,
+            egui::StrokeKind::Inside,
+        );
+        ui.painter().text(
+            inspect_rect.center(),
+            Align2::CENTER_CENTER,
+            "Inspect",
+            FontId::proportional(11.0),
+            visuals.text_color(),
+        );
+        let inspect = inspect.on_hover_text("Pin a larger panel and module details (Ctrl/Cmd+I)");
         let mut action = None;
-        if enabled && star.clicked() {
+        if enabled && inspect.clicked() {
+            inspect.request_focus();
+            self.inspect(kind, catalog);
+        } else if enabled && star.clicked() {
+            star.request_focus();
             self.toggle_favorite(kind);
         } else if enabled
             && response.clicked()
@@ -684,8 +909,32 @@ impl ModuleLibrary {
                     });
             }
         });
-        (action, id, star.id)
+        (action, id, star.id, inspect.id)
     }
+}
+
+/// Catalog presentation fields only; runtime/hidden parameters never enter details.
+fn visible_parameter_details(module: &Value) -> Vec<(String, String)> {
+    module["params"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, spec)| spec["hidden"] != true)
+        .map(|(name, spec)| {
+            let unit = spec["unit"].as_str().unwrap_or("");
+            let mut parts = Vec::new();
+            if let Some(default) = spec["default"].as_f64() {
+                parts.push(format!("Default: {default} {unit}").trim().to_owned());
+            }
+            if let (Some(min), Some(max)) = (spec["min"].as_f64(), spec["max"].as_f64()) {
+                parts.push(format!("Range: {min} to {max} {unit}").trim().to_owned());
+            }
+            if let Some(description) = spec["description"].as_str() {
+                parts.push(description.to_owned());
+            }
+            (name.clone(), parts.join(" · "))
+        })
+        .collect()
 }
 
 fn inspection_preview_size(natural: Vec2, viewport: Vec2) -> Vec2 {
@@ -720,7 +969,7 @@ fn paint_tile(
     module: &Value,
     highlighted: bool,
     hovered: bool,
-    supported: bool,
+    _supported: bool,
 ) {
     // The card is browser chrome; only the shared rack renderer paints hardware.
     painter.rect_filled(
@@ -766,15 +1015,6 @@ fn paint_tile(
         painter.layout_job(job),
         PANEL_TEXT,
     );
-    if supported {
-        painter.text(
-            rect.center_bottom() - vec2(0.0, 10.0),
-            Align2::CENTER_CENTER,
-            Category::of_kind(kind).label(),
-            FontId::proportional(10.0),
-            PANEL_MUTED,
-        );
-    }
 }
 
 #[cfg(test)]
@@ -1454,7 +1694,7 @@ mod tests {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        let (action, _, _) = library.tile(ui, module, &catalog, 150.0, 2);
+                        let (action, _, _, _) = library.tile(ui, module, &catalog, 150.0, 2);
                         assert!(action.is_none());
                     });
                 },
@@ -1507,5 +1747,325 @@ mod tests {
         assert!((size.x / size.y - preview.size().x / preview.size().y).abs() < 0.0001);
         assert!(size.x <= viewport.width() - 32.0 && size.y <= viewport.height() - 200.0);
         assert_eq!(module, &original);
+    }
+
+    fn pointer(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn explicit_inspect_footer_never_adds_drags_or_changes_favorites() {
+        let ctx = egui::Context::default();
+        let catalog = fixture();
+        let mut library = ModuleLibrary::default();
+        let mut open = true;
+        let (_, output) = frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+        let inspect = text_center(&output, "Inspect");
+        for (time, pressed) in [(1.0, true), (1.1, false)] {
+            let (action, _) = frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                time,
+                vec![
+                    egui::Event::PointerMoved(inspect),
+                    pointer(inspect, pressed),
+                ],
+                true,
+            );
+            assert_eq!(action, None);
+            assert!(!egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(&ctx));
+        }
+        assert_eq!(library.inspected.as_deref(), Some("analog_vco"));
+        assert!(library.favorites().is_empty());
+        assert!(!library.take_favorites_changed());
+        assert_eq!(library.focused_last_frame, Some(FocusKind::Other));
+        library.inspect("ladder_vcf", &catalog);
+        let (action, _) = frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            2.0,
+            vec![key(egui::Key::Enter, true)],
+            true,
+        );
+        assert_eq!(
+            action, None,
+            "Enter on Inspect must never activate the tile"
+        );
+    }
+
+    #[test]
+    fn inspection_pin_survives_search_filters_and_refreshes_replaced_catalog_metadata() {
+        let ctx = egui::Context::default();
+        let mut catalog = fixture();
+        let mut library = ModuleLibrary::default();
+        let mut open = true;
+        assert!(library.inspect("analog_vco", &catalog));
+        assert!(!library.inspect("missing", &catalog));
+        library.search = "filter".into();
+        library.category = Category::Filters;
+        frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+        assert_eq!(library.highlighted.as_deref(), Some("ladder_vcf"));
+        assert_eq!(library.inspected.as_deref(), Some("analog_vco"));
+        library.search.clear();
+        catalog["modules"][0]["params"]["frequency"]["default"] = json!(440);
+        frame(&ctx, &mut library, &mut open, &catalog, 1.0, vec![], true);
+        assert!(library.previews["analog_vco"].matches(&catalog["modules"][0]));
+        assert_eq!(library.inspected.as_deref(), Some("analog_vco"));
+        catalog["modules"].as_array_mut().unwrap().remove(0);
+        frame(&ctx, &mut library, &mut open, &catalog, 2.0, vec![], true);
+        assert_eq!(library.inspected, None, "removed modules close safely");
+        assert!(
+            library.inspect("ladder_vcf", &catalog),
+            "inspection can be reopened"
+        );
+    }
+
+    #[test]
+    fn escape_closes_inspection_before_library_and_search_remains_usable() {
+        let ctx = egui::Context::default();
+        let catalog = fixture();
+        let mut library = ModuleLibrary::default();
+        let mut open = true;
+        library.request_focus();
+        library.inspect("analog_vco", &catalog);
+        frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+        let (action, _) = frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            1.0,
+            vec![key(egui::Key::Escape, true)],
+            true,
+        );
+        assert_eq!(action, None);
+        assert!(open);
+        assert!(library.inspected.is_none());
+        frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            1.1,
+            vec![key(egui::Key::Escape, false)],
+            true,
+        );
+        let (action, _) = frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            2.0,
+            vec![key(egui::Key::Enter, true)],
+            true,
+        );
+        assert_eq!(action, Some(LibraryAction::Add("analog_vco".into())));
+        frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            2.1,
+            vec![key(egui::Key::Enter, false)],
+            true,
+        );
+        frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            3.0,
+            vec![key(egui::Key::Escape, true)],
+            true,
+        );
+        assert!(!open);
+    }
+
+    #[test]
+    fn inspect_shortcut_requires_library_focus_and_consumes_only_its_own_shortcut() {
+        let catalog = fixture();
+        for focused in [false, true] {
+            let ctx = egui::Context::default();
+            let mut library = ModuleLibrary::default();
+            let mut open = true;
+            if focused {
+                library.request_focus();
+            }
+            frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+            let modifiers = egui::Modifiers {
+                ctrl: true,
+                command: true,
+                ..Default::default()
+            };
+            let mut action = None;
+            let mut global_sees_shortcut = false;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(940.0, 680.0))),
+                    focused: true,
+                    modifiers,
+                    events: vec![egui::Event::Key {
+                        key: egui::Key::I,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers,
+                    }],
+                    ..Default::default()
+                },
+                |ctx| {
+                    action = library.show(ctx, &mut open, &catalog, 2, true);
+                    global_sees_shortcut = ctx.input(|input| input.key_pressed(egui::Key::I));
+                },
+            );
+            assert_eq!(action, None);
+            assert_eq!(library.inspected.is_some(), focused);
+            assert_eq!(global_sees_shortcut, !focused);
+        }
+    }
+
+    #[test]
+    fn inspection_details_exclude_hidden_fields_and_show_visible_ranges_units_and_ports() {
+        let catalog = openpatch_core::catalog();
+        let module = modules(&catalog)
+            .find(|module| module["kind"] == "sh_asr")
+            .unwrap();
+        let details = visible_parameter_details(module);
+        for hidden in ["value1", "value8", "rng_hi", "rng_lo"] {
+            assert!(!details.iter().any(|(name, _)| name == hidden));
+        }
+        assert!(details.iter().any(|(name, text)| name == "seed"
+            && text.contains("Default:")
+            && text.contains("Range:")));
+        let seq3 = modules(&catalog)
+            .find(|module| module["kind"] == "seq3")
+            .unwrap();
+        assert!(visible_parameter_details(seq3)
+            .iter()
+            .any(|(name, text)| name == "tempo" && text.contains("BPM")));
+        let original = catalog.clone();
+        let mut library = ModuleLibrary::default();
+        library.inspect("seq3", &catalog);
+        let ctx = egui::Context::default();
+        let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(940.0, 680.0));
+        let mut render = || {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(viewport),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    let (rect, _) = library.show_inspection(ctx, &catalog, true);
+                    assert!(
+                        viewport.contains_rect(rect.unwrap()),
+                        "small-screen inspection stays bounded"
+                    );
+                },
+            )
+        };
+        render(); // egui measures a newly opened window before painting it.
+        let output = render();
+        fn tempo_rect(shape: &egui::Shape) -> Option<Rect> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text().ends_with(" BPM") => {
+                    Some(Rect::from_min_size(text.pos, text.galley.size()))
+                }
+                egui::Shape::Vec(children) => children.iter().find_map(tempo_rect),
+                _ => None,
+            }
+        }
+        let tempo = output
+            .shapes
+            .iter()
+            .find_map(|shape| tempo_rect(&shape.shape))
+            .expect("inspection paints the actual native tempo field");
+        assert!(viewport.contains_rect(tempo));
+        assert!(
+            tempo.height() > 10.0,
+            "native controls stay readable at natural scale"
+        );
+        assert!(library.previews["seq3"].matches(seq3));
+        assert_eq!(
+            catalog, original,
+            "inspection cannot mutate catalog/defaults"
+        );
+        assert!(
+            ctx.memory(|memory| memory.focused()).is_none(),
+            "opening a display does not take keyboard focus"
+        );
+    }
+
+    #[test]
+    fn inspection_focus_never_adds_and_outside_press_releases_keyboard_ownership() {
+        let ctx = egui::Context::default();
+        let catalog = fixture();
+        let mut library = ModuleLibrary::default();
+        let mut open = true;
+        library.inspect("analog_vco", &catalog);
+        // A new window settles its geometry in the first frame.
+        frame(&ctx, &mut library, &mut open, &catalog, 0.0, vec![], true);
+        let (_, output) = frame(&ctx, &mut library, &mut open, &catalog, 0.1, vec![], true);
+        let detail = text_center(&output, "Pinned · Oscillators · Display only");
+        for (time, pressed) in [(1.0, true), (1.1, false)] {
+            frame(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                time,
+                vec![egui::Event::PointerMoved(detail), pointer(detail, pressed)],
+                true,
+            );
+        }
+        assert_eq!(library.focused_last_frame, Some(FocusKind::Inspection));
+        let highlighted = library.highlighted.clone();
+        let (action, _) = frame(
+            &ctx,
+            &mut library,
+            &mut open,
+            &catalog,
+            2.0,
+            vec![key(egui::Key::Enter, true), key(egui::Key::ArrowDown, true)],
+            true,
+        );
+        assert_eq!(action, None);
+        assert_eq!(library.highlighted, highlighted);
+        let outside = pos2(4.0, 720.0);
+        let mut global_sees_enter = false;
+        let mut action = None;
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1100.0, 750.0))),
+                focused: true,
+                time: Some(3.0),
+                events: vec![
+                    egui::Event::PointerMoved(outside),
+                    pointer(outside, true),
+                    key(egui::Key::Enter, true),
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                action = library.show(ctx, &mut open, &catalog, 2, true);
+                global_sees_enter = ctx.input(|input| input.key_pressed(egui::Key::Enter));
+            },
+        );
+        assert_eq!(action, None);
+        assert!(global_sees_enter);
+        assert_eq!(library.focused_last_frame, None);
+        assert!(
+            library.inspected.is_some(),
+            "outside clicks keep the optional pin open"
+        );
     }
 }

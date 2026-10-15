@@ -146,30 +146,19 @@ pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
 }
 
 pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
+    // A matte face keeps fine labels and controls in the foreground. Its broad,
+    // low-contrast falloff still responds naturally to the rack's room lighting.
     painter.rect_filled(
-        rect.translate(vec2(1.8, 2.4) * zoom),
+        rect.translate(vec2(1.0, 1.5) * zoom),
         1.0,
-        Color32::from_black_alpha(115),
+        Color32::from_black_alpha(38),
     );
-    // The rolled perimeter catches light independently of the brushed face.
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(78, 80, 79));
-    painter.rect_filled(
-        rect.shrink(0.8 * zoom),
-        1.0,
-        Color32::from_rgb(213, 214, 208),
-    );
-    painter.rect_filled(
-        rect.shrink(1.7 * zoom),
-        0.5,
-        Color32::from_rgb(180, 180, 175),
-    );
-    let face = rect.shrink(3.0 * zoom);
+    painter.rect_filled(rect, 1.0, Color32::from_rgb(139, 140, 133));
+    let face = rect.shrink(1.0 * zoom);
     let mut mesh = egui::epaint::Mesh::default();
     for (fraction, left, right) in [
-        (0.0, [238, 237, 231], [222, 223, 218]),
-        (0.14, [227, 226, 220], [216, 217, 212]),
-        (0.60, [224, 223, 217], [213, 214, 209]),
-        (1.0, [215, 215, 209], [201, 203, 198]),
+        (0.0, [225, 223, 215], [222, 221, 213]),
+        (1.0, [219, 218, 210], [216, 216, 208]),
     ] {
         let y = egui::lerp(face.y_range(), fraction);
         mesh.colored_vertex(
@@ -181,91 +170,28 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
             Color32::from_rgb(right[0], right[1], right[2]),
         );
     }
-    for row in 0..3 {
-        let i = row * 2;
-        mesh.add_triangle(i, i + 1, i + 2);
-        mesh.add_triangle(i + 1, i + 3, i + 2);
-    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 3, 2);
     painter.add(egui::Shape::mesh(mesh));
     painter.line_segment(
         [face.left_top(), face.right_top()],
-        Stroke::new(0.8 * zoom, Color32::from_rgb(255, 254, 246)),
+        Stroke::new(0.6 * zoom, Color32::from_rgb(239, 237, 229)),
     );
-    painter.line_segment(
-        [face.left_top(), face.left_bottom()],
-        Stroke::new(0.8 * zoom, Color32::from_white_alpha(155)),
-    );
-    painter.line_segment(
-        [face.left_bottom(), face.right_bottom()],
-        Stroke::new(0.9 * zoom, Color32::from_black_alpha(65)),
-    );
-    // Fixed, irregular brushing avoids a ruled-paper pattern. Omit subpixel
-    // texture at small scales identically in the rack and library.
-    if zoom >= 0.65 {
-        for grain in 0..180 {
-            let y = face.top() + (2.0 + grain as f32 * 2.2 + (grain * 7 % 5) as f32 * 0.13) * zoom;
-            if y >= face.bottom() {
-                break;
-            }
-            let inset = (3 + (grain * 7) % 13) as f32 * zoom;
-            painter.line_segment(
-                [
-                    pos2(face.left() + inset, y),
-                    pos2(face.right() - 3.0 * zoom, y),
-                ],
-                Stroke::new(
-                    0.45 * zoom,
-                    if grain % 3 == 0 {
-                        Color32::from_black_alpha(5)
-                    } else {
-                        Color32::from_white_alpha(16)
-                    },
-                ),
-            );
-        }
-    }
-    for (a, b, color) in [
-        (
-            rect.left_top(),
-            rect.right_top(),
-            Color32::from_rgb(252, 250, 244),
-        ),
-        (
-            rect.left_top(),
-            rect.left_bottom(),
-            Color32::from_rgb(245, 243, 237),
-        ),
-        (
-            rect.right_top(),
-            rect.right_bottom(),
-            Color32::from_rgb(78, 79, 77),
-        ),
-        (
-            rect.left_bottom(),
-            rect.right_bottom(),
-            Color32::from_rgb(103, 104, 101),
-        ),
-    ] {
-        painter.line_segment([a, b], Stroke::new(zoom.max(0.5), color));
-    }
 }
 
-/// A nearly flat graphite crown, distinct from the knurled skirt below it.
+/// A matte graphite face with only a broad, subtle change in reflected light.
 fn shaded_disc(painter: &egui::Painter, center: Pos2, radius: f32) {
     let mut mesh = egui::epaint::Mesh::default();
-    mesh.colored_vertex(
-        center - vec2(radius * 0.14, radius * 0.20),
-        Color32::from_rgb(53, 57, 59),
-    );
+    mesh.colored_vertex(center, Color32::from_rgb(49, 52, 52));
     const SEGMENTS: u32 = 40;
     for segment in 0..SEGMENTS {
         let angle = segment as f32 * std::f32::consts::TAU / SEGMENTS as f32;
         let direction = vec2(angle.cos(), angle.sin());
         let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
-        let gray = (28.0 + 22.0 * light) as u8;
+        let gray = (39.0 + 8.0 * light) as u8;
         mesh.colored_vertex(
             center + direction * radius,
-            Color32::from_rgb(gray, gray + 1, gray + 2),
+            Color32::from_rgb(gray, gray + 3, gray + 3),
         );
         mesh.add_triangle(0, segment + 1, (segment + 1) % SEGMENTS + 1);
     }
@@ -291,84 +217,28 @@ pub(crate) fn knob(
             ],
             Stroke::new(
                 if step % 5 == 0 { 1.15 } else { 0.8 } * zoom,
-                Color32::from_rgb(81, 84, 74),
+                Color32::from_rgb(92, 94, 86),
             ),
         );
     }
-    for (offset, grow, alpha) in [(vec2(2.0, 4.0), 3.0, 30), (vec2(1.2, 2.8), 1.6, 60)] {
-        painter.circle_filled(
-            center + offset * zoom,
-            radius + grow * zoom,
-            Color32::from_black_alpha(alpha),
-        );
-    }
+    // A quiet edge separates the control from its panel without a machined
+    // shoulder, knurling or bright concentric rings competing with the pointer.
+    painter.circle_filled(
+        center + vec2(0.6, 1.2) * zoom,
+        radius + 1.6 * zoom,
+        Color32::from_black_alpha(30),
+    );
     painter.circle_filled(
         center,
         radius + 1.6 * zoom,
-        Color32::from_rgb(161, 163, 161),
+        Color32::from_rgb(123, 126, 120),
     );
+    shaded_disc(painter, center, radius);
     painter.circle_stroke(
         center,
-        radius + 1.5 * zoom,
-        Stroke::new(0.7 * zoom, Color32::from_rgb(247, 246, 238)),
+        radius,
+        Stroke::new(0.8 * zoom, Color32::from_rgb(30, 34, 33)),
     );
-    painter.circle_filled(center, radius, Color32::from_rgb(23, 25, 27));
-    for step in 0..32 {
-        let a = step as f32 * std::f32::consts::TAU / 32.0;
-        let direction = vec2(a.cos(), a.sin());
-        let shade = if direction.x + direction.y < 0.0 {
-            92
-        } else {
-            47
-        };
-        painter.line_segment(
-            [
-                center + direction * radius * 0.85,
-                center + direction * radius * 0.97,
-            ],
-            Stroke::new(0.85 * zoom, Color32::from_gray(shade)),
-        );
-    }
-    // The shoulder follows the same upper-left light as the panel and cap.
-    // A directional mesh avoids uniformly bright concentric outlines.
-    let mut shoulder = egui::epaint::Mesh::default();
-    shoulder.colored_vertex(center, Color32::from_gray(105));
-    for segment in 0..40_u32 {
-        let a = segment as f32 * std::f32::consts::TAU / 40.0;
-        let direction = vec2(a.cos(), a.sin());
-        let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
-        let gray = (47.0 + 124.0 * light) as u8;
-        shoulder.colored_vertex(
-            center + direction * radius * 0.83,
-            Color32::from_rgb(gray, gray, gray),
-        );
-        shoulder.add_triangle(0, segment + 1, (segment + 1) % 40 + 1);
-    }
-    painter.add(egui::Shape::mesh(shoulder));
-    painter.circle_filled(
-        center + vec2(0.0, 0.7) * zoom,
-        radius * 0.78,
-        Color32::from_rgb(10, 13, 14),
-    );
-    shaded_disc(painter, center, radius * 0.74);
-    painter.circle_stroke(
-        center,
-        radius * 0.75,
-        Stroke::new(0.8 * zoom, Color32::from_rgb(13, 17, 16)),
-    );
-    let arc: Vec<_> = (0..=20)
-        .map(|i| {
-            let a = (-175.0 + i as f32 * 6.4).to_radians();
-            center + vec2(a.cos(), a.sin()) * radius * 0.79
-        })
-        .collect();
-    painter.add(egui::Shape::line(
-        arc,
-        Stroke::new(
-            0.85 * zoom,
-            Color32::from_rgba_unmultiplied(233, 235, 230, 195),
-        ),
-    ));
     if active {
         painter.circle_stroke(
             center,
@@ -381,9 +251,9 @@ pub(crate) fn knob(
     painter.line_segment(
         [
             center + direction * radius * 0.25,
-            center + direction * radius * 0.72,
+            center + direction * radius * 0.78,
         ],
-        Stroke::new(2.2 * zoom, Color32::from_rgb(247, 241, 215)),
+        Stroke::new(2.2 * zoom, Color32::from_rgb(247, 244, 225)),
     );
 }
 
@@ -391,7 +261,7 @@ pub(crate) fn socket(painter: &egui::Painter, center: Pos2, connected: bool, zoo
     painter.circle_filled(
         center + vec2(0.7, 1.8) * zoom,
         11.1 * zoom,
-        Color32::from_black_alpha(80),
+        Color32::from_black_alpha(30),
     );
     let corners: Vec<_> = (0..6)
         .map(|i| {
@@ -401,14 +271,14 @@ pub(crate) fn socket(painter: &egui::Painter, center: Pos2, connected: bool, zoo
         .collect();
     painter.add(egui::Shape::convex_polygon(
         corners,
-        Color32::from_rgb(158, 160, 160),
-        Stroke::new(0.8 * zoom, Color32::from_rgb(85, 87, 88)),
+        Color32::from_rgb(158, 160, 154),
+        Stroke::new(0.8 * zoom, Color32::from_rgb(106, 109, 103)),
     ));
-    painter.circle_filled(center, 8.9 * zoom, Color32::from_rgb(230, 229, 222));
+    painter.circle_filled(center, 8.9 * zoom, Color32::from_rgb(214, 214, 205));
     painter.circle_stroke(
         center,
         8.9 * zoom,
-        Stroke::new(0.9 * zoom, Color32::from_rgb(252, 250, 244)),
+        Stroke::new(0.9 * zoom, Color32::from_rgb(229, 228, 218)),
     );
     painter.circle_filled(
         center + vec2(0.15, 0.4) * zoom,
@@ -437,7 +307,7 @@ pub(crate) fn readout(
     max_width: f32,
     zoom: f32,
 ) {
-    // A real recessed display, with a bounded galley even for long units.
+    // A quiet numeric field with a bounded galley even for long units.
     let available = (max_width - 10.0 * zoom).max(1.0);
     let mut galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(11.0 * zoom), INK);
     if galley.size().x > available {
@@ -448,26 +318,12 @@ pub(crate) fn readout(
         .max(42.0 * zoom)
         .min(max_width);
     let rect = Rect::from_center_size(center, vec2(width, 17.0 * zoom));
-    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(190, 191, 183));
+    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(204, 205, 196));
     painter.rect_stroke(
         rect,
         2.0 * zoom,
-        Stroke::new(0.6 * zoom, Color32::from_rgb(153, 155, 148)),
+        Stroke::new(0.6 * zoom, Color32::from_rgb(165, 168, 157)),
         egui::StrokeKind::Inside,
-    );
-    painter.line_segment(
-        [
-            rect.left_top() + vec2(2.0, 0.0) * zoom,
-            rect.right_top() - vec2(2.0, 0.0) * zoom,
-        ],
-        Stroke::new(0.8 * zoom, Color32::from_black_alpha(75)),
-    );
-    painter.line_segment(
-        [
-            rect.left_bottom() + vec2(2.0, 0.5) * zoom,
-            rect.right_bottom() + vec2(-2.0, 0.5) * zoom,
-        ],
-        Stroke::new(0.9 * zoom, Color32::from_white_alpha(170)),
     );
     painter
         .with_clip_rect(painter.clip_rect().intersect(rect))
@@ -503,20 +359,20 @@ pub(crate) fn port_label(
 pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
     let visuals = ui.visuals_mut();
     visuals.override_text_color = Some(INK);
-    visuals.widgets.inactive.bg_fill = Color32::from_rgb(190, 191, 183);
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(204, 205, 196);
     visuals.widgets.inactive.weak_bg_fill = visuals.widgets.inactive.bg_fill;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(0.6 * zoom, Color32::from_rgb(153, 155, 148));
+    visuals.widgets.inactive.bg_stroke = Stroke::new(0.6 * zoom, Color32::from_rgb(165, 168, 157));
     visuals.widgets.inactive.fg_stroke.color = INK;
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(207, 208, 198);
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(216, 217, 207);
     visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(0.8 * zoom, Color32::from_rgb(112, 115, 108));
+    visuals.widgets.hovered.bg_stroke = Stroke::new(0.8 * zoom, Color32::from_rgb(116, 121, 109));
     visuals.widgets.hovered.fg_stroke.color = INK;
     // Keep the existing active fill and selection palette as interaction cues.
     visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
     visuals.widgets.active.fg_stroke.color = INK;
-    visuals.text_edit_bg_color = Some(Color32::from_rgb(207, 208, 198));
-    visuals.window_fill = Color32::from_rgb(220, 218, 208);
-    visuals.extreme_bg_color = Color32::from_rgb(190, 191, 183);
+    visuals.text_edit_bg_color = Some(Color32::from_rgb(216, 217, 207));
+    visuals.window_fill = Color32::from_rgb(224, 222, 213);
+    visuals.extreme_bg_color = Color32::from_rgb(204, 205, 196);
     if !ui.is_enabled() {
         let visuals = ui.visuals_mut();
         visuals.disabled_alpha = 1.0;

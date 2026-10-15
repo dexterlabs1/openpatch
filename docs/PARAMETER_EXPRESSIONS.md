@@ -1,9 +1,16 @@
 # Parameter expressions and musical notes
 
-Right-click a knob or double-click its displayed value. The old entry is selected
-so you can replace it immediately. **Result** previews the evaluated value;
-**Enter** or **Apply** commits it as one undo action. **Escape**, **Cancel**, or
-clicking outside the menu discards the draft. Invalid or stale drafts cannot apply.
+Click a printed value to open its nearby precision editor, or right-click a knob
+for its value menu. The current entry is selected for replacement. **Result**
+previews the evaluated value; **Enter** or **Apply** commits it as one undo action.
+**Escape** or **Cancel** discards the draft. Clicking outside a knob menu also
+closes that menu. Invalid or stale drafts cannot apply.
+
+In the floating editor, **Apply & Next / Tab** and **Previous / Shift-Tab** apply
+the draft and move through rendered type-entry controls in the same module.
+Navigation wraps within that module. Native inline numeric fields retain their
+normal focus traversal. An accepted edit waits for its exact host revision before
+opening the next control; a newer MCP edit requires reopening the control.
 
 | Entry | Result |
 |---|---|

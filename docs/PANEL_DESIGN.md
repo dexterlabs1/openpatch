@@ -5,7 +5,7 @@ proportionally into each card. Rack panels and thumbnails share one drawing
 path for every built-in kind: the same controls, port positions, labels,
 passive lights, typography, and hardware materials. Wide sequencers retain
 their real proportions rather than being rearranged into a generic miniature.
-The card's title, favorite star, category, and availability overlay belong to
+The card's title, Inspect control, favorite star, and availability overlay belong to
 the browser and sit outside the module artwork.
 Wide modules (over 18 HP) use a full-width card; narrower panels share two
 columns. Cards preserve the panel proportions and reserve height for the hardware. Hover a card to inspect an enlarged
@@ -16,25 +16,25 @@ renderer and fits the available screen without stretching the module.
 
 *Native Linux CI capture; macOS is the primary design target.*
 
-The Studio Rack skin uses neutral brushed aluminum, broad semibold model headings,
-restrained signal-family accent rules, recessed value wells, graphite knobs with
-metal shoulders, crisp beveled panel edges, and machined jack collars. Outputs
-have reversed charcoal labels and dark socket surrounds; inputs use dark print
-directly on the panel. Permanent model captions match in the rack and browser.
-Patch instance IDs appear in header tooltips and context menus. Long titles fit
-their panel width, and value text fits its well. Specialized sequencer and utility
-fields share the same gray readout material as knob values. The analog VCO and ladder VCF have a
-large primary frequency/cutoff knob above a pair of secondary controls. Knobs
-and numeric editors follow that layout in both the rack and browser; parameter
-ranges and cable endpoints are unchanged. Specialized panel labels use the same condensed fine-print family as the common
-controls. Panel edges, knob shoulders, and cast shadows share an upper-left light
-direction. Brushing uses subtle irregular spacing rather than repeated rules.
-Panels scale from shared drawing code; subpixel brushing is omitted
-at small scales to keep thumbnails and zoomed-out panels clear.
+The Studio Rack skin uses matte warm metal, semibold model headings and restrained
+signal-family accents. Panels, graphite knobs, numeric wells and jack reflections
+use quieter shared materials, keeping the rack and browser consistent. Clear
+pointers, ticks and hover/focus outlines identify editable values. Outputs retain
+charcoal labels and dark socket surrounds; inputs use dark print on the panel.
+Permanent model captions match in the rack and browser; patch instance IDs appear
+in header tooltips and context menus. Control geometry, parameter ranges, port
+positions and cable hit targets are unchanged.
+
+Persistent **Inspect** uses the same cached renderer at natural size, with
+scrolling for wide panels and small windows. It shows catalog defaults under
+neutral lighting; controls remain display-only. Search, filters and highlighted-card
+navigation do not change the pinned module. Cmd/Ctrl-I inspects the highlighted
+module while the library has focus. Escape closes inspection before the library.
 
 Previews show catalog defaults and neutral telemetry. They do not instantiate
 DSP or an audio device, read or mutate the live patch, or respond as playable
-controls. Clicking or dragging anywhere on a preview operates its library card.
+controls. Clicking or dragging the card hardware operates its library card. Inspect and
+favorite controls occupy separate footer regions.
 Favorites, search, keyboard navigation, and engine-version gating remain
 browser actions. Modules added to the rack receive their own instance IDs and
 live parameter and signal state, so those values naturally differ from the

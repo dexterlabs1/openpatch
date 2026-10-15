@@ -59,6 +59,10 @@ const PUSH_RELEASE: [&str; 2] = ["push_release", "hold_release"];
 
 pub(crate) enum RackAction {
     Command(&'static str, Value),
+    ParameterEditAndNavigate {
+        arguments: Value,
+        forward: bool,
+    },
     ManualClick {
         id: String,
         press: &'static str,
@@ -115,6 +119,7 @@ impl DuplicateCableMode {
     }
 }
 
+#[derive(Clone)]
 struct ParameterEdit {
     id: String,
     kind: String,
@@ -144,6 +149,7 @@ enum ParameterEditSurface {
 enum ParameterEditOutcome {
     Keep,
     Apply(f32),
+    ApplyAndNavigate { raw: f32, forward: bool },
     Cancel,
 }
 
@@ -361,7 +367,13 @@ pub struct Rack {
     observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
+    precision_controls: Vec<PrecisionControl>,
+    precision_collect_id: Option<String>,
+    precision_anchor: Option<Rect>,
+    precision_next: Option<PrecisionNext>,
+    precision_error: Option<String>,
     requested_parameter_menu: Option<(String, String)>,
+    requested_precision_control: Option<(String, String)>,
     requested_cable_menu: Option<CableEnd>,
     shortcuts_enabled: bool,
     suppress_reveal_once: bool,
@@ -401,7 +413,13 @@ impl Default for Rack {
             observed_revision: 0,
             dragging_cable: false,
             editing: None,
+            precision_controls: Vec::new(),
+            precision_collect_id: None,
+            precision_anchor: None,
+            precision_next: None,
+            precision_error: None,
             requested_parameter_menu: None,
+            requested_precision_control: None,
             requested_cable_menu: None,
             shortcuts_enabled: true,
             suppress_reveal_once: false,
@@ -548,6 +566,66 @@ impl Rack {
 
     pub(crate) fn request_parameter_menu_for_smoke(&mut self, id: &str, parameter: &str) {
         self.requested_parameter_menu = Some((id.to_owned(), parameter.to_owned()));
+    }
+
+    pub(crate) fn request_precision_control_for_smoke(&mut self, id: &str, parameter: &str) {
+        self.requested_precision_control = Some((id.to_owned(), parameter.to_owned()));
+    }
+
+    pub(crate) fn precision_is_open_for_smoke(&self) -> bool {
+        self.editing
+            .as_ref()
+            .is_some_and(|edit| edit.surface == ParameterEditSurface::Window)
+            && self.precision_controls.len() > 1
+    }
+
+    pub(crate) fn cable_is_dragging_for_smoke(&self) -> bool {
+        self.dragging_cable && self.pending.is_some()
+    }
+
+    fn take_precision_request(&mut self, id: &str, parameter: &str) -> bool {
+        if self
+            .requested_precision_control
+            .as_ref()
+            .is_some_and(|(node, name)| node == id && name == parameter)
+        {
+            self.requested_precision_control = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn port_center_for_smoke(
+        &self,
+        canvas: Rect,
+        patch: &Patch,
+        catalog: &Value,
+        id: &str,
+        port: &str,
+        input: bool,
+    ) -> Option<Pos2> {
+        let node = patch.nodes.iter().find(|node| node.id == id)?;
+        let module = catalog["modules"]
+            .as_array()?
+            .iter()
+            .find(|module| module["kind"] == node.kind)?;
+        let ports = module[if input { "inputs" } else { "outputs" }].as_array()?;
+        let index = ports.iter().position(|name| name == port)?;
+        Some(
+            canvas.min
+                + self.pan
+                + (self.positions.get(id)?.to_vec2()
+                    + port_position(
+                        &node.kind,
+                        input,
+                        index,
+                        ports.len(),
+                        panel_width(&node.kind),
+                    )
+                    .to_vec2())
+                    * self.zoom,
+        )
     }
 
     pub(crate) fn set_shortcuts_enabled(&mut self, enabled: bool) {
@@ -1168,6 +1246,10 @@ impl Rack {
         }
         if let Some(edit) = &mut self.editing {
             if (edit.revision != revision || !parameter_target_matches(edit, patch, catalog))
+                && !self
+                    .precision_next
+                    .as_ref()
+                    .is_some_and(|next| next.revision > revision)
                 && !edit.stale
             {
                 if let Some(id) = edit.menu_popup {
@@ -1580,6 +1662,12 @@ impl Rack {
                 });
                 let color = cable_instance_color(cable).gamma_multiply(if picked_up {
                     0.24
+                } else if self.dragging_cable
+                    && self.pending.as_ref().is_some_and(|pending| {
+                        !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
+                    })
+                {
+                    0.32
                 } else if nearest.is_some() && !traced && self.pending.is_none() {
                     0.48
                 } else {
@@ -1670,6 +1758,12 @@ impl Rack {
                     });
                     let color = cable_instance_color(cable).gamma_multiply(if picked_up {
                         0.24
+                    } else if self.dragging_cable
+                        && self.pending.as_ref().is_some_and(|pending| {
+                            !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
+                        })
+                    {
+                        0.32
                     } else if nearest.is_some() && !route_traced && self.pending.is_none() {
                         0.48
                     } else {
@@ -1800,52 +1894,21 @@ impl Rack {
                         egui::CursorIcon::NotAllowed
                     });
                 }
-                let incomplete = incomplete_cable_drop(
+                let guidance = cable_gesture_guidance(
                     patch,
                     pending,
                     nearest.map(|(target, _)| target),
+                    catalog,
                     ui.input(|i| i.modifiers.shift),
+                    self.dragging_cable,
                 );
-                let message = if !pending.companions.is_empty() {
-                    if nearest.is_none()
-                        || nearest.is_some_and(|(target, _)| cable_plan(pending, target).is_none())
-                    {
-                        "Drop deletes every cable in this bundle. Esc cancels and keeps them."
-                    } else if !target_valid {
-                        "The patch cannot accept this bundle. Existing cables stay; Esc cancels."
-                    } else {
-                        "Move bundle: compatible routes move; duplicate conflicts are deleted. Shift permits duplicates; Esc cancels."
-                    }
-                } else if !target_valid && incomplete && pending.operation == CableOperation::Move {
-                    "Drop deletes this cable. Esc cancels and keeps the original."
-                } else if nearest.is_some() && !target_valid && incomplete {
-                    "Drop discards this new cable. Existing cables stay; Esc cancels."
-                } else if patch.version < 2 && nearest.is_some() && !target_valid {
-                    "Stacking or feedback requires engine v2. Unsupported edits keep the original; Esc cancels."
-                } else if nearest.is_some() && !target_valid {
-                    "The patch cannot accept this connection. Original cable is kept; Esc cancels."
-                } else if pending.operation == CableOperation::Clone {
-                    "Clone cable: move the grabbed end to another matching jack. Original stays; Esc cancels."
-                } else if picked_output {
-                    "Move this OUT plug. Drop on empty space to delete this cable; Esc cancels."
-                } else if pending.operation == CableOperation::Move {
-                    "Move this IN plug. Drop on empty space to delete this cable; Esc cancels."
-                } else if matches!(pending.origin, CableEnd::Input { .. }) {
-                    "Choose an OUT for a new cable. Existing cables stay. Esc cancels."
-                } else {
-                    "Choose an IN for a new cable. Existing cables stay. Esc cancels."
-                };
-                let galley = painter.layout_no_wrap(
-                    message.into(),
-                    FontId::proportional(11.0),
-                    Color32::from_gray(225),
+                paint_cable_gesture_guidance(
+                    &painter,
+                    canvas,
+                    pointer,
+                    &guidance,
+                    self.dragging_cable,
                 );
-                let rect = Rect::from_min_size(
-                    canvas.left_bottom() + vec2(14.0, -38.0),
-                    galley.size() + vec2(20.0, 12.0),
-                );
-                painter.rect_filled(rect, 4.0, Color32::from_black_alpha(220));
-                painter.galley(rect.min + vec2(10.0, 6.0), galley, Color32::from_gray(225));
             }
         }
 
@@ -1910,6 +1973,13 @@ impl Rack {
     ) -> RenderedModules<'a> {
         if mode.is_interactive() {
             self.construction_anchors.clear();
+            self.precision_controls.clear();
+            self.precision_anchor = None;
+            self.precision_collect_id = self
+                .editing
+                .as_ref()
+                .filter(|edit| edit.surface == ParameterEditSurface::Window)
+                .map(|edit| edit.id.clone());
         }
         let interactive = mode.is_interactive() && ui.is_enabled();
         let (drag_interactive, allow_manual_press) = match mode {
@@ -2985,7 +3055,8 @@ impl Rack {
                         let outcome = parameter_editor_contents(ui, self.editing.as_mut().unwrap());
                         match outcome {
                             ParameterEditOutcome::Keep => {}
-                            ParameterEditOutcome::Apply(raw) => {
+                            ParameterEditOutcome::Apply(raw)
+                            | ParameterEditOutcome::ApplyAndNavigate { raw, .. } => {
                                 let edit = self.editing.take().unwrap();
                                 action = Some(parameter_edit_action(&edit, raw));
                                 ui.close();
@@ -3199,11 +3270,22 @@ impl Rack {
                             &[value_response.id, ui.id().with(("knob", &node.id, name))],
                         );
                     }
-                    if value_response.clicked() {
-                        consume_parameter_activation(ui.ctx());
-                        self.editing = Some(make_edit(ParameterEditSurface::Window));
+                    if self.precision_collects(node) {
+                        self.register_precision_control(
+                            make_edit(ParameterEditSurface::Window),
+                            value_response.rect,
+                        );
                     }
-                    value_response.on_hover_text("Click to type a value or expression");
+                    self.precision_affordance(ui, &value_response);
+                    if value_response.clicked() || self.take_precision_request(&node.id, name) {
+                        consume_parameter_activation(ui.ctx());
+                        self.open_precision_editor(
+                            make_edit(ParameterEditSurface::Window),
+                            value_response.rect,
+                        );
+                    }
+                    value_response.on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text("Click to type a value or expression. Tab applies and moves to the next type-entry control.");
                 }
             }
             if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
@@ -3881,9 +3963,13 @@ impl Rack {
                 raw_max: 16_777_215.0,
                 focus: true,
             };
+            if self.precision_collects(node) {
+                self.register_precision_control(make_edit(ParameterEditSurface::Window), seed_rect);
+            }
+            self.precision_affordance(ui, &response);
             if response.clicked() {
                 consume_parameter_activation(ui.ctx());
-                self.editing = Some(make_edit(ParameterEditSurface::Window));
+                self.open_precision_editor(make_edit(ParameterEditSurface::Window), seed_rect);
             }
             if self
                 .requested_parameter_menu
@@ -3913,7 +3999,8 @@ impl Rack {
                 ui.strong("SEED · 24 BIT");
                 match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
                     ParameterEditOutcome::Keep => {}
-                    ParameterEditOutcome::Apply(raw) => {
+                    ParameterEditOutcome::Apply(raw)
+                    | ParameterEditOutcome::ApplyAndNavigate { raw, .. } => {
                         action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
                         ui.close();
                     }
@@ -4182,8 +4269,13 @@ impl Rack {
                 raw_max: 16_777_215.0,
                 focus: true,
             };
+            if self.precision_collects(node) {
+                self.register_precision_control(make_edit(ParameterEditSurface::Window), seed_rect);
+            }
+            self.precision_affordance(ui, &response);
             if response.clicked() {
-                self.editing = Some(make_edit(ParameterEditSurface::Window));
+                consume_parameter_activation(ui.ctx());
+                self.open_precision_editor(make_edit(ParameterEditSurface::Window), seed_rect);
             }
             if self
                 .requested_parameter_menu
@@ -4213,7 +4305,8 @@ impl Rack {
                 ui.strong("SEED · 24 BIT");
                 match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
                     ParameterEditOutcome::Keep => {}
-                    ParameterEditOutcome::Apply(raw) => {
+                    ParameterEditOutcome::Apply(raw)
+                    | ParameterEditOutcome::ApplyAndNavigate { raw, .. } => {
                         action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
                         ui.close();
                     }
@@ -4448,6 +4541,12 @@ impl Rack {
                 raw_max: max,
                 focus: true,
             };
+            if self.precision_collects(node) {
+                self.register_precision_control(
+                    make_edit(ParameterEditSurface::Window),
+                    value_rect,
+                );
+            }
             painter.text(
                 point(20.0, slider_local.center().y),
                 Align2::LEFT_CENTER,
@@ -4571,7 +4670,8 @@ impl Rack {
                 ui.label(format!("Current: {display}"));
                 match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
                     ParameterEditOutcome::Keep => {}
-                    ParameterEditOutcome::Apply(raw) => {
+                    ParameterEditOutcome::Apply(raw)
+                    | ParameterEditOutcome::ApplyAndNavigate { raw, .. } => {
                         action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
                         ui.close();
                     }
@@ -4582,7 +4682,7 @@ impl Rack {
                 }
             });
             if name == "seed" && slider.clicked() {
-                self.editing = Some(make_edit(ParameterEditSurface::Window));
+                self.open_precision_editor(make_edit(ParameterEditSurface::Window), value_rect);
             }
             let motion_slider_id = slider.id;
             let motion_slider_rect = slider.rect.shrink2(vec2(slider.rect.height() * 0.2, 0.0));
@@ -4610,9 +4710,14 @@ impl Rack {
                     format!("Edit {} {} value, {}", node.id, name, display),
                 )
             });
+            self.precision_affordance(ui, &readout);
             if readout.clicked() {
-                self.editing = Some(make_edit(ParameterEditSurface::Window));
+                consume_parameter_activation(ui.ctx());
+                self.open_precision_editor(make_edit(ParameterEditSurface::Window), value_rect);
             }
+            readout
+                .clone()
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
             if let Some(cue) = self
                 .construction_animation
                 .parameter(&node.id, &node.kind, name)
@@ -4731,6 +4836,12 @@ impl Rack {
                 raw_max: max,
                 focus: true,
             };
+            if self.precision_collects(node) {
+                self.register_precision_control(
+                    make_edit(ParameterEditSurface::Window),
+                    value_rect,
+                );
+            }
             painter.text(
                 point(20.0, slider_local.center().y),
                 Align2::LEFT_CENTER,
@@ -4840,7 +4951,8 @@ impl Rack {
                 ui.label(format!("Current: {display}"));
                 match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
                     ParameterEditOutcome::Keep => {}
-                    ParameterEditOutcome::Apply(raw) => {
+                    ParameterEditOutcome::Apply(raw)
+                    | ParameterEditOutcome::ApplyAndNavigate { raw, .. } => {
                         action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
                         ui.close();
                     }
@@ -4876,9 +4988,14 @@ impl Rack {
                     format!("Edit {} {} value, {}", node.id, name, display),
                 )
             });
+            self.precision_affordance(ui, &readout);
             if readout.clicked() {
-                self.editing = Some(make_edit(ParameterEditSurface::Window));
+                consume_parameter_activation(ui.ctx());
+                self.open_precision_editor(make_edit(ParameterEditSurface::Window), value_rect);
             }
+            readout
+                .clone()
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
             if let Some(cue) = self
                 .construction_animation
                 .parameter(&node.id, &node.kind, name)
@@ -7032,32 +7149,9 @@ impl Rack {
             0.0
         };
     }
-
-    fn parameter_editor(&mut self, ctx: &egui::Context, action: &mut Option<RackAction>) {
-        let Some(edit) = &mut self.editing else {
-            return;
-        };
-        if edit.surface != ParameterEditSurface::Window {
-            return;
-        }
-        let mut outcome = ParameterEditOutcome::Keep;
-        egui::Window::new(format!("{} / {}", edit.id, edit.parameter))
-            .id(egui::Id::new("rack-parameter-editor"))
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                outcome = parameter_editor_contents(ui, edit);
-            });
-        match outcome {
-            ParameterEditOutcome::Keep => {}
-            ParameterEditOutcome::Apply(raw) => {
-                let edit = self.editing.take().unwrap();
-                *action = Some(parameter_edit_action(&edit, raw));
-            }
-            ParameterEditOutcome::Cancel => self.editing = None,
-        }
-    }
 }
+
+include!("precision_editor.rs");
 
 fn bounded_pan(pan: Vec2) -> Vec2 {
     vec2(
@@ -7121,8 +7215,17 @@ fn parameter_edit_action(edit: &ParameterEdit, value: f32) -> RackAction {
 }
 
 fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> ParameterEditOutcome {
+    parameter_editor_contents_with_navigation(ui, edit, false)
+}
+
+fn parameter_editor_contents_with_navigation(
+    ui: &mut egui::Ui,
+    edit: &mut ParameterEdit,
+    navigation: bool,
+) -> ParameterEditOutcome {
     ui.label(format!("Range: {} to {}", edit.min, edit.max));
     let mut field = egui::TextEdit::singleline(&mut edit.text)
+        .id(ui.id().with("parameter-draft"))
         .desired_width(244.0)
         .char_limit(512)
         .show(ui);
@@ -7182,6 +7285,49 @@ fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> Par
     }
     let enter = (input.has_focus() || input.lost_focus())
         && ui.input(|i| i.focused && i.key_pressed(egui::Key::Enter));
+    let tab = navigation
+        && (input.has_focus() || input.lost_focus())
+        && ui.input(|i| {
+            i.focused
+                && !i.modifiers.alt
+                && !i.modifiers.ctrl
+                && !i.modifiers.command
+                && i.key_pressed(egui::Key::Tab)
+        });
+    let mut navigate = None;
+    if tab {
+        let backwards = ui.input(|i| i.modifiers.shift);
+        ui.input_mut(|i| {
+            let modifiers = i.modifiers;
+            i.consume_key(modifiers, egui::Key::Tab);
+        });
+        input.request_focus();
+        if parsed.is_some() && !edit.stale {
+            navigate = Some(!backwards);
+        }
+    }
+    if navigation {
+        ui.horizontal(|ui| {
+            let ready = parsed.is_some() && !edit.stale;
+            if ui
+                .add_enabled(ready, egui::Button::new("Previous"))
+                .on_hover_text(
+                    "Apply this value and edit the previous type-entry control (Shift+Tab)",
+                )
+                .clicked()
+            {
+                navigate = Some(false);
+            }
+            if ui
+                .add_enabled(ready, egui::Button::new("Apply & Next"))
+                .on_hover_text("Apply this value and edit the next type-entry control (Tab)")
+                .clicked()
+            {
+                navigate = Some(true);
+            }
+        });
+        ui.small("Tab applies and moves · Shift+Tab goes back");
+    }
     let mut apply = false;
     let mut cancel = false;
     ui.horizontal(|ui| {
@@ -7195,6 +7341,11 @@ fn parameter_editor_contents(ui: &mut egui::Ui, edit: &mut ParameterEdit) -> Par
     }
     if cancel || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         ParameterEditOutcome::Cancel
+    } else if let Some(forward) = navigate {
+        ParameterEditOutcome::ApplyAndNavigate {
+            raw: parameter_edit_raw_value(edit, parsed.unwrap()),
+            forward,
+        }
     } else if (apply || enter) && !edit.stale {
         parsed.map_or(ParameterEditOutcome::Keep, |value| {
             ParameterEditOutcome::Apply(parameter_edit_raw_value(edit, value))
@@ -8019,6 +8170,195 @@ fn cable_release_action(
         return delete_moved_cable(pending);
     }
     cable_action_mode(patch, pending, target?, catalog, shift)
+}
+
+// These helpers describe the same command used on release; they never stage an
+// edit or modify endpoint order. Press-captured clone/fan-out intent stays fixed,
+// while Shift's duplicate policy is read again on every frame and on release.
+fn cable_gesture_related(cable: &Cable, pending: &PendingCable, target: Option<&CableEnd>) -> bool {
+    let touches = |end: &CableEnd| match end {
+        CableEnd::Output { node, port } => cable.from == *node && cable.output == *port,
+        CableEnd::Input { node, port } => cable.to == *node && cable.input == *port,
+    };
+    touches(&pending.origin)
+        || target.is_some_and(touches)
+        || pending
+            .original
+            .iter()
+            .chain(&pending.companions)
+            .any(|old| {
+                // Both fixed anchors of a picked-up bundle remain legible.
+                (cable.from == old.from && cable.output == old.output)
+                    || (cable.to == old.to && cable.input == old.input)
+            })
+}
+
+#[derive(Debug, PartialEq)]
+struct CableGestureGuidance {
+    route: String,
+    action: String,
+}
+
+fn cable_gesture_guidance(
+    patch: &Patch,
+    pending: &PendingCable,
+    target: Option<&CableEnd>,
+    catalog: &Value,
+    shift: bool,
+    dragging: bool,
+) -> CableGestureGuidance {
+    let command = if dragging {
+        cable_release_action(patch, pending, target, catalog, shift)
+    } else {
+        target.and_then(|target| cable_action_mode(patch, pending, target, catalog, shift))
+    };
+    let plan = target.and_then(|target| cable_plan(pending, target));
+    let endpoint = |node: &str, port: &str| format!("{node} · {}", port_label(port).to_uppercase());
+    let route = if let Some((cable, _)) = &plan {
+        format!(
+            "{} → {}",
+            endpoint(&cable.from, &cable.output),
+            endpoint(&cable.to, &cable.input)
+        )
+    } else if let Some(old) = &pending.original {
+        match pending.origin {
+            CableEnd::Input { .. } => format!("{} → IN ?", endpoint(&old.from, &old.output)),
+            CableEnd::Output { .. } => format!("OUT ? → {}", endpoint(&old.to, &old.input)),
+        }
+    } else {
+        match &pending.origin {
+            CableEnd::Input { node, port } => format!("OUT ? → {}", endpoint(node, port)),
+            CableEnd::Output { node, port } => format!("{} → IN ?", endpoint(node, port)),
+        }
+    };
+    let duplicate_deleted = !pending.allow_duplicate(shift)
+        && pending.operation == CableOperation::Move
+        && plan.as_ref().is_some_and(|(planned, old)| {
+            patch.cables.iter().any(|cable| {
+                !old.is_some_and(|old| same_cable(old, cable)) && same_route(cable, planned)
+            })
+        });
+    let operation = match &command {
+        Some(RackAction::Command("disconnect" | "disconnect_cables", _)) => "Delete",
+        Some(RackAction::Command("promote_cables", _)) => "Keep route · raise plug",
+        Some(RackAction::Command("move_cables", _))
+            if duplicate_deleted && pending.companions.is_empty() =>
+        {
+            "Delete duplicate"
+        }
+        Some(RackAction::Command("move_cables" | "apply_edits", _)) => "Move",
+        Some(RackAction::Command("connect", _)) if pending.operation == CableOperation::Clone => {
+            "Clone"
+        }
+        Some(RackAction::Command("connect", _)) => {
+            if plan.as_ref().is_some_and(|(planned, _)| {
+                patch
+                    .cables
+                    .iter()
+                    .any(|cable| cable.from == planned.from && cable.output == planned.output)
+            }) {
+                "Fan out"
+            } else {
+                "Create"
+            }
+        }
+        _ if !dragging && target.is_none() => "Choose a jack",
+        _ if dragging && pending.operation != CableOperation::Move => "Discard",
+        _ if pending.operation == CableOperation::Move => "Keep original",
+        _ => "No connection",
+    };
+    let mut action = format!(
+        "{}: {operation}",
+        if dragging { "Release" } else { "Click" }
+    );
+    if command.is_none() && patch.version < 2 && plan.is_some() {
+        // Explain legacy routing/stacking limits only when the identical edit
+        // would actually succeed in v2. Capacity and invalid-port failures must
+        // not promise that an engine change would accept the gesture.
+        let mut version_two = patch.clone();
+        version_two.version = 2;
+        if target.is_some_and(|target| {
+            cable_action_mode(&version_two, pending, target, catalog, shift).is_some()
+        }) {
+            action.push_str(" · requires engine v2");
+        }
+    }
+    if command.is_some() && !pending.companions.is_empty() {
+        action.push_str(&format!(" · {} cables", pending.companions.len() + 1));
+    }
+    if matches!(
+        &command,
+        Some(RackAction::Command(
+            "connect" | "move_cables" | "apply_edits",
+            _
+        ))
+    ) {
+        if !duplicate_deleted
+            && plan.as_ref().is_some_and(|(planned, old)| {
+                patch.cables.iter().any(|cable| {
+                    !old.is_some_and(|old| same_cable(old, cable))
+                        && cable.to == planned.to
+                        && cable.input == planned.input
+                })
+            })
+        {
+            action.push_str(" · stack");
+        }
+        if !pending.companions.is_empty() && !pending.allow_duplicate(shift) {
+            action.push_str(" · duplicate conflicts deleted");
+        }
+    }
+    CableGestureGuidance { route, action }
+}
+
+fn cable_guidance_rect(canvas: Rect, pointer: Pos2, size: Vec2) -> Rect {
+    let bounds = canvas.shrink(6.0_f32.min(canvas.width().min(canvas.height()) * 0.25));
+    let size = size.min(bounds.size());
+    let preferred = pointer + vec2(18.0, 22.0);
+    Rect::from_min_size(
+        pos2(
+            preferred.x.clamp(bounds.left(), bounds.right() - size.x),
+            preferred.y.clamp(bounds.top(), bounds.bottom() - size.y),
+        ),
+        size,
+    )
+}
+
+fn paint_cable_gesture_guidance(
+    painter: &egui::Painter,
+    canvas: Rect,
+    pointer: Pos2,
+    guidance: &CableGestureGuidance,
+    dragging: bool,
+) {
+    if canvas.width() < 24.0 || canvas.height() < 24.0 {
+        return;
+    }
+    // Canvas-clipped paint only: no response, focus, hit target or overlay layer.
+    // Painted after room lighting, like the compatible-target ring and draft.
+    let painter = painter.with_clip_rect(canvas.intersect(painter.clip_rect()));
+    let text = format!("{}\n{} · Esc cancels", guidance.route, guidance.action);
+    let galley = painter.layout(
+        text,
+        FontId::proportional(12.0),
+        Color32::from_gray(238),
+        (canvas.width() - 32.0).clamp(1.0, 320.0),
+    );
+    let anchor = if dragging {
+        pointer
+    } else {
+        canvas.left_bottom() + vec2(0.0, -galley.size().y - 50.0)
+    };
+    let rect = cable_guidance_rect(canvas, anchor, galley.size() + vec2(16.0, 12.0));
+    let painter = painter.with_clip_rect(rect.intersect(canvas));
+    painter.rect_filled(rect, 4.0, Color32::from_black_alpha(236));
+    painter.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(1.0_f32, Color32::from_gray(100)),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(rect.min + vec2(8.0, 6.0), galley, Color32::from_gray(238));
 }
 
 #[cfg(test)]
@@ -16936,6 +17276,12 @@ mod tests {
             if args["cable_ids"] == json!(["one"]) && args["promote"] == true));
     }
     include!("cable_gesture_tests.rs");
+    mod cable_guidance_tests {
+        include!("cable_guidance_tests.rs");
+    }
+    mod precision_editor_tests {
+        include!("precision_editor_tests.rs");
+    }
     include!("cable_menu_tests.rs");
     include!("cable_animation_render_tests.rs");
     mod construction_motion_render_tests {

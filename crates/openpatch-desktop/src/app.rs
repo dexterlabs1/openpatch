@@ -955,6 +955,24 @@ impl OpenPatch {
             }
         }
     }
+    fn edit_parameter_and_navigate(&mut self, arguments: Value, forward: bool) {
+        // Capture the accepted revision at the transaction boundary. A following
+        // MCP edit or a busy GUI sync must never rebase the editor silently.
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_owned())
+            .and_then(|mut session| {
+                session.execute("set_parameter", arguments)?;
+                Ok(session.revision())
+            });
+        self.status = match &result {
+            Ok(_) => "Value applied".into(),
+            Err(error) => error.clone(),
+        };
+        self.rack.complete_parameter_navigation(result, forward);
+        self.sync();
+    }
     fn manual_click(&mut self, id: &str, press: &str, release: &str) -> bool {
         // A fast pointer click can arrive entirely within one GUI frame.
         // Keep both actions on the same module incarnation while enqueueing;
@@ -2803,6 +2821,11 @@ impl OpenPatch {
                     && !self.mcp_session.is_open()
                     && !self.allow_close;
                 let canvas = ui.available_rect_before_wrap();
+                if self.smoke_test.is_some() {
+                    ctx.data_mut(|data| {
+                        data.insert_temp(egui::Id::new("smoke-rack-canvas"), canvas)
+                    });
+                }
                 ui.add_enabled_ui(interactive && drag.is_none(), |ui| {
                     action = self
                         .rack
@@ -2855,6 +2878,9 @@ impl OpenPatch {
         match action {
             Some(RackAction::Command(name, args)) => {
                 self.command(name, args);
+            }
+            Some(RackAction::ParameterEditAndNavigate { arguments, forward }) => {
+                self.edit_parameter_and_navigate(arguments, forward);
             }
             Some(RackAction::ManualClick { id, press, release }) => {
                 self.manual_click(&id, press, release);
@@ -4466,6 +4492,58 @@ impl OpenPatch {
                 "Lights out · 0% room · actual lamps and Scope remain · browser stays readable"
                     .into();
         }
+        if frame == 1124 {
+            self.rack.set_room_brightness(1.0);
+            self.browser_open = true;
+            assert!(self.library.inspect("seq3", &self.catalog));
+            self.title = "Inspect a module · actual panel at natural size".into();
+            self.status =
+                "Pinned Seq-3 inspection · display-only catalog defaults · scroll to explore"
+                    .into();
+        }
+        if frame == 1154 {
+            self.browser_open = false;
+            self.library = ModuleLibrary::default();
+            let patch: Patch = serde_json::from_value(json!({"version":2,
+                "nodes":[{"id":"voice","kind":"multi_vco","params":{"frequency":220,"pulse_width":0.35}},
+                    {"id":"filter","kind":"analog_vcf"},{"id":"amp","kind":"analog_vca"},
+                    {"id":"out","kind":"audio_out"}],
+                "cables":[{"from":"voice","output":"sine","to":"filter","input":"signal"},
+                    {"from":"filter","to":"amp","input":"signal"},{"from":"amp","to":"out","input":"signal"}],
+                "output":"out"})).unwrap();
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
+                .expect("Precision fixture compiles");
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
+                "voice":[0,0],"filter":[300,0],"amp":[510,0],"out":[720,0]}}))
+                .unwrap();
+            self.rack.select_only("voice".into());
+            self.rack
+                .request_precision_control_for_smoke("voice", "pulse_width");
+            self.title = "Precision entry · one module, continuous flow".into();
+            self.status = "Click a value to type · Tab applies and continues · each commit has its own undo step".into();
+        }
+        if frame == 1184 {
+            self.title = "Patching · guidance follows your hand".into();
+            self.status = "Synthetic pointer gesture · real endpoint hit testing · draft cable only, no graph edit".into();
+        }
+        if frame == 1214 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Lights out · patching guidance and active route stay readable".into();
+        }
+        if frame == 1176 {
+            assert!(
+                self.rack.precision_is_open_for_smoke(),
+                "Precision capture must contain the actual navigable editor"
+            );
+        }
+        if matches!(frame, 1206 | 1236) {
+            assert!(
+                self.rack.cable_is_dragging_for_smoke(),
+                "Cable guidance capture must contain a real pointer gesture"
+            );
+        }
         if matches!(
             frame,
             12 | 24
@@ -4521,6 +4599,10 @@ impl OpenPatch {
                 | 1052
                 | 1082
                 | 1112
+                | 1146
+                | 1176
+                | 1206
+                | 1236
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4592,7 +4674,11 @@ impl OpenPatch {
                 50 => path.with_file_name("mcp-session.png"),
                 51 => path.with_file_name("room-lights-on.png"),
                 52 => path.with_file_name("room-dark.png"),
-                _ => path.with_file_name("room-lights-out.png"),
+                53 => path.with_file_name("room-lights-out.png"),
+                54 => path.with_file_name("module-inspection.png"),
+                55 => path.with_file_name("parameter-precision-navigation.png"),
+                56 => path.with_file_name("cable-gesture-guidance.png"),
+                _ => path.with_file_name("cable-gesture-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -4603,22 +4689,22 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/54 at frame {frame}: {}",
+                "Native smoke: capture {}/58 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 54 {
+            if captures == 58 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1146, "Native screenshot timeout");
+        assert!(frame < 1270, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         if self
             .smoke_test
             .as_ref()
@@ -4637,6 +4723,51 @@ impl eframe::App for OpenPatch {
                 .is_some_and(|(_, frame, _)| *frame == 612)
             {
                 input.events.push(egui::Event::Text("A4*2".into()));
+            }
+        }
+        if let Some((_, frame, _)) = &self.smoke_test {
+            if *frame == 1184 {
+                input.events.push(egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            if matches!(*frame, 1190 | 1192) {
+                let canvas = ctx
+                    .data(|data| data.get_temp::<egui::Rect>(egui::Id::new("smoke-rack-canvas")))
+                    .expect("Rendered smoke rack canvas");
+                let position = if *frame == 1190 {
+                    self.rack.port_center_for_smoke(
+                        canvas,
+                        &self.patch,
+                        &self.catalog,
+                        "voice",
+                        "square",
+                        false,
+                    )
+                } else {
+                    self.rack.port_center_for_smoke(
+                        canvas,
+                        &self.patch,
+                        &self.catalog,
+                        "filter",
+                        "signal",
+                        true,
+                    )
+                }
+                .expect("Real smoke port");
+                input.events.push(egui::Event::PointerMoved(position));
+                if *frame == 1190 {
+                    input.events.push(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
             }
         }
     }
@@ -4800,6 +4931,10 @@ mod project_workflow_tests {
     use super::*;
     use openpatch::control::Session;
     use std::path::Path;
+
+    mod precision_host_tests {
+        include!("precision_host_tests.rs");
+    }
 
     // Headless host state: no window, graphics context, device, or MIDI access.
     fn host(path: &Path) -> OpenPatch {
