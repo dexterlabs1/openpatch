@@ -2633,6 +2633,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_vca" {
+                if let Some(edit) = self.stock_vca_panel(ui, node, rect, revision) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "stock_vcf" {
                 if let Some(edit) = self.stock_vcf_panel(ui, node, rect, revision) {
                     action = Some(edit);
@@ -2703,6 +2708,7 @@ impl Rack {
                     || node.kind == "sh_asr"
                     || node.kind == "adsr_eg"
                     || node.kind == "stock_vcf"
+                    || node.kind == "stock_vca"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -3422,7 +3428,9 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
-                        if node.kind == "stock_vcf" {
+                        if node.kind == "stock_vca" {
+                            stock_vca_port_label(port)
+                        } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
                         } else {
                             port
@@ -3439,7 +3447,9 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_vcf" {
+                    if node.kind == "stock_vca" {
+                        stock_vca_port_label(port)
+                    } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
                     } else {
                         port
@@ -3536,6 +3546,8 @@ impl Rack {
                         output_point,
                         if node.kind == "adsr_eg" {
                             "ENV"
+                        } else if node.kind == "stock_vca" {
+                            stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
                         } else {
@@ -3565,6 +3577,8 @@ impl Rack {
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "adsr_eg" {
                         "ENV"
+                    } else if node.kind == "stock_vca" {
+                        stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
                     } else {
@@ -7310,6 +7324,7 @@ include!("annotation_panel.rs");
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
 include!("stock_vcf_panel.rs");
+include!("stock_vca_panel.rs");
 include!("midi_cc_panel.rs");
 include!("midi_gate_panel.rs");
 include!("midi_assignment_panel.rs");
@@ -7430,6 +7445,9 @@ fn parameter_editor_contents_with_navigation(
             "resonance" => "Enter resonance from 0% to 100%.",
             _ => "Enter CV depth from −100% to +100%. Negative depth inverts modulation.",
         });
+    }
+    if edit.kind == "stock_vca" {
+        ui.label(if edit.parameter == "level" { "Level 0–100%. The meter shows effective gain, including silent voices." } else { "Response: 0 = EXP (fourth power), 1 = LIN. Bypass freezes gain telemetry and passes raw signal." });
     }
     if edit.gain_power.is_some() {
         ui.label("Enter dB. -inf sets the gain to zero.");
@@ -7867,7 +7885,9 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     {
         text = text[..text.len() - 2].trim_end();
     }
-    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf") {
+    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf")
+        || (edit.kind == "stock_vca" && edit.parameter == "level")
+    {
         let suffix = if adsr_eg_time_edit(edit) {
             "ms"
         } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
@@ -7972,6 +7992,23 @@ fn utility_menu(ui: &mut egui::Ui, node: &Node, action: &mut Option<RackAction>)
         ));
         ui.close();
     }
+    if node.kind == "stock_vca" {
+        ui.separator();
+        ui.label("CV response");
+        let response = node.params.get("response").copied().unwrap_or(1.0);
+        for (value, label) in [(0, "Exponential (fourth power)"), (1, "Linear")] {
+            if ui
+                .selectable_label(response == value as f32, label)
+                .clicked()
+            {
+                *action = Some(RackAction::Command(
+                    "set_parameter",
+                    json!({"id":node.id,"parameter":"response","value":value}),
+                ));
+                ui.close();
+            }
+        }
+    }
     if node.kind == "vca_mix" {
         ui.separator();
         for (parameter, label) in [
@@ -8047,6 +8084,16 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
     match kind {
         "midi_cc" if !input => return midi_cc_output_position(index),
         "midi_gate" if !input => return midi_assignment_output_position(index),
+        "stock_vca" => {
+            return pos2(
+                if input {
+                    32.0 + index as f32 * 55.0
+                } else {
+                    146.0
+                },
+                365.0,
+            )
+        }
         "stock_vcf" => {
             return if input {
                 pos2(37.5 + index as f32 * 65.0, 337.0)
@@ -9167,6 +9214,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
         "stock_vcf" => HP * 18.0,
+        "stock_vca" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
         "audio_out" => HP * 8.0,
@@ -9227,6 +9275,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
         "stock_vcf" => "VCF",
+        "stock_vca" => "VCA",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -9458,6 +9507,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
         "stock_vcf" => &STOCK_VCF_PARAMS,
+        "stock_vca" => &STOCK_VCA_PARAMS,
         "adsr" => &["attack", "decay", "sustain", "release"],
         "adsr_eg" => &[
             "attack",
@@ -10972,7 +11022,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            63,
+            64,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -17590,6 +17640,10 @@ mod tests {
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
     }
+    mod stock_vca_ui_tests {
+        include!("stock_vca_ui_tests.rs");
+    }
+
     mod stock_vcf_ui_tests {
         include!("stock_vcf_ui_tests.rs");
     }

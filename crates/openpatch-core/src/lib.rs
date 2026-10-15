@@ -26,6 +26,7 @@ mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod stereo_output;
+mod stock_vca;
 mod stock_vcf;
 mod stream_render;
 mod studio_fx;
@@ -299,6 +300,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_vcf::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_vca::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

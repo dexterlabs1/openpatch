@@ -2597,6 +2597,13 @@ impl OpenPatch {
                                 self.replace_from_menu(patch,"MIDI controller voice");
                                 ui.close();
                             }
+                            if ui.button("Stock VCA voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/stock-vca-voice.json"
+                                )).expect("valid stock VCA voice");
+                                self.replace_from_menu(patch, "Stock VCA voice");
+                                ui.close();
+                            }
                             if ui.button("Stock VCF voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/stock-vcf-voice.json"
@@ -3976,6 +3983,72 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
+    fn prepare_stock_vca_fixture(&mut self) {
+        let mut patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-vca-voice.json")).unwrap();
+        // A separate metrology lane preserves the playable voice and proves
+        // effective gain is observable even when one signal voice is silent.
+        let proof: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"proof-cv","kind":"poly_constant","params":{"channels":5,"v1":0,"v2":5,"v3":8.408964,"v4":10,"v5":10}},
+            {"id":"proof-signal","kind":"poly_constant","params":{"channels":5,"v1":2,"v2":2,"v3":2,"v4":2,"v5":0}},
+            {"id":"gain-proof","kind":"stock_vca","params":{"level":1,"response":0}}],
+            "cables":[{"from":"proof-cv","to":"gain-proof","input":"cv"},
+                {"from":"proof-signal","to":"gain-proof","input":"signal"}]})).unwrap();
+        patch.nodes.extend(proof.nodes);
+        patch.cables.extend(proof.cables);
+        let mut engine = patch.compile().unwrap();
+        let mut audio = vec![0.0; 16384];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|v| v.is_finite()));
+        assert!(audio.iter().any(|v| v.abs() > 0.001));
+        let proof = engine
+            .module_lights(engine.resolve_module_lights("gain-proof").unwrap())
+            .unwrap();
+        assert_eq!((proof.count, proof.input_channels), (16, Some(5)));
+        for (lane, gain) in [0.0, 0.0625, 0.5, 1.0, 1.0].iter().enumerate() {
+            assert!((proof.brightness[lane][0] - gain).abs() < 0.00001);
+            assert_eq!(proof.brightness[lane][1], 0.0);
+        }
+        let amplifier = engine
+            .module_lights(engine.resolve_module_lights("amplifier").unwrap())
+            .unwrap();
+        let envelope = engine
+            .module_lights(engine.resolve_module_lights("envelope").unwrap())
+            .unwrap();
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        assert!(scope.x[0].iter().any(|p| p.max.abs() > 0.01));
+        assert!(scope.y[0].iter().any(|p| p.max.abs() > 0.01));
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.80,"pan":[24,12],"positions":{
+            "voice":[0,0],"filter":[330,0],"amplifier":[630,0],"out":[840,0],"guide":[1050,0],
+            "clock":[0,420],"envelope":[180,420],"gain-proof":[570,420],"scope":[780,420],
+            "proof-cv":[0,840],"proof-signal":[390,840]}}))
+            .unwrap();
+        self.rack.set_module_states(
+            BTreeMap::from([
+                ("amplifier".into(), amplifier),
+                ("gain-proof".into(), proof),
+                ("envelope".into(), envelope),
+            ]),
+            BTreeMap::new(),
+        );
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "VCA · effective gain, voice by voice".into();
+        self.status = "Actual DSP snapshot · proof lanes 0 / 6.25 / 50 / 100 / 100% · fifth input silent, full gain · no live audio".into();
+    }
+
     fn prepare_stock_vcf_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-vcf-voice.json")).unwrap();
@@ -5168,6 +5241,13 @@ impl OpenPatch {
                 "VCF · lights out · the filter is passive; Scope emits the captured LP/HP signals"
                     .into();
         }
+        if frame == 1850 {
+            self.prepare_stock_vca_fixture();
+        }
+        if frame == 1862 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "VCA · lights out · actual gain columns emit, including the silent full-gain lane · no live audio".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5253,6 +5333,8 @@ impl OpenPatch {
                 | 1822
                 | 1832
                 | 1844
+                | 1854
+                | 1868
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5342,7 +5424,9 @@ impl OpenPatch {
                 68 => path.with_file_name("notes-editor.png"),
                 69 => path.with_file_name("notes-editor-conflict.png"),
                 70 => path.with_file_name("rack-stock-vcf.png"),
-                _ => path.with_file_name("rack-stock-vcf-lights-out.png"),
+                71 => path.with_file_name("rack-stock-vcf-lights-out.png"),
+                72 => path.with_file_name("rack-stock-vca.png"),
+                _ => path.with_file_name("rack-stock-vca-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -5353,18 +5437,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/72 at frame {frame}: {}",
+                "Native smoke: capture {}/74 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 72 {
+            if captures == 74 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1856, "Native screenshot timeout");
+        assert!(frame < 1880, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5926,6 +6010,75 @@ mod project_workflow_tests {
         );
         preset_text(&output, "NOMINAL SHAPE");
         preset_text(&output, "ADSR EG");
+    }
+
+    #[test]
+    fn stock_vca_example_and_smoke_use_real_audio_gain_and_fitting_notes() {
+        let playable: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-vca-voice.json")).unwrap();
+        assert!(playable
+            .nodes
+            .iter()
+            .any(|n| n.id == "amplifier" && n.kind == "stock_vca"));
+        assert!(playable
+            .cables
+            .iter()
+            .any(|c| c.from == "filter" && c.to == "amplifier" && c.input == "signal"));
+        assert!(playable
+            .cables
+            .iter()
+            .any(|c| c.from == "envelope" && c.to == "amplifier" && c.input == "cv"));
+        let mut engine = playable.compile().unwrap();
+        let mut audio = vec![0.0; 48000];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|v| v.is_finite() && v.abs() < 1.0));
+        assert!(audio.iter().any(|v| v.abs() > 0.001));
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_stock_vca_fixture();
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        for room in [1.0, 0.0] {
+            app.rack.set_room_brightness(room);
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| app.rack_workspace(ctx, None),
+            );
+            for text in [
+                "VCA",
+                "GAIN / VOICE",
+                "5 ACTIVE VOICES",
+                "EXP",
+                "LIN",
+                "SCOPE",
+            ] {
+                preset_text(&output, text);
+            }
+            fn notes_bounds(shape: &egui::Shape) -> Option<egui::Rect> {
+                match shape {
+                    egui::Shape::Text(text) if text.galley.text().starts_with("VCA VOICE") => {
+                        Some(text.galley.rect.translate(text.pos.to_vec2()))
+                    }
+                    egui::Shape::Vec(shapes) => shapes.iter().find_map(notes_bounds),
+                    _ => None,
+                }
+            }
+            let (clip, bounds) = output
+                .shapes
+                .iter()
+                .find_map(|s| notes_bounds(&s.shape).map(|b| (s.clip_rect, b)))
+                .expect("actual Notes text");
+            assert!(
+                clip.expand(0.5).contains_rect(bounds),
+                "VCA Notes are clipped: {bounds:?} outside {clip:?}"
+            );
+        }
     }
 
     #[test]

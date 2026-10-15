@@ -19,6 +19,21 @@ fn patch(family: &str, voices: usize) -> Patch {
             "cables":[{"from":"chord","to":"source","input":"pitch"},
                 {"from":"source","output":"saw","to":"sum","input":"signal"}],
             "output":"sum"}),
+        "stock_vca" => json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"chord","kind":"poly_constant"},
+                {"id":"source","kind":"multi_vco","params":{"frequency":130.8128}},
+                {"id":"filter","kind":"stock_vcf","params":{"frequency":0.65,"resonance":0.4}},
+                {"id":"envelope","kind":"adsr_eg","params":{"attack":0.1,"sustain":0.5}},
+                {"id":"gate","kind":"constant","params":{"value":10}},
+                {"id":"amplifier","kind":"stock_vca","params":{"response":0,"level":0.8}},
+                {"id":"sum","kind":"poly_sum","params":{"level":0.02}}],
+            "cables":[{"from":"chord","to":"source","input":"pitch"},
+                {"from":"source","output":"saw","to":"filter","input":"signal"},
+                {"from":"gate","to":"envelope","input":"gate"},
+                {"from":"envelope","to":"amplifier","input":"cv"},
+                {"from":"filter","output":"lowpass","to":"amplifier","input":"signal"},
+                {"from":"amplifier","to":"sum","input":"signal"}],
+            "output":"sum"}),
         "stock_vcf" => json!({"version":2,"sample_rate":48000,
             "nodes":[{"id":"chord","kind":"poly_constant"},
                 {"id":"source","kind":"multi_vco","params":{"frequency":130.8128}},
@@ -59,7 +74,7 @@ fn callback_timing_profile() {
         panic!("run with --release");
     }
     let mut workloads = Vec::new();
-    for family in ["functional", "circuit", "gates", "stock_vcf"] {
+    for family in ["functional", "circuit", "gates", "stock_vcf", "stock_vca"] {
         for voices in [1, 16] {
             let initial = patch(family, voices);
             let (mut measured, mut updates, mut retired) = sequence_callback(&initial);

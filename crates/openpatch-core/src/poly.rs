@@ -21,6 +21,7 @@ use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
+use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
 use crate::studio_fx::{self, StudioFx};
 use crate::switch::{self, SequentialSwitch};
@@ -98,6 +99,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "push"
                 | "adsr_eg"
                 | "stock_vcf"
+                | "stock_vca"
                 | "random_values"
                 | "sh_asr"
                 | "scope"
@@ -144,6 +146,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
         "stock_vcf" => stock_vcf::INPUTS.iter().position(|port| *port == name),
+        "stock_vca" => stock_vca::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
@@ -274,7 +277,7 @@ fn voice_policy(kind: &str) -> VoicePolicy {
         "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
         "stock_vcf" => VoicePolicy::Primary(3),
-        "mixer" | "crossfade" | "modal_resonator" => VoicePolicy::Maximum,
+        "mixer" | "crossfade" | "modal_resonator" | "stock_vca" => VoicePolicy::Maximum,
         _ => VoicePolicy::Primary(0),
     }
 }
@@ -522,6 +525,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "stock_vca" {
+        stock_vca::annotate(module);
+    }
     if kind == "stock_vcf" {
         stock_vcf::annotate(module);
     }
@@ -573,6 +579,7 @@ enum Model {
     Push(Box<Push>),
     AdsrEg(Box<AdsrEg>),
     StockVcf(Box<StockVcf>),
+    StockVca(Box<StockVca>),
     ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
     Scope(Box<Scope>),
@@ -628,6 +635,9 @@ impl Model {
         }
         if node.kind == "random_values" {
             return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
+        }
+        if node.kind == "stock_vca" {
+            return Ok(Self::StockVca(Box::new(StockVca::build(node, rate)?)));
         }
         if node.kind == "stock_vcf" {
             return Ok(Self::StockVcf(Box::new(StockVcf::build(node, rate)?)));
@@ -898,6 +908,7 @@ impl PolyEngine {
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
             Some(Model::AdsrEg(p)) => Some(p.lights()),
+            Some(Model::StockVca(p)) => Some(p.lights()),
             Some(Model::ShiftRegister(p)) => Some(p.lights()),
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
@@ -1137,6 +1148,10 @@ impl PolyEngine {
                 p.reset_state();
                 random_values::OUTPUTS.len()
             }
+            Model::StockVca(p) => {
+                p.initialize_state();
+                stock_vca::OUTPUTS.len()
+            }
             Model::StockVcf(p) => {
                 p.initialize_state();
                 stock_vcf::OUTPUTS.len()
@@ -1193,6 +1208,7 @@ impl PolyEngine {
             Model::Push(p) => p.initialize_state(),
             Model::AdsrEg(p) => p.initialize_state(),
             Model::StockVcf(p) => p.initialize_state(),
+            Model::StockVca(p) => p.initialize_state(),
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
@@ -1645,6 +1661,9 @@ impl PolyEngine {
                     a,
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                 ),
+                Model::StockVca(p) => {
+                    self.outputs[node.output_start] = p.process(&[a, b]);
+                }
                 Model::StockVcf(p) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2108,6 +2127,11 @@ impl PolyEngine {
                 if bypass_changed {
                     p.release();
                 }
+            }
+            if let (Model::StockVca(p), Model::StockVca(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
             }
             if let (Model::StockVcf(p), Model::StockVcf(previous)) =
                 (&mut node.model, &previous.model)

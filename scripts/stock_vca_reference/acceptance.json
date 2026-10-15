@@ -1,0 +1,21 @@
+{
+  "declared_before_first_comparison": "2026-10-15",
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "sample_rates": [44100, 48000, 96000],
+  "absolute": 0.000002,
+  "relative": 0.000002,
+  "gate": "Every active output and actual lastGains lane, from frame zero; output channels and actual lastChannels exact; finite all visible lanes; no warmup, alignment, or exceptions",
+  "frames_per_case": 1024,
+  "cases": ["defaults", "level_zero", "level_one", "level_intermediate", "linear", "exponential", "absent_cv", "connected_zero_cv", "cv_extremes", "mono_cv_broadcast", "mono_audio_broadcast", "width_grid_0_1_3_5_16", "poisoned_padding", "shrink_regrow_16_1_5_16", "audio_rate_audio_cv", "parameter_edits", "silent_audio_gain", "unused_output_gain"],
+  "counterfactual": {
+    "frames_per_fresh_trace": 32,
+    "audio_volts": 8.0,
+    "level": 1.0,
+    "cv_volts": [0.0, 5.0, 10.0],
+    "linear_expected_gain": [0.0, 0.5, 1.0],
+    "exponential_expected_gain": [0.0, 0.0625, 1.0],
+    "partial_minimum_output_difference": 3.0,
+    "partial_minimum_gain_difference": 0.4,
+    "endpoints_agree_exactly": true
+  }
+}

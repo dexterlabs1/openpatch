@@ -89,6 +89,7 @@ impl Category {
             "gain"
             | "mixer"
             | "analog_vca"
+            | "stock_vca"
             | "mix6"
             | "cv_mix"
             | "vca_mix"

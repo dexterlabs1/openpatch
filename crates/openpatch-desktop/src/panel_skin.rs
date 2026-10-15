@@ -31,6 +31,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
         "gain"
         | "analog_vca"
+        | "stock_vca"
         | "mixer"
         | "mix6"
         | "poly_sum"
@@ -65,6 +66,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "lowpass" => "LOW-PASS FILTER",
         "ladder_vcf" => "TRANSISTOR FILTER",
         "stock_vcf" => "POLYPHONIC LP / HP FILTER",
+        "stock_vca" => "POLYPHONIC GAIN",
         "analog_vca" => "TRANSCONDUCTANCE VCA",
         "gain" => "AMPLIFIER",
         "adsr" => "ENVELOPE GENERATOR",
