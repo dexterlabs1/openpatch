@@ -1,0 +1,977 @@
+{
+  "version": 1,
+  "source_sha256": "65a93ca1426c7a4082577b78e095100a645c5544fdb486a810f6954d79ba04e3",
+  "module_count": 55,
+  "cable_count": 83,
+  "provenance": "Curated identities and cable routes from the inspected STIW source; source order and source song content are not identity.",
+  "modules": [
+    {
+      "alias": "bridge",
+      "id": "6898227543486781",
+      "plugin": "RackMCP",
+      "model": "Bridge",
+      "version": "2.0.0"
+    },
+    {
+      "alias": "audio",
+      "id": "2539870429764143",
+      "plugin": "Core",
+      "model": "AudioInterface2",
+      "version": "2.6.6"
+    },
+    {
+      "alias": "seqA",
+      "id": "5648669828426928",
+      "plugin": "RackMCP",
+      "model": "Sequencer",
+      "version": "2.0.0"
+    },
+    {
+      "alias": "seqB",
+      "id": "73590522352961",
+      "plugin": "RackMCP",
+      "model": "Sequencer",
+      "version": "2.0.0"
+    },
+    {
+      "alias": "kick_gate",
+      "id": "5409088107488180",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "kick",
+      "id": "4056010314705052",
+      "plugin": "Befaco",
+      "model": "Kickall",
+      "version": "2.11.0"
+    },
+    {
+      "alias": "kick_shape",
+      "id": "1014106346332691",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTWaveshaper",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "kick_vca",
+      "id": "759692139011187",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "clap",
+      "id": "335781202040564",
+      "plugin": "4ms-XOXDrums",
+      "model": "Clap",
+      "version": "2.1.2"
+    },
+    {
+      "alias": "clap_vca",
+      "id": "8295944072403226",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "hatA",
+      "id": "4022352290226788",
+      "plugin": "4ms-XOXDrums",
+      "model": "HiHat",
+      "version": "2.1.2"
+    },
+    {
+      "alias": "hatA_vca",
+      "id": "1402212549851371",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "hatB",
+      "id": "7309570200465369",
+      "plugin": "4ms-XOXDrums",
+      "model": "HiHat",
+      "version": "2.1.2"
+    },
+    {
+      "alias": "hatB_vca",
+      "id": "1314789803640694",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "hats_mix",
+      "id": "84459214537770",
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "main_mix",
+      "id": "8786466531051642",
+      "plugin": "Bogaudio",
+      "model": "Bogaudio-Mix8",
+      "version": "2.6.47"
+    },
+    {
+      "alias": "listen",
+      "id": "5205460726165731",
+      "plugin": "RackMCP",
+      "model": "Listen",
+      "version": "2.0.0"
+    },
+    {
+      "alias": "bass_osc",
+      "id": "4508240878798030",
+      "plugin": "Fundamental",
+      "model": "VCO",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "bass_filter",
+      "id": "5079823893699916",
+      "plugin": "Fundamental",
+      "model": "VCF",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "bass_env",
+      "id": "2932971048616837",
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "bass_amp",
+      "id": "4432515417303484",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "duck_env",
+      "id": "5850452310809903",
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "duck_invert",
+      "id": "6446645178346768",
+      "plugin": "Bogaudio",
+      "model": "Bogaudio-Offset",
+      "version": "2.6.47"
+    },
+    {
+      "alias": "bass_duck",
+      "id": "305203594855589",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_osc",
+      "id": "6354999328857901",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTOSCClassic",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "lead_filter",
+      "id": "4677994991887362",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTVCF",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "lead_env",
+      "id": "7683795947287473",
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_ampL",
+      "id": "3315303907629990",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_velocityL",
+      "id": "588246755085170",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_delay",
+      "id": "5791771164136024",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTDelay",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "lead_duck",
+      "id": "1831352068576567",
+      "plugin": "Bogaudio",
+      "model": "Bogaudio-Pressor",
+      "version": "2.6.47"
+    },
+    {
+      "alias": "lead_ampR",
+      "id": "6120378467614143",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_velocityR",
+      "id": "8352751639977433",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "stab_osc",
+      "id": "4279166756580470",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTOSCClassic",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "stab_filter",
+      "id": "4315878368275915",
+      "plugin": "Fundamental",
+      "model": "VCF",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "stab_env",
+      "id": "636960238752809",
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "stab_amp",
+      "id": "8966051105672642",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "pad_osc",
+      "id": "98473795157771",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTOSCClassic",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "pad_filter",
+      "id": "6648665468510806",
+      "plugin": "Fundamental",
+      "model": "VCF",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "pad_env",
+      "id": "8601286497026562",
+      "plugin": "Fundamental",
+      "model": "ADSR",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "pad_amp",
+      "id": "6550571937436491",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "noise",
+      "id": "2697612491228455",
+      "plugin": "Fundamental",
+      "model": "Noise",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "riser_filter",
+      "id": "7259238025553206",
+      "plugin": "SurgeXTRack",
+      "model": "SurgeXTVCF",
+      "version": "2.2.9.0"
+    },
+    {
+      "alias": "riser_amp",
+      "id": "2990774236026759",
+      "plugin": "Fundamental",
+      "model": "VCA-1",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "atmos_mix",
+      "id": "7697772487239849",
+      "plugin": "Fundamental",
+      "model": "VCMixer",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "atmos_reverb",
+      "id": "3044791543511666",
+      "plugin": "Valley",
+      "model": "Plateau",
+      "version": "2.4.5"
+    },
+    {
+      "alias": "atmos_duck",
+      "id": "8242155548463892",
+      "plugin": "Bogaudio",
+      "model": "Bogaudio-Pressor",
+      "version": "2.6.47"
+    },
+    {
+      "alias": "hats_highpass",
+      "id": "6915853565652857",
+      "plugin": "Fundamental",
+      "model": "VCF",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "lead_reverb",
+      "id": "3523128919657273",
+      "plugin": "Valley",
+      "model": "Plateau",
+      "version": "2.4.5"
+    },
+    {
+      "alias": "notes_clock",
+      "id": "1588907208190973",
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6"
+    },
+    {
+      "alias": "notes_bass",
+      "id": "199983935639485",
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6"
+    },
+    {
+      "alias": "notes_lead",
+      "id": "413885542056658",
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6"
+    },
+    {
+      "alias": "notes_atmos",
+      "id": "33219374911877",
+      "plugin": "Core",
+      "model": "Notes",
+      "version": "2.6.6"
+    },
+    {
+      "alias": "riser_lfo",
+      "id": "2279249372613577",
+      "plugin": "Fundamental",
+      "model": "LFO",
+      "version": "2.6.4"
+    },
+    {
+      "alias": "texture_lfo",
+      "id": "804985642321246",
+      "plugin": "Fundamental",
+      "model": "LFO2",
+      "version": "2.6.4"
+    }
+  ],
+  "cables": [
+    {
+      "id": "8478897093391300",
+      "from": "lead_velocityL",
+      "output_id": 0,
+      "to": "lead_delay",
+      "input_id": 0
+    },
+    {
+      "id": "8899761986084887",
+      "from": "lead_velocityR",
+      "output_id": 0,
+      "to": "lead_delay",
+      "input_id": 1
+    },
+    {
+      "id": "2979264394399176",
+      "from": "lead_reverb",
+      "output_id": 0,
+      "to": "lead_duck",
+      "input_id": 0
+    },
+    {
+      "id": "5054666562347764",
+      "from": "kick_vca",
+      "output_id": 0,
+      "to": "lead_duck",
+      "input_id": 1
+    },
+    {
+      "id": "1869624994661464",
+      "from": "lead_reverb",
+      "output_id": 1,
+      "to": "lead_duck",
+      "input_id": 4
+    },
+    {
+      "id": "5549261776933837",
+      "from": "atmos_reverb",
+      "output_id": 0,
+      "to": "atmos_duck",
+      "input_id": 0
+    },
+    {
+      "id": "8517663111716136",
+      "from": "kick_vca",
+      "output_id": 0,
+      "to": "atmos_duck",
+      "input_id": 1
+    },
+    {
+      "id": "8865185094441731",
+      "from": "atmos_reverb",
+      "output_id": 1,
+      "to": "atmos_duck",
+      "input_id": 4
+    },
+    {
+      "id": "2285937037335814",
+      "from": "atmos_mix",
+      "output_id": 0,
+      "to": "atmos_reverb",
+      "input_id": 0
+    },
+    {
+      "id": "1114099497433490",
+      "from": "atmos_mix",
+      "output_id": 0,
+      "to": "atmos_reverb",
+      "input_id": 1
+    },
+    {
+      "id": "4104630595095556",
+      "from": "lead_delay",
+      "output_id": 0,
+      "to": "lead_reverb",
+      "input_id": 0
+    },
+    {
+      "id": "5305014495496352",
+      "from": "lead_delay",
+      "output_id": 1,
+      "to": "lead_reverb",
+      "input_id": 1
+    },
+    {
+      "id": "7919149838068356",
+      "from": "seqA",
+      "output_id": 5,
+      "to": "kick_gate",
+      "input_id": 1
+    },
+    {
+      "id": "7393043855807755",
+      "from": "seqA",
+      "output_id": 9,
+      "to": "kick_vca",
+      "input_id": 0
+    },
+    {
+      "id": "5007601514377156",
+      "from": "kick_shape",
+      "output_id": 0,
+      "to": "kick_vca",
+      "input_id": 1
+    },
+    {
+      "id": "8328404282034923",
+      "from": "seqA",
+      "output_id": 6,
+      "to": "clap",
+      "input_id": 0
+    },
+    {
+      "id": "1503925428211173",
+      "from": "seqA",
+      "output_id": 10,
+      "to": "clap_vca",
+      "input_id": 0
+    },
+    {
+      "id": "7028760099745034",
+      "from": "clap",
+      "output_id": 0,
+      "to": "clap_vca",
+      "input_id": 1
+    },
+    {
+      "id": "754797919230384",
+      "from": "seqA",
+      "output_id": 11,
+      "to": "hatA_vca",
+      "input_id": 0
+    },
+    {
+      "id": "2423033049595546",
+      "from": "hatA",
+      "output_id": 0,
+      "to": "hatA_vca",
+      "input_id": 1
+    },
+    {
+      "id": "8554174194196516",
+      "from": "seqB",
+      "output_id": 10,
+      "to": "hatB_vca",
+      "input_id": 0
+    },
+    {
+      "id": "2751764179757955",
+      "from": "hatB",
+      "output_id": 0,
+      "to": "hatB_vca",
+      "input_id": 1
+    },
+    {
+      "id": "5524580909173224",
+      "from": "bass_env",
+      "output_id": 0,
+      "to": "bass_amp",
+      "input_id": 0
+    },
+    {
+      "id": "5070960751153437",
+      "from": "bass_filter",
+      "output_id": 0,
+      "to": "bass_amp",
+      "input_id": 1
+    },
+    {
+      "id": "3232275899853354",
+      "from": "duck_invert",
+      "output_id": 0,
+      "to": "bass_duck",
+      "input_id": 0
+    },
+    {
+      "id": "3956216953355329",
+      "from": "bass_amp",
+      "output_id": 0,
+      "to": "bass_duck",
+      "input_id": 1
+    },
+    {
+      "id": "5784608224077997",
+      "from": "lead_env",
+      "output_id": 0,
+      "to": "lead_ampL",
+      "input_id": 0
+    },
+    {
+      "id": "5800683860855933",
+      "from": "lead_filter",
+      "output_id": 0,
+      "to": "lead_ampL",
+      "input_id": 1
+    },
+    {
+      "id": "649802979277477",
+      "from": "seqA",
+      "output_id": 8,
+      "to": "lead_velocityL",
+      "input_id": 0
+    },
+    {
+      "id": "6899077811263814",
+      "from": "lead_ampL",
+      "output_id": 0,
+      "to": "lead_velocityL",
+      "input_id": 1
+    },
+    {
+      "id": "2512893972250118",
+      "from": "lead_env",
+      "output_id": 0,
+      "to": "lead_ampR",
+      "input_id": 0
+    },
+    {
+      "id": "351240944891566",
+      "from": "lead_filter",
+      "output_id": 1,
+      "to": "lead_ampR",
+      "input_id": 1
+    },
+    {
+      "id": "4913228508057809",
+      "from": "seqA",
+      "output_id": 8,
+      "to": "lead_velocityR",
+      "input_id": 0
+    },
+    {
+      "id": "1977750064570035",
+      "from": "lead_ampR",
+      "output_id": 0,
+      "to": "lead_velocityR",
+      "input_id": 1
+    },
+    {
+      "id": "1840244450213878",
+      "from": "stab_env",
+      "output_id": 0,
+      "to": "stab_amp",
+      "input_id": 0
+    },
+    {
+      "id": "3450302807433830",
+      "from": "stab_filter",
+      "output_id": 0,
+      "to": "stab_amp",
+      "input_id": 1
+    },
+    {
+      "id": "238412242752892",
+      "from": "pad_env",
+      "output_id": 0,
+      "to": "pad_amp",
+      "input_id": 0
+    },
+    {
+      "id": "2519814950022110",
+      "from": "pad_filter",
+      "output_id": 0,
+      "to": "pad_amp",
+      "input_id": 1
+    },
+    {
+      "id": "3764201097346272",
+      "from": "riser_filter",
+      "output_id": 0,
+      "to": "riser_amp",
+      "input_id": 1
+    },
+    {
+      "id": "8723628997865926",
+      "from": "kick_gate",
+      "output_id": 0,
+      "to": "duck_env",
+      "input_id": 4
+    },
+    {
+      "id": "6692165395581710",
+      "from": "seqA",
+      "output_id": 4,
+      "to": "lead_env",
+      "input_id": 4
+    },
+    {
+      "id": "7642787668258038",
+      "from": "seqB",
+      "output_id": 5,
+      "to": "stab_env",
+      "input_id": 4
+    },
+    {
+      "id": "6234131125763615",
+      "from": "seqB",
+      "output_id": 7,
+      "to": "pad_env",
+      "input_id": 4
+    },
+    {
+      "id": "2369427681116893",
+      "from": "kick",
+      "output_id": 0,
+      "to": "kick_shape",
+      "input_id": 0
+    },
+    {
+      "id": "6846553901134220",
+      "from": "seqB",
+      "output_id": 4,
+      "to": "bass_env",
+      "input_id": 4
+    },
+    {
+      "id": "8821540835275841",
+      "from": "seqA",
+      "output_id": 7,
+      "to": "hatA",
+      "input_id": 0
+    },
+    {
+      "id": "2123697154618289",
+      "from": "seqB",
+      "output_id": 6,
+      "to": "hatB",
+      "input_id": 0
+    },
+    {
+      "id": "597630235618163",
+      "from": "hatA_vca",
+      "output_id": 0,
+      "to": "hats_mix",
+      "input_id": 1
+    },
+    {
+      "id": "4463685910759324",
+      "from": "hatB_vca",
+      "output_id": 0,
+      "to": "hats_mix",
+      "input_id": 2
+    },
+    {
+      "id": "696939477370185",
+      "from": "duck_env",
+      "output_id": 0,
+      "to": "duck_invert",
+      "input_id": 2
+    },
+    {
+      "id": "6739598895815497",
+      "from": "pad_amp",
+      "output_id": 0,
+      "to": "atmos_mix",
+      "input_id": 1
+    },
+    {
+      "id": "6295953809729079",
+      "from": "stab_amp",
+      "output_id": 0,
+      "to": "atmos_mix",
+      "input_id": 2
+    },
+    {
+      "id": "4507228905645326",
+      "from": "riser_amp",
+      "output_id": 0,
+      "to": "atmos_mix",
+      "input_id": 3
+    },
+    {
+      "id": "6033859318126598",
+      "from": "main_mix",
+      "output_id": 0,
+      "to": "listen",
+      "input_id": 0
+    },
+    {
+      "id": "274068524644863",
+      "from": "main_mix",
+      "output_id": 1,
+      "to": "listen",
+      "input_id": 1
+    },
+    {
+      "id": "5465851596897581",
+      "from": "bass_osc",
+      "output_id": 2,
+      "to": "bass_filter",
+      "input_id": 3
+    },
+    {
+      "id": "660594186268222",
+      "from": "stab_osc",
+      "output_id": 0,
+      "to": "stab_filter",
+      "input_id": 3
+    },
+    {
+      "id": "6297059386926764",
+      "from": "pad_osc",
+      "output_id": 0,
+      "to": "pad_filter",
+      "input_id": 3
+    },
+    {
+      "id": "8584744130497119",
+      "from": "hats_mix",
+      "output_id": 0,
+      "to": "hats_highpass",
+      "input_id": 3
+    },
+    {
+      "id": "6450160585652392",
+      "from": "kick_gate",
+      "output_id": 0,
+      "to": "kick",
+      "input_id": 0
+    },
+    {
+      "id": "8729839643601951",
+      "from": "kick_vca",
+      "output_id": 0,
+      "to": "main_mix",
+      "input_id": 2
+    },
+    {
+      "id": "2971497957442718",
+      "from": "clap_vca",
+      "output_id": 0,
+      "to": "main_mix",
+      "input_id": 5
+    },
+    {
+      "id": "4373228858827099",
+      "from": "hats_highpass",
+      "output_id": 1,
+      "to": "main_mix",
+      "input_id": 8
+    },
+    {
+      "id": "3417306637298165",
+      "from": "bass_duck",
+      "output_id": 0,
+      "to": "main_mix",
+      "input_id": 11
+    },
+    {
+      "id": "5090507004255809",
+      "from": "lead_duck",
+      "output_id": 1,
+      "to": "main_mix",
+      "input_id": 14
+    },
+    {
+      "id": "5770280243582934",
+      "from": "lead_duck",
+      "output_id": 2,
+      "to": "main_mix",
+      "input_id": 17
+    },
+    {
+      "id": "3044395526449725",
+      "from": "atmos_duck",
+      "output_id": 1,
+      "to": "main_mix",
+      "input_id": 20
+    },
+    {
+      "id": "7562073054031627",
+      "from": "atmos_duck",
+      "output_id": 2,
+      "to": "main_mix",
+      "input_id": 23
+    },
+    {
+      "id": "6687575655704776",
+      "from": "listen",
+      "output_id": 0,
+      "to": "audio",
+      "input_id": 0
+    },
+    {
+      "id": "4613104408982820",
+      "from": "listen",
+      "output_id": 1,
+      "to": "audio",
+      "input_id": 1
+    },
+    {
+      "id": "2587804548460801",
+      "from": "seqA",
+      "output_id": 16,
+      "to": "seqB",
+      "input_id": 0
+    },
+    {
+      "id": "3331612022127457",
+      "from": "seqA",
+      "output_id": 17,
+      "to": "seqB",
+      "input_id": 1
+    },
+    {
+      "id": "4753264131433602",
+      "from": "lead_osc",
+      "output_id": 0,
+      "to": "lead_filter",
+      "input_id": 0
+    },
+    {
+      "id": "813834571189801",
+      "from": "lead_osc",
+      "output_id": 1,
+      "to": "lead_filter",
+      "input_id": 1
+    },
+    {
+      "id": "8932363174643776",
+      "from": "lead_env",
+      "output_id": 0,
+      "to": "lead_filter",
+      "input_id": 2
+    },
+    {
+      "id": "2782739857689576",
+      "from": "seqB",
+      "output_id": 0,
+      "to": "bass_osc",
+      "input_id": 0
+    },
+    {
+      "id": "3330249643255389",
+      "from": "seqA",
+      "output_id": 0,
+      "to": "lead_osc",
+      "input_id": 0
+    },
+    {
+      "id": "1870120635724022",
+      "from": "texture_lfo",
+      "output_id": 0,
+      "to": "lead_osc",
+      "input_id": 2
+    },
+    {
+      "id": "6818587491636508",
+      "from": "seqB",
+      "output_id": 1,
+      "to": "stab_osc",
+      "input_id": 0
+    },
+    {
+      "id": "7947611497708647",
+      "from": "seqB",
+      "output_id": 3,
+      "to": "pad_osc",
+      "input_id": 0
+    },
+    {
+      "id": "3220787718076660",
+      "from": "texture_lfo",
+      "output_id": 0,
+      "to": "pad_osc",
+      "input_id": 2
+    },
+    {
+      "id": "7662846434696994",
+      "from": "noise",
+      "output_id": 0,
+      "to": "riser_filter",
+      "input_id": 0
+    },
+    {
+      "id": "5131046750206409",
+      "from": "riser_lfo",
+      "output_id": 0,
+      "to": "riser_filter",
+      "input_id": 2
+    }
+  ]
+}

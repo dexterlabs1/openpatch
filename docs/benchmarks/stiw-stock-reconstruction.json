@@ -1,0 +1,55 @@
+{
+  "qualification_date": "2026-10-15",
+  "status": "pass",
+  "scope": "Bounded known-source patch reconstruction, not general .vcv import or whole-patch Rack equivalence",
+  "runtime_source_commit": "8b5e6a471ef6f1332cf48f58807c8f2789be6b17",
+  "runtime_binary_sha256": "ae2bcde5e402386efec59437794cca4687eb327930f4d89024567955bb4d47fb",
+  "converter_files_sha256": {
+    "scripts/rebuild_stiw.py": "ab201556b5588c7fa9defba9e98af94a306605e708681f4a0163327652402a88",
+    "scripts/stiw_source_map.json": "824751a3b493070cd9bc3ad53ef5b38dd977d881f97cadf2ec0228100e90f87b",
+    "scripts/test_rebuild_stiw.py": "9b672460acf07c9be39331f43cf16b61eb3cba3e2f83ae7cb775a7113b823e6b",
+    "scripts/fixtures/stiw-source-structure.json": "a15aac86a921ef7d40f0c786a6518fd819d2b804c3d8f674034ed3fc05a0417b"
+  },
+  "source_json_sha256": "65a93ca1426c7a4082577b78e095100a645c5544fdb486a810f6954d79ba04e3",
+  "source_archive_sha256": "4c83b2d697cc056b4118f321cddfa3be56257ed789ecba90c47421ee28e0cbf4",
+  "python_mcp_tests": {
+    "passed": 77,
+    "skipped": 0
+  },
+  "stock_counts": {
+    "stock_vca": 14,
+    "adsr_eg": 5,
+    "stock_vcf": 4,
+    "notes": 4
+  },
+  "source_roles": 55,
+  "source_cables": 83,
+  "source_automation_lanes": 13,
+  "native_nodes": 140,
+  "native_cables": 210,
+  "canonical_reorder_identical": true,
+  "unchanged_native_substitute_nodes_checked": 103,
+  "unchanged_native_substitute_routes_checked": 139,
+  "save_reload_and_render_preserve_patch_revision_history": true,
+  "source_and_existing_rendition_hashes_unchanged": true,
+  "render": {
+    "seconds": 120.012,
+    "sample_rate": 48000,
+    "channels": 2,
+    "format": "PCM16 WAV",
+    "frames_per_channel": 5760576,
+    "peak": 0.4629363715648651,
+    "rms": 0.09674104405421852,
+    "clipped_samples": 0,
+    "reset_origin_renders": 2,
+    "reset_origin_pcm_identical": true,
+    "wav_sha256": "e005aea936b0892a2012bbb9cabe5cad35541082704c930e9d60571cd8c779c7"
+  },
+  "limitations": [
+    "Offline native reconstruction rendering only; no Rack recording/null test, physical hardware comparison, device or GUI qualification",
+    "Surge and other substitute roles remain independently implemented approximations",
+    "No CPU performance comparison is claimed; rendering ran alongside other test work",
+    "Physical macOS input and audio playback were not exercised",
+    "Actual source score, Notes content and rendered audio remain local; the public fixture uses synthetic score/text"
+  ]
+}
