@@ -3610,7 +3610,7 @@ impl OpenPatch {
         // use even logical frames. Skip the idle odd frames so software GL
         // keeps ample room inside CI's fixed native-window time budget.
         // Production repaint and construction clocks are unchanged.
-        *frame += if *frame < 2 { 1 } else { 2 };
+        *frame = if *frame == 0 { 1 } else { (*frame / 2 + 1) * 2 };
         let (path, frame, captures) = (path.clone(), *frame, *captures);
         if frame == 1 {
             let v = self
