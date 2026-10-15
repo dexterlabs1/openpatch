@@ -15,6 +15,9 @@ use std::sync::{
 mod cable_menu;
 use cable_menu::CableMenu;
 
+include!("parameter_fader_input.rs");
+include!("cable_autopan.rs");
+
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
 const PANEL_HEIGHT: f32 = 396.0;
@@ -1409,6 +1412,7 @@ impl Rack {
                 "Modular synthesizer rack. Right-click to add modules; middle-drag to pan.",
             )
         });
+        self.cable_edge_autopan(ui, canvas, drag_interactive && !popup_open_at_frame_start);
         let painter = ui.painter().with_clip_rect(canvas);
         let navigation_enabled = interactive
             && self.shortcuts_enabled
@@ -3125,8 +3129,16 @@ impl Rack {
                 } else {
                     normalize(value, min, max, logarithmic)
                 };
-                let knob_rect =
-                    Rect::from_center_size(center, Vec2::splat((radius + 10.0) * 2.0 * self.zoom));
+                let fader_track =
+                    crate::panel_skin::parameter_fader_track(center, radius, self.zoom);
+                // Keep the fader target inside its own cell and above the value well.
+                let knob_rect = Rect::from_center_size(
+                    center,
+                    vec2(
+                        (radius * 1.4).clamp(32.0, 50.0) * self.zoom,
+                        fader_track.height() + 7.0 * self.zoom,
+                    ),
+                );
                 let mut knob_highlighted = false;
                 if mode.is_interactive() {
                     let knob = ui.interact(
@@ -3187,86 +3199,90 @@ impl Rack {
                             }
                         }
                     });
-                    if knob.drag_started() {
+                    let input = self.parameter_fader_input(
+                        ui,
+                        &knob,
+                        fader_track,
+                        normalized,
+                        interactive
+                            && self.shortcuts_enabled
+                            && self.editing.is_none()
+                            && self.annotation_edit.is_none()
+                            && !popup_open_at_frame_start
+                            && !egui::Popup::is_any_open(ui.ctx()),
+                    );
+                    if interactive
+                        && self.shortcuts_enabled
+                        && self.editing.is_none()
+                        && self.annotation_edit.is_none()
+                        && !egui::Popup::is_any_open(ui.ctx())
+                        && ((knob.is_pointer_button_down_on()
+                            && ui.input(|i| i.pointer.primary_down()))
+                            || knob.clicked_by(PointerButton::Primary)
+                            || knob.drag_started_by(PointerButton::Primary))
+                    {
                         self.select_primary(node.id.clone());
-                        self.gesture = self.gesture.wrapping_add(1);
-                        ui.data_mut(|data| {
-                            data.insert_temp(knob.id, format!("rack-knob-{}", self.gesture))
-                        });
-                        if step.is_some() {
-                            ui.data_mut(|data| data.insert_temp(knob.id, normalized));
-                        }
                     }
                     let modifiers = ui.input(|i| i.modifiers);
-                    let speed = if modifiers.command || modifiers.ctrl {
+                    let fine = if modifiers.command || modifiers.ctrl {
                         if modifiers.shift {
-                            0.000_02
+                            0.0001
                         } else {
-                            0.000_2
+                            0.001
                         }
                     } else if modifiers.shift {
+                        0.1
+                    } else {
                         0.01
-                    } else {
-                        0.003
                     };
-                    let change = -knob.drag_motion().y * speed;
-                    let drag_normalized = if step.is_some() && knob.dragged() {
-                        let prior = ui
-                            .data(|data| data.get_temp::<f32>(knob.id))
-                            .unwrap_or(normalized);
-                        let next = (prior + change).clamp(0.0, 1.0);
-                        ui.data_mut(|data| data.insert_temp(knob.id, next));
-                        next
-                    } else {
-                        (normalized + change).clamp(0.0, 1.0)
+                    let from_normalized = |n: f32| {
+                        if geometric {
+                            denormalize_geometric(n.clamp(0.0, 1.0), min, max)
+                        } else {
+                            denormalize(n.clamp(0.0, 1.0), min, max, logarithmic)
+                        }
                     };
-                    let new_value = if knob.double_clicked() {
+                    let new_value = if input.reset {
                         Some(default)
-                    } else if change != 0.0 {
+                    } else if let Some(high) = input.boundary {
+                        Some(if high { max } else { min })
+                    } else if input.nudge != 0 {
                         Some(quantize(
-                            if geometric {
-                                denormalize_geometric(drag_normalized, min, max)
+                            if let Some(step) = step {
+                                value + step * input.nudge as f32
                             } else {
-                                denormalize(drag_normalized, min, max, logarithmic)
+                                from_normalized(normalized + fine * input.nudge as f32)
                             },
                             min,
                             max,
                             step,
                         ))
                     } else {
-                        None
+                        input
+                            .normalized
+                            .map(|n| quantize(from_normalized(n), min, max, step))
                     };
-                    if knob.drag_stopped() {
-                        ui.data_mut(|data| {
-                            data.remove::<f32>(knob.id);
-                            data.remove::<String>(knob.id);
-                        });
-                    }
                     if let Some(new_value) = new_value.filter(|new_value| *new_value != value) {
-                        let mut args = json!({"id":node.id,"parameter":name,"value":new_value});
-                        if knob.dragged() && !knob.double_clicked() {
-                            if let Some(group) = ui.data(|data| data.get_temp::<String>(knob.id)) {
-                                args["history_group"] = json!(group);
-                            }
+                        let mut args = json!({"id":node.id,"parameter":name,"value":new_value,
+                            "expected_revision":revision});
+                        if let Some(group) = input.history_group {
+                            args["history_group"] = json!(group);
                         }
                         action = Some(RackAction::Command("set_parameter", args));
                     }
-                    knob_highlighted = knob.hovered() || knob.dragged();
-                    if knob_highlighted {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                    }
-                    knob.on_hover_text(format!(
-                    "{}: {}\n{}\nDrag vertically; Cmd/Ctrl for fine adjustment. Double-click to reset; right-click to type a value.",
-                    name, display_value,
-                    if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
-                ));
+                    knob_highlighted = knob.hovered() || knob.dragged() || knob.has_focus();
+                    knob.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(format!(
+                        "{}: {}\n{}\nClick or drag the fader to set its position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
+                        name, display_value,
+                        if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
+                    ));
                 }
-                paint_knob(
+                crate::panel_skin::parameter_fader(
                     &painter,
-                    center,
-                    radius * self.zoom,
+                    fader_track,
                     normalized,
                     knob_highlighted,
+                    crate::panel_skin::family_accent(&node.kind),
                     self.zoom,
                 );
                 painter.text(
@@ -3379,9 +3395,8 @@ impl Rack {
                                 old_text,
                                 new_text: display_value.clone(),
                                 marker: step.is_none().then_some(
-                                    crate::construction_motion::Marker::Knob {
-                                        center,
-                                        radius: radius * self.zoom,
+                                    crate::construction_motion::Marker::VerticalSlider {
+                                        rect: fader_track,
                                         old: old_normalized,
                                         new: normalized,
                                     },
@@ -3900,21 +3915,15 @@ impl Rack {
                     );
                     if !reduced {
                         match &anchor.marker {
-                            Some(Marker::Knob {
-                                center,
-                                radius,
-                                old,
-                                new,
-                            }) => {
-                                let value = old + (new - old) * ease(t);
-                                let angle = (-225.0 + value.clamp(0.0, 1.0) * 270.0).to_radians();
-                                let direction = vec2(angle.cos(), angle.sin());
+                            Some(Marker::VerticalSlider { rect, old, new }) => {
+                                let y = rect.bottom()
+                                    - rect.height() * (old + (new - old) * ease(t)).clamp(0.0, 1.0);
                                 painter.line_segment(
                                     [
-                                        *center + direction * (*radius + 4.0 * self.zoom),
-                                        *center + direction * (*radius + 10.0 * self.zoom),
+                                        pos2(rect.left() - 5.0 * self.zoom, y),
+                                        pos2(rect.right() + 5.0 * self.zoom, y),
                                     ],
-                                    Stroke::new(1.6 * self.zoom, gold.gamma_multiply(fade)),
+                                    Stroke::new(1.3 * self.zoom, gold.gamma_multiply(fade)),
                                 );
                             }
                             Some(Marker::Slider { rect, old, new }) => {
@@ -5422,7 +5431,7 @@ impl Rack {
                         0.16,
                     );
                 }
-                ui.interact(Rect::from_center_size(center,vec2(54.0,13.0)*zoom),ui.id().with((&node.id,"strip-vu",channel)),Sense::hover()).on_hover_text("DSP strip VU: signed channel sum / 5 V, peak smoothing, -24 to 0 dB brightness. Polyphonic lanes can cancel. This is the signal meter, not the knob gain.");
+                ui.interact(Rect::from_center_size(center,vec2(54.0,13.0)*zoom),ui.id().with((&node.id,"strip-vu",channel)),Sense::hover()).on_hover_text("DSP strip VU: signed channel sum / 5 V, peak smoothing, -24 to 0 dB brightness. Polyphonic lanes can cancel. This is the signal meter; the fader shows configured gain.");
             }
             painter.text(
                 point(150.0, 194.0),
@@ -10316,17 +10325,6 @@ fn paint_panel(
     }
 }
 
-fn paint_knob(
-    painter: &egui::Painter,
-    center: Pos2,
-    radius: f32,
-    normalized: f32,
-    active: bool,
-    zoom: f32,
-) {
-    crate::panel_skin::knob(painter, center, radius, normalized, active, zoom);
-}
-
 fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32, master: bool) {
     let center = rect.min + vec2(rect.width() / zoom * 0.5, 179.0) * zoom;
     if kind == "mixer" {
@@ -11278,14 +11276,30 @@ mod tests {
         .enumerate()
         {
             let time = 12.0 + index as f64;
+            let track = crate::panel_skin::parameter_fader_track(position, 23.0, rack.zoom);
+            // Start farther down the track to cross egui's drag threshold;
+            // the final absolute position is one octave above its midpoint.
+            let pressed = if name == "frequency" {
+                position + vec2(0.0, track.height() / 4.0)
+            } else {
+                position
+            };
             frame(
                 &ctx,
                 &mut rack,
                 &patch,
                 time,
-                vec![egui::Event::PointerMoved(position), button(position, true)],
+                vec![egui::Event::PointerMoved(pressed), button(pressed, true)],
             );
-            let moved = position - vec2(0.0, if name == "frequency" { 37.037037 } else { 10.0 });
+            let moved = position
+                - vec2(
+                    0.0,
+                    if name == "frequency" {
+                        track.height() / 9.0
+                    } else {
+                        10.0
+                    },
+                );
             let action = frame(
                 &ctx,
                 &mut rack,
@@ -11300,7 +11314,7 @@ mod tests {
             if name == "frequency" {
                 assert!(
                     (args["value"].as_f64().unwrap() - 523.25116).abs() < 0.02,
-                    "One-ninth of the nine-octave knob span must double Hz"
+                    "One-ninth of the painted nine-octave fader travel must double Hz"
                 );
             } else {
                 assert!(
@@ -17642,6 +17656,15 @@ mod tests {
     }
     mod stock_vca_ui_tests {
         include!("stock_vca_ui_tests.rs");
+    }
+    mod cable_autopan_tests {
+        include!("cable_autopan_tests.rs");
+    }
+    mod generic_fader_ui_tests {
+        include!("generic_fader_ui_tests.rs");
+    }
+    mod generic_fader_geometry_tests {
+        include!("generic_fader_geometry_tests.rs");
     }
 
     mod stock_vcf_ui_tests {

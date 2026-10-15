@@ -4857,9 +4857,9 @@ impl OpenPatch {
             self.rack.select_only("tone".into());
             self.rack
                 .request_parameter_menu_for_smoke("tone", "frequency");
-            self.title = "Exact frequency · direct knob entry".into();
+            self.title = "Exact frequency · direct value entry".into();
             self.status =
-                "Right-click a knob to enter a value · Apply creates one undo step".into();
+                "Right-click a control to enter a value · Apply creates one undo step".into();
         }
         if frame == 160 {
             self.scope.smoke_xy();

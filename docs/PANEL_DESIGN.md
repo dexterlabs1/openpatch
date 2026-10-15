@@ -17,13 +17,17 @@ renderer and fits the available screen without stretching the module.
 *Native Linux CI capture; macOS is the primary design target.*
 
 The Studio Rack skin uses matte warm metal, semibold model headings and restrained
-signal-family accents. Panels, graphite knobs, numeric wells and jack reflections
-use quieter shared materials, keeping the rack and browser consistent. Clear
-pointers, ticks and hover/focus outlines identify editable values. Outputs retain
+signal-family accents. Shared generic controls use direct vertical faders;
+specialized module panels retain their dedicated editors. Panels, numeric wells
+and jack reflections use quieter shared materials, keeping the rack and browser
+consistent. Fader handles and hover/focus outlines identify editable values. Outputs retain
 charcoal labels and dark socket surrounds; inputs use dark print on the panel.
 Permanent model captions match in the rack and browser; patch instance IDs appear
-in header tooltips and context menus. Control geometry, parameter ranges, port
-positions and cable hit targets are unchanged.
+in header tooltips and context menus. Parameter ranges, port positions and cable
+hit targets are preserved. Fader targets stay above the separate numeric wells;
+clicking the number opens precise entry with a pencil affordance. Fader position
+shows the configured value, independently of live signal/gain telemetry, and
+dims with the panel in a dark room. See [control gestures](RACK_EDITING.md#parameter-faders).
 
 Persistent **Inspect** uses the same cached renderer at natural size, with
 scrolling for wide panels and small windows. It shows catalog defaults under
@@ -45,7 +49,7 @@ and presentation state; a catalog change replaces it. No thumbnail image
 assets or separately maintained miniature control layouts are used.
 
 The shared-renderer regressions compare primitive geometry and drawing for all
-57 built-in kinds at default settings at 42%, 85%, and 100% scale, including
+64 built-in kinds at default settings at 42%, 85%, and 100% scale, including
 real rack instance IDs. Interaction tests cover full-width and narrow cards, preview input
 isolation and card click/drag behavior over specialized controls. Native Linux
 CI captures qualify the appearance; macOS device playback is not part of these

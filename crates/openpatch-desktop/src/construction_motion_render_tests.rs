@@ -54,7 +54,7 @@ fn committed_value_is_immediate_while_control_anchor_tracks_pan_zoom_and_human_e
     assert!(text(&output).iter().any(|t| t == "3.000"));
     assert!(text(&output).iter().any(|t| t == "0.000 → 3.000"));
     let anchor = rack.construction_anchors[&("target".into(), "value".into())].clone();
-    assert!(matches!(anchor.marker, Some(Marker::Knob { .. })));
+    assert!(matches!(anchor.marker, Some(Marker::VerticalSlider { .. })));
     rack.pan += vec2(80.0, 50.0);
     rack.set_zoom(0.85);
     frame_revision_state(&ctx, &mut rack, &after, 0.2, vec![], true, true, 10);

@@ -181,8 +181,8 @@ pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
 }
 
 pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
-    // A matte face keeps fine labels and controls in the foreground. Its broad,
-    // low-contrast falloff still responds naturally to the rack's room lighting.
+    // Warm, matte metal: a simple face and a crisp edge keep the controls clear.
+    // Room illumination belongs to the caller, including bespoke panel layouts.
     painter.rect_filled(
         rect.translate(vec2(1.0, 1.5) * zoom),
         1.0,
@@ -190,105 +190,97 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
     );
     painter.rect_filled(rect, 1.0, Color32::from_rgb(139, 140, 133));
     let face = rect.shrink(1.0 * zoom);
-    let mut mesh = egui::epaint::Mesh::default();
-    for (fraction, left, right) in [
-        (0.0, [225, 223, 215], [222, 221, 213]),
-        (1.0, [219, 218, 210], [216, 216, 208]),
-    ] {
-        let y = egui::lerp(face.y_range(), fraction);
-        mesh.colored_vertex(
-            pos2(face.left(), y),
-            Color32::from_rgb(left[0], left[1], left[2]),
-        );
-        mesh.colored_vertex(
-            pos2(face.right(), y),
-            Color32::from_rgb(right[0], right[1], right[2]),
-        );
-    }
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 3, 2);
-    painter.add(egui::Shape::mesh(mesh));
+    painter.rect_filled(face, 0.0, Color32::from_rgb(223, 220, 210));
     painter.line_segment(
         [face.left_top(), face.right_top()],
-        Stroke::new(0.6 * zoom, Color32::from_rgb(239, 237, 229)),
+        Stroke::new(0.6 * zoom, Color32::from_rgb(237, 234, 223)),
     );
 }
 
-/// A matte graphite face with only a broad, subtle change in reflected light.
-fn shaded_disc(painter: &egui::Painter, center: Pos2, radius: f32) {
-    let mut mesh = egui::epaint::Mesh::default();
-    mesh.colored_vertex(center, Color32::from_rgb(49, 52, 52));
-    const SEGMENTS: u32 = 40;
-    for segment in 0..SEGMENTS {
-        let angle = segment as f32 * std::f32::consts::TAU / SEGMENTS as f32;
-        let direction = vec2(angle.cos(), angle.sin());
-        let light = ((-direction.x - direction.y) * 0.5 + 0.5).clamp(0.0, 1.0);
-        let gray = (39.0 + 8.0 * light) as u8;
-        mesh.colored_vertex(
-            center + direction * radius,
-            Color32::from_rgb(gray, gray + 3, gray + 3),
-        );
-        mesh.add_triangle(0, segment + 1, (segment + 1) % SEGMENTS + 1);
-    }
-    painter.add(egui::Shape::mesh(mesh));
+/// The normalized parameter's travel in screen points. `radius` is a logical,
+/// unscaled layout radius; `center` is already in screen coordinates.
+pub(crate) fn parameter_fader_track(center: Pos2, radius: f32, zoom: f32) -> Rect {
+    let half_height = (radius - 5.0).max(10.0) * zoom;
+    Rect::from_center_size(center, vec2(4.0 * zoom, 2.0 * half_height))
 }
 
-pub(crate) fn knob(
+fn fader_value(normalized: f32) -> f32 {
+    if normalized.is_finite() {
+        normalized.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Shared thumb geometry for paint and the caller's interaction region.
+/// Full scale is at the top; zero is at the bottom.
+pub(crate) fn parameter_fader_thumb(track: Rect, normalized: f32, zoom: f32) -> Rect {
+    let y = egui::lerp(track.bottom()..=track.top(), fader_value(normalized));
+    Rect::from_center_size(pos2(track.center().x, y), vec2(20.0, 8.0) * zoom)
+}
+
+/// Passive parameter hardware, not a signal meter: configured position and
+/// interaction accents dim with the faceplate under the caller's room lighting.
+pub(crate) fn parameter_fader(
     painter: &egui::Painter,
-    center: Pos2,
-    radius: f32,
+    track: Rect,
     normalized: f32,
     active: bool,
+    accent: Color32,
     zoom: f32,
 ) {
-    let angle = |value: f32| (-225.0 + value * 270.0).to_radians();
-    for step in 0..=10 {
-        let a = angle(step as f32 / 10.0);
-        let direction = vec2(a.cos(), a.sin());
-        painter.line_segment(
-            [
-                center + direction * (radius + 5.0 * zoom),
-                center + direction * (radius + if step % 5 == 0 { 9.5 } else { 8.0 } * zoom),
-            ],
-            Stroke::new(
-                if step % 5 == 0 { 1.15 } else { 0.8 } * zoom,
-                Color32::from_rgb(92, 94, 86),
-            ),
-        );
+    let thumb = parameter_fader_thumb(track, normalized, zoom);
+    for step in 0..=4 {
+        let y = egui::lerp(track.bottom()..=track.top(), step as f32 / 4.0);
+        let outer = if step % 2 == 0 { 11.0 } else { 8.0 } * zoom;
+        for side in [-1.0, 1.0] {
+            painter.line_segment(
+                [
+                    pos2(track.center().x + side * 5.0 * zoom, y),
+                    pos2(track.center().x + side * outer, y),
+                ],
+                Stroke::new(0.8 * zoom, Color32::from_rgb(114, 113, 104)),
+            );
+        }
     }
-    // A quiet edge separates the control from its panel without a machined
-    // shoulder, knurling or bright concentric rings competing with the pointer.
-    painter.circle_filled(
-        center + vec2(0.6, 1.2) * zoom,
-        radius + 1.6 * zoom,
-        Color32::from_black_alpha(30),
+    painter.rect_filled(
+        track.expand(0.8 * zoom),
+        1.5 * zoom,
+        Color32::from_rgb(146, 145, 134),
     );
-    painter.circle_filled(
-        center,
-        radius + 1.6 * zoom,
-        Color32::from_rgb(123, 126, 120),
+    painter.rect_filled(track, 1.0 * zoom, Color32::from_rgb(51, 56, 53));
+    let fill = Rect::from_min_max(
+        pos2(track.left() + zoom, thumb.center().y),
+        pos2(track.right() - zoom, track.bottom()),
     );
-    shaded_disc(painter, center, radius);
-    painter.circle_stroke(
-        center,
-        radius,
-        Stroke::new(0.8 * zoom, Color32::from_rgb(30, 34, 33)),
-    );
-    if active {
-        painter.circle_stroke(
-            center,
-            radius + 2.3 * zoom,
-            Stroke::new(1.2 * zoom, Color32::from_rgb(217, 157, 60)),
-        );
+    if fill.height() > 0.0 {
+        painter.rect_filled(fill, 0.0, accent);
     }
-    let a = angle(normalized.clamp(0.0, 1.0));
-    let direction = vec2(a.cos(), a.sin());
+    painter.rect_filled(
+        thumb.translate(vec2(0.6, 0.7) * zoom),
+        1.4 * zoom,
+        Color32::from_black_alpha(45),
+    );
+    painter.rect_filled(thumb, 1.4 * zoom, Color32::from_rgb(235, 231, 216));
+    painter.rect_stroke(
+        thumb,
+        1.4 * zoom,
+        Stroke::new(
+            if active { 1.4 } else { 0.9 } * zoom,
+            if active {
+                accent
+            } else {
+                Color32::from_rgb(72, 77, 70)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
     painter.line_segment(
         [
-            center + direction * radius * 0.25,
-            center + direction * radius * 0.78,
+            pos2(thumb.left() + 3.0 * zoom, thumb.center().y),
+            pos2(thumb.right() - 3.0 * zoom, thumb.center().y),
         ],
-        Stroke::new(2.2 * zoom, Color32::from_rgb(247, 244, 225)),
+        Stroke::new(1.2 * zoom, accent),
     );
 }
 
@@ -342,27 +334,55 @@ pub(crate) fn readout(
     max_width: f32,
     zoom: f32,
 ) {
-    // A quiet numeric field with a bounded galley even for long units.
-    let available = (max_width - 10.0 * zoom).max(1.0);
+    // A bounded numeric entry field, with a small pencil mark that distinguishes
+    // an editable setting from the surrounding silkscreen labels.
+    let available = (max_width - 25.0 * zoom).max(1.0);
     let mut galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(11.0 * zoom), INK);
     if galley.size().x > available {
         let size = 11.0 * zoom * available / galley.size().x;
         galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(size), INK);
     }
-    let width = (galley.size().x + 12.0 * zoom)
-        .max(42.0 * zoom)
+    let width = (galley.size().x + 25.0 * zoom)
+        .max(48.0 * zoom)
         .min(max_width);
     let rect = Rect::from_center_size(center, vec2(width, 17.0 * zoom));
-    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(204, 205, 196));
+    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(237, 233, 222));
     painter.rect_stroke(
         rect,
         2.0 * zoom,
-        Stroke::new(0.6 * zoom, Color32::from_rgb(165, 168, 157)),
+        Stroke::new(0.8 * zoom, Color32::from_rgb(143, 148, 135)),
         egui::StrokeKind::Inside,
     );
+    let icon_center = pos2(rect.right() - 7.0 * zoom, center.y);
+    let icon = Color32::from_rgb(90, 101, 89);
+    painter.line_segment(
+        [
+            icon_center + vec2(-2.5, 2.0) * zoom,
+            icon_center + vec2(2.0, -2.5) * zoom,
+        ],
+        Stroke::new(1.2 * zoom, icon),
+    );
+    painter.line_segment(
+        [
+            icon_center + vec2(-3.0, 3.0) * zoom,
+            icon_center + vec2(2.5, 3.0) * zoom,
+        ],
+        Stroke::new(0.7 * zoom, icon),
+    );
+    let text_rect = Rect::from_min_max(
+        rect.min + vec2(4.0, 1.0) * zoom,
+        rect.max - vec2(15.0, 1.0) * zoom,
+    );
     painter
-        .with_clip_rect(painter.clip_rect().intersect(rect))
-        .galley(center - galley.size() * 0.5, galley, INK);
+        .with_clip_rect(painter.clip_rect().intersect(text_rect))
+        .galley(
+            pos2(
+                text_rect.center().x - galley.size().x * 0.5,
+                center.y - galley.size().y * 0.5,
+            ),
+            galley,
+            INK,
+        );
 }
 
 pub(crate) fn port_label(
@@ -535,3 +555,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "generic_fader_paint_tests.rs"]
+mod generic_fader_paint_tests;

@@ -24,7 +24,7 @@
 ![OpenPatch native rack with a VCO, ladder filter, OTA VCA, ADSR, gate clock, and audio output](docs/images/openpatch-rack.png)
 <p align="center"><sub>Studio Rack panels, transport toolbar and analysis dock in the native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
 
-- **An instrument you can patch.** Turn rotary controls, connect cables, and arrange modules on rack rails. Live edits preserve oscillator phase and circuit memory.
+- **An instrument you can patch.** Set values with direct faders and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with sliders and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
 - **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
@@ -90,7 +90,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Clear patching | **Edit → Clear cables** removes all cables in one undoable action |
 | Pan / zoom | Scroll, middle-drag, or arrow keys; pinch or **Cmd-scroll** to zoom **25–400%**; **Cmd −/+** steps zoom; **Cmd-0** restores 100% |
 | Dim the room | **View → Room brightness**, with **Darkroom** (10%) and **Lights on** (100%); live module lamps and Scope screens keep emitting |
-| Lock placement | **View → Lock module positions** prevents accidental module moves while keeping knobs and cables editable |
+| Lock placement | **View → Lock module positions** prevents accidental module moves while keeping controls and cables editable |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
 
@@ -364,7 +364,7 @@ Search module names, controls and ports, filter by musical role, and star favori
 Drag a tile onto the rack to preview its placement; adding a module is one undo step.
 In the floating precision editor, **Apply & Next / Tab** and **Previous / Shift-Tab** apply the draft and continue through type-entry controls in the same module.
 
-The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, knobs, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view, or click **Inspect** to pin its natural-size panel in a separate window. Wide panels scroll horizontally; details list ports and visible controls. Search and filters leave the pin on that module. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
+The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, faders, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view, or click **Inspect** to pin its natural-size panel in a separate window. Wide panels scroll horizontally; details list ports and visible controls. Search and filters leave the pin on that module. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
 
 <sub>Actual native Linux / Mesa CI render. macOS is the primary design target.</sub>
 

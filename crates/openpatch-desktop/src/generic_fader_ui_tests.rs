@@ -1,0 +1,583 @@
+// Included inside rack::tests. Real egui events emit edits into the real Session;
+// these tests do not call parameter_fader_input or synthesize its result.
+use super::*;
+
+struct FaderFixture {
+    ctx: egui::Context,
+    rack: Rack,
+    session: openpatch::control::Session,
+    _workspace: tempfile::TempDir,
+    time: f64,
+}
+impl FaderFixture {
+    fn new(kind: &str, parameter: &str, value: f32, zoom: f32) -> Self {
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"target","kind":kind,"params":{parameter:value}},
+                     {"id":"other","kind":"constant","params":{"value":9.0}}]}))
+        .unwrap();
+        session.replace_patch(patch, Some(0)).unwrap();
+        let mut fixture = Self {
+            ctx: egui::Context::default(),
+            rack: Rack {
+                zoom,
+                ..Rack::default()
+            },
+            session,
+            _workspace: workspace,
+            time: 0.0,
+        };
+        fixture.draw(vec![], true);
+        fixture
+    }
+    fn draw(&mut self, events: Vec<egui::Event>, enabled: bool) -> Option<Value> {
+        let revision = self.session.revision();
+        let action = frame_revision_state(
+            &self.ctx,
+            &mut self.rack,
+            self.session.patch(),
+            self.time,
+            events,
+            true,
+            enabled,
+            revision,
+        )
+        .0;
+        self.time += 0.05;
+        match action {
+            None => None,
+            Some(RackAction::Command("set_parameter", args)) => {
+                assert_eq!(args["expected_revision"], revision);
+                self.session.execute("set_parameter", args.clone()).unwrap();
+                Some(args)
+            }
+            Some(_) => panic!("a parameter gesture emitted an unrelated rack action"),
+        }
+    }
+    fn value(&self, id: &str, parameter: &str) -> f32 {
+        self.session
+            .patch()
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap()
+            .params[parameter]
+    }
+    fn undo_steps(&self) -> u64 {
+        self.session.snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap()
+    }
+    fn track(&self, id: &str) -> Rect {
+        let node = self
+            .session
+            .patch()
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap();
+        let width = module_width(node);
+        let (local, radius) = if node.kind == "multi_vco" {
+            (pos2(width * 0.25, 125.0), 23.0)
+        } else {
+            parameter_position(1, 0, width)
+        };
+        let center = self.rack.viewport.unwrap().min
+            + self.rack.pan
+            + (self.rack.positions[id].to_vec2() + local.to_vec2()) * self.rack.zoom;
+        crate::panel_skin::parameter_fader_track(center, radius, self.rack.zoom)
+    }
+    fn readout(&self) -> Pos2 {
+        let track = self.track("target");
+        // Constant's single control has a 42-point radius and a 15-point value gap.
+        track.center() + vec2(0.0, 57.0 * self.rack.zoom)
+    }
+    fn press(&mut self, at: Pos2, modifiers: egui::Modifiers) -> Option<Value> {
+        self.draw(
+            vec![egui::Event::PointerMoved(at), pointer(at, true, modifiers)],
+            true,
+        )
+    }
+    fn move_to(&mut self, at: Pos2, modifiers: egui::Modifiers) -> Option<Value> {
+        self.draw(
+            vec![egui::Event::PointerMoved(at), modifier_carrier(modifiers)],
+            true,
+        )
+    }
+    fn release(&mut self, at: Pos2, modifiers: egui::Modifiers) -> Option<Value> {
+        self.draw(vec![pointer(at, false, modifiers)], true)
+    }
+    fn click(&mut self, at: Pos2) {
+        self.press(at, egui::Modifiers::NONE);
+        self.release(at, egui::Modifiers::NONE);
+    }
+}
+fn pointer(at: Pos2, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::PointerButton {
+        pos: at,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers,
+    }
+}
+fn key_event(
+    key: egui::Key,
+    pressed: bool,
+    repeat: bool,
+    modifiers: egui::Modifiers,
+) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat,
+        modifiers,
+    }
+}
+fn modifier_carrier(modifiers: egui::Modifiers) -> egui::Event {
+    // The shared frame helper derives RawInput.modifiers from button/key events.
+    // A release-only unused function key carries modifiers without a key action.
+    key_event(egui::Key::F12, false, false, modifiers)
+}
+fn ctrl() -> egui::Modifiers {
+    egui::Modifiers {
+        ctrl: true,
+        ..Default::default()
+    }
+}
+fn near(actual: f32, expected: f32) {
+    assert!(
+        (actual - expected).abs() < 2e-4 * expected.abs().max(1.0),
+        "{actual} versus {expected}"
+    );
+}
+
+#[test]
+fn generic_fader_absolute_track_clicks_reach_limits_at_rack_scales() {
+    for zoom in [0.5, 1.0, 2.0] {
+        let mut f = FaderFixture::new("constant", "value", 4.0, zoom);
+        let baseline = f.undo_steps();
+        let track = f.track("target");
+        f.time = 1.0;
+        f.click(pos2(track.center().x, track.top()));
+        assert_eq!(f.value("target", "value"), 16.0);
+        assert_eq!(f.value("other", "value"), 9.0);
+        f.time = 2.0; // independent click, not a double-click reset
+        f.click(pos2(track.center().x, track.bottom()));
+        assert_eq!(f.value("target", "value"), -16.0);
+        assert_eq!(f.undo_steps(), baseline + 2);
+    }
+}
+
+#[test]
+fn generic_fader_geometric_frequency_drag_moves_one_octave_over_actual_travel() {
+    let c4 = 261.625_58;
+    let mut f = FaderFixture::new("multi_vco", "frequency", c4, 2.0);
+    let track = f.track("target");
+    // The oscillator's full range spans nine octaves. At 200% zoom one octave
+    // exceeds the pointer drag threshold and uses the painted track's travel.
+    let from = track.center();
+    let to = from - vec2(0.0, track.height() / 9.0);
+    f.time = 1.0;
+    f.press(from, egui::Modifiers::NONE);
+    let moved = f
+        .move_to(to, egui::Modifiers::NONE)
+        .expect("octave drag emits edit");
+    assert_eq!(moved["parameter"], "frequency");
+    f.release(to, egui::Modifiers::NONE);
+    near(f.value("target", "frequency"), c4 * 2.0);
+    assert_eq!(f.value("other", "value"), 9.0);
+}
+
+#[test]
+fn generic_fader_ctrl_drag_is_fine_and_modifier_transition_uses_current_position() {
+    for transition in [false, true] {
+        let mut f = FaderFixture::new("constant", "value", 0.0, 1.0);
+        let track = f.track("target");
+        let start = track.center();
+        let baseline = f.undo_steps();
+        f.time = 1.0;
+        f.press(
+            start,
+            if transition {
+                egui::Modifiers::NONE
+            } else {
+                ctrl()
+            },
+        );
+        let (point, expected) = if transition {
+            let normal = start - vec2(0.0, track.height() * 0.1);
+            f.move_to(normal, egui::Modifiers::NONE);
+            near(f.value("target", "value"), 3.2);
+            (normal - vec2(0.0, track.height() * 0.25), 4.0)
+        } else {
+            // Full pointer travel produces 10% normalized travel in Ctrl mode.
+            (start - vec2(0.0, track.height()), 3.2)
+        };
+        f.move_to(point, ctrl());
+        near(f.value("target", "value"), expected);
+        f.release(point, ctrl());
+        near(f.value("target", "value"), expected);
+        assert_eq!(f.undo_steps(), baseline + 1);
+        f.session.execute("undo", json!({})).unwrap();
+        assert_eq!(f.value("target", "value"), 0.0);
+    }
+}
+
+#[test]
+fn generic_fader_fine_to_normal_preserves_value_on_stationary_transition_and_mouseup() {
+    let command = egui::Modifiers {
+        command: true,
+        mac_cmd: true,
+        ..Default::default()
+    };
+    for modifiers in [ctrl(), command] {
+        for zoom in [1.0, 2.0] {
+            for finish in ["mouseup", "stationary_release", "normal_movement"] {
+                let mut f = FaderFixture::new("constant", "value", 0.0, zoom);
+                let track = f.track("target");
+                let start = track.center();
+                let fine_point = start - vec2(0.0, track.height() * 0.25);
+                let baseline = f.undo_steps();
+                f.time = 1.0;
+                f.press(start, modifiers);
+                f.move_to(fine_point, modifiers)
+                    .expect("fine drag emits a parameter edit");
+                near(f.value("target", "value"), 0.8);
+                let fine_value = f.value("target", "value");
+                let revision = f.session.revision();
+                let mut end = fine_point;
+                let mut expected = fine_value;
+                if finish != "mouseup" {
+                    // Releasing Ctrl/Cmd with the primary pointer still held
+                    // must not reinterpret its distant absolute track position.
+                    assert!(f.move_to(fine_point, egui::Modifiers::NONE).is_none());
+                    assert_eq!(f.value("target", "value"), fine_value);
+                    assert_eq!(f.session.revision(), revision);
+                    if finish == "normal_movement" {
+                        // Normal motion resumes at full speed from the fine
+                        // value, retaining the gesture's pointer/value offset.
+                        end = fine_point - vec2(0.0, track.height() * 0.125);
+                        let args = f
+                            .move_to(end, egui::Modifiers::NONE)
+                            .expect("normal motion continues the existing gesture");
+                        assert_eq!(args["id"], "target");
+                        expected = fine_value + 4.0;
+                        near(f.value("target", "value"), expected);
+                    }
+                }
+                let before_mouseup = f.session.revision();
+                // Includes release of the fine modifier on the same mouseup,
+                // with no intervening frame in the first variant.
+                assert!(f.release(end, egui::Modifiers::NONE).is_none());
+                near(f.value("target", "value"), expected);
+                assert_eq!(f.session.revision(), before_mouseup);
+                assert_eq!(f.value("other", "value"), 9.0);
+                assert_eq!(f.undo_steps(), baseline + 1);
+                f.session.execute("undo", json!({})).unwrap();
+                assert_eq!(f.value("target", "value"), 0.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn generic_fader_ctrl_discrete_drag_accumulates_substeps_without_fractional_edits() {
+    let mut f = FaderFixture::new("octave", "octaves", 0.0, 1.0);
+    let start = f.track("target").center();
+    let baseline = f.undo_steps();
+    f.time = 1.0;
+    f.press(start, ctrl());
+    let mut updates = 0;
+    for pixel in 1..=70 {
+        if let Some(args) = f.move_to(start - vec2(0.0, pixel as f32), ctrl()) {
+            assert_eq!(args["parameter"], "octaves");
+            assert_eq!(args["value"].as_f64().unwrap().fract(), 0.0);
+            updates += 1;
+        }
+        if pixel < 30 {
+            assert_eq!(f.value("target", "octaves"), 0.0);
+        }
+    }
+    f.release(start - vec2(0.0, 70.0), ctrl());
+    assert!(
+        updates > 0,
+        "small fine motions must accumulate past a discrete step"
+    );
+    assert_eq!(f.value("target", "octaves"), 1.0);
+    assert_eq!(f.undo_steps(), baseline + 1);
+    assert_eq!(f.value("other", "value"), 9.0);
+}
+
+#[test]
+fn generic_fader_repeated_arrows_retain_focus_and_home_end_select_limits() {
+    let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
+    let track = f.track("target");
+    let thumb = crate::panel_skin::parameter_fader_thumb(track, 0.625, 1.0);
+    f.time = 1.0;
+    f.click(thumb.center());
+    let focus = f.ctx.memory(|m| m.focused()).expect("fader takes focus");
+    for (key, repeat, expected) in [
+        (egui::Key::ArrowUp, false, 4.32),
+        (egui::Key::ArrowUp, true, 4.64),
+        (egui::Key::ArrowDown, false, 4.32),
+        (egui::Key::Home, false, -16.0),
+        (egui::Key::End, false, 16.0),
+    ] {
+        let args = f
+            .draw(
+                vec![key_event(key, true, repeat, egui::Modifiers::NONE)],
+                true,
+            )
+            .expect("focused fader key emits edit");
+        assert_eq!(args["parameter"], "value");
+        near(f.value("target", "value"), expected);
+        assert_eq!(f.ctx.memory(|m| m.focused()), Some(focus));
+        f.draw(
+            vec![key_event(key, false, false, egui::Modifiers::NONE)],
+            true,
+        );
+    }
+    // A focused slider is not a push button. Space/Enter must not synthesize
+    // an absolute click using an unrelated pointer below/outside the track.
+    let before = f.value("target", "value");
+    let revision = f.session.revision();
+    for key in [egui::Key::Space, egui::Key::Enter] {
+        assert!(f
+            .draw(
+                vec![
+                    egui::Event::PointerMoved(pos2(1000.0, 650.0)),
+                    key_event(key, true, false, egui::Modifiers::NONE),
+                ],
+                true
+            )
+            .is_none());
+        assert_eq!(f.value("target", "value"), before);
+        assert_eq!(f.session.revision(), revision);
+        assert_eq!(f.ctx.memory(|m| m.focused()), Some(focus));
+        f.draw(
+            vec![key_event(key, false, false, egui::Modifiers::NONE)],
+            true,
+        );
+    }
+    assert_eq!(f.value("other", "value"), 9.0);
+}
+
+#[test]
+fn generic_fader_drag_has_one_undo_and_double_click_reset_restores_pre_click_value() {
+    {
+        let mut f = FaderFixture::new("constant", "value", 7.0, 1.0);
+        let track = f.track("target");
+        let baseline = f.undo_steps();
+        let start = crate::panel_skin::parameter_fader_thumb(track, 23.0 / 32.0, 1.0).center();
+        f.time = 1.0;
+        f.press(start, egui::Modifiers::NONE);
+        for fraction in [0.25, 0.5, 0.75] {
+            let point = pos2(track.center().x, track.bottom() - track.height() * fraction);
+            f.move_to(point, egui::Modifiers::NONE);
+        }
+        let end = pos2(track.center().x, track.bottom() - track.height() * 0.75);
+        f.release(end, egui::Modifiers::NONE);
+        near(f.value("target", "value"), 8.0);
+        assert_eq!(f.undo_steps(), baseline + 1);
+        f.session.execute("undo", json!({})).unwrap();
+        assert_eq!(f.value("target", "value"), 7.0);
+        f.session.execute("redo", json!({})).unwrap();
+        near(f.value("target", "value"), 8.0);
+    }
+    {
+        let mut f = FaderFixture::new("constant", "value", 7.0, 1.0);
+        let track = f.track("target");
+        let baseline = f.undo_steps();
+        let at = pos2(track.center().x, track.bottom() - track.height() * 0.3);
+        f.time = 1.0;
+        f.click(at);
+        near(f.value("target", "value"), -6.4);
+        // Both clicks go through Session, so the test catches a second history
+        // group that would undo to the first click rather than the original 7 V.
+        f.click(at);
+        assert_eq!(f.value("target", "value"), 0.0);
+        assert_eq!(f.undo_steps(), baseline + 1);
+        f.session.execute("undo", json!({})).unwrap();
+        assert_eq!(f.value("target", "value"), 7.0);
+    }
+}
+
+#[test]
+fn generic_fader_numeric_entry_context_menu_and_preview_keep_their_separate_authority() {
+    let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
+    let revision = f.session.revision();
+    let history = f.undo_steps();
+    f.time = 1.0;
+    f.click(f.readout());
+    let edit = f
+        .rack
+        .editing
+        .as_mut()
+        .expect("clicking number opens editor");
+    assert_eq!((&*edit.id, &*edit.parameter), ("target", "value"));
+    edit.text = "3.25".into();
+    assert_eq!(f.session.revision(), revision);
+    assert_eq!(f.undo_steps(), history);
+    f.draw(
+        vec![key_event(
+            egui::Key::Enter,
+            true,
+            false,
+            egui::Modifiers::NONE,
+        )],
+        true,
+    )
+    .expect("number editor submits real parameter edit");
+    assert_eq!(f.value("target", "value"), 3.25);
+    f.draw(
+        vec![key_event(
+            egui::Key::Enter,
+            false,
+            false,
+            egui::Modifiers::NONE,
+        )],
+        true,
+    );
+    let at = f.track("target").center();
+    f.time = 2.0;
+    for pressed in [true, false] {
+        f.draw(
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Secondary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            true,
+        );
+    }
+    let edit = f
+        .rack
+        .editing
+        .as_ref()
+        .expect("right-click fader opens parameter menu");
+    assert_eq!(edit.surface, ParameterEditSurface::KnobMenu);
+    assert_eq!(f.value("target", "value"), 3.25);
+    assert_eq!(f.undo_steps(), history + 1);
+
+    let catalog = openpatch_core::catalog();
+    let module = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["kind"] == "constant")
+        .unwrap();
+    let mut preview = ModulePreview::new(module);
+    let before = serde_json::to_value(&preview.patch).unwrap();
+    let ctx = egui::Context::default();
+    let outside = egui::Id::new("preview-outside-focus");
+    for (time, events) in [
+        (0.0, vec![]),
+        (
+            1.0,
+            vec![
+                egui::Event::PointerMoved(pos2(90.0, 160.0)),
+                button(pos2(90.0, 160.0), true),
+            ],
+        ),
+        (1.1, vec![egui::Event::PointerMoved(pos2(90.0, 100.0))]),
+        (
+            1.2,
+            vec![
+                button(pos2(90.0, 100.0), false),
+                key_event(egui::Key::End, true, false, egui::Modifiers::NONE),
+            ],
+        ),
+    ] {
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                focused: true,
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = ui.interact(
+                        Rect::from_min_size(pos2(900.0, 10.0), vec2(80.0, 30.0)),
+                        outside,
+                        Sense::click(),
+                    );
+                    ctx.memory_mut(|m| m.request_focus(outside));
+                    preview.show(
+                        ui,
+                        Rect::from_min_size(
+                            pos2(12.0, 12.0),
+                            vec2(panel_width("constant"), PANEL_HEIGHT),
+                        ),
+                        &catalog,
+                    );
+                    assert_eq!(ctx.memory(|m| m.focused()), Some(outside));
+                });
+            },
+        );
+    }
+    assert_eq!(serde_json::to_value(&preview.patch).unwrap(), before);
+    assert!(preview.renderer.editing.is_none());
+    assert!(preview.renderer.selection.is_empty());
+    assert_eq!(preview.renderer.gesture, 0);
+}
+
+#[test]
+fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
+    for guard in ["disabled", "modal", "removed"] {
+        let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
+        let track = f.track("target");
+        let other = f.track("other");
+        f.time = 1.0;
+        let original = f.session.revision();
+        if guard == "modal" {
+            f.click(f.readout());
+            assert!(f.rack.editing.is_some());
+        } else {
+            f.press(
+                crate::panel_skin::parameter_fader_thumb(track, 0.625, 1.0).center(),
+                egui::Modifiers::NONE,
+            );
+        }
+        if guard == "removed" {
+            f.session
+                .execute("remove_module", json!({"id":"target"}))
+                .unwrap();
+        }
+        let enabled = guard != "disabled";
+        let destination = pos2(other.center().x, other.top());
+        let mut events = vec![egui::Event::PointerMoved(destination)];
+        if guard == "modal" {
+            events.push(pointer(destination, true, egui::Modifiers::NONE));
+        }
+        let action = f.draw(events, enabled);
+        assert!(
+            action.is_none(),
+            "{guard} gesture must not change another control"
+        );
+        let action = f.draw(
+            vec![pointer(
+                pos2(other.center().x, other.top()),
+                false,
+                egui::Modifiers::NONE,
+            )],
+            enabled,
+        );
+        assert!(
+            action.is_none(),
+            "{guard} release must not become a new edit"
+        );
+        assert_eq!(f.value("other", "value"), 9.0);
+        assert_eq!(
+            f.session.revision(),
+            original + u64::from(guard == "removed")
+        );
+    }
+}

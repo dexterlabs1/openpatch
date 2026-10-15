@@ -161,6 +161,21 @@ resulting cable IDs and explicit colors.
 Click-to-connect remains an OpenPatch extension using the same endpoint rules;
 Escape or an empty-rack click cancels its draft.
 
+### Reach jacks beyond the current view
+
+While holding a cable drag, move the pointer into the **48-pixel band inside a
+visible rack edge** to pan toward jacks beyond the view. Movement increases
+smoothly toward the edge; corners allow diagonal movement. This works for new
+cables, moved plugs, clones and bundles. The edge band stays the same screen
+size at every rack zoom, and narrows to fit a very small visible rack.
+
+Keep the primary button held while panning. Releasing it, canceling the gesture,
+or leaving the visible rack stops edge panning; an idle click-to-connect or menu
+pickup does not move the view. A drop uses the jack position last shown on
+screen. Camera movement changes no module positions or graph routing. A cable
+drop still requires the ordinary guarded edit. Pan is saved as a view setting
+and adds no graph undo step.
+
 ### Cable menus and bundles
 
 Right-click either end for **Delete top cable**, **Clone top cable**, **Create
@@ -230,7 +245,8 @@ recovery and MCP state. Older uncoloured routes retain their source/port-derived
 appearance; editing a palette does not recolour them. Undoing a cable restores
 the graph without rewinding the host's next-colour choice.
 
-Physical native input qualification remains open.
+Physical native input qualification, including macOS pointer and keyboard
+behavior, remains open separately from headless tests and Linux captures.
 
 
 These gestures are independently implemented against the pinned
@@ -239,19 +255,40 @@ Earlier OpenPatch builds replaced destination groups on ordinary drops and used
 Shift-press on an input to start a stack. The Rack gestures above replace those
 behaviors; use Cmd/Ctrl to start an additional cable.
 
+## Parameter faders
+
+Shared generic parameter controls use **vertical faders**. Click a position or
+drag vertically to set the value. Hold **Ctrl/Cmd** while dragging for ten times
+finer movement; add **Shift** for one hundred times finer movement. Module
+panels with their own specialized controls keep their own presentation.
+
+With a fader focused, **Up/Down** changes its position by 1% of its travel; a
+stepped control moves one permitted step. **Shift** uses 10% travel,
+**Ctrl/Cmd** uses 0.1%, and **Ctrl/Cmd+Shift** uses 0.01%. Values stay on the
+control's allowed steps. **Home** and **End** select the lower and upper limits.
+These keys adjust the focused control; they do not pan the rack.
+
+**Double-click** resets a shared fader to its default as one undo action.
+Changes during one drag coalesce into one shared undo step. Click the displayed
+number or right-click the control for exact entry in its displayed units.
+
 ## Exact parameter values
 
-Right-click a knob to type a value directly in its parameter menu. Click its
+Right-click a fader or knob to type a value directly in its parameter menu. Click its
 displayed value, or focus that value and press Space/Enter, to open an editor. **Enter** or **Apply** commits a valid
 value as one shared undo action; **Escape** or **Cancel** discards the draft.
 Clicking outside the parameter menu cancels it. Losing app focus or opening
 a modal editor also discards the draft. The editor shows the control's units
-and accepted range. Gain controls accept
-decibels, including `-inf` for silence; stepped controls require a permitted step.
+and accepted range. Controls displayed in decibels accept
+`-inf` for silence; stepped controls require a permitted step.
 Type a number, expression, or note name: `220*2`, `A4`, `C#4`, or `C4v`.
 The current value is selected when the editor opens, and **Result** previews the
 evaluated value in the control's entry units. Typing does not change the patch
 until Apply or Enter. See [expression syntax and compatibility](PARAMETER_EXPRESSIONS.md).
+
+In a module with multiple exact-entry controls, **Tab** applies the valid draft
+and moves to the next control; **Shift-Tab** moves backward. Navigation wraps
+within that module and keeps each accepted entry as its own undo action.
 
 An open draft belongs to the patch revision at which it was opened. If another
 edit, including an MCP command, changes that revision, reopen the control before

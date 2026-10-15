@@ -348,9 +348,8 @@ mod tests;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Marker {
-    Knob {
-        center: eframe::egui::Pos2,
-        radius: f32,
+    VerticalSlider {
+        rect: eframe::egui::Rect,
         old: f32,
         new: f32,
     },
