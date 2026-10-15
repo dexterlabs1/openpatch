@@ -226,13 +226,11 @@ impl Rack {
                 egui::StrokeKind::Inside,
             );
         }
-        let status = if node.bypassed {
-            "BYPASS · GAIN FROZEN".into()
-        } else {
-            state.map_or_else(
-                || "— TELEMETRY OFFLINE".into(),
-                |s| format!("{} ACTIVE VOICES", s.input_channels.unwrap()),
-            )
+        let status = match (state, node.bypassed) {
+            (None, true) => "BYPASS · — OFFLINE".into(),
+            (None, false) => "— TELEMETRY OFFLINE".into(),
+            (Some(_), true) => "BYPASS · GAIN FROZEN".into(),
+            (Some(state), false) => format!("{} ACTIVE VOICES", state.input_channels.unwrap()),
         };
         painter.text(
             p(90.0, 323.0),

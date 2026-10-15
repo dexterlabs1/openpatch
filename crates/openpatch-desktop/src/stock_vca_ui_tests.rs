@@ -590,3 +590,121 @@ fn stock_vca_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     .0;
     assert!(released.is_none());
 }
+
+#[test]
+fn stock_vca_response_is_editable_from_actual_header_and_body_menus() {
+    for menu_position in [pos2(90.0, 44.0), pos2(90.0, 400.0)] {
+        for (label, response) in [("Exponential (fourth power)", 0), ("Linear", 1)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let patch = patch();
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+            for (time, pressed) in [(1.0, true), (1.1, false)] {
+                frame_revision_state(
+                    &ctx,
+                    &mut rack,
+                    &patch,
+                    time,
+                    vec![
+                        egui::Event::PointerMoved(menu_position),
+                        egui::Event::PointerButton {
+                            pos: menu_position,
+                            button: PointerButton::Secondary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    true,
+                    true,
+                    29,
+                );
+            }
+            let (_, output) =
+                frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, 29);
+            let mut drawn = vec![];
+            for shape in output.shapes {
+                texts(&shape.shape, &mut drawn);
+            }
+            let target = drawn
+                .iter()
+                .find(|(text, _)| text == label)
+                .unwrap_or_else(|| panic!("Missing {label} at {menu_position:?}"))
+                .1
+                .center();
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.3,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+                true,
+                true,
+                29,
+            );
+            let action = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                1.4,
+                vec![button(target, false)],
+                true,
+                true,
+                29,
+            )
+            .0;
+            let Some(RackAction::Command("set_parameter", args)) = action else {
+                panic!("Menu click {label} at {menu_position:?}")
+            };
+            assert_eq!(args["id"], "amplifier");
+            assert_eq!(args["parameter"], "response");
+            assert_eq!(args["value"], response);
+        }
+    }
+}
+
+#[test]
+fn stock_vca_bypassed_unavailable_meter_remains_explicitly_offline() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    patch.nodes[0].bypassed = true;
+    // Both missing and malformed publications are unavailable, including bypass.
+    for lights in [
+        None,
+        Some(ModuleLightState {
+            count: 16,
+            input_channels: None,
+            brightness: [[1.0, 0.0]; 16],
+            ..Default::default()
+        }),
+    ] {
+        rack.module_lights.clear();
+        if let Some(lights) = lights {
+            rack.module_lights.insert("amplifier".into(), lights);
+        }
+        for room in [1.0, 0.0] {
+            rack.set_room_brightness(room);
+            let (_, output) = frame_output(&ctx, &mut rack, &patch, 1.0, vec![]);
+            let mut drawn = vec![];
+            for shape in output.shapes {
+                texts(&shape.shape, &mut drawn);
+            }
+            assert!(drawn.iter().any(|(text, _)| text == "BYPASS · — OFFLINE"));
+            assert!(!drawn.iter().any(|(text, _)| text == "BYPASS · GAIN FROZEN"));
+        }
+    }
+    rack.module_lights.insert(
+        "amplifier".into(),
+        ModuleLightState {
+            count: 16,
+            input_channels: Some(1),
+            ..Default::default()
+        },
+    );
+    let (_, output) = frame_output(&ctx, &mut rack, &patch, 2.0, vec![]);
+    let mut drawn = vec![];
+    for shape in output.shapes {
+        texts(&shape.shape, &mut drawn);
+    }
+    assert!(drawn.iter().any(|(text, _)| text == "BYPASS · GAIN FROZEN"));
+}
