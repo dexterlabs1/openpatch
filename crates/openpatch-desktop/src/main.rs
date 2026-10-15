@@ -59,7 +59,14 @@ fn run() -> Result<(), String> {
                 return Ok(());
             }
             "--font-license" => {
-                println!("{}", include_str!("../assets/fonts/OFL-Barlow.txt"));
+                println!(
+                    "{}\n{}\n{}\n{}\n{}",
+                    include_str!("../assets/fonts/OFL-Barlow.txt"),
+                    include_str!("../assets/licenses/NOTO-FONTS.txt"),
+                    include_str!("../assets/licenses/OFL-NotoSansCJK.txt"),
+                    include_str!("../assets/licenses/OFL-NotoSansSymbols2.txt"),
+                    include_str!("../assets/licenses/OFL-NotoMusic.txt")
+                );
                 return Ok(());
             }
             "--mcp" => mcp = true,
@@ -75,7 +82,7 @@ fn run() -> Result<(), String> {
                 workspace = PathBuf::from(args.next().ok_or("--workspace needs a directory")?)
             }
             "--help" => {
-                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --patch FILENAME       Open a workspace project (.openpatch or legacy .json)\n  --font-license         Print the bundled panel font license\n  --third-party-licenses Print bundled dependency notices and licenses");
+                println!("OpenPatch native desktop\n  --mcp                  Serve MCP over stdio, controlling this window\n  --workspace DIRECTORY  Patch files (default ~/OpenPatch)\n  --patch FILENAME       Open a workspace project (.openpatch or legacy .json)\n  --font-license         Print all bundled font notices and licenses\n  --third-party-licenses Print bundled dependency notices and licenses");
                 return Ok(());
             }
             _ => return Err(format!("Unknown argument: {arg}")),

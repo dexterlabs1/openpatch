@@ -4,6 +4,21 @@ use eframe::egui::{self, pos2, vec2, Color32, FontId, Pos2, Rect, Stroke};
 
 pub(crate) const INK: Color32 = Color32::from_rgb(32, 34, 35);
 
+const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
+    (
+        "noto-cjk-jp-regular",
+        include_bytes!("../assets/fonts/NotoSansCJKjp-Regular.otf"),
+    ),
+    (
+        "noto-symbols-2-regular",
+        include_bytes!("../assets/fonts/NotoSansSymbols2-Regular.ttf"),
+    ),
+    (
+        "noto-music-regular",
+        include_bytes!("../assets/fonts/NotoMusic-Regular.ttf"),
+    ),
+];
+
 /// Restrained silkscreen accents identify signal families on the same metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
@@ -128,6 +143,16 @@ pub(crate) fn install_fonts(ctx: &egui::Context) {
         egui::FontFamily::Name("Panel Heading".into()),
         heading_fonts,
     );
+    // Keep every existing Latin/UI face first. Missing glyphs use unmodified
+    // static Regular CJK, symbol and musical-notation faces on every platform.
+    for (name, bytes) in UNICODE_FALLBACK_FONTS {
+        fonts
+            .font_data
+            .insert(name.into(), egui::FontData::from_static(bytes).into());
+        for family in fonts.families.values_mut() {
+            family.push(name.into());
+        }
+    }
     ctx.set_fonts(fonts);
 }
 
@@ -384,5 +409,126 @@ pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
         let visuals = ui.visuals_mut();
         visuals.disabled_alpha = 1.0;
         visuals.widgets.noninteractive = visuals.widgets.inactive;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installed_fonts_resolve_notes_unicode_without_replacement_glyphs() {
+        let ctx = egui::Context::default();
+        install_fonts(&ctx);
+        let mut missing = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            for family in [
+                egui::FontFamily::Proportional,
+                egui::FontFamily::Monospace,
+                egui::FontFamily::Name("Panel Print".into()),
+                egui::FontFamily::Name("Panel Heading".into()),
+            ] {
+                let font = FontId::new(16.0, family);
+                for character in "→日本語café🎛𝄞".chars() {
+                    if !ctx.fonts_mut(|fonts| fonts.has_glyph(&font, character)) {
+                        missing.push(format!(
+                            "{:?}: {character} U+{:04X}",
+                            font.family, character as u32
+                        ));
+                    }
+                }
+            }
+        });
+        assert!(missing.is_empty(), "missing actual glyphs: {missing:?}");
+    }
+
+    #[test]
+    fn bundled_unicode_fallback_faces_parse_as_regular_and_have_real_glyphs() {
+        let mut definitions = egui::FontDefinitions::empty();
+        for (name, bytes) in UNICODE_FALLBACK_FONTS {
+            // OS/2.usWeightClass is 400 for each unmodified static Regular face.
+            // In particular, the CJK fallback is not a variable font's Thin default.
+            let count = usize::from(u16::from_be_bytes(bytes[4..6].try_into().unwrap()));
+            let table = bytes[12..12 + count * 16]
+                .as_chunks::<16>()
+                .0
+                .iter()
+                .find(|table| &table[..4] == b"OS/2")
+                .unwrap();
+            let offset = u32::from_be_bytes(table[8..12].try_into().unwrap()) as usize;
+            assert_eq!(
+                u16::from_be_bytes(bytes[offset + 4..offset + 6].try_into().unwrap()),
+                400,
+                "{name}"
+            );
+            definitions
+                .font_data
+                .insert(name.into(), egui::FontData::from_static(bytes).into());
+            definitions
+                .families
+                .insert(egui::FontFamily::Name(name.into()), vec![name.into()]);
+        }
+        let ctx = egui::Context::default();
+        ctx.set_fonts(definitions);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            for ((name, _), sample) in UNICODE_FALLBACK_FONTS
+                .iter()
+                .zip(["→日本語café", "🎛", "𝄞♫"])
+            {
+                let font = FontId::new(16.0, egui::FontFamily::Name((*name).into()));
+                for character in sample.chars() {
+                    assert!(
+                        ctx.fonts_mut(|fonts| fonts.has_glyph(&font, character)),
+                        "{name} lacks {character}"
+                    );
+                }
+                // Exercise actual outline rasterization as well as cmap lookup,
+                // including the CJK font's OTF/CFF outlines.
+                let galley = ctx
+                    .fonts_mut(|fonts| fonts.layout_no_wrap(sample.into(), font, Color32::WHITE));
+                for row in &galley.rows {
+                    for glyph in &row.glyphs {
+                        assert!(
+                            glyph.uv_rect.max[0] > glyph.uv_rect.min[0]
+                                && glyph.uv_rect.max[1] > glyph.uv_rect.min[1],
+                            "{name} has no rasterized outline for {}",
+                            glyph.chr
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn installed_unicode_fallbacks_preserve_existing_face_priority() {
+        let ctx = egui::Context::default();
+        install_fonts(&ctx);
+        let defaults = egui::FontDefinitions::default();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            ctx.fonts(|fonts| {
+                let definitions = fonts.definitions();
+                for (family, original_faces) in &defaults.families {
+                    assert!(definitions.families[family].starts_with(original_faces));
+                }
+                for (family, first) in [
+                    ("Panel Print", "barlow-panel"),
+                    ("Panel Heading", "barlow-heading"),
+                ] {
+                    let faces = &definitions.families[&egui::FontFamily::Name(family.into())];
+                    assert_eq!(faces[0], first);
+                    assert!(
+                        faces[1..].starts_with(&defaults.families[&egui::FontFamily::Proportional])
+                    );
+                }
+                let fallback_names: Vec<_> = UNICODE_FALLBACK_FONTS
+                    .iter()
+                    .map(|(name, _)| (*name).to_owned())
+                    .collect();
+                for faces in definitions.families.values() {
+                    assert!(faces.ends_with(&fallback_names));
+                }
+            });
+        });
     }
 }

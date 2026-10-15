@@ -21,6 +21,9 @@ unchanged. Content is rejected on mismatched kinds, unknown fields and version 1
 One authoritative Blank width lives in Node content, never a second layout copy.
 Notes uses fixed 16 HP; panel height and HP use the established rack dimensions.
 The text is valid Unicode, permits newlines/tabs, and is bounded by UTF-8 bytes.
+Bundled fallback faces cover the demonstrated Japanese, arrows and musical
+symbols alongside the existing Latin faces. Font coverage is finite; this does
+not claim every Unicode script, complex shaping or color emoji support.
 
 `set_module_content` replaces validated typed content, revision checked, undoable,
 and accepted in atomic mixed `apply_edits`/preview/construction transactions.
@@ -78,7 +81,7 @@ No performance advantage over Rack is claimed from adding silent annotation kind
 
 ## Recorded local verification
 
-The full workspace run passed 1,335 Rust tests (four existing ignored tests),
+The full workspace run passed 1,338 Rust tests (four existing ignored tests),
 including 20 desktop annotation interaction/host tests, strict content and
 Session transaction tests, zero-port rejection, and callback allocation/state-
 adoption checks. The offscreen release regression failed before its fix and

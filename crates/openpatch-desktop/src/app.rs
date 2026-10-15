@@ -4113,7 +4113,7 @@ impl OpenPatch {
 
     fn prepare_annotations_fixture(&mut self) {
         let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[
-            {"id":"guide","kind":"notes","content":{"type":"notes","text":"PATCH LAB\n\nMIDI → Gate → rhythm\n\nZ / X / C play the drum pads.\nLearn assigns your controller.\nPanic releases held gates.\n\nNotes travel with your patch,\npresets and duplicated modules.\n\nSpaces have a purpose, too.\nDrag either Blank edge to resize."}},
+            {"id":"guide","kind":"notes","content":{"type":"notes","text":"PATCH LAB\n日本語 · café · 🎛 · 𝄞\n\nMIDI → Gate → rhythm\n\nZ / X / C play the drum pads.\nLearn assigns your controller.\nPanic releases held gates.\n\nNotes travel with your patch,\npresets and duplicated modules.\n\nSpaces have a purpose, too.\nDrag either Blank edge to resize."}},
             {"id":"thin","kind":"blank","content":{"type":"blank","width_hp":3}},
             {"id":"space","kind":"blank"},
             {"id":"wide","kind":"blank","content":{"type":"blank","width_hp":24}}

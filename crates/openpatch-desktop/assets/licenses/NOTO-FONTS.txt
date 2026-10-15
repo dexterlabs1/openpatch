@@ -1,0 +1,26 @@
+OpenPatch embeds the following unmodified static Regular font files as fallback
+faces. Each is licensed under the SIL Open Font License, Version 1.1. The exact
+upstream license texts accompany this notice and are printed by --font-license.
+
+NotoSansCJKjp-Regular.otf — Noto Sans CJK JP Regular
+© 2014-2021 Adobe (http://www.adobe.com/).
+Source: https://github.com/notofonts/noto-cjk/blob/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf
+License: OFL-NotoSansCJK.txt
+SHA-256: 68a3fc98800b2a27b371f2fb79991daf3633bd89309d4ffaa6946fd587f375b5
+
+NotoSansSymbols2-Regular.ttf — Noto Sans Symbols 2 Regular
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+Source: https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf
+License: OFL-NotoSansSymbols2.txt
+SHA-256: 7d5fb73b7ca67a6798101741f5d280a3d016a56a197afcd4199dbb57b4b82a21
+
+NotoMusic-Regular.ttf — Noto Music Regular
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/music)
+Source: https://github.com/google/fonts/blob/b7c8331cf620346575487ef8db0e2c729f014675/ofl/notomusic/NotoMusic-Regular.ttf
+License: OFL-NotoMusic.txt
+SHA-256: aeb2998c380f5807cda77e1d94e4ac596429cb74d4fffb8da279d4f3144c0eae
+
+All three notices above reproduce the copyright strings embedded in the fonts.
+No font was renamed, subsetted, converted, or instantiated from a variable font.
+The source revisions, byte sizes, license hashes, coverage and fallback order
+are documented in assets/fonts/README.md in the OpenPatch source distribution.
