@@ -60,7 +60,7 @@ struct Connection {
 // patch or acquiring the shared session lock. Stdio retains its original policy.
 const MAX_SOCKET_JOBS: usize = 2;
 static SOCKET_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
 pub(crate) static SOCKET_JOB_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 struct SocketJobGuard;
