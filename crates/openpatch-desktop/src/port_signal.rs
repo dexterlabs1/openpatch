@@ -3,6 +3,7 @@ impl Rack {
     pub(crate) fn set_port_lights(&mut self, frame: Option<Arc<crate::audio::PortLightFrame>>) {
         self.port_lights = frame.filter(|frame| {
             frame.token != 0
+                && frame.control_epoch & 1 == 1
                 && frame.sequence != 0
                 && matches!(frame.backend, 1 | 2)
                 && frame.last_observed_frame < frame.frame
@@ -33,12 +34,17 @@ impl Rack {
         direction: openpatch_core::PortDirection,
         port: &str,
     ) {
+        let brightness = self.cable_presentation.plug_brightness;
+        if brightness <= 0.0 {
+            return;
+        }
         let Some(color) = self
             .port_signal_state(id, direction, port)
             .and_then(port_signal_color)
         else {
             return;
         };
+        let color = color.gamma_multiply(brightness);
         let start = crate::lighting::next(painter);
         // Our own lens artwork. Additive emission retains the passive dark lens
         // at low levels; source RGB channels are clamped only at paint time.
@@ -56,6 +62,9 @@ impl Rack {
         direction: openpatch_core::PortDirection,
         port: &str,
     ) -> String {
+        if self.cable_presentation.plug_brightness <= 0.0 {
+            return "\nPlug signal lights are off.".into();
+        }
         let Some(state) = self.port_signal_state(id, direction, port) else {
             return "\nSignal lights: no current measurement.".into();
         };

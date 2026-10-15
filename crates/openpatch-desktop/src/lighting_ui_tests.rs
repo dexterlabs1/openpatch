@@ -488,6 +488,7 @@ fn darkroom_construction_cable_accents_stay_visible_while_physical_curves_dim() 
                     reduced,
                 }),
                 &lighting,
+                crate::cable_presentation::CablePresentation::default(),
             );
             lighting.finish(&painter, start);
         });

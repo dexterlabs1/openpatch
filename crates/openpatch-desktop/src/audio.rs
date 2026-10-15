@@ -32,6 +32,8 @@ const DEFAULT_VOLUME: f32 = 0.65;
 
 struct Shared {
     playing: AtomicBool,
+    // Low bit is enable intent; upper bits advance only on boolean changes.
+    port_light_control: AtomicU64,
     midi_epoch: AtomicU64,
     midi_overflows: AtomicU64,
     frame_clock: AtomicU64,
@@ -47,6 +49,7 @@ impl Shared {
     fn new() -> Self {
         Self {
             playing: AtomicBool::new(false),
+            port_light_control: AtomicU64::new(1),
             midi_epoch: AtomicU64::new(1),
             midi_overflows: AtomicU64::new(0),
             frame_clock: AtomicU64::new(0),
@@ -57,6 +60,18 @@ impl Shared {
             waveform: std::array::from_fn(|_| AtomicU32::new(0)),
             waveform_cursor: AtomicUsize::new(0),
         }
+    }
+    fn set_port_lights_enabled(&self, enabled: bool) {
+        let _ = self
+            .port_light_control
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |old| {
+                if old & 1 == u64::from(enabled) {
+                    None
+                } else {
+                    old.checked_add(2)
+                        .map(|epoch| (epoch & !1) | u64::from(enabled))
+                }
+            });
     }
 }
 
@@ -368,6 +383,7 @@ struct PreparedGraph {
     revision: u64,
     port_lights: Option<PortLightProducer>,
     port_light_reader: Option<PortLightReader>,
+    port_light_control: u64,
 }
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
@@ -378,16 +394,41 @@ impl From<Engine> for PreparedGraph {
             revision: 0,
             port_lights: None,
             port_light_reader: None,
+            port_light_control: 1,
         }
     }
 }
 impl PreparedGraph {
     /// Control-thread preparation; never resolve endpoints inside rendering.
+    #[cfg(test)]
     fn prepare_port_lights(&mut self, patch: &Patch) -> Result<(), String> {
-        let (producer, reader) = port_light_transport::prepare(patch, &mut self.engine)?;
+        self.prepare_port_lights_for_control(patch, 1)
+    }
+    fn prepare_port_lights_for_control(
+        &mut self,
+        patch: &Patch,
+        control: u64,
+    ) -> Result<(), String> {
+        let (producer, reader) =
+            port_light_transport::prepare_with_enabled(patch, &mut self.engine, control & 1 != 0)?;
+        self.port_light_control = control;
         self.port_lights = Some(producer);
         self.port_light_reader = Some(reader);
         Ok(())
+    }
+    /// A missed OFF→ON transition must clear old detector history even when the
+    /// latest enable bit matches. Toggles never affect graph/DSP state or clocks.
+    fn sync_port_light_control(&mut self, control: u64, force_reset: bool) {
+        if force_reset || self.port_light_control != control {
+            self.engine.set_port_lights_enabled(false);
+            let enabled = control & 1 != 0
+                && self
+                    .port_lights
+                    .as_ref()
+                    .is_some_and(PortLightProducer::has_endpoints);
+            self.engine.set_port_lights_enabled(enabled);
+            self.port_light_control = control;
+        }
     }
 }
 impl Deref for PreparedGraph {
@@ -401,12 +442,24 @@ impl DerefMut for PreparedGraph {
         &mut self.engine
     }
 }
+#[cfg(test)]
 fn prepare_graph(
     patch: &Patch,
     rate: u32,
     binding: Option<&ScopeBinding>,
     generation: u64,
     strict: bool,
+) -> Result<PreparedGraph, String> {
+    prepare_graph_for_control(patch, rate, binding, generation, strict, 1)
+}
+
+fn prepare_graph_for_control(
+    patch: &Patch,
+    rate: u32,
+    binding: Option<&ScopeBinding>,
+    generation: u64,
+    strict: bool,
+    port_light_control: u64,
 ) -> Result<PreparedGraph, String> {
     let mut device_patch = patch.clone();
     device_patch.sample_rate = rate;
@@ -426,8 +479,9 @@ fn prepare_graph(
         },
         port_lights: None,
         port_light_reader: None,
+        port_light_control,
     };
-    graph.prepare_port_lights(&device_patch)?;
+    graph.prepare_port_lights_for_control(&device_patch, port_light_control)?;
     Ok(graph)
 }
 
@@ -455,8 +509,8 @@ pub struct Audio {
 }
 
 impl Audio {
-    pub fn new(patch: &Patch) -> Result<Self, String> {
-        Self::new_with_device(patch, None)
+    pub fn new(patch: &Patch, port_lights_enabled: bool) -> Result<Self, String> {
+        Self::new_with_device(patch, None, port_lights_enabled)
     }
 
     pub fn output_devices() -> Result<Vec<String>, String> {
@@ -465,7 +519,11 @@ impl Audio {
         Ok(devices.filter_map(|d| d.name().ok()).collect())
     }
 
-    pub fn new_with_device(patch: &Patch, selected: Option<&str>) -> Result<Self, String> {
+    pub fn new_with_device(
+        patch: &Patch,
+        selected: Option<&str>,
+        port_lights_enabled: bool,
+    ) -> Result<Self, String> {
         let host = cpal::default_host();
         let device = if let Some(name) = selected {
             host.output_devices()
@@ -495,8 +553,12 @@ impl Audio {
         let (incoming, updates) = RingBuffer::new(QUEUE_SIZE);
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
+        shared.set_port_lights_enabled(port_lights_enabled);
         let mut callback = Callback::new(engine, updates, recycle, shared.clone(), sample_rate);
-        callback.graphs.active.prepare_port_lights(&device_patch)?;
+        callback.graphs.active.prepare_port_lights_for_control(
+            &device_patch,
+            shared.port_light_control.load(Ordering::SeqCst),
+        )?;
         let port_light_reader = callback
             .graphs
             .active
@@ -557,12 +619,13 @@ impl Audio {
             .scope_generation
             .checked_add(1)
             .ok_or("Scope generation exhausted")?;
-        let mut graph = prepare_graph(
+        let mut graph = prepare_graph_for_control(
             patch,
             self.sample_rate,
             self.scope_binding.as_ref(),
             generation,
             false,
+            self.shared.port_light_control.load(Ordering::SeqCst),
         )?;
         graph.modules = self.performance.plan(patch, &graph.engine, revision)?;
         graph.revision = revision;
@@ -637,9 +700,18 @@ impl Audio {
     /// Actual active-graph endpoint state; unavailable before acquisition, for a
     /// pending revision, or 250ms after the reader last observed a new packet.
     pub(crate) fn port_lights(&self, revision: u64) -> Option<Arc<PortLightFrame>> {
-        (revision == self.submitted_revision)
-            .then(|| self.port_light_reader.read(revision))
-            .flatten()
+        let control = self.shared.port_light_control.load(Ordering::SeqCst);
+        if revision != self.submitted_revision || control & 1 == 0 {
+            return None;
+        }
+        let frame = self.port_light_reader.read_epoch(revision, control)?;
+        (self.shared.port_light_control.load(Ordering::SeqCst) == control).then_some(frame)
+    }
+
+    /// View-only observation intent; no graph submission, revision or history edit.
+    /// Repeated positive brightness changes call this with true and do not reset.
+    pub fn set_port_lights_enabled(&self, enabled: bool) {
+        self.shared.set_port_lights_enabled(enabled);
     }
 
     pub fn module_lights(&self, id: &str) -> Option<openpatch_core::ModuleLightState> {
@@ -660,7 +732,14 @@ impl Audio {
             .scope_generation
             .checked_add(1)
             .ok_or("Scope generation exhausted")?;
-        let mut graph = prepare_graph(patch, self.sample_rate, binding.as_ref(), generation, true)?;
+        let mut graph = prepare_graph_for_control(
+            patch,
+            self.sample_rate,
+            binding.as_ref(),
+            generation,
+            true,
+            self.shared.port_light_control.load(Ordering::SeqCst),
+        )?;
         graph.modules = self
             .performance
             .plan(patch, &graph.engine, self.submitted_revision)?;
@@ -907,6 +986,7 @@ struct Callback {
     // Stream-global cadence survives every graph edit and same-revision rebuild.
     next_port_publish_frame: u64,
     port_publish_interval: u64,
+    port_light_control: u64,
 }
 
 impl Callback {
@@ -917,6 +997,7 @@ impl Callback {
         shared: Arc<Shared>,
         rate: u32,
     ) -> Self {
+        let port_light_control = shared.port_light_control.load(Ordering::SeqCst);
         let midi = MidiQueues::new(shared.clone());
         let (scope, scope_packets) = ScopeCapture::new(rate);
         let (performance, module_events, timing) = Performance::new(rate);
@@ -943,6 +1024,7 @@ impl Callback {
             scope_decimation: 0,
             next_port_publish_frame: 0,
             port_publish_interval: u64::from(rate).div_ceil(30),
+            port_light_control,
         }
     }
 
@@ -964,7 +1046,14 @@ impl Callback {
     }
 
     fn render_inner<T: OutputSample>(&mut self, output: &mut [T], channels: usize) -> (bool, bool) {
+        let control = self.shared.port_light_control.load(Ordering::SeqCst);
+        let control_changed = self.port_light_control != control;
         let adopted = self.graphs.poll();
+        // Align a queued graph before adoption; steady enabled adoption may
+        // inherit decay, while a newly acknowledged epoch is reset below.
+        self.graphs
+            .active
+            .sync_port_light_control(control, control_changed);
         if adopted {
             if let Some(previous) = self.graphs.previous.as_ref() {
                 let active = &mut self.graphs.active;
@@ -1004,6 +1093,21 @@ impl Callback {
             self.fade_position = 0;
             self.scope.reset(self.graphs.active.scope.generation);
         }
+        if adopted {
+            // Adoption may copy an old epoch's observer state. Its DSP history
+            // remains valid; only an unseen transition resets the detector.
+            self.graphs
+                .active
+                .sync_port_light_control(control, control_changed);
+            let active = &mut self.graphs.active;
+            let enabled = control & 1 != 0
+                && active
+                    .port_lights
+                    .as_ref()
+                    .is_some_and(PortLightProducer::has_endpoints);
+            active.engine.set_port_lights_enabled(enabled);
+        }
+        self.port_light_control = control;
         let target = if self.shared.playing.load(Ordering::Relaxed) {
             f32::from_bits(self.shared.volume.load(Ordering::Relaxed))
         } else {
@@ -1177,10 +1281,13 @@ impl Callback {
             self.graphs.active.revision,
             self.frame_clock,
         );
-        if self.frame_clock >= self.next_port_publish_frame {
+        if control & 1 != 0
+            && self.shared.port_light_control.load(Ordering::SeqCst) == control
+            && self.frame_clock >= self.next_port_publish_frame
+        {
             let active = &mut self.graphs.active;
             if active.port_lights.as_mut().is_some_and(|producer| {
-                producer.publish(&active.engine, active.revision, self.frame_clock)
+                producer.publish_epoch(&active.engine, active.revision, self.frame_clock, control)
             }) {
                 self.next_port_publish_frame =
                     self.frame_clock.saturating_add(self.port_publish_interval);

@@ -36,6 +36,8 @@ state and drum type.
 Signal-driven top-plug lights now observe actual input summation and mono/poly
 signals, with dark-room emission and bounded audio observation.
 See [the detector and transport contract](PORT_LIGHTS.md).
+Persistent View controls add cable opacity/tension and independent plug-light
+brightness, including observation disabled at zero; [behavior and validation](CABLE_PRESENTATION.md).
 Specialized panels keep their dedicated editors. Held cable drags pan at visible
 rack edges. The broader module layout and material review remains open.
 Any changes must preserve cable targets, explicit values, undo and MCP edits.

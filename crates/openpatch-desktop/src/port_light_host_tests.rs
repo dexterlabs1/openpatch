@@ -441,10 +441,12 @@ mod port_light_host {
             observations
                 .push(serde_json::json!({"enabled_ns":on,"disabled_ns":off,"callbacks":128}));
         }
+        println!("{}", port_light_off_profile(&patch));
         println!(
             "{}",
             serde_json::json!({"profile":"port_light_callback","voices":16,"nodes":65,
             "physical_endpoints":128,"block_frames":256,"pairs":observations})
         );
     }
+    include!("port_light_control_host_tests.rs");
 }

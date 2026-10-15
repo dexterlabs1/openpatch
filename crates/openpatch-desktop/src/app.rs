@@ -1,5 +1,6 @@
 use crate::{
     audio::{Audio, AudioTimingSnapshot},
+    cable_presentation::CablePresentation,
     chrome::{icon_button, Icon},
     document_state::{apply_document_guarded, new_document_guarded, DocumentState},
     keyboard::Keyboard,
@@ -402,7 +403,12 @@ impl OpenPatch {
             .unwrap_or(Value::Null);
         let output_device = preferences["output_device"].as_str().map(str::to_owned);
         let midi_device = preferences["midi_device"].as_str().map(str::to_owned);
-        let (mut audio, device) = Self::open_audio(&patch, output_device.as_deref());
+        let cable_presentation = CablePresentation::from_settings(&preferences);
+        let (mut audio, device) = Self::open_audio(
+            &patch,
+            output_device.as_deref(),
+            cable_presentation.plug_brightness > 0.0,
+        );
         let midi_epoch = audio.as_ref().map_or(0, Audio::midi_epoch);
         let midi = audio
             .as_mut()
@@ -590,10 +596,14 @@ impl OpenPatch {
             .unwrap_or_default();
         self.rack.set_midi_gate_states(states);
     }
-    fn open_audio(patch: &Patch, device: Option<&str>) -> (Option<Audio>, String) {
+    fn open_audio(
+        patch: &Patch,
+        device: Option<&str>,
+        port_lights_enabled: bool,
+    ) -> (Option<Audio>, String) {
         let opened = match device {
-            Some(device) => Audio::new_with_device(patch, Some(device)),
-            None => Audio::new(patch),
+            Some(device) => Audio::new_with_device(patch, Some(device), port_lights_enabled),
+            None => Audio::new(patch, port_lights_enabled),
         };
         match opened {
             Ok(audio) => {
@@ -606,7 +616,31 @@ impl OpenPatch {
             Err(e) => (None, e),
         }
     }
+    // Rack replacement is a document operation; cable appearance belongs to
+    // the host, including when offline examples replace the entire rack.
+    fn replace_rack(&mut self, mut rack: Rack) {
+        rack.set_cable_presentation(self.rack.cable_presentation());
+        self.rack = rack;
+    }
+    fn set_cable_presentation(&mut self, presentation: CablePresentation) {
+        let old_enabled = self.rack.cable_presentation().plug_brightness > 0.0;
+        let presentation = presentation.sanitized();
+        self.rack.set_cable_presentation(presentation);
+        let enabled = presentation.plug_brightness > 0.0;
+        if old_enabled != enabled {
+            // Cached measurements cannot reappear on a rapid off/on gesture.
+            // Audio separately requires a new real acquisition before display.
+            self.rack.set_port_lights(None);
+            if let Some(audio) = &self.audio {
+                audio.set_port_lights_enabled(enabled);
+            }
+        }
+    }
     fn apply_host_preferences(&mut self, preferences: &Value) {
+        self.set_cable_presentation(CablePresentation::from_settings(preferences));
+        if let Some(audio) = &self.audio {
+            audio.set_port_lights_enabled(self.rack.cable_presentation().plug_brightness > 0.0);
+        }
         self.cable_palette =
             crate::cable_palette::Palette::from_settings(&preferences["cable_palette"]);
         self.rack.set_room_brightness(
@@ -644,6 +678,9 @@ impl OpenPatch {
                 "module_favorites": self.library.favorites(),
                 "lock_module_positions": self.rack.positions_locked(),
                 "room_brightness": self.rack.room_brightness(),
+                "cable_opacity": self.rack.cable_presentation().opacity,
+                "cable_tension": self.rack.cable_presentation().tension,
+                "plug_light_brightness": self.rack.cable_presentation().plug_brightness,
                 "cable_palette": self.cable_palette.settings()
             }))
             .map_err(|e| e.to_string())?;
@@ -687,7 +724,11 @@ impl OpenPatch {
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
         self.scope.reset_connection();
-        let (audio, label) = Self::open_audio(&self.patch, selected.as_deref());
+        let (audio, label) = Self::open_audio(
+            &self.patch,
+            selected.as_deref(),
+            self.rack.cable_presentation().plug_brightness > 0.0,
+        );
         if let Some(mut audio) = audio {
             self.midi = None;
             self.keyboard.release();
@@ -1440,7 +1481,7 @@ impl OpenPatch {
                 let locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
                 self.patch = applied.patch;
-                self.rack = applied.rack;
+                self.replace_rack(applied.rack);
                 self.rack.set_positions_locked(locked);
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
@@ -1577,7 +1618,7 @@ impl OpenPatch {
         self.active_token = None;
         let positions_locked = self.rack.positions_locked();
         let room_brightness = self.rack.room_brightness();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack.set_positions_locked(positions_locked);
         self.rack.set_room_brightness(room_brightness);
         if title == "Sequenced analog voice" {
@@ -1892,7 +1933,7 @@ impl OpenPatch {
                 self.patch = applied.patch;
                 let positions_locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
-                self.rack = applied.rack;
+                self.replace_rack(applied.rack);
                 self.rack.set_positions_locked(positions_locked);
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
@@ -2419,6 +2460,54 @@ impl OpenPatch {
         }
     }
 
+    fn cable_presentation_controls(&mut self, ui: &mut egui::Ui) {
+        ui.label("Cables and plugs");
+        for (key, label, reset, help) in [
+            ("cable_opacity", "Cable opacity", 1.0, "Fade cable bodies to reveal the panels. Hover a connected port to reveal its cables. Double-click to reset to 100%."),
+            ("cable_tension", "Cable tension", 0.5, "Choose loose or taut cable curves without moving their plugs. Double-click to reset to 50%."),
+            ("plug_light_brightness", "Plug light brightness", 1.0, "Adjust live signal light emission at cable plugs. At 0%, signal measurement is disabled; module lights and Scope stay available. Double-click to reset to 100%."),
+        ] {
+            let mut presentation = self.rack.cable_presentation();
+            let amount = match key {
+                "cable_opacity" => presentation.opacity,
+                "cable_tension" => presentation.tension,
+                _ => presentation.plug_brightness,
+            };
+            let mut percent = amount * 100.0;
+            let mut response = ui.push_id(key, |ui| {
+                ui.add(egui::Slider::new(&mut percent, 0.0..=100.0)
+                    .suffix("%") .text(label).step_by(0.1))
+            }).inner.on_hover_text(help);
+            // egui's rail senses dragging rather than clicks. Read its real
+            // pointer double-click while hovered so reset works on the rail as
+            // well as on the percentage readout.
+            let reset_requested = response.hovered()
+                && ui.input(|input| input.pointer.button_double_clicked(egui::PointerButton::Primary));
+            if reset_requested {
+                percent = reset * 100.0;
+                response.mark_changed();
+            }
+            if response.changed() {
+                match key {
+                    "cable_opacity" => presentation.opacity = percent / 100.0,
+                    "cable_tension" => presentation.tension = percent / 100.0,
+                    _ => presentation.plug_brightness = percent / 100.0,
+                }
+                self.set_cable_presentation(presentation);
+            }
+            // Dragging previews every frame. A release, keyboard edit, direct
+            // entry or double-click reset publishes only the host preference.
+            if response.drag_stopped() || reset_requested
+                || (response.changed() && !response.dragged()) {
+                self.save_host_settings();
+            }
+            #[cfg(test)]
+            ui.ctx().data_mut(|data| data.insert_temp(
+                egui::Id::new(("cable-presentation-control", key)), response,
+            ));
+        }
+    }
+
     fn toolbar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("menu")
             .frame(
@@ -2724,7 +2813,13 @@ impl OpenPatch {
                                 ui.close();
                             }
                         });
-                        ui.menu_button("View", |ui| {
+                        let (view, _) = egui::containers::menu::MenuButton::new("View")
+                            .config(egui::containers::menu::MenuConfig::new()
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside))
+                            .ui(ui, |ui| {
+                            let max_height = (ui.ctx().content_rect().bottom() - ui.cursor().min.y - 18.0).max(80.0);
+                            egui::ScrollArea::vertical().id_salt("view-menu-scroll")
+                                .max_height(max_height).show(ui, |ui| {
                             for (tab, label) in [
                                 (AnalysisTab::Visuals, "Visualizers"),
                                 (AnalysisTab::Scope, "Signal scope"),
@@ -2766,6 +2861,8 @@ impl OpenPatch {
                                 }
                             });
                             ui.separator();
+                            self.cable_presentation_controls(ui);
+                            ui.separator();
                             let mut locked = self.rack.positions_locked();
                             if ui.checkbox(&mut locked, "Lock module positions").changed() {
                                 self.rack.set_positions_locked(locked);
@@ -2779,7 +2876,13 @@ impl OpenPatch {
                                 self.shader_open = true;
                                 ui.close();
                             }
+                            });
                         });
+                        if self.smoke_test.is_some() {
+                            ctx.data_mut(|data| data.insert_temp(
+                                egui::Id::new("smoke-view-menu-popup"), egui::Popup::default_response_id(&view),
+                            ));
+                        }
                         ui.separator();
                         // Allocate fixed controls from the right, then give the title
                         // the remaining width. Long project names cannot hide transport.
@@ -3799,7 +3902,7 @@ impl OpenPatch {
                 {"id":"filter","kind":"ladder_vcf","params":{"cutoff":800}}
             ]}})
         ));
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[100,64],"positions":{
                 "voice":[0,0],"filter":[330,0],"out":[570,0]
@@ -3915,7 +4018,7 @@ impl OpenPatch {
         }
         assert!(scope.x_channels > 0 && scope.y_channels > 0);
         assert!(self.command("replace_patch", json!({"patch":patch})));
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":0.72,"pan":[24,12],"positions":{
                 "wave":[0,0],"sequence":[300,0],"push":[1080,0],"pulses":[1260,0],
@@ -3966,7 +4069,7 @@ impl OpenPatch {
             .all(|voice| voice.iter().any(|p| p.max > 0.0)));
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack.restore_layout(&json!({"version":1,"zoom":0.95,"pan":[24,12],"positions":{
             "envelope":[0,0],"scope":[390,0],"gates":[0,420],"attack-cv":[390,420],"decay-cv":[780,420]}})).unwrap();
         self.rack.set_module_states(
@@ -4033,7 +4136,7 @@ impl OpenPatch {
             .clone();
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
                 "positive":[0,0],"negative":[240,0],"cancellation":[480,0],"scope":[720,0],
@@ -4075,7 +4178,7 @@ impl OpenPatch {
         }
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":positions}))
             .unwrap();
@@ -4129,7 +4232,7 @@ impl OpenPatch {
         assert!(scope.y[0].iter().any(|p| p.max.abs() > 0.01));
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":0.80,"pan":[24,12],"positions":{
             "voice":[0,0],"filter":[330,0],"amplifier":[630,0],"out":[840,0],"guide":[1050,0],
@@ -4174,7 +4277,7 @@ impl OpenPatch {
             .unwrap();
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":0.80,"pan":[24,12],"positions":{
             "voice":[0,0],"filter":[330,0],"amplifier":[630,0],"out":[810,0],"guide":[1020,0],
@@ -4237,7 +4340,7 @@ impl OpenPatch {
         assert_eq!(scope.x_channels, 16);
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack
             .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
             "controller":[0,0],"scope":[510,0]}}))
@@ -4318,7 +4421,7 @@ impl OpenPatch {
         assert_eq!(scope.x_channels, 16);
         execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
         self.sync();
-        self.rack = Rack::default();
+        self.replace_rack(Rack::default());
         self.rack.restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"pads":[0,0],"scope":[510,0]}})).unwrap();
         self.rack.set_midi_gate_states(BTreeMap::from([(
             "pads".into(),
@@ -4389,7 +4492,7 @@ impl OpenPatch {
                     .expect("valid bundled random voice");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("random voice compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(0.75);
             self.title = "Clocked random voice".into();
         }
@@ -4439,7 +4542,7 @@ impl OpenPatch {
             });
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("polyphonic patch compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(zoom);
             self.title = title.into();
             if let Some(lights) = meter_lights {
@@ -4453,7 +4556,7 @@ impl OpenPatch {
                     .expect("valid bundled MIDI voice");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("MIDI voice compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(0.75);
             self.title = "MIDI keyboard voice".into();
             self.keyboard_open = true;
@@ -4469,7 +4572,7 @@ impl OpenPatch {
                     .expect("valid bundled stereo study");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("stereo study compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(1.0);
             self.title = "Stereo width study".into();
         }
@@ -4480,7 +4583,7 @@ impl OpenPatch {
             .unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("routing modules compile");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.title = "Stereo and routing utilities".into();
         }
         if frame == 112 {
@@ -4489,7 +4592,7 @@ impl OpenPatch {
                     .expect("valid bundled modulation voice");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("modulation voice compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(0.75);
             self.title = "Clocked modulation".into();
         }
@@ -4507,7 +4610,7 @@ impl OpenPatch {
             let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[{"id":"calibration","kind":"multi_lfo","params":{"frequency":100.0}}],"output":"calibration","output_port":"sine"})).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("scope calibration compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.title = "Signal inspection".into();
             self.scope.smoke_fixture();
             self.select_analysis(Some(AnalysisTab::Scope));
@@ -4527,7 +4630,7 @@ impl OpenPatch {
             let telemetry = engine.module_telemetry(handle).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("sequence compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
                 "sequence":[0,0],"vco":[780,0],"filter":[990,0],"envelope":[0,420],"vca":[240,420],"accent":[390,420],"out":[540,420]
             }}));
@@ -4550,7 +4653,7 @@ impl OpenPatch {
                 .collect();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("switching voice compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             let _ = self.rack.restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":{
                 "pitches":[0,0],"split":[360,0],"select":[660,0],"clock":[840,0],
                 "vco":[0,420],"route":[210,420],"left":[390,420],"right":[540,420],"out":[690,420]
@@ -4564,7 +4667,7 @@ impl OpenPatch {
                     .expect("valid voltage utilities fixture");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("voltage utilities compile");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.title = "Voltage utilities".into();
         }
         if frame == 220 {
@@ -4608,7 +4711,7 @@ impl OpenPatch {
             }
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("gate shaping fixture publishes");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
                 "logic":[0,0],"compare":[240,0],"process":[480,0],"rescale":[720,0],
                 "motion":[0,420],"clock":[300,420],"notes":[450,420],"vco":[690,420],"out":[900,420]
@@ -4633,7 +4736,7 @@ impl OpenPatch {
             let lights = engine.module_lights(handle).expect("mixer meter snapshot");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("layered stereo fixture publishes");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&Self::mixing_layout())
                 .expect("fixture mixer layout");
@@ -4650,7 +4753,7 @@ impl OpenPatch {
                 "cables":[{"from":"pitch","to":"tone","input":"pitch"},{"from":"tone","to":"filter","input":"signal"},{"from":"filter","to":"out","input":"signal"}],"output":"out"})).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("duplication fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{"tone":[0,0],"filter":[210,0],"pitch":[0,420],"out":[210,420]}})).unwrap();
             let mapping = vec![
                 ("tone".into(), "tone-copy-1".into()),
@@ -4670,7 +4773,7 @@ impl OpenPatch {
                     .expect("valid stacked pitch fixture");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("stacked pitch fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&Self::stacked_layout())
                 .expect("stacked fixture layout");
@@ -4690,7 +4793,7 @@ impl OpenPatch {
                 .expect("waveform meter snapshot");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("waveform fixture publishes");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&Self::waveform_layout())
                 .expect("waveform fixture layout");
@@ -4713,7 +4816,7 @@ impl OpenPatch {
             .unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("preset fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.title = "VCO preset library · offline preview".into();
             let revision = self.shared.lock().unwrap().revision();
             self.preset_dialog = Some(PresetDialog::new(
@@ -4782,7 +4885,7 @@ impl OpenPatch {
             .expect("outgoing duplicate fixture");
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("outgoing duplicate fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({
                     "version":1,"zoom":0.85,"pan":[24,12],
@@ -4818,7 +4921,7 @@ impl OpenPatch {
             .unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("compact analysis fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.set_zoom(0.75);
             ctx.data_mut(|data| {
                 data.insert_persisted(
@@ -4853,7 +4956,7 @@ impl OpenPatch {
             let lights = engine.module_lights(handle).unwrap();
             let controls = engine.module_control_state(handle).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&Self::pulses_layout()).unwrap();
             self.rack.set_module_states(
                 BTreeMap::from([("buttons".into(), lights)]),
@@ -4874,7 +4977,7 @@ impl OpenPatch {
             let lights = engine.module_lights(handle).unwrap();
             let controls = engine.module_control_state(handle).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&Self::push_layout()).unwrap();
             self.rack.set_module_states(
                 BTreeMap::from([("push".into(), lights)]),
@@ -4895,7 +4998,7 @@ impl OpenPatch {
             let lights = engine.module_lights(handle).unwrap();
             let controls = engine.module_control_state(handle).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&Self::gates_layout()).unwrap();
             self.rack.set_module_states(
                 BTreeMap::from([("gates".into(), lights)]),
@@ -4950,7 +5053,7 @@ impl OpenPatch {
             })).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("parameter context fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
                     "tone":[0,0],"vca":[210,0],"out":[420,0]
@@ -4982,7 +5085,7 @@ impl OpenPatch {
             }))
             .unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
                     "pitch":[0,0],"offset":[120,0],"sum":[240,0],"out":[390,0]
@@ -5008,7 +5111,7 @@ impl OpenPatch {
                 {"id":"duck","kind":"sidechain_compressor"}
             ],"cables":[{"from":"score","output":"gate1","to":"drum","input":"trigger"},{"from":"drum","to":"filter","input":"signal"}]})).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack.restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":{
                 "score":[0,0],"drum":[615,0],"filter":[990,0],"echo":[0,420],"space":[435,420],"duck":[810,420]
             }})).unwrap();
@@ -5025,7 +5128,7 @@ impl OpenPatch {
             let (patch, snapshot) = Self::rack_scope_smoke_fixture(xy, external);
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("Rack Scope offline fixture publishes");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
                     "scope":[0,0],"wave":[630,0],"pitch":[930,0]
@@ -5058,7 +5161,7 @@ impl OpenPatch {
             let handle = engine.resolve_module_scope("scope").unwrap();
             let snapshot = engine.module_scope(handle).unwrap().clone();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
                     "body":[0,0],"scope":[480,0],"clock":[0,420],"out":[360,420]
@@ -5082,7 +5185,7 @@ impl OpenPatch {
             let handle = engine.resolve_module_scope("scope").unwrap();
             let snapshot = engine.module_scope(handle).unwrap().clone();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
                     "noise":[0,0],"scope":[270,0],"out":[0,420]
@@ -5116,7 +5219,7 @@ impl OpenPatch {
                 panic!("random values snapshot");
             };
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&Self::random_values_layout())
                 .unwrap();
@@ -5151,7 +5254,7 @@ impl OpenPatch {
                 panic!("shift register snapshot");
             };
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&Self::shift_register_layout())
                 .unwrap();
@@ -5239,7 +5342,7 @@ impl OpenPatch {
                 "output":"out"})).unwrap();
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch}))
                 .expect("Precision fixture compiles");
-            self.rack = Rack::default();
+            self.replace_rack(Rack::default());
             self.rack
                 .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
                 "voice":[0,0],"filter":[300,0],"amp":[510,0],"out":[720,0]}}))
@@ -5369,6 +5472,39 @@ impl OpenPatch {
             self.rack.set_room_brightness(0.0);
             self.status = "Lights out · actual signal plugs emit; cancelled and silent signals remain dark · VCA gain lamps are independent".into();
         }
+        if frame == 1932 {
+            self.rack.set_room_brightness(1.0);
+            self.set_cable_presentation(CablePresentation::default());
+            let menu = ctx
+                .data(|data| data.get_temp::<egui::Id>(egui::Id::new("smoke-view-menu-popup")))
+                .expect("Rendered View menu button");
+            egui::Popup::open_id(ctx, menu);
+            self.status = "View · cable appearance is saved with host preferences, independently of the patch".into();
+        }
+        if frame == 1944 {
+            egui::Popup::close_all(ctx);
+            self.prepare_port_lights_fixture();
+            self.rack.set_room_brightness(1.0);
+            self.set_cable_presentation(CablePresentation {
+                opacity: 0.15,
+                tension: 1.0,
+                plug_brightness: 1.0,
+            });
+            self.title = "Clear panels · taut cables".into();
+            self.status = "Cable bodies 15% · tension 100% · actual offline signal plugs stay bright · no live audio".into();
+        }
+        if frame == 1958 {
+            self.prepare_port_lights_fixture();
+            self.rack.set_zoom(0.72);
+            self.rack.set_room_brightness(1.0);
+            self.set_cable_presentation(CablePresentation {
+                opacity: 1.0,
+                tension: 0.0,
+                plug_brightness: 1.0,
+            });
+            self.title = "Loose cables · fixed plugs".into();
+            self.status = "Cable bodies 100% · tension 0% · short and reversed routes keep their real signal endpoints · no live audio".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5460,6 +5596,9 @@ impl OpenPatch {
                 | 1896
                 | 1910
                 | 1928
+                | 1940
+                | 1952
+                | 1964
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5555,7 +5694,10 @@ impl OpenPatch {
                 74 => path.with_file_name("rack-parameter-choices.png"),
                 75 => path.with_file_name("rack-parameter-choices-lights-out.png"),
                 76 => path.with_file_name("rack-port-lights.png"),
-                _ => path.with_file_name("rack-port-lights-lights-out.png"),
+                77 => path.with_file_name("rack-port-lights-lights-out.png"),
+                78 => path.with_file_name("view-cable-controls.png"),
+                79 => path.with_file_name("cable-presentation-clear-panel.png"),
+                _ => path.with_file_name("cable-presentation-loose.png"),
             };
             image::save_buffer(
                 &target,
@@ -5566,18 +5708,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/78 at frame {frame}: {}",
+                "Native smoke: capture {}/81 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 78 {
+            if captures == 81 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1942, "Native screenshot timeout");
+        assert!(frame < 1978, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5848,6 +5990,9 @@ mod project_workflow_tests {
     }
     mod palette_host_tests {
         include!("palette_host_tests.rs");
+    }
+    mod cable_presentation_host_tests {
+        include!("cable_presentation_host_tests.rs");
     }
 
     mod midi_gate_app_tests {

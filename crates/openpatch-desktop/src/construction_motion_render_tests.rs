@@ -279,7 +279,10 @@ fn cable_body_hover_settles_the_real_route_permanently_without_a_new_pointer_tar
         .filter(|c| c.to == cable.to && c.input == cable.input)
         .count();
     let fan = if count > 1 { -20.0 } else { 0.0 };
-    let point = cable_curve_prefix(cable_curve_points(from, to, rack.zoom, fan), 0.5)[3];
+    let point = cable_curve_prefix(
+        cable_curve_points(from, to, rack.zoom, fan, rack.cable_presentation.tension),
+        0.5,
+    )[3];
     let action = frame_revision_state(
         &ctx,
         &mut rack,

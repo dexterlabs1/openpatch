@@ -4,6 +4,7 @@ mod audio;
 mod cable_animation;
 mod cable_palette;
 mod cable_palette_ui;
+mod cable_presentation;
 mod chrome;
 mod construction_motion;
 mod construction_ui;

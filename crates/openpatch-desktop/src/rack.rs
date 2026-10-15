@@ -403,6 +403,7 @@ pub struct Rack {
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
     port_lights: Option<Arc<crate::audio::PortLightFrame>>,
+    cable_presentation: crate::cable_presentation::CablePresentation,
     module_controls: BTreeMap<String, ModuleControlState>,
     held_manual: Option<HeldManual>,
     random_values_states: BTreeMap<String, Value>,
@@ -457,6 +458,7 @@ impl Default for Rack {
             performance_available: false,
             module_lights: BTreeMap::new(),
             port_lights: None,
+            cable_presentation: crate::cable_presentation::CablePresentation::default(),
             module_controls: BTreeMap::new(),
             held_manual: None,
             random_values_states: BTreeMap::new(),
@@ -1159,6 +1161,21 @@ impl Rack {
         self.lighting.set(amount);
     }
 
+    pub(crate) fn cable_presentation(&self) -> crate::cable_presentation::CablePresentation {
+        self.cable_presentation
+    }
+
+    pub(crate) fn set_cable_presentation(
+        &mut self,
+        presentation: crate::cable_presentation::CablePresentation,
+    ) {
+        let presentation = presentation.sanitized();
+        if (self.cable_presentation.plug_brightness > 0.0) != (presentation.plug_brightness > 0.0) {
+            self.port_lights = None;
+        }
+        self.cable_presentation = presentation;
+    }
+
     pub fn positions_locked(&self) -> bool {
         self.positions_locked
     }
@@ -1763,7 +1780,13 @@ impl Rack {
                         .is_some()
                     && pointer.is_some_and(|p| {
                         cable_curve_near(
-                            cable_curve_points(from, to, self.zoom, fan),
+                            cable_curve_points(
+                                from,
+                                to,
+                                self.zoom,
+                                fan,
+                                self.cable_presentation.tension,
+                            ),
                             p,
                             (4.5 * self.zoom).max(3.0),
                         )
@@ -1785,6 +1808,14 @@ impl Rack {
                     fan,
                     phase,
                     &self.lighting,
+                    crate::cable_presentation::CablePresentation {
+                        opacity: if traced {
+                            1.0
+                        } else {
+                            self.cable_presentation.opacity
+                        },
+                        ..self.cable_presentation
+                    },
                 );
             }
         }
@@ -1933,10 +1964,33 @@ impl Rack {
                             .is_some_and(|old| configured_bus(patch, catalog, &old.from)),
                     };
                     if pending.operation == CableOperation::Move {
-                        paint_cable_curves(&painter, anchor, endpoint, color, self.zoom, bus, 0.0);
+                        paint_cable_curves(
+                            &painter,
+                            anchor,
+                            endpoint,
+                            color,
+                            self.zoom,
+                            bus,
+                            0.0,
+                            crate::cable_presentation::CablePresentation {
+                                opacity: 1.0,
+                                ..self.cable_presentation
+                            },
+                        );
                     } else {
                         paint_cable(
-                            &painter, anchor, endpoint, color, self.zoom, false, bus, 0.0,
+                            &painter,
+                            anchor,
+                            endpoint,
+                            color,
+                            self.zoom,
+                            false,
+                            bus,
+                            0.0,
+                            crate::cable_presentation::CablePresentation {
+                                opacity: 1.0,
+                                ..self.cable_presentation
+                            },
                         );
                         paint_jack_light(&painter, anchor, self.zoom, color);
                     }
@@ -1988,6 +2042,10 @@ impl Rack {
                             self.zoom,
                             configured_bus(patch, catalog, &cable.from),
                             0.0,
+                            crate::cable_presentation::CablePresentation {
+                                opacity: 1.0,
+                                ..self.cable_presentation
+                            },
                         );
                         let (id, direction, port) = match pending.origin {
                             CableEnd::Input { .. } => (
@@ -10568,14 +10626,16 @@ fn paint_cable(
     plugged: bool,
     bus: bool,
     fan: f32,
+    presentation: crate::cable_presentation::CablePresentation,
 ) {
-    paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+    paint_cable_curves(painter, from, to, color, zoom, bus, fan, presentation);
     paint_cable_plug(painter, from, color, zoom);
     if plugged {
         paint_cable_plug(painter, to, color, zoom);
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cable_curves(
     painter: &egui::Painter,
     from: Pos2,
@@ -10584,23 +10644,43 @@ fn paint_cable_curves(
     zoom: f32,
     bus: bool,
     fan: f32,
+    presentation: crate::cable_presentation::CablePresentation,
 ) {
     paint_cable_segment(
         painter,
-        cable_curve_points(from, to, zoom, fan),
+        cable_curve_points(from, to, zoom, fan, presentation.tension),
         color,
         zoom,
         bus,
         112,
+        presentation.opacity,
     );
 }
 
-fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32) -> [Pos2; 4] {
+fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -> [Pos2; 4] {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
-    [
+    let original = [
         from,
         from + vec2(fan * zoom, sag),
         to + vec2(fan * zoom, sag),
+        to,
+    ];
+    let tension = if tension.is_finite() {
+        tension.clamp(0.0, 1.0)
+    } else {
+        0.5
+    };
+    // Keep the established curve bit-for-bit at the OpenPatch default. At full
+    // tension use a straight cubic, including coincident/reversed endpoints.
+    if tension == 0.5 {
+        return original;
+    }
+    let straight = [from, from.lerp(to, 1.0 / 3.0), from.lerp(to, 2.0 / 3.0), to];
+    let looseness = 2.0 * (1.0 - tension);
+    [
+        from,
+        straight[1] + (original[1] - straight[1]) * looseness,
+        straight[2] + (original[2] - straight[2]) * looseness,
         to,
     ]
 }
@@ -10707,13 +10787,14 @@ fn paint_motion_cable_curves(
     fan: f32,
     phase: Option<crate::cable_animation::Phase>,
     lighting: &crate::lighting::RoomLighting,
+    presentation: crate::cable_presentation::CablePresentation,
 ) {
     let Some(phase) = phase else {
-        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan, presentation);
         return;
     };
     if phase.reduced {
-        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan, presentation);
         let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(
             to,
@@ -10732,9 +10813,10 @@ fn paint_motion_cable_curves(
         bus,
         fan,
         Some(phase.progress),
+        presentation,
     );
     lighting.preserve(painter, prefix_accent);
-    let points = cable_curve_points(from, to, zoom, fan);
+    let points = cable_curve_points(from, to, zoom, fan, presentation.tension);
     let tip = cable_curve_prefix(points, phase.progress)[3];
     let ring = if phase.progress >= 1.0 {
         9.0 + 8.0 * crate::construction_motion::ease(phase.settle)
@@ -10763,18 +10845,27 @@ fn paint_committed_cable_curves(
     bus: bool,
     fan: f32,
     progress: Option<f32>,
+    presentation: crate::cable_presentation::CablePresentation,
 ) -> usize {
     let Some(progress) = progress else {
-        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan, presentation);
         return crate::lighting::next(painter);
     };
-    let points = cable_curve_points(from, to, zoom, fan);
+    let points = cable_curve_points(from, to, zoom, fan, presentation.tension);
     // The entire committed route remains visible; this flourish never represents
     // a pending connection or delays its electrical/hit-test state.
-    paint_cable_segment(painter, points, color.gamma_multiply(0.28), zoom, bus, 32);
+    paint_cable_segment(
+        painter,
+        points,
+        color.gamma_multiply(0.28),
+        zoom,
+        bus,
+        32,
+        presentation.opacity,
+    );
     if progress > 0.0 {
         let prefix = cable_curve_prefix(points, progress);
-        paint_cable_segment(painter, prefix, color, zoom, bus, 112);
+        paint_cable_segment(painter, prefix, color, zoom, bus, 112, presentation.opacity);
         let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(prefix[3], 4.2 * zoom, Stroke::new(1.2 * zoom, color));
         accent_start
@@ -10790,7 +10881,11 @@ fn paint_cable_segment(
     zoom: f32,
     bus: bool,
     shadow_alpha: u8,
+    opacity: f32,
 ) {
+    if opacity <= 0.0 {
+        return;
+    }
     let curve = |points, width, color| {
         egui::epaint::CubicBezierShape::from_points_stroke(
             points,
@@ -10802,17 +10897,17 @@ fn paint_cable_segment(
     painter.add(curve(
         points.map(|point| point + vec2(1.4, 3.2) * zoom),
         (if bus { 10.0 } else { 8.0 }) * zoom,
-        Color32::from_black_alpha(shadow_alpha),
+        Color32::from_black_alpha((f32::from(shadow_alpha) * opacity).round() as u8),
     ));
     painter.add(curve(
         points,
         (if bus { 7.8 } else { 6.0 }) * zoom,
-        color.gamma_multiply(0.64),
+        color.gamma_multiply(0.64).gamma_multiply(opacity),
     ));
     painter.add(curve(
         points.map(|point| point - vec2(0.5, 0.8) * zoom),
         (if bus { 3.6 } else { 2.6 }) * zoom,
-        color.gamma_multiply(1.13),
+        color.gamma_multiply(1.13).gamma_multiply(opacity),
     ));
 }
 
@@ -10974,6 +11069,9 @@ mod tests {
     }
     mod port_signal_ui_tests {
         include!("port_signal_ui_tests.rs");
+    }
+    mod cable_presentation_ui_tests {
+        include!("cable_presentation_ui_tests.rs");
     }
     use super::*;
 

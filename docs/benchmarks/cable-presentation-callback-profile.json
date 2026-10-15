@@ -1,0 +1,338 @@
+{
+  "schema": 1,
+  "source_base": "e50f3421abe072856c3f8db38acadcf93fcee218; exact sources below",
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "architecture": "arm64",
+    "macos": "26.7.1",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "mode": "release; hardware-free actual Callback::render; no other build/oracle during timed trials"
+  },
+  "sample_rate": 48000,
+  "device_buffer_channels": 1,
+  "method": "65-module16-voice128-physical-endpoint graph,256-frame buffers;16 alternating paired trials,128callbacks pertrial,64 warmup callbacks; comparisons outside timers; both OFF observers remain unacquired after measurement",
+  "audio_equality_checked": true,
+  "physical_device_or_ui_performance_qualified": false,
+  "source_sha256": {
+    "crates/openpatch-core/src/port_lights.rs": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
+    "crates/openpatch-desktop/src/audio.rs": "b289c124e0d4d55957b7b4209d09ef11f7c9bcac01af824a5843b74bedffcaec",
+    "crates/openpatch-desktop/src/port_light_transport.rs": "91af84fdd61b1f247b68ea54d56fb4ed6d4e993782457a4aa263cfb450cc94a4",
+    "crates/openpatch-desktop/src/port_light_host_tests.rs": "f382c537ba549fe55239abc1b104fa80f4d1479885e54b739fae49474dd394d2",
+    "crates/openpatch-desktop/src/port_light_control_host_tests.rs": "1fa0c39c9e7df35734a531b78ff3d5a7f649f122e550853591e45f4c2640ccf8",
+    "crates/openpatch-desktop/src/cable_presentation.rs": "5c803298d9374c1586087f97ac5f964e769581ff0c31755a29714687d3558e1c",
+    "crates/openpatch-desktop/src/port_signal.rs": "cf307479dc72607558a48e1cbe287ae082095d1e54e6bbcc59935b99a1c0d259",
+    "crates/openpatch-desktop/src/rack.rs": "5a12b505151ef82ccd1d57e12f65883f10b68c0832ba775bb94e505a0d64f42b",
+    "crates/openpatch-desktop/src/app.rs": "2b7f68907116721c34ef3b2343c5004509d799775364de370dfe2c4179a70fe6"
+  },
+  "measurements": [
+    {
+      "block_frames": 256,
+      "nodes": 65,
+      "pairs": [
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 152868042,
+          "startup_off_ns": 152324875
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 152840958,
+          "startup_off_ns": 152505875
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 152766083,
+          "startup_off_ns": 149168083
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 149675209,
+          "startup_off_ns": 149277542
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 151076292,
+          "startup_off_ns": 149048500
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 151577542,
+          "startup_off_ns": 149620958
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 153357542,
+          "startup_off_ns": 153374958
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 149270125,
+          "startup_off_ns": 151151833
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 148899667,
+          "startup_off_ns": 148599250
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 148726291,
+          "startup_off_ns": 149012334
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 148988417,
+          "startup_off_ns": 149131625
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 149301167,
+          "startup_off_ns": 149066791
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 149870125,
+          "startup_off_ns": 148808334
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 148922959,
+          "startup_off_ns": 148985709
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 148791209,
+          "startup_off_ns": 148729584
+        },
+        {
+          "callbacks": 128,
+          "runtime_off_ns": 149074000,
+          "startup_off_ns": 149613917
+        }
+      ],
+      "profile": "port_light_off_fast_path",
+      "voices": 16,
+      "runtime_off_ns_per_callback": {
+        "median": 1167876.46875,
+        "p95": 1198105.796875,
+        "trials": [
+          1194281.578125,
+          1194069.984375,
+          1193485.0234375,
+          1169337.5703125,
+          1180283.53125,
+          1184199.546875,
+          1198105.796875,
+          1166172.8515625,
+          1163278.6484375,
+          1161924.1484375,
+          1163972.0078125,
+          1166415.3671875,
+          1170860.3515625,
+          1163460.6171875,
+          1162431.3203125,
+          1164640.625
+        ]
+      },
+      "startup_off_ns_per_callback": {
+        "median": 1165233.234375,
+        "p95": 1198241.859375,
+        "trials": [
+          1190038.0859375,
+          1191452.1484375,
+          1165375.6484375,
+          1166230.796875,
+          1164441.40625,
+          1168913.734375,
+          1198241.859375,
+          1180873.6953125,
+          1160931.640625,
+          1164158.859375,
+          1165090.8203125,
+          1164584.3046875,
+          1162565.109375,
+          1163950.8515625,
+          1161949.875,
+          1168858.7265625
+        ]
+      },
+      "paired_delta_ns_per_callback": {
+        "median": 2089.03515625,
+        "p95": 28109.375,
+        "trials": [
+          4243.4921875,
+          2617.8359375,
+          28109.375,
+          3106.7734375,
+          15842.125,
+          15285.8125,
+          -136.0625,
+          -14700.84375,
+          2347.0078125,
+          -2234.7109375,
+          -1118.8125,
+          1831.0625,
+          8295.2421875,
+          -490.234375,
+          481.4453125,
+          -4218.1015625
+        ]
+      }
+    },
+    {
+      "block_frames": 256,
+      "nodes": 65,
+      "pairs": [
+        {
+          "callbacks": 128,
+          "disabled_ns": 149123375,
+          "enabled_ns": 165018792
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 149455000,
+          "enabled_ns": 165575333
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 149077500,
+          "enabled_ns": 165365666
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 149452417,
+          "enabled_ns": 165449709
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 150786416,
+          "enabled_ns": 165526459
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 149098041,
+          "enabled_ns": 165094708
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 152194708,
+          "enabled_ns": 165718750
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 152526750,
+          "enabled_ns": 169526375
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 153273208,
+          "enabled_ns": 168508750
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 152615084,
+          "enabled_ns": 168953500
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 152735458,
+          "enabled_ns": 168474375
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 151668375,
+          "enabled_ns": 167788792
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 153427583,
+          "enabled_ns": 168714042
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 152976084,
+          "enabled_ns": 168833834
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 153445542,
+          "enabled_ns": 169233416
+        },
+        {
+          "callbacks": 128,
+          "disabled_ns": 153032208,
+          "enabled_ns": 168360834
+        }
+      ],
+      "physical_endpoints": 128,
+      "profile": "port_light_callback",
+      "voices": 16,
+      "enabled_ns_per_callback": {
+        "median": 1313084.4765625,
+        "p95": 1324424.8046875,
+        "trials": [
+          1289209.3125,
+          1293557.2890625,
+          1291919.265625,
+          1292575.8515625,
+          1293175.4609375,
+          1289802.40625,
+          1294677.734375,
+          1324424.8046875,
+          1316474.609375,
+          1319949.21875,
+          1316206.0546875,
+          1310849.9375,
+          1318078.453125,
+          1319014.328125,
+          1322136.0625,
+          1315319.015625
+        ]
+      },
+      "disabled_ns_per_callback": {
+        "median": 1190318.1953125,
+        "p95": 1198793.296875,
+        "trials": [
+          1165026.3671875,
+          1167617.1875,
+          1164667.96875,
+          1167597.0078125,
+          1178018.875,
+          1164828.4453125,
+          1189021.15625,
+          1191615.234375,
+          1197446.9375,
+          1192305.34375,
+          1193245.765625,
+          1184909.1796875,
+          1198652.9921875,
+          1195125.65625,
+          1198793.296875,
+          1195564.125
+        ]
+      },
+      "paired_delta_ns_per_callback": {
+        "median": 124035.80859375,
+        "p95": 132809.5703125,
+        "trials": [
+          124182.9453125,
+          125940.1015625,
+          127251.296875,
+          124978.84375,
+          115156.5859375,
+          124973.9609375,
+          105656.578125,
+          132809.5703125,
+          119027.671875,
+          127643.875,
+          122960.2890625,
+          125940.7578125,
+          119425.4609375,
+          123888.671875,
+          123342.765625,
+          119754.890625
+        ]
+      }
+    }
+  ]
+}

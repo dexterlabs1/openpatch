@@ -106,6 +106,13 @@ polyphonic signal energy. Each input shows its actual sum, so stacked signals ca
 cancel while their source plugs remain lit. Cable color and patching highlights
 have separate meanings. See [signal lights](PORT_LIGHTS.md).
 
+**View** also provides cable opacity, tension and plug-light brightness. Bodies
+and shadows fade together; hovered-port routes and active drafts remain visible.
+Tension changes hanging geometry while endpoints stay fixed. Zero plug brightness
+stops its observation work and requires a fresh measurement when re-enabled.
+These preferences survive document changes without affecting patch history or
+dirty state. See [controls, defaults and persistence](CABLE_PRESENTATION.md).
+
 Room illumination is a host preference, saved as `room_brightness` in
 `.host-settings.json` (a finite number from 0 to 1). It does not change a project,
 its dirty state, recovery data, undo history, audio, or MCP graph state. Invalid or

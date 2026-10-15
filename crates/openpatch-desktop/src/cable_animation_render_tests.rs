@@ -25,7 +25,7 @@ fn construction_reveal_is_an_exact_prefix_of_the_committed_curve() {
     };
     for zoom in [0.25, 1.0, 2.0] {
         for fan in [-20.0, 0.0, 20.0] {
-            let points = cable_curve_points(pos2(80.0, 400.0), pos2(700.0, 100.0), zoom, fan);
+            let points = cable_curve_points(pos2(80.0, 400.0), pos2(700.0, 100.0), zoom, fan, 0.5);
             for progress in [0.0, 0.1, 0.5, 0.9, 1.0] {
                 let prefix = cable_curve_prefix(points, progress);
                 for u in [0.0, 0.2, 0.7, 1.0] {
@@ -55,6 +55,7 @@ fn construction_paint_keeps_the_full_committed_route_and_returns_to_static_geome
                     true,
                     20.0,
                     progress,
+                    crate::cable_presentation::CablePresentation::default(),
                 );
             } else {
                 paint_cable_curves(
@@ -65,6 +66,7 @@ fn construction_paint_keeps_the_full_committed_route_and_returns_to_static_geome
                     1.0,
                     true,
                     20.0,
+                    crate::cable_presentation::CablePresentation::default(),
                 );
             }
         })

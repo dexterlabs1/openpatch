@@ -12,6 +12,11 @@ Only the top plug at each endpoint emits; changing a cable's body color does
 not change the light's meaning. A loose dragged end never shows activity.
 Attached ends in a dragged bundle retain their own available measurements.
 
+**View → Plug light brightness** adjusts the lenses and halos together. At zero,
+their signal observation and publication stop. Re-enabling waits for a fresh
+audio observation. Cable opacity and tension are independent controls; see
+[cable presentation](CABLE_PRESENTATION.md).
+
 Emission remains visible at zero room brightness. Hover, patching validity,
 selection and output-monitor rings remain separate decorations. A VCA's gain
 lamps show gain: they can remain bright with no signal while its plugs are dark.
