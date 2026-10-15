@@ -73,7 +73,7 @@ mod tests {
             {"id":"logic","kind":"logic"}],"cables":[
             {"id":"clock","from":"source","to":"seq","input":"clock"}],"output":"seq","output_port":"cv1"}})).unwrap();
         let live = Arc::new(Live::default());
-        session.set_live_module_events(Some(live.clone()));
+        session.set_live_module_events(Some(live.clone())).unwrap();
         live.calls.lock().unwrap().clear();
         (session, live)
     }

@@ -10,7 +10,7 @@ fn sum_meter_metadata_tracks_actual_graph_revision_and_instance_without_heap_wor
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
     session.replace_patch(patch.clone(), Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     assert!(callback.performance.module_lights("sum").is_none());
     without_heap_activity(|| callback.render(&mut [0.0_f32; 511], 1));
     let initial = callback.performance.module_lights("sum").unwrap();

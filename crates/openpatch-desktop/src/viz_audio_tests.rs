@@ -12,7 +12,7 @@ fn viz_callback_publishes_all_signed_lanes_coherently_across_graph_changes() {
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
     session.replace_patch(patch.clone(), Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     assert!(callback.performance.module_lights("viz").is_none());
     without_heap_activity(|| callback.render(&mut [0.0_f32; 15], 1));
     let before = callback.performance.module_lights("viz").unwrap();

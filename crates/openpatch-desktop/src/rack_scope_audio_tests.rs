@@ -27,7 +27,7 @@ fn rack_scope_callback_and_mcp_publish_real_polyphonic_bins_without_heap_activit
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     let before = session
         .execute("inspect_scope", serde_json::json!({"id":"scope"}))
         .unwrap();
@@ -150,7 +150,7 @@ fn rack_scope_mcp_reports_actual_trigger_normaling_and_empty_axes() {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session.set_live_module_events(Some(callback.performance.clone())).unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
         let actual = session
             .execute(
@@ -190,7 +190,7 @@ fn rack_scope_revisions_reincarnation_and_retirement_never_publish_stale_capture
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
     session.replace_patch(patch.clone(), Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     without_heap_activity(|| callback.render(&mut [0.0_f32; 64], 1));
     let first = callback.performance.scope_frame("scope").unwrap();
     session

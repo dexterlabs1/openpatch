@@ -337,6 +337,8 @@ impl Session {
             closing: self.closing,
             live_module_events: None,
             construction: Construction::default(),
+            midi_cc_worker: false,
+            midi_cc_committed: BTreeSet::new(),
         }
     }
 
@@ -794,7 +796,8 @@ mod tests {
         session
             .lock()
             .unwrap()
-            .set_live_module_events(Some(backend.clone()));
+            .set_live_module_events(Some(backend.clone()))
+            .unwrap();
         backend.calls.store(0, Ordering::Relaxed);
         let before = session.lock().unwrap().snapshot();
         let invalid = [

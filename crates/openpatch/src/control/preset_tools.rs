@@ -3,6 +3,7 @@ use crate::presets;
 
 impl Session {
     pub(super) fn capture_module_preset(&self, args: &Value) -> Result<Value, String> {
+        self.check_midi_cc_capture()?;
         self.check_revision(expected_revision(args)?)?;
         let id = string(args, "id")?;
         let node = self
@@ -22,6 +23,7 @@ impl Session {
         } else {
             (None, "saved_parameters", None)
         };
+        self.check_midi_cc_capture()?;
         let preset = presets::capture_state(node, state)?;
         Ok(
             json!({"revision":self.revision,"id":id,"preset":preset,"state_source":source,"frame":frame}),

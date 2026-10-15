@@ -1,0 +1,8 @@
+[
+  {"frame": 0, "event": {"type": "control_change", "channel": 0, "controller": 7, "value": 96}},
+  {"frame": 16000, "event": {"type": "control_change", "channel": 0, "controller": 74, "value": 110}},
+  {"frame": 32000, "event": {"type": "control_change", "channel": 0, "controller": 7, "value": 36}},
+  {"frame": 48000, "event": {"type": "control_change", "channel": 0, "controller": 74, "value": 30}},
+  {"frame": 64000, "event": {"type": "control_change", "channel": 0, "controller": 7, "value": 100}},
+  {"frame": 80000, "event": {"type": "control_change", "channel": 0, "controller": 74, "value": 96}}
+]

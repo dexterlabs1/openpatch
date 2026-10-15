@@ -246,3 +246,52 @@ fn adsr_eg_first_callback_actions_lamps_initialize_reset_and_adoption_allocate_n
     TRACKING.with(|enabled| enabled.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn midi_cc_first_callback_taps_learn_capture_and_adoption_allocate_nothing() {
+    use openpatch_core::{MidiEvent, Patch, PortFrame, TapSample};
+    let p:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"cc","kind":"midi_cc","params":{"mpe":1,"high_resolution":1}}]})).unwrap();
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let old_h = old.resolve_module_state("cc").unwrap();
+    let new_h = new.resolve_module_state("cc").unwrap();
+    let taps = [
+        Some(new.resolve_tap("cc", "out1", 0).unwrap()),
+        Some(new.resolve_tap("cc", "out16", 15).unwrap()),
+    ];
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[TapSample::default(); 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    old.arm_midi_cc_learn(old_h, 1, 0);
+    old.handle_midi(MidiEvent::ControlChange {
+        channel: 15,
+        controller: 16,
+        value: 100,
+    });
+    new.adopt_state_from(&old);
+    std::hint::black_box(new.take_midi_cc_learn_completion(new_h));
+    new.arm_midi_cc_learn(new_h, 2, 2);
+    for channel in 0..16 {
+        new.handle_midi(MidiEvent::ControlChange {
+            channel,
+            controller: 1,
+            value: 64,
+        });
+        new.handle_midi(MidiEvent::ControlChange {
+            channel,
+            controller: 33,
+            value: 3,
+        });
+    }
+    new.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+    new.process_poly_block(&mut frames);
+    std::hint::black_box(new.module_saved_state(new_h));
+    new.initialize_module_state(new_h);
+    new.reset_module_state(new_h);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(samples[0][0].active);
+    assert!(samples[0][1].active);
+}

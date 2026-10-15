@@ -3,6 +3,7 @@ use super::*;
 
 #[derive(Default)]
 pub(super) struct EditEffects {
+    pub learn_reconciliation: bool,
     pub retired: Vec<String>,
     pub retired_cables: Vec<String>,
     pub initialized: BTreeSet<String>,
@@ -11,6 +12,7 @@ pub(super) struct EditEffects {
     pub after_saved: BTreeMap<String, SavedModuleState>,
     pub load_saved: BTreeMap<String, SavedModuleState>,
     working_saved: BTreeMap<String, SavedModuleState>,
+    full_midi_restores: BTreeSet<String>,
     replaced: BTreeSet<String>,
     live_snapshot: Option<Value>,
     live_frame: Option<u64>,
@@ -41,6 +43,43 @@ pub(super) fn live_saved(
         return Err(format!("live state kind mismatch for module '{id}'"));
     }
     let state = match expected {
+        SavedModuleState::MidiCc { .. } | SavedModuleState::MidiCcMappings(_) => {
+            let state = &module["state"];
+            let mappings = state["assignments"]
+                .as_array()
+                .filter(|a| a.len() == 16)
+                .ok_or_else(|| format!("live MIDI CC assignments unavailable for module '{id}'"))?;
+            let controllers = state["values"]
+                .as_array()
+                .filter(|a| a.len() == 128)
+                .ok_or_else(|| format!("live MIDI CC values unavailable for module '{id}'"))?;
+            let mut assignments = [-1_i16; 16];
+            let mut values = [0_u8; 128];
+            for (slot, value) in assignments.iter_mut().zip(mappings) {
+                *slot = value
+                    .as_i64()
+                    .filter(|v| (-1..=127).contains(v))
+                    .ok_or_else(|| format!("invalid MIDI CC assignment for module '{id}'"))?
+                    as i16;
+            }
+            let mut seen = BTreeSet::new();
+            if assignments.iter().any(|cc| *cc >= 0 && !seen.insert(*cc)) {
+                return Err(format!(
+                    "colliding live MIDI CC assignments for module '{id}'"
+                ));
+            }
+            for (slot, value) in values.iter_mut().zip(controllers) {
+                *slot = value
+                    .as_u64()
+                    .filter(|v| *v <= 127)
+                    .ok_or_else(|| format!("invalid MIDI CC value for module '{id}'"))?
+                    as u8;
+            }
+            SavedModuleState::MidiCc {
+                assignments,
+                values,
+            }
+        }
         SavedModuleState::ShiftRegister { .. } => {
             let rows = module["state"]["values"]
                 .as_array()
@@ -122,6 +161,7 @@ impl Session {
         effects: &mut EditEffects,
         history: bool,
     ) -> Result<Option<SavedModuleState>, String> {
+        self.check_midi_cc_capture()?;
         let node = candidate
             .nodes
             .iter()
@@ -139,6 +179,7 @@ impl Session {
                 .live_snapshot
                 .get_or_insert_with(|| backend.snapshot());
             let (state, frame) = live_saved(snapshot, id, self.revision, initial)?;
+            self.check_midi_cc_capture()?;
             if effects.live_frame.is_some_and(|prior| prior != frame) {
                 return Err("live edit state has mixed callback frames; retry edit".into());
             }
@@ -147,9 +188,35 @@ impl Session {
         } else {
             initial
         };
+        // A preceding mapping edit in this transaction changes ownership only.
+        // Overlay that candidate map on the captured live controller bank.
+        let value = match (value, initial) {
+            (
+                SavedModuleState::MidiCc { values, .. },
+                SavedModuleState::MidiCc { assignments, .. },
+            ) => SavedModuleState::MidiCc {
+                assignments,
+                values,
+            },
+            _ => value,
+        };
         effects.working_saved.insert(id.to_owned(), value);
         if history && !effects.replaced.contains(id) {
-            effects.before_saved.entry(id.to_owned()).or_insert(value);
+            if let (
+                Some(SavedModuleState::MidiCcMappings(assignments)),
+                SavedModuleState::MidiCc { values, .. },
+            ) = (effects.before_saved.get(id).copied(), value)
+            {
+                effects.before_saved.insert(
+                    id.to_owned(),
+                    SavedModuleState::MidiCc {
+                        assignments,
+                        values,
+                    },
+                );
+            } else {
+                effects.before_saved.entry(id.to_owned()).or_insert(value);
+            }
         }
         Ok(Some(value))
     }
@@ -161,6 +228,113 @@ impl Session {
         args: &Value,
         effects: &mut EditEffects,
     ) -> Result<(), String> {
+        let midi_id = args["id"].as_str().filter(|id| {
+            candidate
+                .nodes
+                .iter()
+                .any(|node| node.id == *id && node.kind == "midi_cc")
+        });
+        if let Some(id) = midi_id.filter(|_| name == "set_parameter") {
+            let id = id.to_owned();
+            let parameter = string(args, "parameter")?;
+            let node = candidate.nodes.iter().find(|node| node.id == id).unwrap();
+            let initial = SavedModuleState::from_node(node).ok_or("invalid MIDI CC state")?;
+            let full = parameter.starts_with("cc_value");
+            let previous = if full {
+                self.state_for_edit(candidate, &id, effects, true)?.unwrap()
+            } else {
+                initial
+            };
+            apply_edit(
+                candidate,
+                name,
+                args,
+                &mut effects.retired_cables,
+                &mut effects.initialized,
+            )?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .unwrap();
+            let current = SavedModuleState::from_node(node).ok_or("invalid MIDI CC state")?;
+            if full {
+                let SavedModuleState::MidiCc {
+                    assignments,
+                    mut values,
+                } = previous
+                else {
+                    return Err("invalid MIDI CC state".into());
+                };
+                let index = parameter
+                    .strip_prefix("cc_value")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .filter(|i| *i < 128)
+                    .ok_or("invalid MIDI CC value parameter")?;
+                let value = args["value"]
+                    .as_f64()
+                    .filter(|v| v.is_finite() && v.fract() == 0.0 && (0.0..=127.0).contains(v))
+                    .ok_or("invalid MIDI CC controller value")? as u8;
+                values[index] = value;
+                let state = SavedModuleState::MidiCc {
+                    assignments,
+                    values,
+                };
+                state.write_params(&mut node.params);
+                effects.full_midi_restores.insert(id.clone());
+                effects.working_saved.insert(id.clone(), state);
+                effects.after_saved.insert(id.clone(), state);
+                effects.load_saved.insert(id, state);
+            } else if midi_cc::mapping_cell(parameter).is_some() {
+                let SavedModuleState::MidiCc {
+                    assignments: before,
+                    ..
+                } = previous
+                else {
+                    return Err("invalid MIDI CC state".into());
+                };
+                let SavedModuleState::MidiCc {
+                    assignments: after, ..
+                } = current
+                else {
+                    return Err("invalid MIDI CC state".into());
+                };
+                effects
+                    .before_saved
+                    .entry(id.clone())
+                    .or_insert(SavedModuleState::MidiCcMappings(before));
+                let state = if let Some(SavedModuleState::MidiCc { values, .. }) =
+                    effects.working_saved.get(&id).copied()
+                {
+                    let state = SavedModuleState::MidiCc {
+                        assignments: after,
+                        values,
+                    };
+                    effects.working_saved.insert(id.clone(), state);
+                    state
+                } else {
+                    SavedModuleState::MidiCcMappings(after)
+                };
+                let state = if effects.full_midi_restores.contains(&id) {
+                    state
+                } else {
+                    SavedModuleState::MidiCcMappings(after)
+                };
+                effects.after_saved.insert(id.clone(), state);
+                // A mapping edit itself must never restore controller values.
+                if matches!(
+                    effects.load_saved.get(&id),
+                    Some(SavedModuleState::MidiCc { .. })
+                ) {
+                    effects.load_saved.insert(id, state);
+                } else {
+                    effects
+                        .load_saved
+                        .insert(id, SavedModuleState::MidiCcMappings(after));
+                }
+            }
+            return Ok(());
+        }
         let prior_seed = candidate
             .nodes
             .iter()
@@ -173,10 +347,9 @@ impl Session {
                 .into_iter()
                 .filter(|id| {
                     name != "randomize_modules"
-                        || !candidate
-                            .nodes
-                            .iter()
-                            .any(|node| node.id == *id && node.kind == "sh_asr")
+                        || !candidate.nodes.iter().any(|node| {
+                            node.id == *id && matches!(node.kind.as_str(), "sh_asr" | "midi_cc")
+                        })
                 })
                 .collect(),
             "apply_module_preset" | "remove_module" => vec![string(args, "id")?.to_owned()],
@@ -249,7 +422,71 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
-                    let explicit = if current.kind() == "sh_asr" {
+                    let explicit = if current.kind() == "midi_cc" {
+                        if name == "initialize_modules" {
+                            effects.full_midi_restores.insert(id.clone());
+                            Some(current)
+                        } else if name == "apply_module_preset" {
+                            let full = args["preset"]["params"].as_object().is_some_and(|params| {
+                                params.keys().any(|key| key.starts_with("cc_value"))
+                            });
+                            if full {
+                                let SavedModuleState::MidiCc { assignments, .. } = current else {
+                                    return Err("invalid MIDI CC state".into());
+                                };
+                                let Some(SavedModuleState::MidiCc { mut values, .. }) =
+                                    effects.working_saved.get(&id).copied()
+                                else {
+                                    return Err("invalid MIDI CC state".into());
+                                };
+                                for (index, value) in values.iter_mut().enumerate() {
+                                    if let Some(saved) =
+                                        args["preset"]["params"].get(format!("cc_value{index}"))
+                                    {
+                                        *value = saved
+                                            .as_f64()
+                                            .ok_or("invalid MIDI CC controller value")?
+                                            as u8;
+                                    }
+                                }
+                                effects.full_midi_restores.insert(id.clone());
+                                Some(SavedModuleState::MidiCc {
+                                    assignments,
+                                    values,
+                                })
+                            } else if effects.full_midi_restores.contains(&id) {
+                                let SavedModuleState::MidiCc { assignments, .. } = current else {
+                                    return Err("invalid MIDI CC state".into());
+                                };
+                                let Some(SavedModuleState::MidiCc { values, .. }) =
+                                    effects.working_saved.get(&id).copied()
+                                else {
+                                    return Err("invalid MIDI CC state".into());
+                                };
+                                Some(SavedModuleState::MidiCc {
+                                    assignments,
+                                    values,
+                                })
+                            } else {
+                                let SavedModuleState::MidiCc { assignments, .. } = current else {
+                                    return Err("invalid MIDI CC state".into());
+                                };
+                                if let Some(SavedModuleState::MidiCc {
+                                    assignments: before,
+                                    ..
+                                }) = effects.before_saved.get(&id).copied()
+                                {
+                                    effects.before_saved.insert(
+                                        id.clone(),
+                                        SavedModuleState::MidiCcMappings(before),
+                                    );
+                                }
+                                Some(SavedModuleState::MidiCcMappings(assignments))
+                            }
+                        } else {
+                            None
+                        }
+                    } else if current.kind() == "sh_asr" {
                         let previous = effects.working_saved.get(&id).copied().unwrap_or(current);
                         let snapshot = (name == "apply_module_preset"
                             && args["preset"]["params"].get("rng_hi").is_some())
@@ -366,7 +603,7 @@ impl Session {
                         explicit.map(|value| current.with_value(value as f32 == 1.0))
                     };
                     if let Some(value) = explicit {
-                        if matches!(value.kind(), "random_values" | "sh_asr") {
+                        if matches!(value.kind(), "random_values" | "sh_asr" | "midi_cc") {
                             let node = candidate
                                 .nodes
                                 .iter_mut()
@@ -374,7 +611,21 @@ impl Session {
                                 .unwrap();
                             value.write_params(&mut node.params);
                         }
-                        effects.working_saved.insert(id.clone(), value);
+                        let working = if let SavedModuleState::MidiCcMappings(assignments) = value {
+                            if let Some(SavedModuleState::MidiCc { values, .. }) =
+                                effects.working_saved.get(&id).copied()
+                            {
+                                SavedModuleState::MidiCc {
+                                    assignments,
+                                    values,
+                                }
+                            } else {
+                                value
+                            }
+                        } else {
+                            value
+                        };
+                        effects.working_saved.insert(id.clone(), working);
                         effects.after_saved.insert(id.clone(), value);
                         effects.load_saved.insert(id.clone(), value);
                     }

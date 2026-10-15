@@ -32,6 +32,7 @@ impl Session {
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectRunningSnapshot, String> {
+        self.check_midi_cc_capture()?;
         self.check_revision(expected_revision)?;
         let mut running = BTreeMap::new();
         let mut holding = BTreeMap::new();
@@ -81,9 +82,13 @@ impl Session {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
-                SavedModuleState::RandomValues { .. } | SavedModuleState::ShiftRegister { .. } => {}
+                SavedModuleState::RandomValues { .. }
+                | SavedModuleState::ShiftRegister { .. }
+                | SavedModuleState::MidiCc { .. }
+                | SavedModuleState::MidiCcMappings(_) => {}
             }
         }
+        self.check_midi_cc_capture()?;
         Ok(ProjectRunningSnapshot {
             revision: self.revision,
             state_id: self.state_id,
@@ -171,7 +176,7 @@ mod tests {
     fn attach(session: &mut Session) -> Arc<Live> {
         let live = Arc::new(Live::default());
         *live.snapshot.lock().unwrap() = snapshot(session.revision());
-        session.set_live_module_events(Some(live.clone()));
+        session.set_live_module_events(Some(live.clone())).unwrap();
         live
     }
 
@@ -336,7 +341,7 @@ mod tests {
         let reads = live.reads.load(Ordering::Relaxed);
         assert!(session.capture_project_running(Some(0)).is_err());
         assert_eq!(live.reads.load(Ordering::Relaxed), reads);
-        session.set_live_module_events(None);
+        session.set_live_module_events(None).unwrap();
         let observed = session.capture_project_running(None).unwrap();
         assert_eq!(observed.state_source, "offline_reset");
         assert_eq!(

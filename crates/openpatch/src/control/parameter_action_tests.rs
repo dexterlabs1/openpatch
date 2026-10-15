@@ -51,7 +51,7 @@ fn session() -> (Session, Arc<Live>) {
         {"id":"switch","kind":"switch_1to4","params":{"steps":2,"declick":1}}
     ],"cables":[{"id":"route","from":"vco","output":"sine","to":"lfo","input":"fm"}],"output":"vco","output_port":"triangle"}})).unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     live.calls.lock().unwrap().clear();
     (session, live)
 }
@@ -378,7 +378,7 @@ fn parameter_actions_support_version_one_and_the_full_selection_limit() {
         )
         .unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     live.calls.lock().unwrap().clear();
     let ids: Vec<_> = session
         .patch()

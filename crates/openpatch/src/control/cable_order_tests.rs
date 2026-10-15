@@ -66,7 +66,7 @@ fn metadata_promote_preview_undo_redo_adopt_live_source_and_delayed_cable_state(
             modules: Mutex::new(vec![]),
             revisions: Mutex::new(vec![]),
         });
-        session.set_live_module_events(Some(live.clone()));
+        session.set_live_module_events(Some(live.clone())).unwrap();
         let assert_continuity = |reference: &mut Engine| {
             let mut want = [0.0; 257];
             let mut actual = [0.0; 257];

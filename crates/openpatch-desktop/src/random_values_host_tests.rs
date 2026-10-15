@@ -53,7 +53,7 @@ fn random_values_host_live_electrical_trig_capture_save_reopen_and_next_rng_draw
     let dir = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(dir.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     assert!(session.capture_project_patch(None).is_err());
     without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
     let initial = random_values_host_state(&callback, "random");
@@ -124,7 +124,7 @@ fn random_values_host_range_initialize_seed_randomize_and_history_use_actual_sta
     let dir = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(dir.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     random_values_host_trigger(&mut callback);
     let actual = random_values_host_state(&callback, "random");
     session
@@ -228,7 +228,7 @@ fn random_values_host_duplicate_remove_and_equal_configured_preset_load_restore_
     let dir = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(dir.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     random_values_host_trigger(&mut callback);
     let actual = random_values_host_state(&callback, "random");
     let preset = session
@@ -289,7 +289,7 @@ fn random_values_host_failed_coherent_captures_and_history_are_atomic() {
     let mut session = openpatch::control::Session::new(dir.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
     let backend = Arc::new(Snapshot(std::sync::Mutex::new(coherent.clone())));
-    session.set_live_module_events(Some(backend.clone()));
+    session.set_live_module_events(Some(backend.clone())).unwrap();
     let before = session.snapshot();
     for bad in ["coherent", "frame", "revision", "voltage", "rows", "rng"] {
         let mut value = coherent.clone();
@@ -355,7 +355,7 @@ fn random_values_host_dirty_native_save_recovery_and_reopen_keep_volts_and_rng()
     let dir = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(dir.path()).unwrap();
     session.replace_patch(patch, Some(0)).unwrap();
-    session.set_live_module_events(Some(callback.performance.clone()));
+    session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     let mut rack = Rack::default();
     rack.reconcile(session.patch(), &openpatch_core::catalog());
     let mut dirty = DocumentState::new(session.patch(), session.revision(), &rack);

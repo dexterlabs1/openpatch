@@ -92,7 +92,7 @@ fn envelope_live_action_receipts_are_transient_and_guarded() {
     }
     let mut s = envelope_session();
     let live = Arc::new(Live::default());
-    s.set_live_module_events(Some(live.clone()));
+    s.set_live_module_events(Some(live.clone())).unwrap();
     let before = s.snapshot();
     for action in ["push_press", "push_release"] {
         let receipt = s

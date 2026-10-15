@@ -23,7 +23,14 @@ coherent saved state, bringing the catalog to 56 kinds.
 [Sample & Hold / Analog Shift Register](SHIFT_REGISTER.md) adds eight mono holds,
 normalized clock and old-value signal chains, bringing the catalog to 57 kinds.
 [ADSR EG](ADSR_EG.md) adds a separate stock-style polyphonic envelope, bringing
-the current catalog to 58 kinds while preserving the original RC envelope.
+the catalog to 58 kinds while preserving the original RC envelope.
+[MIDI CC](MIDI_CC.md) adds sixteen controller outputs, ordinary 7-bit input,
+14-bit pairs, smoothing, MPE and durable Learn, bringing the current catalog to
+59 kinds. Its original Rust DSP passed 45 comparisons of the actual pinned Rack
+class (15 fixtures × 44.1/48/96 kHz), with zero measured voltage error and exact
+metadata in the [recorded run](benchmarks/midi-cc-reference.json). This is bounded
+DSP evidence; native window/input/audio-device and physical MIDI qualification
+remain separate gates.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -127,7 +134,7 @@ Names follow the Core library; parenthesized aliases match the manual. The Audio
 | Audio 8 | Device I/O | Planned | Eight-channel routing and device round trip |
 | Audio 16 | Device I/O | Planned | Sixteen-channel routing and channel isolation |
 | MIDI to CV (MIDI-CV) | MIDI input | Partial: `midi_cv`, 12 outputs, 1–16 voices, hardware ingress and 32-pitch QWERTY/mouse performance | Actual MIDI hardware timing/reconnect qualification, complete Rack behavior comparison and remaining configuration parity |
-| MIDI CC to CV (MIDI-CC) | MIDI input | Planned | Controller mapping, endpoints, event timing |
+| MIDI CC to CV (MIDI-CC) | MIDI input | Partial: `midi_cc`, sixteen assignments/outputs, 7-bit and paired 14-bit CC, smoothing, MPE, channel filter, saved channel-zero values and audio-authoritative Learn | Global endpoint selection differs from per-module Rack routing; nonstandard signed gamepad input is excluded. Complete native/device and hardware timing/reconnect qualification; [contract](MIDI_CC.md), [45-case pinned DSP report](benchmarks/midi-cc-reference.json). |
 | MIDI to Gate (MIDI-Gate) | MIDI input | Planned | Note mapping, short notes, held gates |
 | MIDI Map (MIDI-Map) | Parameter control | Planned | Learn/persist mappings; concurrent GUI/MCP edits |
 | CV to MIDI (CV-MIDI) | MIDI output | Planned | Pitch conversion, balanced note-on/off, panic |

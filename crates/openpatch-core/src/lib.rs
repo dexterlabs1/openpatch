@@ -35,6 +35,8 @@ pub use colored_noise::colored_noise_response_db;
 mod gates;
 pub mod ladder;
 pub mod midi;
+pub mod midi_cc;
+pub use midi_cc::{initial_midi_cc_state, MidiCcLearnCompletion};
 mod mixing;
 mod modal_resonator;
 mod multi_lfo;
@@ -1247,6 +1249,55 @@ impl Engine {
             EngineKind::Legacy(_) => false,
         }
     }
+    /// Arm a zero-based cell on an active MIDI-CC instance. Serial zero and
+    /// uncollected completions are rejected; no command storage is allocated.
+    pub fn arm_midi_cc_learn(&mut self, handle: ModuleHandle, serial: u64, cell: u8) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => {
+                e.midi_cc_active(handle.node)
+                    && e.midi_cc_mut(handle.node)
+                        .is_some_and(|m| m.arm_learn(serial, cell))
+            }
+            _ => false,
+        }
+    }
+    /// Cancel only the matching armed request; completed requests stay durable.
+    pub fn cancel_midi_cc_learn(&mut self, handle: ModuleHandle, serial: u64) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e
+                .midi_cc_mut(handle.node)
+                .is_some_and(|m| m.cancel_learn(serial)),
+            _ => false,
+        }
+    }
+    /// Take the reserved completion, including after bypass or panic.
+    pub fn take_midi_cc_learn_completion(
+        &mut self,
+        handle: ModuleHandle,
+    ) -> Option<MidiCcLearnCompletion> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.midi_cc_mut(handle.node)?.take_learn_completion(),
+            _ => None,
+        }
+    }
+    pub fn midi_cc_learning(&self, handle: ModuleHandle) -> Option<(u64, u8)> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.midi_cc(handle.node)?.learning(),
+            _ => None,
+        }
+    }
     /// Invalid direct events are ignored without allocating on the audio thread.
     /// Legacy graphs have no MIDI modules and ignore all events.
     pub fn handle_midi(&mut self, event: MidiEvent) {
@@ -1326,6 +1377,9 @@ impl Engine {
         match &mut self.inner {
             EngineKind::Poly(engine) => {
                 let stereo = engine.output_channels() == 2;
+                engine.begin_taps(
+                    &taps.map(|tap| tap.filter(|t| t.owner == identity).map(|t| t.index)),
+                );
                 for (audio, sample) in output.iter_mut().zip(samples) {
                     let frame = engine.process_sample();
                     let left = frame.channel(0);
@@ -1338,6 +1392,7 @@ impl Engine {
                             });
                     }
                 }
+                engine.end_taps();
             }
             EngineKind::Legacy(engine) => {
                 let mut mono = [0.0; BLOCK_SIZE];

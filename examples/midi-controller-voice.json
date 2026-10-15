@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "controller",
+      "kind": "midi_cc",
+      "params": {
+        "cc1": 7,
+        "cc2": 74,
+        "cc7": -1,
+        "smooth": 1,
+        "mpe": 0,
+        "high_resolution": 0,
+        "channel": 0,
+        "cc_value7": 96,
+        "cc_value74": 64
+      }
+    },
+    {"id": "cutoff", "kind": "attenuverter", "params": {"gain": 0.25, "offset": 0}},
+    {"id": "vco", "kind": "analog_vco", "params": {"frequency": 164.8138}},
+    {"id": "filter", "kind": "ladder_vcf", "params": {"cutoff": 500, "resonance": 0.35}},
+    {"id": "vca", "kind": "analog_vca", "params": {"gain": 1}},
+    {"id": "out", "kind": "audio_stereo", "params": {"gain": 0.55}}
+  ],
+  "cables": [
+    {"from": "controller", "output": "out1", "to": "vca", "input": "cv"},
+    {"from": "controller", "output": "out2", "to": "cutoff", "input": "signal"},
+    {"from": "cutoff", "to": "filter", "input": "cutoff_cv"},
+    {"from": "vco", "to": "filter", "input": "signal"},
+    {"from": "filter", "to": "vca", "input": "signal"},
+    {"from": "vca", "to": "out", "input": "left"}
+  ],
+  "output": "out"
+}

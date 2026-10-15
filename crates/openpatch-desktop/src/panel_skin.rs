@@ -26,7 +26,9 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "stereo_delay"
         | "stereo_reverb"
         | "sidechain_compressor" => Color32::from_rgb(78, 116, 96),
-        "output" | "audio_out" | "audio_stereo" | "midi_cv" => Color32::from_rgb(66, 104, 133),
+        "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" => {
+            Color32::from_rgb(66, 104, 133)
+        }
         _ => Color32::from_rgb(112, 112, 105),
     }
 }
@@ -57,6 +59,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "output" | "audio_out" => "AUDIO OUTPUT",
         "audio_stereo" => "STEREO OUTPUT",
         "midi_cv" => "MIDI INTERFACE",
+        "midi_cc" => "SIXTEEN CONTROLLER OUTPUTS",
         "white_noise" => "NOISE GENERATOR",
         "colored_noise" => "SEVEN NOISE COLORS",
         "random_values" => "HELD RANDOM VOLTAGES",

@@ -1,0 +1,1441 @@
+{
+  "reference": {
+    "rack_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/src/core/MIDICC_CV.cpp",
+    "source_sha256": "9256e38c046a1c497b1c919ad78d8da81da4f3a589aac3b3aec31491f691d405",
+    "compiled_prefix_sha256": "a6bf72a0c0d34373189ead6a3ebc7deb59b31f8448d16bd51e5ab15904204d57",
+    "midi_routing_source_sha256": "6d24f741adf5ee4c9fde116b8d726545a7a4755f21d549ebb9ca3fd8b893700a",
+    "pinned_filter_header_sha256": "18d4d490eb754259c6c3b335445f9f5369c4a1edfe03ba7f110cf48d0665d8e1",
+    "pinned_filter_matches_sdk": true,
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "midi.hpp": "2dfb1fd885006b889420e2da3bbd21e45a117e9b3026650fc396cbb6e0acb8a9",
+      "dsp/filter.hpp": "18d4d490eb754259c6c3b335445f9f5369c4a1edfe03ba7f110cf48d0665d8e1",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df"
+    }
+  },
+  "method": "Actual pinned MIDICC_CV class; only widget/registration trimmed, two namespaces closed and plugin.hpp replaced with rack.hpp. SDK InputQueue receives explicitly timestamped standard MIDI messages. Driver applies exact pinned InputDevice channel rule before queue insertion without opening a driver/device/context. Production midi_cc.rs compiled unchanged using minimal host data types. Raw frame-index comparison begins at first process call, all exposed cells/lanes each frame.",
+  "qualification_history": {
+    "initial_failure_artifact_sha256": "cea6c4c8d1b4029bc64fe59ec138fd31db1fcff55b65baeec3cdb4d60d6b4847",
+    "initial_failure": "Original production Euler filter omitted the pinned SDK rounded-no-change snap; fixture and numerical gate unchanged for rerun."
+  },
+  "predeclared_cases": {
+    "all_cells_all_wire_channels_7bit": 4096,
+    "all_128_controllers_mapping_windows": 4096,
+    "normal_mode_channel_merge": 4096,
+    "unmapped_and_collision_arrays": 4096,
+    "smoothing_strict_jump_threshold_and_convergence": 16384,
+    "paired_14bit_all_channels_msb_lsb_orderings": 4096,
+    "paired_14bit_upper_bank_and_saturation": 4096,
+    "disconnected_and_unmapped_filter_freeze": 4096,
+    "mpe_toggle_inactive_lane_history": 4096,
+    "selected_channel_filter_and_unrelated_messages": 4096,
+    "learn_equal_rejected_collision_and_precommit": 4096,
+    "unmapped_controller_reassignment": 4096,
+    "json_channel_zero_snapshot_restore": 4096,
+    "adopt_mapping_option_channel_changes": 4096,
+    "same_sample_event_ordering": 4096
+  },
+  "tolerances": {
+    "absolute_volts": 0.0001,
+    "relative": 1e-06,
+    "maps_values_learning_completion_frame_output_width": "exact",
+    "alignment": "same index; no warm-up, offsets, exclusions or threshold exemptions"
+  },
+  "limitations": [
+    "No application, window, native MIDI driver/device, hardware endpoint or audio device is opened",
+    "SDK channel filtering normally occurs in InputDevice::onMessage; exact source rule is reproduced in driver to avoid context/device initialization, while class process and actual SDK queue remain genuine",
+    "MIDI nonstandard signed gamepad extension excluded; ordinary 7-bit messages only",
+    "Host configuration changes use source public configuration/actual JSON mapping loader versus Rust rebuild/adoption; Learn cancellation on configuration change is explicit host policy",
+    "JSON snapshots invoke actual Rack dataToJson/dataFromJson; hardware MIDI port JSON omitted so no endpoint selection occurs",
+    "Bypass, initialization/reset/panic host policy, Engine cables/probe consumer bookkeeping, Session capture/save/Undo, transport durability/backpressure/stale identity, native GUI and performance are separate gates",
+    "This SDK/toolchain/platform combination is qualified; other platforms must execute their own reference comparison"
+  ],
+  "production_source_sha256": "9d98b0f2b5c17ffddd0471488ce68c53af50ca7a8b1e7d9be5a5f8115e99957d",
+  "driver_sha256": {
+    "run.py": "bc827149570d5a73017c54f36320d529165705104a00232ed3836640978715a4",
+    "sdk_probe.cpp": "6f2bdd4082e6a088330a2a0dec3aab7074d38213b2a6c24ef50b67b300e7c7a7",
+    "rust_probe.rs": "ae59a38f3a0a390062b968cda44c3a13de0d0c31adaeca4ac1ad0d22e2956c7a"
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O",
+      "-C",
+      "target-feature=-fma"
+    ],
+    "FMA": "C++ fp contraction disabled; Rust fma target feature disabled, ordinary separate operations, no fast-math"
+  },
+  "cases": [
+    {
+      "name": "all_cells_all_wire_channels_7bit",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e6b67c1b9062fa4540a9f68d738284cb24578e056d613802d9d6ba45cb75466a",
+      "input_crc32": "f4ba8e50",
+      "trace_sha256": {
+        "reference": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287",
+        "production": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287"
+      },
+      "trace_crc32": {
+        "reference": "9a810ce7",
+        "production": "9a810ce7"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.5511810779571533,
+        "actual_volts": 0.5511810779571533,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010055118107795716
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.4930860840031528,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_controllers_mapping_windows",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c1273eeed4265417e89db6d61cbd2c46ea94cfb3d6f6cac1e033af5a4ae8fa3e",
+      "input_crc32": "680528d6",
+      "trace_sha256": {
+        "reference": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336",
+        "production": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336"
+      },
+      "trace_crc32": {
+        "reference": "675a51ad",
+        "production": "675a51ad"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010007874015718699
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09616016600193689,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "normal_mode_channel_merge",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "5a371f66e1ea379ca89e58b634ac1b025af6405072b4a33f8ca210ea1133b256",
+      "input_crc32": "7e9c50ec",
+      "trace_sha256": {
+        "reference": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26",
+        "production": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26"
+      },
+      "trace_crc32": {
+        "reference": "558d1218",
+        "production": "558d1218"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 8.267716407775879,
+        "actual_volts": 8.267716407775879,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010826771640777589
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08585287499590777,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_and_collision_arrays",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "fbb95eb095b3efdef6a974ccf1d342b9466714e01e5a9bcf6dc2252f3290da4b",
+      "input_crc32": "bb2291e7",
+      "trace_sha256": {
+        "reference": "27d24d421618a0d5ed05e6a12215b0e6af8965c6e5ac3553a9f7aae674d47209",
+        "production": "27d24d421618a0d5ed05e6a12215b0e6af8965c6e5ac3553a9f7aae674d47209"
+      },
+      "trace_crc32": {
+        "reference": "ebc32416",
+        "production": "ebc32416"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.0892232919941307,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "smoothing_strict_jump_threshold_and_convergence",
+      "sample_rate": 44100,
+      "frames": 16384,
+      "active_lane_samples": 262144,
+      "input_sha256": "8dc27e79dd639a15c74afe20fccb314567259688a73a1aa62430c5dd7cf56969",
+      "input_crc32": "0db666d0",
+      "trace_sha256": {
+        "reference": "015b1e0c996ad3a2a08b18278adcaf54a23f6fdf158da50ebc587239af34cda0",
+        "production": "015b1e0c996ad3a2a08b18278adcaf54a23f6fdf158da50ebc587239af34cda0"
+      },
+      "trace_crc32": {
+        "reference": "d43c2f06",
+        "production": "d43c2f06"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00011
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1937140830050339,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_all_channels_msb_lsb_orderings",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "529f9c56645bc915dd13343ff90fd7aa0fddb7bba2b8df746b897c4fdeda2ff3",
+      "input_crc32": "a1d423c6",
+      "trace_sha256": {
+        "reference": "795df004fda5382fbd0f1ef1cc0e8386beb68369de0115e59a0d33a0e88e5016",
+        "production": "795df004fda5382fbd0f1ef1cc0e8386beb68369de0115e59a0d33a0e88e5016"
+      },
+      "trace_crc32": {
+        "reference": "c00d3e3e",
+        "production": "c00d3e3e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09848887500265846,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_upper_bank_and_saturation",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e74200eb63b930f0514374f26e68bbe799ff041868e10098bb8392712a8ecf6a",
+      "input_crc32": "0799f0a6",
+      "trace_sha256": {
+        "reference": "782190580e196b9397b2d62225a643f3b33cda5a69a37a9be1460fdc3a51b483",
+        "production": "782190580e196b9397b2d62225a643f3b33cda5a69a37a9be1460fdc3a51b483"
+      },
+      "trace_crc32": {
+        "reference": "6705ab2a",
+        "production": "6705ab2a"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10909849999734433,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnected_and_unmapped_filter_freeze",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 44976,
+      "input_sha256": "40c82608cadeca1b33d0a3297634ad0e4964665c99e8da43b2edbe0de2c7bf15",
+      "input_crc32": "c723fc3c",
+      "trace_sha256": {
+        "reference": "150ca04acd0282767bdbd6e6cc89f6078a01595914df08cc2049554dd356cb71",
+        "production": "150ca04acd0282767bdbd6e6cc89f6078a01595914df08cc2049554dd356cb71"
+      },
+      "trace_crc32": {
+        "reference": "87172b70",
+        "production": "87172b70"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.00016069418052211404,
+        "actual_volts": 0.00016069418052211404,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000016069418053
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09313554200343788,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_toggle_inactive_lane_history",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 682096,
+      "input_sha256": "22cba8e97d4d8e85ed8b29e8d0f9e21e8dea71a5f284971501521c9f56f4f388",
+      "input_crc32": "3a0b61f3",
+      "trace_sha256": {
+        "reference": "72e9e193a6abbc5446ef1c33e16d6ea8eb3ffd4be92bb85e3c27379a42092436",
+        "production": "72e9e193a6abbc5446ef1c33e16d6ea8eb3ffd4be92bb85e3c27379a42092436"
+      },
+      "trace_crc32": {
+        "reference": "0b659711",
+        "production": "0b659711"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 5.356472684070468e-05,
+        "actual_volts": 5.356472684070468e-05,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000005356472685
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.11196370800462319,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "selected_channel_filter_and_unrelated_messages",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f6226cab58a4001b47831942ca9f85a99055c4d5008c333b1e18df9b78f409e9",
+      "input_crc32": "3105b4f3",
+      "trace_sha256": {
+        "reference": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df",
+        "production": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df"
+      },
+      "trace_crc32": {
+        "reference": "c52a912c",
+        "production": "c52a912c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.0944097920000786,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_equal_rejected_collision_and_precommit",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "6729e62f40ddd673666e480a9c18db932011ee25cce7b2bc5b5113baa24d433f",
+      "input_crc32": "da3d35f2",
+      "trace_sha256": {
+        "reference": "368aa5f454a83cc32fb360258b2e0db1870ad9cf9a7cadc37912d76185c93a6b",
+        "production": "368aa5f454a83cc32fb360258b2e0db1870ad9cf9a7cadc37912d76185c93a6b"
+      },
+      "trace_crc32": {
+        "reference": "73a35bcd",
+        "production": "73a35bcd"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08405100000527455,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_controller_reassignment",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f3e0daf2c946e5ae23c9713f9eeb17531b0f7f58a091422254dfc3f15513892a",
+      "input_crc32": "1c1fdf52",
+      "trace_sha256": {
+        "reference": "55306e9737e6502de8dfb2147e8118b9235714fc9eefc99156853506a25519c9",
+        "production": "55306e9737e6502de8dfb2147e8118b9235714fc9eefc99156853506a25519c9"
+      },
+      "trace_crc32": {
+        "reference": "3abf13dc",
+        "production": "3abf13dc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10276841700397199,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_channel_zero_snapshot_restore",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0c12773233f48d55c4f70469e2a8eac460c665cd76ed5729316f96bbc9c28921",
+      "input_crc32": "c9a32de0",
+      "trace_sha256": {
+        "reference": "1d182711d4d45184ac2f895f07498be0f9f987986f36c3f769faaa826a48007b",
+        "production": "1d182711d4d45184ac2f895f07498be0f9f987986f36c3f769faaa826a48007b"
+      },
+      "trace_crc32": {
+        "reference": "195bf464",
+        "production": "195bf464"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0010712945368140936,
+        "actual_volts": 0.0010712945368140936,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000107129453682
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10496958300063852,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "adopt_mapping_option_channel_changes",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "83b80cce7eebe709b7a7a70f120853ba86117770092798c07d2e7b600020c91f",
+      "input_crc32": "21541b28",
+      "trace_sha256": {
+        "reference": "2d229b9862c403677ada070c5c2428fe0ac6d91c4fbe898414508bc824153410",
+        "production": "2d229b9862c403677ada070c5c2428fe0ac6d91c4fbe898414508bc824153410"
+      },
+      "trace_crc32": {
+        "reference": "9d5e4a45",
+        "production": "9d5e4a45"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 2.9133858680725098,
+        "actual_volts": 2.9133858680725098,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010291338586807252
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.12572437500057276,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_ordering",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "eb057fc01d9fa87de9a9efe02fbc4a8c9f8c9cd6abda67c678ebb2fb65560213",
+      "input_crc32": "7f5cf14c",
+      "trace_sha256": {
+        "reference": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d",
+        "production": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d"
+      },
+      "trace_crc32": {
+        "reference": "a98ef3b0",
+        "production": "a98ef3b0"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 1.8719242811203003,
+        "actual_volts": 1.8719242811203003,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010187192428112031
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.15587845900154207,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_cells_all_wire_channels_7bit",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e6b67c1b9062fa4540a9f68d738284cb24578e056d613802d9d6ba45cb75466a",
+      "input_crc32": "f4ba8e50",
+      "trace_sha256": {
+        "reference": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287",
+        "production": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287"
+      },
+      "trace_crc32": {
+        "reference": "9a810ce7",
+        "production": "9a810ce7"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.5511810779571533,
+        "actual_volts": 0.5511810779571533,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010055118107795716
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10500966700055869,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_controllers_mapping_windows",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c1273eeed4265417e89db6d61cbd2c46ea94cfb3d6f6cac1e033af5a4ae8fa3e",
+      "input_crc32": "680528d6",
+      "trace_sha256": {
+        "reference": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336",
+        "production": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336"
+      },
+      "trace_crc32": {
+        "reference": "675a51ad",
+        "production": "675a51ad"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010007874015718699
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09332304100098554,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "normal_mode_channel_merge",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "5a371f66e1ea379ca89e58b634ac1b025af6405072b4a33f8ca210ea1133b256",
+      "input_crc32": "7e9c50ec",
+      "trace_sha256": {
+        "reference": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26",
+        "production": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26"
+      },
+      "trace_crc32": {
+        "reference": "558d1218",
+        "production": "558d1218"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 8.267716407775879,
+        "actual_volts": 8.267716407775879,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010826771640777589
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08598041599907447,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_and_collision_arrays",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "fbb95eb095b3efdef6a974ccf1d342b9466714e01e5a9bcf6dc2252f3290da4b",
+      "input_crc32": "bb2291e7",
+      "trace_sha256": {
+        "reference": "24a8afca1881cefbcaa3dd6f44a4472ddfe766c598240dfb93f6d2c2ece497c9",
+        "production": "24a8afca1881cefbcaa3dd6f44a4472ddfe766c598240dfb93f6d2c2ece497c9"
+      },
+      "trace_crc32": {
+        "reference": "d7376dbf",
+        "production": "d7376dbf"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.17895541699544992,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "smoothing_strict_jump_threshold_and_convergence",
+      "sample_rate": 48000,
+      "frames": 16384,
+      "active_lane_samples": 262144,
+      "input_sha256": "8dc27e79dd639a15c74afe20fccb314567259688a73a1aa62430c5dd7cf56969",
+      "input_crc32": "0db666d0",
+      "trace_sha256": {
+        "reference": "2133b868ba0e58cabae6100467039dbce1218dbb7130a76c6fb65f7e8f724b8d",
+        "production": "2133b868ba0e58cabae6100467039dbce1218dbb7130a76c6fb65f7e8f724b8d"
+      },
+      "trace_crc32": {
+        "reference": "9401cc2e",
+        "production": "9401cc2e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00011
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.19111308400169946,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_all_channels_msb_lsb_orderings",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "529f9c56645bc915dd13343ff90fd7aa0fddb7bba2b8df746b897c4fdeda2ff3",
+      "input_crc32": "a1d423c6",
+      "trace_sha256": {
+        "reference": "2b593ed34f19d53b69593f2d77a737040e1e45c55b3e79aa76290efe66340f85",
+        "production": "2b593ed34f19d53b69593f2d77a737040e1e45c55b3e79aa76290efe66340f85"
+      },
+      "trace_crc32": {
+        "reference": "15f2df8c",
+        "production": "15f2df8c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09861179200379411,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_upper_bank_and_saturation",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e74200eb63b930f0514374f26e68bbe799ff041868e10098bb8392712a8ecf6a",
+      "input_crc32": "0799f0a6",
+      "trace_sha256": {
+        "reference": "6dd9d7dabbd11763520d2c56bd15a9a24d47955b6855c66d42d4a05314ea45e0",
+        "production": "6dd9d7dabbd11763520d2c56bd15a9a24d47955b6855c66d42d4a05314ea45e0"
+      },
+      "trace_crc32": {
+        "reference": "b2fa4a98",
+        "production": "b2fa4a98"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1997820420001517,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnected_and_unmapped_filter_freeze",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 44976,
+      "input_sha256": "40c82608cadeca1b33d0a3297634ad0e4964665c99e8da43b2edbe0de2c7bf15",
+      "input_crc32": "c723fc3c",
+      "trace_sha256": {
+        "reference": "04f1e8da6698a8cda2eecee293ba73ad831d2e4aee085adb84fefb946d3a0b59",
+        "production": "04f1e8da6698a8cda2eecee293ba73ad831d2e4aee085adb84fefb946d3a0b59"
+      },
+      "trace_crc32": {
+        "reference": "ad30b40e",
+        "production": "ad30b40e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.00014763778017368168,
+        "actual_volts": 0.00014763778017368168,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000014763778018
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1180505419979454,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_toggle_inactive_lane_history",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 682096,
+      "input_sha256": "22cba8e97d4d8e85ed8b29e8d0f9e21e8dea71a5f284971501521c9f56f4f388",
+      "input_crc32": "3a0b61f3",
+      "trace_sha256": {
+        "reference": "6fbbc7bff772c734b76056522c50c808b14a8ccd5667b1fe50f5b8cc4bb6cf7d",
+        "production": "6fbbc7bff772c734b76056522c50c808b14a8ccd5667b1fe50f5b8cc4bb6cf7d"
+      },
+      "trace_crc32": {
+        "reference": "08cec030",
+        "production": "08cec030"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 4.921259460388683e-05,
+        "actual_volts": 4.921259460388683e-05,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001000000492125946
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09437037500174483,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "selected_channel_filter_and_unrelated_messages",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f6226cab58a4001b47831942ca9f85a99055c4d5008c333b1e18df9b78f409e9",
+      "input_crc32": "3105b4f3",
+      "trace_sha256": {
+        "reference": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df",
+        "production": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df"
+      },
+      "trace_crc32": {
+        "reference": "c52a912c",
+        "production": "c52a912c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.0923069169948576,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_equal_rejected_collision_and_precommit",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "6729e62f40ddd673666e480a9c18db932011ee25cce7b2bc5b5113baa24d433f",
+      "input_crc32": "da3d35f2",
+      "trace_sha256": {
+        "reference": "d0b0fe136f479e34d04a72e56c4a06cfa66c2b481441cc7196551dc565d8cf0c",
+        "production": "d0b0fe136f479e34d04a72e56c4a06cfa66c2b481441cc7196551dc565d8cf0c"
+      },
+      "trace_crc32": {
+        "reference": "bf2355f9",
+        "production": "bf2355f9"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1302990830008639,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_controller_reassignment",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f3e0daf2c946e5ae23c9713f9eeb17531b0f7f58a091422254dfc3f15513892a",
+      "input_crc32": "1c1fdf52",
+      "trace_sha256": {
+        "reference": "6c7f5418ede1ec5e120a282012e1537b56ad3e11c73537b290449da1f3cc834e",
+        "production": "6c7f5418ede1ec5e120a282012e1537b56ad3e11c73537b290449da1f3cc834e"
+      },
+      "trace_crc32": {
+        "reference": "1dffea40",
+        "production": "1dffea40"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09795933399436763,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_channel_zero_snapshot_restore",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0c12773233f48d55c4f70469e2a8eac460c665cd76ed5729316f96bbc9c28921",
+      "input_crc32": "c9a32de0",
+      "trace_sha256": {
+        "reference": "ded13d0c71f77dc0467c30b8f324ae7d0c3c53f17e3954144afed063148463e1",
+        "production": "ded13d0c71f77dc0467c30b8f324ae7d0c3c53f17e3954144afed063148463e1"
+      },
+      "trace_crc32": {
+        "reference": "0f35d6d7",
+        "production": "0f35d6d7"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0009842518484219909,
+        "actual_volts": 0.0009842518484219909,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000098425184843
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08729070799745386,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "adopt_mapping_option_channel_changes",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "83b80cce7eebe709b7a7a70f120853ba86117770092798c07d2e7b600020c91f",
+      "input_crc32": "21541b28",
+      "trace_sha256": {
+        "reference": "f6d72afa1fabf55c19685cc5c1ef4f740c647e97e3abd33ba5238c139b4b0892",
+        "production": "f6d72afa1fabf55c19685cc5c1ef4f740c647e97e3abd33ba5238c139b4b0892"
+      },
+      "trace_crc32": {
+        "reference": "42c43c45",
+        "production": "42c43c45"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 2.9133858680725098,
+        "actual_volts": 2.9133858680725098,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010291338586807252
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1264392079974641,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_ordering",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "eb057fc01d9fa87de9a9efe02fbc4a8c9f8c9cd6abda67c678ebb2fb65560213",
+      "input_crc32": "7f5cf14c",
+      "trace_sha256": {
+        "reference": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d",
+        "production": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d"
+      },
+      "trace_crc32": {
+        "reference": "a98ef3b0",
+        "production": "a98ef3b0"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 1.8719242811203003,
+        "actual_volts": 1.8719242811203003,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010187192428112031
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.19474033300502924,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_cells_all_wire_channels_7bit",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e6b67c1b9062fa4540a9f68d738284cb24578e056d613802d9d6ba45cb75466a",
+      "input_crc32": "f4ba8e50",
+      "trace_sha256": {
+        "reference": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287",
+        "production": "a93665405dfe329bc50fe90b7ad424f6765547dacbb18535bc4a43ec76802287"
+      },
+      "trace_crc32": {
+        "reference": "9a810ce7",
+        "production": "9a810ce7"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.5511810779571533,
+        "actual_volts": 0.5511810779571533,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010055118107795716
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09699874999932945,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_controllers_mapping_windows",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c1273eeed4265417e89db6d61cbd2c46ea94cfb3d6f6cac1e033af5a4ae8fa3e",
+      "input_crc32": "680528d6",
+      "trace_sha256": {
+        "reference": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336",
+        "production": "d7b740fc97b856b9006fe96306ed87f546e65bcc0970e5eeac5ecd0c7216e336"
+      },
+      "trace_crc32": {
+        "reference": "675a51ad",
+        "production": "675a51ad"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010007874015718699
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09350300000369316,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "normal_mode_channel_merge",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "5a371f66e1ea379ca89e58b634ac1b025af6405072b4a33f8ca210ea1133b256",
+      "input_crc32": "7e9c50ec",
+      "trace_sha256": {
+        "reference": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26",
+        "production": "47c20452de9b33cc9d0d41739f27acbd6a2f95a3c8e363ea642b0cd8ca611d26"
+      },
+      "trace_crc32": {
+        "reference": "558d1218",
+        "production": "558d1218"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 8.267716407775879,
+        "actual_volts": 8.267716407775879,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010826771640777589
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.0925017499976093,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_and_collision_arrays",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "fbb95eb095b3efdef6a974ccf1d342b9466714e01e5a9bcf6dc2252f3290da4b",
+      "input_crc32": "bb2291e7",
+      "trace_sha256": {
+        "reference": "b96cbcbbe9a50d4f83be96c0436b1ee5dad2f8ec1f0bf576310ea4367ba7f216",
+        "production": "b96cbcbbe9a50d4f83be96c0436b1ee5dad2f8ec1f0bf576310ea4367ba7f216"
+      },
+      "trace_crc32": {
+        "reference": "58189397",
+        "production": "58189397"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10382812500029104,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "smoothing_strict_jump_threshold_and_convergence",
+      "sample_rate": 96000,
+      "frames": 16384,
+      "active_lane_samples": 262144,
+      "input_sha256": "8dc27e79dd639a15c74afe20fccb314567259688a73a1aa62430c5dd7cf56969",
+      "input_crc32": "0db666d0",
+      "trace_sha256": {
+        "reference": "2135da126d47bb9527c9199dfa07c4dc3f33f8b68c6688a58b7884c96c59b5a4",
+        "production": "2135da126d47bb9527c9199dfa07c4dc3f33f8b68c6688a58b7884c96c59b5a4"
+      },
+      "trace_crc32": {
+        "reference": "05040bf8",
+        "production": "05040bf8"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00011
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.25754745800077217,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_all_channels_msb_lsb_orderings",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "529f9c56645bc915dd13343ff90fd7aa0fddb7bba2b8df746b897c4fdeda2ff3",
+      "input_crc32": "a1d423c6",
+      "trace_sha256": {
+        "reference": "1a6bb0ab495717a65e605870cb2a754899d5eae69bc6edccbe6bfb8a51f7ed09",
+        "production": "1a6bb0ab495717a65e605870cb2a754899d5eae69bc6edccbe6bfb8a51f7ed09"
+      },
+      "trace_crc32": {
+        "reference": "1908a29b",
+        "production": "1908a29b"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.1640849169998546,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "paired_14bit_upper_bank_and_saturation",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "e74200eb63b930f0514374f26e68bbe799ff041868e10098bb8392712a8ecf6a",
+      "input_crc32": "0799f0a6",
+      "trace_sha256": {
+        "reference": "330ab60ab23e932e0dcee3f9bfbafbd3f819523ad2954c1b78bb1d14c083dc88",
+        "production": "330ab60ab23e932e0dcee3f9bfbafbd3f819523ad2954c1b78bb1d14c083dc88"
+      },
+      "trace_crc32": {
+        "reference": "be00378f",
+        "production": "be00378f"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.17220779099443462,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnected_and_unmapped_filter_freeze",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 44976,
+      "input_sha256": "40c82608cadeca1b33d0a3297634ad0e4964665c99e8da43b2edbe0de2c7bf15",
+      "input_crc32": "c723fc3c",
+      "trace_sha256": {
+        "reference": "088d5bf1dd051862a2bcc49ece30475c57218e6a67fdeb944468f5dc879053bd",
+        "production": "088d5bf1dd051862a2bcc49ece30475c57218e6a67fdeb944468f5dc879053bd"
+      },
+      "trace_crc32": {
+        "reference": "94dbdd9f",
+        "production": "94dbdd9f"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 7.381889008684084e-05,
+        "actual_volts": 7.381889008684084e-05,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000007381889009
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08784133300650865,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_toggle_inactive_lane_history",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 682096,
+      "input_sha256": "22cba8e97d4d8e85ed8b29e8d0f9e21e8dea71a5f284971501521c9f56f4f388",
+      "input_crc32": "3a0b61f3",
+      "trace_sha256": {
+        "reference": "fde151fb939576fc4d2c29274863511ac530c19553047d970bf1a27d9bb3c56a",
+        "production": "fde151fb939576fc4d2c29274863511ac530c19553047d970bf1a27d9bb3c56a"
+      },
+      "trace_crc32": {
+        "reference": "77530ac7",
+        "production": "77530ac7"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 2.4606297301943414e-05,
+        "actual_volts": 2.4606297301943414e-05,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000002460629731
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.15938316700339783,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "selected_channel_filter_and_unrelated_messages",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f6226cab58a4001b47831942ca9f85a99055c4d5008c333b1e18df9b78f409e9",
+      "input_crc32": "3105b4f3",
+      "trace_sha256": {
+        "reference": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df",
+        "production": "af462ad187e612740afec7c2e6b68ef89057070027759e478bbaa535d09b52df"
+      },
+      "trace_crc32": {
+        "reference": "c52a912c",
+        "production": "c52a912c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.09231220899528125,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_equal_rejected_collision_and_precommit",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "6729e62f40ddd673666e480a9c18db932011ee25cce7b2bc5b5113baa24d433f",
+      "input_crc32": "da3d35f2",
+      "trace_sha256": {
+        "reference": "bfa1ceeedf8ca905939852d92f80c65148bef946420db7100dec57c5edb17240",
+        "production": "bfa1ceeedf8ca905939852d92f80c65148bef946420db7100dec57c5edb17240"
+      },
+      "trace_crc32": {
+        "reference": "5659e196",
+        "production": "5659e196"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08842424999602372,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_controller_reassignment",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f3e0daf2c946e5ae23c9713f9eeb17531b0f7f58a091422254dfc3f15513892a",
+      "input_crc32": "1c1fdf52",
+      "trace_sha256": {
+        "reference": "79c8f4ed84ca60cc4e7cb77582d4cd7871242d805d57d4a55122bf46fcf44ece",
+        "production": "79c8f4ed84ca60cc4e7cb77582d4cd7871242d805d57d4a55122bf46fcf44ece"
+      },
+      "trace_crc32": {
+        "reference": "00055cd6",
+        "production": "00055cd6"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0001
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.14791566700296244,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_channel_zero_snapshot_restore",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0c12773233f48d55c4f70469e2a8eac460c665cd76ed5729316f96bbc9c28921",
+      "input_crc32": "c9a32de0",
+      "trace_sha256": {
+        "reference": "be000649365f436b57cde070d4574d978d809505a56cd15afada506248841ee3",
+        "production": "be000649365f436b57cde070d4574d978d809505a56cd15afada506248841ee3"
+      },
+      "trace_crc32": {
+        "reference": "11ff3264",
+        "production": "11ff3264"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0004921259242109954,
+        "actual_volts": 0.0004921259242109954,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010000049212592422
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.08744695800123736,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "adopt_mapping_option_channel_changes",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "83b80cce7eebe709b7a7a70f120853ba86117770092798c07d2e7b600020c91f",
+      "input_crc32": "21541b28",
+      "trace_sha256": {
+        "reference": "b6e9cff3b831fbba59e2d22ad057205b7080c89a0dc9e4a677bd17f964925872",
+        "production": "b6e9cff3b831fbba59e2d22ad057205b7080c89a0dc9e4a677bd17f964925872"
+      },
+      "trace_crc32": {
+        "reference": "be1babd4",
+        "production": "be1babd4"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 2.9133858680725098,
+        "actual_volts": 2.9133858680725098,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010291338586807252
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.11983962500380585,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_ordering",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "eb057fc01d9fa87de9a9efe02fbc4a8c9f8c9cd6abda67c678ebb2fb65560213",
+      "input_crc32": "7f5cf14c",
+      "trace_sha256": {
+        "reference": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d",
+        "production": "8b97793fb0f85b1540cf4448c2f06bbf05f966d1e01984d05137ebf8520a466d"
+      },
+      "trace_crc32": {
+        "reference": "a98ef3b0",
+        "production": "a98ef3b0"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 1.8719242811203003,
+        "actual_volts": 1.8719242811203003,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.00010187192428112031
+      },
+      "maximum_tolerance_ratio": 0,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.16722904099879088,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "executable_sha256": {
+    "cpp": "3def38a2b94d09697b2e7bbbfd290bbba7de71a6c0d73cefff6b72714f60ba9d",
+    "rust": "9bfcd05549a0054be20c152c41211c450327f6b2b754cdad0e521da18597d2ef"
+  },
+  "passed": true,
+  "total_frames": 221184,
+  "total_active_lane_samples": 36284064,
+  "elapsed_seconds": 18.73723006248474,
+  "run_utc": "2026-10-15T06:30:37Z"
+}

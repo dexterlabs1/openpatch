@@ -98,7 +98,7 @@ fn session() -> (Directory, Session, Arc<Live>) {
         )
         .unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     live.running.lock().unwrap().insert("seq".into(), false);
     live.calls.lock().unwrap().clear();
     (directory, session, live)
@@ -139,7 +139,7 @@ fn captures_current_live_run_and_effective_defaults_without_mutating_state() {
             json!({"id":"seq","expected_revision":0})
         )
         .is_err());
-    session.set_live_module_events(None);
+    session.set_live_module_events(None).unwrap();
     let offline = session
         .execute("capture_module_preset", json!({"id":"seq"}))
         .unwrap();

@@ -46,7 +46,7 @@ fn make_session(version: u32) -> Session {
 
 fn live(session: &mut Session) -> Arc<Live> {
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     live
 }
 

@@ -395,6 +395,7 @@ pub struct Rack {
     held_manual: Option<HeldManual>,
     random_values_states: BTreeMap<String, Value>,
     shift_register_states: BTreeMap<String, Value>,
+    midi_cc_states: BTreeMap<String, Value>,
     construction_animation: crate::construction_motion::Tracker,
     construction_anchors: BTreeMap<(String, String), crate::construction_motion::Anchor>,
     construction_clock: Option<std::time::Instant>,
@@ -443,6 +444,7 @@ impl Default for Rack {
             held_manual: None,
             random_values_states: BTreeMap::new(),
             shift_register_states: BTreeMap::new(),
+            midi_cc_states: BTreeMap::new(),
             construction_animation: crate::construction_motion::Tracker::default(),
             construction_anchors: BTreeMap::new(),
             construction_clock: None,
@@ -1015,6 +1017,14 @@ impl Rack {
         self.shift_register_states = states
             .into_iter()
             .filter(|(_, state)| shift_register_snapshot_valid(state))
+            .collect();
+    }
+
+    /// Coherent audio-authoritative controller maps and Learn state only.
+    pub fn set_midi_cc_states(&mut self, states: BTreeMap<String, Value>) {
+        self.midi_cc_states = states
+            .into_iter()
+            .filter(|(_, state)| midi_cc_snapshot_valid(state))
             .collect();
     }
 
@@ -2565,6 +2575,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "midi_cc" {
+                if let Some(edit) = self.midi_cc_panel(ui, node, rect, revision) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "adsr_eg" {
                 if let Some(edit) = self.adsr_eg_panel(ui, node, rect, revision, allow_manual_press)
                 {
@@ -2629,6 +2644,7 @@ impl Rack {
                     || node.kind == "random_values"
                     || node.kind == "sh_asr"
                     || node.kind == "adsr_eg"
+                    || node.kind == "midi_cc"
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
@@ -3458,7 +3474,7 @@ impl Rack {
                         is_voltage_utility(&node.kind)
                             || matches!(
                                 node.kind.as_str(),
-                                "pulses" | "colored_noise" | "random_values" | "sh_asr"
+                                "pulses" | "colored_noise" | "random_values" | "sh_asr" | "midi_cc"
                             ),
                     );
                     self.paint_output_signal_light(&painter, node, port_index, output_point);
@@ -3476,11 +3492,11 @@ impl Rack {
                     is_voltage_utility(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "pulses" | "colored_noise" | "random_values" | "sh_asr"
+                            "pulses" | "colored_noise" | "random_values" | "sh_asr" | "midi_cc"
                         ),
                     if matches!(
                         node.kind.as_str(),
-                        "colored_noise" | "random_values" | "sh_asr"
+                        "colored_noise" | "random_values" | "sh_asr" | "midi_cc"
                     ) {
                         12.0
                     } else {
@@ -7199,6 +7215,7 @@ impl Rack {
 
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
+include!("midi_cc_panel.rs");
 
 fn bounded_pan(pan: Vec2) -> Vec2 {
     vec2(
@@ -7913,6 +7930,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "midi_cc" if !input => return midi_cc_output_position(index),
         "adsr_eg" => {
             return if input {
                 if index < 4 {
@@ -9006,6 +9024,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
+        "midi_cc" => HP * 32.0,
         "audio_stereo" | "octave" | "push" => HP * 12.0,
         "mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
         "mix6" => HP * 16.0,
@@ -9047,6 +9066,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "switch_4to1" => "SWITCH 4:1",
         "poly_constant" => "POLY VOLTAGE",
         "midi_cv" => "MIDI TO CV",
+        "midi_cc" => "MIDI CC",
         "audio_stereo" => "STEREO AUDIO",
         "mid_side" => "MID / SIDE",
         "mix6" => "MIX 6",
@@ -9265,6 +9285,28 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "process" => &["slew"],
         "quantizer" => &["scale_mask", "offset"],
         "midi_cv" => &["channels", "channel", "allocation", "clock_div"],
+        "midi_cc" => &[
+            "cc1",
+            "cc2",
+            "cc3",
+            "cc4",
+            "cc5",
+            "cc6",
+            "cc7",
+            "cc8",
+            "cc9",
+            "cc10",
+            "cc11",
+            "cc12",
+            "cc13",
+            "cc14",
+            "cc15",
+            "cc16",
+            "channel",
+            "smooth",
+            "mpe",
+            "high_resolution",
+        ],
         "mid_side" => &["encode_width", "decode_width"],
         "mix6" => &["level", "average", "invert"],
         "octave" => &["octaves"],
@@ -10786,7 +10828,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            58,
+            59,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -17390,6 +17432,9 @@ mod tests {
     }
     mod cable_guidance_tests {
         include!("cable_guidance_tests.rs");
+    }
+    mod midi_cc_ui_tests {
+        include!("midi_cc_ui_tests.rs");
     }
     mod adsr_eg_ui_tests {
         include!("adsr_eg_ui_tests.rs");

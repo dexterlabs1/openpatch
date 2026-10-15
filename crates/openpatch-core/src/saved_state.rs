@@ -8,6 +8,11 @@ use std::collections::BTreeMap;
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavedModuleState {
+    MidiCc {
+        assignments: [i16; 16],
+        values: [u8; 128],
+    },
+    MidiCcMappings([i16; 16]),
     Seq3Run(bool),
     PushHold(bool),
     /// IEEE-754 voltage bits preserve exact equality in history and dirty checks.
@@ -23,6 +28,7 @@ pub enum SavedModuleState {
 impl SavedModuleState {
     pub fn from_node(node: &Node) -> Option<Self> {
         match node.kind.as_str() {
+            "midi_cc" => crate::initial_midi_cc_state(node).ok(),
             "seq3" => Some(Self::Seq3Run(
                 node.params.get("running").copied().unwrap_or(1.0) != 0.0,
             )),
@@ -36,6 +42,7 @@ impl SavedModuleState {
     }
     pub fn kind(self) -> &'static str {
         match self {
+            Self::MidiCc { .. } | Self::MidiCcMappings(_) => "midi_cc",
             Self::Seq3Run(_) => "seq3",
             Self::PushHold(_) => "push",
             Self::ShiftRegister { .. } => "sh_asr",
@@ -50,7 +57,10 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(value) => Some(("running", value)),
             Self::PushHold(value) => Some(("holding", value)),
-            Self::ShiftRegister { .. } | Self::RandomValues { .. } => None,
+            Self::MidiCc { .. }
+            | Self::MidiCcMappings(_)
+            | Self::ShiftRegister { .. }
+            | Self::RandomValues { .. } => None,
         }
     }
     pub fn value(self) -> bool {
@@ -60,12 +70,29 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(_) => Self::Seq3Run(value),
             Self::PushHold(_) => Self::PushHold(value),
-            Self::ShiftRegister { .. } | Self::RandomValues { .. } => self,
+            Self::MidiCc { .. }
+            | Self::MidiCcMappings(_)
+            | Self::ShiftRegister { .. }
+            | Self::RandomValues { .. } => self,
         }
     }
     /// Overlay all persistent state on a graph or preset without changing controls.
     pub fn write_params(self, params: &mut BTreeMap<String, f32>) {
         match self {
+            Self::MidiCc {
+                assignments,
+                values,
+            } => {
+                Self::MidiCcMappings(assignments).write_params(params);
+                for (i, value) in values.iter().enumerate() {
+                    params.insert(format!("cc_value{i}"), *value as f32);
+                }
+            }
+            Self::MidiCcMappings(assignments) => {
+                for (i, value) in assignments.iter().enumerate() {
+                    params.insert(format!("cc{}", i + 1), *value as f32);
+                }
+            }
             Self::ShiftRegister { values, rng } => {
                 for (row, value) in values.iter().enumerate() {
                     params.insert(format!("value{}", row + 1), f32::from_bits(*value));

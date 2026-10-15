@@ -81,11 +81,13 @@ pub fn validate(preset: &Value) -> Result<(), String> {
             }
         }
     }
-    if matches!(kind, "random_values" | "sh_asr") {
+    if matches!(kind, "random_values" | "sh_asr" | "midi_cc") {
         let node: Node =
             serde_json::from_value(json!({"id":"preset", "kind":kind,"params":params}))
                 .map_err(|error| error.to_string())?;
-        if kind == "sh_asr" {
+        if kind == "midi_cc" {
+            openpatch_core::initial_midi_cc_state(&node)?;
+        } else if kind == "sh_asr" {
             openpatch_core::initial_shift_register_state(&node)?;
         } else {
             openpatch_core::initial_random_values_state(&node)?;

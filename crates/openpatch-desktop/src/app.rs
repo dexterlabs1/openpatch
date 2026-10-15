@@ -222,14 +222,17 @@ fn preset_controls(ui: &mut egui::Ui, preset: &Value, catalog: &Value) {
                 .show(ui, |ui| {
                     if let Some(params) = preset["params"].as_object() {
                         for (name, value) in params {
+                            let spec = module
+                                .and_then(|module| module["params"].get(name))
+                                .unwrap_or(&Value::Null);
+                            if spec["hidden"] == true {
+                                continue;
+                            }
                             ui.label(if name == "running" {
                                 "RUN"
                             } else {
                                 parameter_label(name)
                             });
-                            let spec = module
-                                .and_then(|module| module["params"].get(name))
-                                .unwrap_or(&Value::Null);
                             ui.label(preset_control_value(name, value, spec));
                             ui.end_row();
                         }
@@ -277,6 +280,7 @@ pub struct OpenPatch {
     state_id: u64,
     history_layouts: BTreeMap<u64, Value>,
     audio_revision: Option<u64>,
+    live_events_attach_pending: bool,
     audio: Option<Audio>,
     device: String,
     output_device: Option<String>,
@@ -435,6 +439,7 @@ impl OpenPatch {
             state_id,
             history_layouts,
             audio_revision,
+            live_events_attach_pending: false,
             audio,
             device,
             output_device,
@@ -527,11 +532,51 @@ impl OpenPatch {
         (rack, documents)
     }
 
-    fn attach_live_events(&self) {
+    fn attach_live_events(&mut self) {
+        // A retiring callback may still own a Learn decision. Retain the old
+        // Session backend until its completion can be reconciled, then retry
+        // against the current audio instance rather than a captured sender.
+        self.live_events_attach_pending = true;
         let sender = self.audio.as_ref().map(Audio::module_event_sender);
-        if let Ok(mut session) = self.shared.lock() {
-            session.set_live_module_events(sender);
+        let result = match self.shared.try_lock() {
+            Ok(mut session) => session.set_live_module_events(sender),
+            Err(std::sync::TryLockError::WouldBlock) => return,
+            Err(std::sync::TryLockError::Poisoned(_)) => Err("Session lock poisoned".into()),
+        };
+        match result {
+            Ok(()) => {
+                self.live_events_attach_pending = false;
+                if self
+                    .settings_status
+                    .starts_with("Audio controls reconnecting:")
+                {
+                    self.settings_status = if self.audio.is_some() {
+                        "Audio controls ready"
+                    } else {
+                        "Audio stopped · controls detached"
+                    }
+                    .into();
+                }
+            }
+            Err(error) => {
+                self.settings_status = format!("Audio controls reconnecting: {error}");
+            }
         }
+    }
+
+    fn sync_midi_cc_states(&mut self) {
+        // Offline smoke scenes retain their actual, explicitly captured DSP
+        // snapshots, just like the other stateful module panels.
+        if self.smoke_test.is_some() && self.audio.is_none() {
+            return;
+        }
+        let states = self
+            .audio
+            .as_ref()
+            .filter(|_| self.patch.nodes.iter().any(|node| node.kind == "midi_cc"))
+            .map(Audio::midi_cc_states)
+            .unwrap_or_default();
+        self.rack.set_midi_cc_states(states);
     }
     fn open_audio(patch: &Patch, device: Option<&str>) -> (Option<Audio>, String) {
         let opened = match device {
@@ -949,10 +994,11 @@ impl OpenPatch {
         }
         match execute_shared(&self.shared, name, args) {
             Ok(_) => {
-                self.status = if name == "trigger_module" {
-                    "Performance action queued"
-                } else {
-                    "Patch updated"
+                self.status = match name {
+                    "trigger_module" => "Performance action queued",
+                    "learn_midi_cc" => "MIDI Learn requested · move a controller",
+                    "cancel_midi_cc_learn" => "MIDI Learn cancellation requested",
+                    _ => "Patch updated",
                 }
                 .into();
                 self.sync();
@@ -1079,6 +1125,9 @@ impl OpenPatch {
         }
     }
     fn sync(&mut self) {
+        if self.live_events_attach_pending {
+            self.attach_live_events();
+        }
         if let Ok(s) = self.shared.try_lock() {
             let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
@@ -1543,6 +1592,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::shift_register_layout())
                 .expect("bundled shift register layout");
+        } else if title == "MIDI controller voice" {
+            self.rack
+                .restore_layout(&Self::midi_cc_voice_layout())
+                .expect("bundled MIDI controller layout");
         } else if title == "Random values voice" {
             self.rack
                 .restore_layout(&Self::random_values_layout())
@@ -1555,6 +1608,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn midi_cc_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "controller":[0,0],"cutoff":[510,0],"out":[810,0],
+            "vco":[0,420],"filter":[210,420],"vca":[450,420]
+        }})
     }
     fn shift_register_layout() -> Value {
         json!({"version":1,"zoom":0.6,"pan":[24,12],"positions":{
@@ -2441,6 +2500,11 @@ impl OpenPatch {
                                 ))
                                 .expect("valid bundled gate shaping voice");
                                 self.replace_from_menu(patch, "Gate shaping voice");
+                                ui.close();
+                            }
+                            if ui.button("MIDI controller voice").clicked() {
+                                let patch=serde_json::from_str(include_str!("../../../examples/midi-controller-voice.json")).expect("valid MIDI controller voice");
+                                self.replace_from_menu(patch,"MIDI controller voice");
                                 ui.close();
                             }
                             if ui.button("Polyphonic ADSR voice").clicked() {
@@ -3807,6 +3871,69 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
+    fn prepare_midi_cc_fixture(&mut self) {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"controller","kind":"midi_cc","params":{"cc1":7,"cc7":-1,"mpe":1,"high_resolution":1,"smooth":0}},
+                {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0,"x_offset":-5}}],
+            "cables":[{"from":"controller","output":"out1","to":"scope","input":"x"}] })).unwrap();
+        let mut engine = patch.compile().unwrap();
+        for frame in 0..8192 {
+            if frame % 64 == 0 {
+                for channel in 0..16 {
+                    let value = ((frame / 64 + usize::from(channel) * 7) % 128) as u8;
+                    engine.handle_midi(openpatch_core::MidiEvent::ControlChange {
+                        channel,
+                        controller: 7,
+                        value,
+                    });
+                    engine.handle_midi(openpatch_core::MidiEvent::ControlChange {
+                        channel,
+                        controller: 39,
+                        value: 64,
+                    });
+                }
+            }
+            engine.process_block(&mut [0.0]);
+        }
+        let handle = engine.resolve_module_state("controller").unwrap();
+        assert!(engine.arm_midi_cc_learn(handle, 1, 15));
+        let Some(openpatch_core::SavedModuleState::MidiCc {
+            assignments,
+            values,
+        }) = engine.module_saved_state(handle)
+        else {
+            panic!("actual controller snapshot");
+        };
+        let learning = engine
+            .midi_cc_learning(handle)
+            .map(|(serial, cell)| json!({"serial":serial,"cell":cell+1}));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!(scope.x_channels, 16);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{
+            "controller":[0,0],"scope":[510,0]}}))
+            .unwrap();
+        self.rack.set_midi_cc_states(BTreeMap::from([(
+            "controller".into(),
+            json!({
+            "assignments":assignments,"values":values.to_vec(),"learning":learning}),
+        )]));
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "MIDI CC · sixteen outputs, sixteen voices".into();
+        self.status="Actual offline DSP snapshot · 14-bit paired CC7, 16 MPE lanes · output 16 Learn armed · no live MIDI device".into();
+    }
+
     fn smoke(&mut self, ctx: &egui::Context) {
         let Some((path, frame, captures)) = &mut self.smoke_test else {
             return;
@@ -4751,6 +4878,13 @@ impl OpenPatch {
             self.status =
                 "ADSR EG · lights out · four real stage lamps and a four-voice ENV capture".into();
         }
+        if frame == 1450 {
+            self.prepare_midi_cc_fixture();
+        }
+        if frame == 1500 {
+            self.rack.set_room_brightness(0.0);
+            self.status="MIDI CC · lights out · actual sixteen-voice Scope capture · no live audio or MIDI device".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -4826,6 +4960,8 @@ impl OpenPatch {
                 | 1328
                 | 1372
                 | 1422
+                | 1472
+                | 1522
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4905,7 +5041,9 @@ impl OpenPatch {
                 58 => path.with_file_name("cable-palette-editor.png"),
                 59 => path.with_file_name("cable-palette-created.png"),
                 60 => path.with_file_name("rack-adsr-eg.png"),
-                _ => path.with_file_name("rack-adsr-eg-lights-out.png"),
+                61 => path.with_file_name("rack-adsr-eg-lights-out.png"),
+                62 => path.with_file_name("rack-midi-cc.png"),
+                _ => path.with_file_name("rack-midi-cc-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -4916,18 +5054,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/62 at frame {frame}: {}",
+                "Native smoke: capture {}/64 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 62 {
+            if captures == 64 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1456, "Native screenshot timeout");
+        assert!(frame < 1556, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5116,6 +5254,7 @@ impl eframe::App for OpenPatch {
             self.rack.set_module_states(lights, controls);
             self.rack.set_scope_states(scopes);
         }
+        self.sync_midi_cc_states();
         self.rack_workspace(ctx, library_action);
         self.mcp_session
             .show(ctx, &self.shared, Path::new(&self.workspace));
@@ -5190,6 +5329,10 @@ mod project_workflow_tests {
         include!("palette_host_tests.rs");
     }
 
+    mod midi_cc_app_tests {
+        include!("midi_cc_app_tests.rs");
+    }
+
     // Headless host state: no window, graphics context, device, or MIDI access.
     fn host(path: &Path) -> OpenPatch {
         let mut session = Session::new(path).unwrap();
@@ -5212,6 +5355,7 @@ mod project_workflow_tests {
             state_id,
             history_layouts: BTreeMap::new(),
             audio_revision: None,
+            live_events_attach_pending: false,
             audio: None,
             device: String::new(),
             output_device: None,
@@ -5400,6 +5544,28 @@ mod project_workflow_tests {
             assert_eq!(snapshot()["queued"], 2);
             app.file_mode = None;
         }
+    }
+
+    #[test]
+    fn midi_cc_offline_fixture_uses_actual_paired_values_poly_scope_and_learn() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_midi_cc_fixture();
+        assert!(app.audio.is_none());
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        preset_text(&output, "CC 7");
+        preset_text(&output, "LRN");
+        preset_text(&output, "VALUE 127");
     }
 
     #[test]
@@ -6046,7 +6212,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(Arc::new(MissingTelemetry)));
+            .set_live_module_events(Some(Arc::new(MissingTelemetry)))
+            .unwrap();
         let mut dialog = PresetDialog::new(
             "steps".into(),
             "seq3".into(),
@@ -6058,7 +6225,11 @@ mod project_workflow_tests {
         assert!(dialog.status.contains("unavailable"));
         assert!(!dialog.pending);
 
-        app.shared.lock().unwrap().set_live_module_events(None);
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(None)
+            .unwrap();
         dialog.pending = true;
         app.load_preset_dialog(&mut dialog);
         assert_eq!(dialog.capture.as_ref().unwrap()["params"]["running"], 1.0);
@@ -7534,7 +7705,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(counter.clone()));
+            .set_live_module_events(Some(counter.clone()))
+            .unwrap();
         let revision = app.revision;
         app.add_module("constant", None);
         assert_eq!(counter.0.load(Ordering::Relaxed), 0);
@@ -7994,6 +8166,11 @@ mod project_workflow_tests {
     fn held_voltage_examples_apply_nonoverlapping_layout_only_after_replacement() {
         for (title, source, layout) in [
             (
+                "MIDI controller voice",
+                include_str!("../../../examples/midi-controller-voice.json"),
+                OpenPatch::midi_cc_voice_layout(),
+            ),
+            (
                 "Shift register canon",
                 include_str!("../../../examples/shift-register-canon.json"),
                 OpenPatch::shift_register_layout(),
@@ -8208,7 +8385,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(backend.clone()));
+            .set_live_module_events(Some(backend.clone()))
+            .unwrap();
         let before = app.shared.lock().unwrap().snapshot();
         assert!(app.manual_click("buttons", "pulse10_press", "pulse10_release"));
         assert_eq!(
@@ -8226,7 +8404,11 @@ mod project_workflow_tests {
         assert_eq!(backend.events.lock().unwrap().len(), 2);
         assert_eq!(app.shared.lock().unwrap().snapshot(), before);
         // Break the test backend's intentional Session reference cycle.
-        app.shared.lock().unwrap().set_live_module_events(None);
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(None)
+            .unwrap();
     }
 
     #[test]
@@ -8270,7 +8452,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(telemetry.clone()));
+            .set_live_module_events(Some(telemetry.clone()))
+            .unwrap();
         let raw = app.shared.lock().unwrap().snapshot();
         app.observe_document();
         assert!(
@@ -8352,7 +8535,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(telemetry.clone()));
+            .set_live_module_events(Some(telemetry.clone()))
+            .unwrap();
         (app, telemetry)
     }
     fn set_project_run(telemetry: &ProjectTelemetry, a: bool, b: bool, frame: u64) {
@@ -8383,7 +8567,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(telemetry.clone()));
+            .set_live_module_events(Some(telemetry.clone()))
+            .unwrap();
         (app, telemetry)
     }
 
@@ -8547,7 +8732,8 @@ mod project_workflow_tests {
         app.shared
             .lock()
             .unwrap()
-            .set_live_module_events(Some(telemetry.clone()));
+            .set_live_module_events(Some(telemetry.clone()))
+            .unwrap();
         app.observe_document();
         assert!(app.dirty());
         app.save_current();
@@ -8613,7 +8799,11 @@ mod project_workflow_tests {
         assert_eq!(app.shared.lock().unwrap().snapshot(), before);
         assert!(recovery_files(dir.path()).is_empty());
         // Reload with no device resets to the saved current Run values.
-        app.shared.lock().unwrap().set_live_module_events(None);
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(None)
+            .unwrap();
         app.load_document("sequence.openpatch", false);
         assert!(!app.dirty());
         assert_eq!(app.patch.nodes[0].params["running"], 0.0);
@@ -8756,7 +8946,11 @@ mod project_workflow_tests {
             );
             assert!(app.confirm_discard.is_none());
             assert!(app.deferred_action.is_none());
-            app.shared.lock().unwrap().set_live_module_events(None);
+            app.shared
+                .lock()
+                .unwrap()
+                .set_live_module_events(None)
+                .unwrap();
             app.save_current();
             assert!(!app.allow_close);
             assert!(!app.dirty());

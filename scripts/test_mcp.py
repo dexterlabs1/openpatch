@@ -1174,6 +1174,99 @@ class OpenPatchMCPTests(unittest.TestCase):
             samples = struct.unpack("<96h", wav.readframes(48))
         self.assertEqual(samples[::2], samples[1::2])
 
+    def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        self.assertEqual(len(catalog["modules"]), 59)
+        module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
+        self.assertEqual(module["inputs"], [])
+        self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
+        self.assertEqual(module["min_patch_version"], 2)
+        for i in range(1, 17):
+            self.assertEqual(module["params"][f"cc{i}"]["default"], i)
+            self.assertEqual(module["params"][f"cc{i}"]["min"], -1)
+            self.assertEqual(module["params"][f"cc{i}"]["max"], 127)
+        self.assertTrue(all(module["params"][f"cc_value{i}"]["hidden"] for i in range(128)))
+        patch = {"version": 2, "sample_rate": 48000, "nodes": [{
+            "id": "controller", "kind": "midi_cc", "params": {
+                "cc1": 7, "cc7": -1, "smooth": 0, "cc_value7": 64, "cc_value90": 37,
+            }}]}
+        self.require_tool_success("replace_patch", {"patch": patch})
+
+        def cc(frame: int, controller: int, value: int, channel: int = 0) -> dict[str, Any]:
+            return {"frame": frame, "event": {"type": "control_change", "channel": channel,
+                                              "controller": controller, "value": value}}
+
+        before = self.patch_snapshot()
+        seven = self.payload(self.require_tool_success("capture_signal", {
+            "id": "controller", "port": "out1", "seconds": 0.001, "points": 64,
+            "midi_events": [cc(0, 7, 127), cc(24, 7, 0)],
+            "expected_revision": before["revision"],
+        }))
+        self.assertEqual(seven["summary"]["active_frames"], 48)
+        self.assertEqual(seven["summary"]["dc"], 5)
+        self.assertEqual([item["mean"] for item in seven["bins"]], [10] * 24 + [0] * 24)
+        self.assertEqual(self.patch_snapshot(), before, "offline CCs cannot alter saved values/history")
+
+        self.require_tool_success("set_parameter", {
+            "id": "controller", "parameter": "high_resolution", "value": 1})
+        before = self.patch_snapshot()
+        paired = self.payload(self.require_tool_success("capture_signal", {
+            "id": "controller", "port": "out2", "seconds": 0.001, "points": 64,
+            "midi_events": [cc(0, 2, 64), cc(12, 34, 127)],
+        }))
+        target = (64 * 128 + 127) / 16256 * 10
+        self.assertTrue(all(item["mean"] == 0 for item in paired["bins"][:12]),
+                        "an unpaired MSB must not commit a new voltage")
+        for item in paired["bins"][12:]:
+            self.assertAlmostEqual(item["mean"], target, delta=0.00001)
+        self.assertEqual(self.patch_snapshot(), before)
+
+        self.require_tool_success("set_parameter", {"id": "controller", "parameter": "mpe", "value": 1})
+        before = self.patch_snapshot()
+        mpe = self.payload(self.require_tool_success("analyze_signal", {
+            "id": "controller", "port": "out2", "seconds": 0.001,
+            "midi_events": [cc(0, 2, 32), cc(0, 34, 0), cc(0, 2, 96, 15), cc(0, 34, 64, 15)],
+        }))
+        self.assertEqual(mpe["max_channels"], 16)
+        self.assertAlmostEqual(mpe["channels"][0]["mean"], 32 * 128 / 16256 * 10, delta=0.00001)
+        self.assertAlmostEqual(mpe["channels"][15]["mean"], (96 * 128 + 64) / 16256 * 10, delta=0.00001)
+        self.assertEqual(self.patch_snapshot(), before)
+
+        mapped = self.payload(self.require_tool_success("set_parameter", {
+            "id": "controller", "parameter": "cc2", "value": 7,
+            "expected_revision": before["revision"],
+        }))
+        params = mapped["patch"]["nodes"][0]["params"]
+        self.assertEqual((params["cc1"], params["cc2"]), (-1, 7))
+        self.assertEqual((params["cc_value7"], params["cc_value90"]), (64, 37))
+        self.assertEqual(mapped["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        undone = self.payload(self.require_tool_success("undo", {"expected_revision": mapped["revision"]}))
+        params = undone["patch"]["nodes"][0]["params"]
+        self.assertEqual((params["cc1"], params.get("cc2", 2)), (7, 2))
+        self.assertEqual((params["cc_value7"], params["cc_value90"]), (64, 37))
+        for tool, arguments in [("learn_midi_cc", {"id": "controller", "cell": 16}),
+                                ("cancel_midi_cc_learn", {"id": "controller"})]:
+            result = self.require_tool_error(tool, {**arguments, "expected_revision": undone["revision"]})
+            self.assertIn("live audio backend", json.dumps(result))
+            self.assertEqual(self.patch_snapshot(), undone)
+
+        self.require_tool_success("save_patch", {"filename": "controllers.json"})
+        saved = json.loads((self.workspace / "controllers.json").read_text())
+        self.assertEqual(saved["nodes"][0]["params"]["cc_value7"], 64)
+        self.assertEqual(saved["nodes"][0]["params"]["cc_value90"], 37)
+        self.require_tool_success("set_parameter", {"id": "controller", "parameter": "cc_value7", "value": 0})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "controllers.json"}))
+        self.assertEqual(loaded["patch"], saved)
+
+        voice = json.loads((REPOSITORY / "examples" / "midi-controller-voice.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": voice})
+        self.require_tool_success("render_audio", {"filename": "controller-voice.wav", "seconds": 0.1})
+        with wave.open(str(self.workspace / "controller-voice.wav")) as wav:
+            self.assertEqual(wav.getnchannels(), 2)
+            samples = self._first_channel_samples(wav.readframes(4800), wav.getsampwidth(), wav.getnchannels())
+        self.assertTrue(any(abs(value) > 100 for value in samples), "saved controller values provide an audible voice")
+        self.assertLess(max(abs(value) for value in samples), 32767)
+
     def test_midi_trace_is_sample_timed_repeatable_and_read_only(self) -> None:
         patch = {"version": 2, "sample_rate": 48000,
                  "nodes": [{"id": "midi", "kind": "midi_cv", "params": {"channels": 1}}],
@@ -1651,7 +1744,8 @@ class OpenPatchMCPTests(unittest.TestCase):
              "connect", "disconnect", "clear_cables", "set_parameter", "set_output", "save_patch",
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
              "inspect_history", "undo", "redo", "analyze_signal", "capture_signal",
-             "trigger_module", "inspect_performance", "rotate_sequence", "set_bypass", "invert_mutes"}.issubset(names),
+             "trigger_module", "inspect_performance", "rotate_sequence", "set_bypass", "invert_mutes",
+             "learn_midi_cc", "cancel_midi_cc_learn"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         bypass_tool = next(item for item in tools if item["name"] == "set_bypass")

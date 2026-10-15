@@ -50,7 +50,7 @@ fn live_actions_are_queue_receipts_and_leave_patch_and_history_unchanged() {
         false
     );
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let queued = s
         .execute(
             "trigger_module",
@@ -84,7 +84,7 @@ fn live_actions_are_queue_receipts_and_leave_patch_and_history_unchanged() {
         .contains("closing"));
     assert!(s.execute("inspect_performance", json!({})).is_ok());
     assert_eq!(backend.queued.load(Ordering::Relaxed), 1);
-    s.set_live_module_events(None);
+    s.set_live_module_events(None).unwrap();
     assert_eq!(
         s.execute("inspect_performance", json!({})).unwrap()["supported"],
         false
@@ -95,7 +95,7 @@ fn live_actions_are_queue_receipts_and_leave_patch_and_history_unchanged() {
 fn rotations_move_all_columns_in_one_history_entry_and_sync_every_committed_state() {
     let mut s = session();
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let mut patch = s.patch.clone();
     for row in 1..=3 {
         for step in 1..=8 {
@@ -354,7 +354,7 @@ fn invalid_module_traces_fail_all_offline_tools_before_creating_a_file() {
 fn explicit_replacement_retires_identity_only_after_successful_commit() {
     let mut s = session();
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let before = s.snapshot();
     let node = s
         .patch
@@ -402,7 +402,7 @@ fn document_replacements_retire_sequences_but_rejected_loads_do_not() {
         .unwrap();
     let patch = s.patch.clone();
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     s.execute(
         "set_parameter",
         json!({"id":"seq","parameter":"tempo","value":90}),
@@ -456,7 +456,7 @@ fn switch_actions_remain_seq3_only_and_replacements_retire_all_telemetry_modules
             .unwrap();
     }
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let patch = s.patch.clone();
     let before = s.snapshot();
     for id in ["split", "join"] {
@@ -499,7 +499,7 @@ fn switch_actions_remain_seq3_only_and_replacements_retire_all_telemetry_modules
 fn bypass_is_a_strict_atomic_graph_edit_and_seq3_actions_are_unavailable() {
     let mut s = session();
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let before = s.snapshot();
     for bypassed in [json!(0), json!(1), json!("true"), Value::Null] {
         assert!(s
@@ -635,7 +635,7 @@ fn live_manual_actions_validate_kind_and_allow_releases_while_bypassed() {
             .unwrap();
     }
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let before = s.snapshot();
     for (id, action) in [
         ("seq", "b_press"),
@@ -740,7 +740,7 @@ fn pulses_actions_validate_rows_preserve_history_and_release_while_bypassed() {
     s.execute("add_module", json!({"id":"pulses","kind":"pulses"}))
         .unwrap();
     let backend = Arc::new(MockLive::default());
-    s.set_live_module_events(Some(backend.clone()));
+    s.set_live_module_events(Some(backend.clone())).unwrap();
     let before = s.snapshot();
     for row in 1..=10 {
         for edge in ["press", "release"] {

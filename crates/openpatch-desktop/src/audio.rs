@@ -577,6 +577,17 @@ impl Audio {
             .collect()
     }
 
+    /// Coherent, actual callback state; queued Learn requests are not guessed.
+    pub fn midi_cc_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| module["kind"] == "midi_cc" && module["available"] == true)
+            .map(|(id, module)| (id.clone(), module["state"].clone()))
+            .collect()
+    }
+
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
@@ -970,6 +981,11 @@ impl Callback {
                     )
                 };
                 self.sync_midi_reset();
+                self.module_events.sync_midi_cc(
+                    &mut self.graphs.active.engine,
+                    &mut self.graphs.active.modules,
+                    self.graphs.active.revision,
+                );
                 let playing = self.shared.playing.load(Ordering::SeqCst);
                 // Each producer is FIFO; equal-time hardware precedes UI events.
                 // Bounded draining also protects the callback from a busy producer.
@@ -979,7 +995,23 @@ impl Callback {
                     };
                     midi_budget -= 1;
                     if playing {
+                        self.module_events.before_midi_cc(
+                            &mut self.graphs.active.engine,
+                            &mut self.graphs.active.modules,
+                            self.graphs.active.revision,
+                        );
+                        // Crossfade copies still receive notes/controllers, but
+                        // may never consume a Learn ticket or publish history.
+                        if let Some(old) = self.graphs.previous.as_mut() {
+                            old.modules.cancel_midi_cc_learn(&mut old.engine);
+                        }
                         self.graphs.active.handle_midi(event);
+                        self.module_events.after_midi_cc(
+                            &mut self.graphs.active.engine,
+                            &mut self.graphs.active.modules,
+                            self.frame_clock,
+                            event == MidiEvent::Panic,
+                        );
                         if let Some(old) = self.graphs.previous.as_mut() {
                             old.handle_midi(event);
                         }
@@ -1101,6 +1133,10 @@ impl Callback {
     }
     fn sync_midi_reset(&mut self) {
         if self.midi.sync_epoch() {
+            self.module_events.cancel_midi_cc(
+                &mut self.graphs.active.engine,
+                &mut self.graphs.active.modules,
+            );
             self.graphs.active.handle_midi(MidiEvent::Panic);
             if let Some(old) = self.graphs.previous.as_mut() {
                 old.handle_midi(MidiEvent::Panic);
@@ -1192,7 +1228,9 @@ pub(crate) fn test_module_incarnation_tokens(
     session: &mut openpatch::control::Session,
 ) -> impl Fn(&Patch, u64) -> Vec<u64> {
     let (performance, reader, _timing) = Performance::new(48_000);
-    session.set_live_module_events(Some(performance.clone()));
+    session
+        .set_live_module_events(Some(performance.clone()))
+        .unwrap();
     move |patch, revision| {
         let _keep_reader_alive = &reader;
         let engine = patch.compile().unwrap();
@@ -1443,7 +1481,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(measured.performance.clone()));
+        session
+            .set_live_module_events(Some(measured.performance.clone()))
+            .unwrap();
         assert!(!measured.performance.diagnostics.snapshot().available);
         let mut actual = [0_i16; 513];
         let mut expected = actual;
@@ -2010,7 +2050,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         // Knob changes remain usable even before the first telemetry callback.
         session
             .execute(
@@ -2063,7 +2105,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch, Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             assert!(session
                 .execute("capture_module_preset", serde_json::json!({"id":"seq"}))
                 .is_err());
@@ -2154,7 +2198,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
 
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         for (id, action) in [
@@ -2248,7 +2294,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         for (id, action) in [
             ("seq_a", ModuleAction::Clock),
@@ -2412,7 +2460,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         for action in [ModuleAction::Clock, ModuleAction::Run] {
             callback.performance.trigger("seq", action).unwrap();
         }
@@ -2476,7 +2526,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Run)
@@ -2611,7 +2663,9 @@ mod tests {
                 let workspace = tempfile::tempdir().unwrap();
                 let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
                 session.replace_patch(patch, Some(0)).unwrap();
-                session.set_live_module_events(Some(callback.performance.clone()));
+                session
+                    .set_live_module_events(Some(callback.performance.clone()))
+                    .unwrap();
                 for action in [ModuleAction::Clock, ModuleAction::Clock, ModuleAction::Run] {
                     callback.performance.trigger("seq", action).unwrap();
                 }
@@ -2665,7 +2719,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         for action in [ModuleAction::Clock, ModuleAction::Run] {
             callback.performance.trigger("seq", action).unwrap();
         }
@@ -2875,7 +2931,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch, Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             let (press, _) = manual_actions(kind);
             let token = callback.graphs.active.modules.bindings[0].unwrap().token;
             for operation in ["apply_module_preset", "undo", "redo"] {
@@ -2926,7 +2984,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         let mut reference = patch.compile().unwrap();
         let mut frames = [[0.0; 2]; 137];
         without_heap_activity(|| callback.render(&mut [0.0_f32; 137], 1));
@@ -3063,7 +3123,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch.clone(), Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
             assert_eq!(
                 callback.performance.sequence_state("switch").unwrap().step,
@@ -3189,7 +3251,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Clock)
@@ -3238,7 +3302,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Clock)
@@ -3290,7 +3356,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Clock)
@@ -3367,7 +3435,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Clock)
@@ -3426,7 +3496,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         let mut reference = patch.compile().unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 32], 1));
         reference.process_block(&mut [0.0; 32]);
@@ -3579,7 +3651,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         for action in [
             ModuleAction::PulsePress(1),
             ModuleAction::PulsePress(10),
@@ -3842,7 +3916,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch.clone(), Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             let (press, release) = manual_actions(kind);
             callback.performance.trigger("manual", press).unwrap();
             without_heap_activity(|| callback.render(&mut [0.0_f32; 2], 1));
@@ -4140,7 +4216,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         for action in [ModuleAction::Clock, ModuleAction::Run] {
             callback.performance.trigger("seq", action).unwrap();
         }
@@ -4194,7 +4272,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         assert!(session.capture_project_patch(Some(1)).is_err());
         assert!(session
             .execute("capture_module_preset", serde_json::json!({"id":"manual"}))
@@ -4344,7 +4424,9 @@ mod tests {
                 let workspace = tempfile::tempdir().unwrap();
                 let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
                 session.replace_patch(patch, Some(0)).unwrap();
-                session.set_live_module_events(Some(callback.performance.clone()));
+                session
+                    .set_live_module_events(Some(callback.performance.clone()))
+                    .unwrap();
                 for action in [ModuleAction::HoldPress, ModuleAction::HoldRelease] {
                     callback.performance.trigger("manual", action).unwrap();
                 }
@@ -4458,7 +4540,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         assert!(callback.performance.module_lights("mixer").is_none());
         without_heap_activity(|| callback.render(&mut [0.0_f32; 512], 1));
         let original = callback.performance.module_lights("mixer").unwrap();
@@ -4561,7 +4645,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch.clone(), Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             let mut reference = patch.compile().unwrap();
             let mut block = [[0.0; 2]; 256];
             without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
@@ -4706,7 +4792,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback.graphs.active.engine.handle_midi(note_on(60));
         without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
         session
@@ -4820,7 +4908,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         let nodes = callback
             .graphs
@@ -4878,7 +4968,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch, Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
             let original_routes = [
                 callback.graphs.active.modules.cables[0].unwrap().token,
@@ -4952,7 +5044,9 @@ mod tests {
             let workspace = tempfile::tempdir().unwrap();
             let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
             session.replace_patch(patch, Some(0)).unwrap();
-            session.set_live_module_events(Some(callback.performance.clone()));
+            session
+                .set_live_module_events(Some(callback.performance.clone()))
+                .unwrap();
             without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
             let mut reference = oscillator_reference();
             let mut expected = [[0.0; 2]; 80];
@@ -5030,7 +5124,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch, Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         session
             .execute("disconnect", serde_json::json!({"cable_id":"route_a"}))
@@ -5144,7 +5240,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         session.replace_patch(patch, Some(1)).unwrap();
         assert!(updates
@@ -5181,7 +5279,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         without_heap_activity(|| callback.render(&mut [0.0_f32; 80], 1));
         let mut reference = oscillator_reference();
         let mut expected = [[0.0; 2]; 256];
@@ -5254,7 +5354,9 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
         session.replace_patch(patch.clone(), Some(0)).unwrap();
-        session.set_live_module_events(Some(callback.performance.clone()));
+        session
+            .set_live_module_events(Some(callback.performance.clone()))
+            .unwrap();
         callback
             .performance
             .trigger("seq", ModuleAction::Clock)
@@ -5382,6 +5484,7 @@ mod tests {
     include!("random_values_host_tests.rs");
     include!("shift_register_host_tests.rs");
     include!("adsr_eg_host_tests.rs");
+    include!("midi_cc_host_tests.rs");
 }
 
 #[cfg(test)]

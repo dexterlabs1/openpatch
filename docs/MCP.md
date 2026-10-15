@@ -164,12 +164,76 @@ and `frame`. It projects current persistent state into a cloned graph without mo
 history, queuing controls, resetting DSP state, or writing a file. Native Save
 and recovery use this same capture path; the MCP result does not include layout.
 
-With live audio, every SEQ-3, Push, Random Values and S&H/ASR module must be available at the requested revision
+MIDI CC assignments and all 128 committed channel-zero controller values are
+included in the returned patch as `cc1`…`cc16` and hidden
+`cc_value0`…`cc_value127` parameters. Pending MSBs, other-channel values, filters
+and Learn tickets are transient.
+
+With live audio, every SEQ-3, Push, Random Values, S&H/ASR and MIDI CC module must be available at the requested revision
 and one completed callback frame. Stale, missing, or incoherent telemetry
 rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
 configured initial state when no backend is attached, or `parameters` when there
 are no persistent-state modules. The latter two return a null frame. This is a point-in-time
 capture, not an acknowledgment of controls awaiting audio processing.
+
+## MIDI controller voltages and Learn
+
+The version-2 `midi_cc` module has no inputs and sixteen outputs `out1`…`out16`.
+`cc1`…`cc16` accept integer controller numbers −1…127; −1 unmaps a cell and
+0 is ordinary CC0. Defaults are CC1…CC16. Assigning an occupied controller moves
+it to the chosen cell and unmaps its old cell atomically. Collision arrays in
+loaded patches/presets resolve in cell order, with the last cell winning.
+`channel=0` means Omni; 1…16 select human MIDI channels. `smooth=1` is the
+default; `mpe` and `high_resolution` default to zero. MPE emits sixteen wire
+channel lanes per connected output. MIDI events themselves use wire channels
+0…15.
+
+A live desktop session supports transient, revision-checked requests:
+
+```json
+{"id":"controller","cell":1,"expected_revision":12}
+```
+
+Send that object to `learn_midi_cc`; `cell` is 1…16. Cancel with
+`cancel_midi_cc_learn` and `{"id":"controller","expected_revision":12}`.
+A successful request is not proof that a controller has completed Learn. The
+first accepted CC whose incoming value differs from its committed value completes
+Learn on audio, then becomes one undoable assignment operation in Session.
+Repeated equal CCs and rejected channels do not complete it. Learn requires a
+live backend; the headless server returns an error rather than inventing a
+learning state. Controller movement does not itself create history entries.
+Hardware endpoint selection is **Global MIDI input** in desktop Audio / MIDI.
+
+Offline `capture_signal`, `analyze_signal` and `render_audio` accept ordinary
+sample-timed CCs, independently of live Learn. For example, probe a CC7 mapping
+on `out1` with smoothing disabled:
+
+```json
+{
+  "id":"controller","port":"out1","seconds":0.001,
+  "midi_events":[
+    {"frame":0,"event":{"type":"control_change","channel":0,"controller":7,"value":127}},
+    {"frame":24,"event":{"type":"control_change","channel":0,"controller":7,"value":0}}
+  ]
+}
+```
+
+For paired 14-bit input, enable `high_resolution`, send CC0…31 as the MSB and
+CC32…63 as its LSB. An MSB alone updates pending storage; its paired LSB commits
+both values. The target is `(MSB × 128 + LSB) / 16256 × 10 V`, clamped at 10 V.
+Controllers 32…127 remain independently assignable; only mappings below 32 use
+an LSB. Output consumers include cables, the selected graph output and explicit
+analysis/capture taps. Unconsumed outputs freeze smoothing filters while MIDI
+reception continues.
+
+[The connected controller voice](../examples/midi-controller-voice.json) maps CC7
+to level and CC74 to cutoff. Its saved controller values provide an audible
+starting point without hardware. Load it with `replace_patch`, then render or
+probe it with the [two-second CC trace](../examples/midi-controller-phrase.events.json).
+A coherent live save captures actual committed controller values; mapping edits
+and their Undo/Redo preserve ongoing controller movement. Full load/preset
+restoration restores the saved channel-zero values. See the
+[complete state, lifecycle and qualification contract](MIDI_CC.md).
 
 ## Initialize and Randomize
 

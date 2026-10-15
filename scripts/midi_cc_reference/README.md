@@ -1,0 +1,9 @@
+# MIDI-CC actual-class reference
+
+Run `python3 scripts/midi_cc_reference/run.py`. The driver fetches the SHA-audited Rack commit declared in `run.py` into a temporary directory, removes only the widget and registration, replaces the plugin include with the SDK include and closes the two namespaces. It compiles the genuine DSP class and SDK InputQueue separately from the unchanged production Rust module. No upstream source is retained in the repository.
+
+All fifteen deterministic fixtures and their frame counts are declared in `run.py` before the first comparison. Each runs at 44.1, 48 and 96 kHz; all connected output cells and lanes are compared at the original sample index. The gate is 0.0001 V absolute plus 0.000001 times reference voltage. Mappings, committed channel-zero values, Learn state/completion sample and all output widths must match exactly. Results include hashes, CRC32s, worst samples, compiler flags and timing.
+
+Input columns are smooth, MPE, high resolution, human channel filter, output consumer bitmask, state operation, one-based Learn arm cell, event count, sixteen configured assignments, optional 128 channel-zero values (operation 1), then events (status nibble, wire channel, controller/note, value). Operation 2 captures a JSON snapshot; operation 3 restores it. The actual Rack JSON methods handle snapshots and mapping collisions. The hardware MIDI JSON member is removed before loading. Channel filtering follows the pinned InputDevice rule in the driver, and timestamped accepted messages pass through the genuine SDK queue. This opens no MIDI driver, device, application, window or audio endpoint.
+
+Configuration changes are applied to Rack's public options/JSON loader and to Rust's build/adopt path. Configuration-triggered Learn cancellation is host policy. Native host lifecycle, queue durability, Session history/capture and UI require their separate tests; they are not claimed by this numerical reference.

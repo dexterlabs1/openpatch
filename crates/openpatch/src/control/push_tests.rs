@@ -84,7 +84,7 @@ fn fixture() -> (Session, Arc<Live>) {
     )
     .unwrap();
     let live = Arc::new(Live::default());
-    s.set_live_module_events(Some(live.clone()));
+    s.set_live_module_events(Some(live.clone())).unwrap();
     live.hold("push", true);
     live.states
         .lock()
@@ -133,7 +133,7 @@ fn mixed_project_capture_uses_one_frame_and_projects_actual_flags_without_mutati
         assert_eq!(s.snapshot(), before);
     }
     *live.override_snapshot.lock().unwrap() = None;
-    s.set_live_module_events(None);
+    s.set_live_module_events(None).unwrap();
     let offline = s.capture_project_patch(None).unwrap();
     assert_eq!(offline.state_source, "offline_reset");
     assert_eq!(offline.frame, None);

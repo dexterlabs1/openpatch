@@ -147,7 +147,7 @@ fn exact_disconnect_preserves_siblings_and_legacy_disconnect_removes_the_group()
 fn strict_selectors_modes_ids_and_failed_batches_leave_live_history_untouched() {
     let mut session = make_session(2);
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let before = session.snapshot();
     for arguments in [
         json!({}),
@@ -195,7 +195,7 @@ fn reusing_ids_retires_only_after_commit_and_document_replacement_retires_all() 
     let mut session = make_session(2);
     openpatch_core::assign_new_cable_orders(&mut session.patch.cables, &[0]).unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let before = session.snapshot();
     let edits = json!([
         {"tool":"disconnect","arguments":{"cable_id":"cable_1"}},
@@ -224,7 +224,7 @@ fn history_replays_identity_resets_for_byte_identical_cable_module_and_document_
     let mut session = make_session(2);
     openpatch_core::assign_new_cable_orders(&mut session.patch.cables, &[0]).unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let original = session.snapshot()["patch"].clone();
     session.execute("apply_edits", json!({"edits":[
         {"tool":"disconnect","arguments":{"cable_id":"cable_1"}},
@@ -309,7 +309,7 @@ fn clear_cables_retires_exact_ids_once_and_preserves_modules_in_both_versions() 
         let mut session = Session::new(&std::env::temp_dir()).unwrap();
         session.replace_patch(patch, None).unwrap();
         let live = Arc::new(Live::default());
-        session.set_live_module_events(Some(live.clone()));
+        session.set_live_module_events(Some(live.clone())).unwrap();
         let before = session.snapshot();
         let request = json!({"expected_revision":session.revision(),"edits":[
             {"tool":"clear_cables","arguments":{}}
@@ -366,7 +366,7 @@ fn clear_and_reconnect_identical_ids_replays_retirement_for_each_history_transit
         .unwrap();
     let original = session.snapshot()["patch"].clone();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let edits = json!([
         {"tool":"clear_cables","arguments":{}},
         {"tool":"connect","arguments":{"from":"a","to":"sum","input":"signal","cable_id":"cable_1"}},
@@ -395,7 +395,7 @@ fn clear_and_reconnect_identical_ids_replays_retirement_for_each_history_transit
 fn connect_then_clear_retires_new_candidate_id_even_when_it_never_reaches_live_patch() {
     let mut session = make_session(2);
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let edits = json!([
         {"tool":"connect","arguments":{"from":"b","to":"sum","input":"signal","mode":"stack","cable_id":"candidate_only"}},
         {"tool":"clear_cables","arguments":{}}
@@ -427,7 +427,7 @@ fn direct_empty_clear_preserves_group_state_identity_redo_and_backend_and_still_
         )
         .unwrap();
     let live = Arc::new(Live::default());
-    session.set_live_module_events(Some(live.clone()));
+    session.set_live_module_events(Some(live.clone())).unwrap();
     let before = session.snapshot();
     let group = session.history_group.clone();
     let states: Vec<_> = session.history_state_ids().collect();

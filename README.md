@@ -308,6 +308,16 @@ controller. Sustain, velocity, pitch wheel, clock, and polyphonic voice allocati
 are available through the MIDI TO CV panel. The keyboard's **All notes off**
 button releases held notes.
 
+**File → MIDI controller voice** opens a connected CC-controlled instrument.
+CC7 sets its level and CC74 sets filter cutoff; saved controller values make it
+audible as soon as you press **Play**. Select a **Global MIDI input** in
+**Audio / MIDI**, then move a hardware controller. In the MIDI CC panel, click
+any assignment for an exact CC number (−1 unmaps it), or right-click for
+**Learn MIDI CC** / **Cancel MIDI Learn**. Tab visits all sixteen assignments.
+The panel shows Learn and controller values only from actual audio state.
+Smoothing, human-numbered channel filtering, MPE and 14-bit CC pairs are optional.
+See the [MIDI CC contract](docs/MIDI_CC.md) and [agent examples](docs/MCP.md#midi-controller-voltages-and-learn).
+
 Agents can render and inspect repeatable sample-timed MIDI phrases through MCP.
 See [MIDI and audio](docs/MIDI_AUDIO.md) for routing, device behavior, and examples.
 
@@ -364,13 +374,13 @@ and Off modes. The toolbar **MCP** button starts the local bridge and provides
 Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
 and [session controls](docs/MCP_SESSIONS.md).
 
-**58 built-in kinds:** [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+**59 built-in kinds:** sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
 **File → Save template** sets your reusable starting patch. **New / Cmd-Ctrl-N** opens it as a clean, untitled project; missing or invalid templates fall back to the factory analog voice. See [projects and recovery](docs/PROJECTS.md).
 
-Factory patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. The explicit **STEREO AUDIO** sink sums polyphonic voices into left/right output and stereo WAV files; other selected outputs retain channel-0 mono behavior. Hardware audio input, expanded multichannel I/O, MIDI output/mapping, VCV patch/plugin compatibility, and broader module coverage remain ahead. See [MIDI and audio](docs/MIDI_AUDIO.md) for performance controls and sample-timed MCP traces.
+Factory patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. The explicit **STEREO AUDIO** sink sums polyphonic voices into left/right output and stereo WAV files; other selected outputs retain channel-0 mono behavior. Hardware audio input, expanded multichannel I/O, MIDI output and broader parameter mapping, VCV patch/plugin compatibility, and broader module coverage remain ahead. See [MIDI and audio](docs/MIDI_AUDIO.md) for performance controls and sample-timed MCP traces.
 
 **Performance goal:** low CPU use and predictable audio deadlines on large patches. The latest paired M1 Max reference-voice benchmark takes about **33% less processing time** than the previous OpenPatch build, with matching checked signals. Sixteen full circuit voices still exceed realtime capacity. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [results and methodology](docs/PERFORMANCE.md).
 

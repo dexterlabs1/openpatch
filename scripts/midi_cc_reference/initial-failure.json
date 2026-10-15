@@ -1,0 +1,148 @@
+{
+  "reference": {
+    "rack_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/src/core/MIDICC_CV.cpp",
+    "source_sha256": "9256e38c046a1c497b1c919ad78d8da81da4f3a589aac3b3aec31491f691d405",
+    "compiled_prefix_sha256": "a6bf72a0c0d34373189ead6a3ebc7deb59b31f8448d16bd51e5ab15904204d57",
+    "midi_routing_source_sha256": "6d24f741adf5ee4c9fde116b8d726545a7a4755f21d549ebb9ca3fd8b893700a",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "midi.hpp": "2dfb1fd885006b889420e2da3bbd21e45a117e9b3026650fc396cbb6e0acb8a9",
+      "dsp/filter.hpp": "18d4d490eb754259c6c3b335445f9f5369c4a1edfe03ba7f110cf48d0665d8e1",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df"
+    }
+  },
+  "production_source_sha256": "b2c45a1ef54fb75c477b68524c517afbfbc64f9ab4dd942f37f776801a52750f",
+  "driver_sha256": {
+    "run.py": "96fb7fd9e2918cc0ee73c60cc32a812e6eff0762db263c7029d8976bbc8fe34b",
+    "sdk_probe.cpp": "6f2bdd4082e6a088330a2a0dec3aab7074d38213b2a6c24ef50b67b300e7c7a7",
+    "rust_probe.rs": "ae59a38f3a0a390062b968cda44c3a13de0d0c31adaeca4ac1ad0d22e2956c7a"
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O",
+      "-C",
+      "target-feature=-fma"
+    ],
+    "FMA": "C++ fp contraction disabled; Rust fma target feature disabled, ordinary separate operations, no fast-math"
+  },
+  "run_utc": "2026-10-15T06:28:54Z",
+  "reason": "Initial actual-class run found missing rounded-no-change smoothing snap; gate/tolerances/fixtures unchanged.",
+  "failed_cases": [
+    {
+      "name": "unmapped_and_collision_arrays",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "fbb95eb095b3efdef6a974ccf1d342b9466714e01e5a9bcf6dc2252f3290da4b",
+      "input_crc32": "bb2291e7",
+      "trace_sha256": {
+        "reference": "b96cbcbbe9a50d4f83be96c0436b1ee5dad2f8ec1f0bf576310ea4367ba7f216",
+        "production": "db5d620ce50ddca3fca5c499290cd793d31e6722d883e88e1e6dffa30f09d70c"
+      },
+      "trace_crc32": {
+        "reference": "58189397",
+        "production": "fcf5fbf1"
+      },
+      "worst_sample": {
+        "frame_zero_based": 2212,
+        "cell_one_based": 15,
+        "lane_one_based": 4,
+        "reference_volts": 1.496062994003296,
+        "actual_volts": 1.4959516525268555,
+        "absolute_error_volts": 0.00011134147644042969,
+        "tolerance_volts": 0.0001014960629940033
+      },
+      "maximum_tolerance_ratio": 1.0970029098272323,
+      "metadata_mismatches": 0,
+      "driver_execution_seconds": 0.10516829200059874,
+      "passed": false,
+      "first_failures": [
+        {
+          "frame_zero_based": 2212,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2213,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2214,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2215,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2216,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2217,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2218,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        },
+        {
+          "frame_zero_based": 2219,
+          "cell_one_based": 15,
+          "lane_one_based": 4,
+          "reference": 1.496062994003296,
+          "actual": 1.4959516525268555,
+          "error": 0.00011134147644042969,
+          "tolerance": 0.0001014960629940033
+        }
+      ]
+    }
+  ]
+}

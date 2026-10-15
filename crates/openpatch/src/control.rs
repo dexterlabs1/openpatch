@@ -3,6 +3,9 @@ mod cable_edits;
 mod capture;
 mod construction;
 mod layout_history;
+mod midi_cc;
+#[cfg(test)]
+mod midi_cc_tests;
 mod preset_tools;
 mod project_capture;
 mod running;
@@ -48,9 +51,44 @@ use std::{
 
 /// Control-thread bridge to the bounded live audio event queue. A successful
 /// trigger returns a queue receipt; callback application is reported separately.
+#[derive(Clone, Debug)]
+pub struct MidiCcLearnReceipt {
+    pub id: String,
+    pub instance: u64,
+    pub epoch: u64,
+    pub frame: u64,
+    pub sequence: u64,
+    pub completion: openpatch_core::MidiCcLearnCompletion,
+}
+
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    fn learn_midi_cc(&self, _id: &str, _cell: u8) -> Result<Value, String> {
+        Err("MIDI CC learning is unsupported by this backend".into())
+    }
+    fn cancel_midi_cc_learn(&self, _id: &str) -> Result<Value, String> {
+        Err("MIDI CC learning is unsupported by this backend".into())
+    }
+    /// Peek durable completions; acknowledgment happens only after Session commit.
+    fn midi_cc_learn_ready(&self) -> Vec<MidiCcLearnReceipt> {
+        Vec::new()
+    }
+    fn acknowledge_midi_cc_learn(&self, _receipt: &MidiCcLearnReceipt) -> Result<(), String> {
+        Ok(())
+    }
+    /// Cancel affected armed tickets before a prevalidated conflicting edit.
+    /// Processing/Ready must return an error rather than discard a decision.
+    fn prepare_midi_cc_edit(&self, _ids: &[String]) -> Result<(), String> {
+        Ok(())
+    }
+    fn midi_cc_learning_active(&self) -> bool {
+        false
+    }
+    /// Capture must retry while an audio decision awaits Session reconciliation.
+    fn midi_cc_learning_uncommitted(&self) -> bool {
+        false
+    }
     /// Read one zero-based voice from a live rack Scope; never render a substitute.
     fn inspect_scope(&self, _id: &str, _channel: usize) -> Result<Value, String> {
         Err("live Scope inspection is unsupported by this backend".into())
@@ -79,7 +117,10 @@ pub trait LiveModuleEvents: Send + Sync {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(id.clone(), *value);
                 }
-                SavedModuleState::RandomValues { .. } | SavedModuleState::ShiftRegister { .. } => {}
+                SavedModuleState::RandomValues { .. }
+                | SavedModuleState::ShiftRegister { .. }
+                | SavedModuleState::MidiCc { .. }
+                | SavedModuleState::MidiCcMappings(_) => {}
             }
         }
         if !running.is_empty() {
@@ -104,6 +145,8 @@ pub struct Session {
     closing: bool,
     live_module_events: Option<Arc<dyn LiveModuleEvents>>,
     construction: construction::Construction,
+    midi_cc_worker: bool,
+    midi_cc_committed: BTreeSet<(usize, String, u64, u64, u64, u8)>,
 }
 
 // A cloned control snapshot never adopts another session's plan or worker.
@@ -120,6 +163,8 @@ impl Clone for Session {
             closing: self.closing,
             live_module_events: self.live_module_events.clone(),
             construction: construction::Construction::default(),
+            midi_cc_worker: false,
+            midi_cc_committed: self.midi_cc_committed.clone(),
         }
     }
 }
@@ -198,6 +243,7 @@ pub(crate) fn execute_shared_authorized(
     );
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     check_transport_authorization(authorization)?;
+    live.reconcile_midi_cc_learn()?;
     match name {
         "export_visualizer"
         | "save_patch"
@@ -210,10 +256,17 @@ pub(crate) fn execute_shared_authorized(
         | "read_module_preset"
         | "list_module_presets" => {
             let mut snapshot = live.detached_snapshot();
+            if name == "save_patch" {
+                snapshot.patch = live.capture_project_patch(expected_revision(&args)?)?.patch;
+            }
             drop(live);
             snapshot.execute(name, args)
         }
-        _ => live.execute(name, args),
+        _ => {
+            let result = live.execute(name, args);
+            midi_cc::start_worker(session, &mut live);
+            result
+        }
     }
 }
 
@@ -255,15 +308,24 @@ impl Session {
             closing: false,
             live_module_events: None,
             construction: construction::Construction::default(),
+            midi_cc_worker: false,
+            midi_cc_committed: BTreeSet::new(),
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
 
-    pub fn set_live_module_events(&mut self, backend: Option<Arc<dyn LiveModuleEvents>>) {
+    pub fn set_live_module_events(
+        &mut self,
+        backend: Option<Arc<dyn LiveModuleEvents>>,
+    ) -> Result<(), String> {
+        self.reconcile_midi_cc_learn()?;
+        self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if let Some(backend) = &backend {
             backend.sync_patch(&self.patch, self.revision);
         }
         self.live_module_events = backend;
+        self.midi_cc_committed.clear();
+        Ok(())
     }
 
     fn sync_live_module_events(&self) {
@@ -285,7 +347,9 @@ impl Session {
     /// mutex. A stale decision leaves the session open; repeated sealing of the
     /// same revision is harmless. Read-only work and exports remain available.
     pub fn seal_for_close(&mut self, expected_revision: u64) -> Result<(), String> {
+        self.reconcile_midi_cc_learn()?;
         self.check_revision(Some(expected_revision))?;
+        self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         self.closing = true;
         self.construction.close();
         Ok(())
@@ -331,6 +395,7 @@ impl Session {
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
+        self.reconcile_midi_cc_learn()?;
         let retired = self.module_ids();
         let retired_cables = self.cable_ids();
         let mut effects = EditEffects::default();
@@ -381,6 +446,9 @@ impl Session {
         candidate.assign_missing_cable_ids()?;
         candidate.compile()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        if !effects.learn_reconciliation {
+            self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
+        }
         if group.is_some() && group == self.history_group {
             self.patch = candidate;
             if let Some(entry) = self.undo.back_mut() {
@@ -448,6 +516,19 @@ impl Session {
     fn restore_history(&mut self, redo: bool) -> Result<Value, String> {
         self.check_open()?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        if if redo {
+            self.redo.is_empty()
+        } else {
+            self.undo.is_empty()
+        } {
+            return Err(if redo {
+                "nothing to redo"
+            } else {
+                "nothing to undo"
+            }
+            .into());
+        }
+        self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         let entry = if redo {
             self.redo.pop().ok_or("nothing to redo")?
         } else {
@@ -600,6 +681,7 @@ impl Session {
     }
 
     pub fn execute(&mut self, name: &str, args: Value) -> Result<Value, String> {
+        self.reconcile_midi_cc_learn()?;
         if EDIT_TOOLS.contains(&name)
             || matches!(
                 name,
@@ -610,6 +692,8 @@ impl Session {
                     | "redo"
                     | "rotate_sequence"
                     | "trigger_module"
+                    | "learn_midi_cc"
+                    | "cancel_midi_cc_learn"
             )
         {
             self.check_open()?;
@@ -648,6 +732,9 @@ impl Session {
             "inspect_patch" => return Ok(self.snapshot()),
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
+            }
+            "learn_midi_cc" | "cancel_midi_cc_learn" => {
+                return self.midi_cc_learn_tool(name, &args);
             }
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
@@ -868,10 +955,9 @@ impl Session {
         }
         if name == "randomize_modules"
             && parameter_action_ids(&self.patch, &args)?.iter().all(|id| {
-                self.patch
-                    .nodes
-                    .iter()
-                    .any(|node| node.id == *id && node.kind == "sh_asr")
+                self.patch.nodes.iter().any(|node| {
+                    node.id == *id && matches!(node.kind.as_str(), "sh_asr" | "midi_cc")
+                })
             })
         {
             return Ok(self.snapshot());
@@ -1423,7 +1509,24 @@ fn apply_edit(
                 .get("value")
                 .and_then(Value::as_f64)
                 .ok_or("value must be a number")? as f32;
-            node.params.insert(string(args, "parameter")?.into(), value);
+            let parameter = string(args, "parameter")?;
+            node.params.insert(parameter.into(), value);
+            if node.kind == "midi_cc" && midi_cc::mapping_cell(parameter).is_some() {
+                if !value.is_finite() || value.fract() != 0.0 || !(-1.0..=127.0).contains(&value) {
+                    return Err("MIDI CC assignment must be an integer from -1 to 127".into());
+                }
+                let chosen = midi_cc::mapping_cell(parameter).unwrap();
+                if value >= 0.0 {
+                    for cell in 0..16 {
+                        let key = format!("cc{}", cell + 1);
+                        if cell != chosen
+                            && node.params.get(&key).copied().unwrap_or((cell + 1) as f32) == value
+                        {
+                            node.params.insert(key, -1.0);
+                        }
+                    }
+                }
+            }
         }
         "set_bypass" => {
             let id = string(args, "id")?;
@@ -1677,6 +1780,8 @@ pub fn tools() -> Value {
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_scope","Read a coherent live rack Scope capture for one voice (1..16). Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, applied revision and callback frame. Empty bins are null. Includes raw minimum/maximum/peak-to-peak statistics for the selected voice and all active voices, volts/screen, and actual trigger-source channels. Statistics cover stored completed bins, which may mix successive sweeps; they are not RMS or a timestamped sample window. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never performs an offline render or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
+        tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
+        tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits and native module-movement checkpoints; file writes and view pan/zoom are not included.",json!({}),&[],true),
@@ -1686,7 +1791,7 @@ pub fn tools() -> Value {
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
         tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
-        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
+        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"expected_revision":rev}),&["id","kind"],false),
@@ -1703,11 +1808,11 @@ pub fn tools() -> Value {
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("capture_module_preset","Capture a native module preset with effective parameter defaults and explicit bypass. Stateful modules capture actual Run, HOLD, or voltages and RNG from revision-coherent live telemetry, or deterministic initial state without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev}),&["id"],true),
+        tool("capture_module_preset","Capture a native module preset with effective parameter defaults and explicit bypass. Stateful modules capture actual Run, HOLD, MIDI CC assignments and controller values, or voltages and RNG from revision-coherent live telemetry, or deterministic initial state without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev}),&["id"],true),
         tool("save_module_preset","Save exactly the supplied, reviewed native preset to a new workspace .opreset file. Capture first with capture_module_preset. Never recaptures a module, overwrites a file, or changes graph/history. Files are bounded to 64 KiB; symlinks and directories are rejected.",json!({"filename":s,"preset":preset_tools::schema()}),&["filename","preset"],false),
         tool("read_module_preset","Read and validate one bounded regular workspace .opreset file. Returns immutable preset contents for review and inline apply; no graph/history change and no .vcvm compatibility.",json!({"filename":s}),&["filename"],true),
         tool("list_module_presets","Browse sorted workspace .opreset files, optionally filtering valid entries by module kind. Corrupt or unsafe entries remain visible with errors. Filename query matches case-insensitively before pagination. Paged results default to 50, maximum 100; library is bounded to 1024 files.",json!({"kind":s,"query":{"type":"string","maxLength":120},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50}}),&[],true),
-        tool("apply_module_preset","Merge reviewed native preset params and optional bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running, Push holding, or a complete Random Values or Shift Register snapshot assigns actual saved state after adoption even if its configured value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured persistent state.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
+        tool("apply_module_preset","Merge reviewed native preset params and optional bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running, Push holding, MIDI CC controller values, or a complete Random Values or Shift Register snapshot assigns actual saved state after adoption even if its configured value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured persistent state.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
         tool("initialize_modules","Initialize saved parameters for 1..256 unique module IDs using catalog policy, preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values and captured SEQ3 Run without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
         tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Shift Register is entirely unchanged, including live values and RNG. Random Values rerolls all 112 voltages in the selected range using max(1, derived module seed) as its xorshift32 initial state, independently of live PRNG position, preserving range and visible seed. Preview and apply agree; undo/redo restore values and captured SEQ3 Run without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
@@ -2105,7 +2210,7 @@ mod tests {
         .unwrap();
         s.execute("undo", json!({})).unwrap();
         let backend = Arc::new(Backend::default());
-        s.set_live_module_events(Some(backend.clone()));
+        s.set_live_module_events(Some(backend.clone())).unwrap();
         let before = s.snapshot();
         let revisions = backend.revisions.lock().unwrap().clone();
         let mut invalid = Patch::new_v2();
