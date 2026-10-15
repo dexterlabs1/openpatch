@@ -111,6 +111,11 @@ a substitute for a coherent value snapshot. Without an active backend, offline
 capture uses the authored initial state and labels that provenance. A pending
 or stale live snapshot must cause a retry/unavailable result, not fabricated
 values or a mixture of graph revisions and callback frames.
+Compare coherent saved value contents against the saved baseline: moving away
+and back can restore saved contents despite a newer motion epoch. Deliberate
+backend detach must retain the last coherent effective values, including unbound
+ones, instead of falling back to stale authored settings. Define the detach frame
+and pending-revision behavior explicitly before implementing this transition.
 
 An unrelated graph edit must preserve effective target values and compatible
 controller/filter state. An explicit edit to a target parameter carries a control
