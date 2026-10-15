@@ -1,0 +1,68 @@
+{
+  "name": "resonance_cv_extremes",
+  "declared_before_first_fixture_comparison": true,
+  "classification": "driven",
+  "frames": 8192,
+  "sample_rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "frequency": 0.5,
+  "raw_resonance": 0.5,
+  "drive": 0.0,
+  "audio_volts": 2.0,
+  "audio_channels": 5,
+  "connected_outputs": [
+    "lowpass",
+    "highpass"
+  ],
+  "segment_frames": 257,
+  "segments": [
+    {
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": 1000000.0,
+      "expected_clamped_resonance": 1.0
+    },
+    {
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": -1000000.0,
+      "expected_clamped_resonance": 0.0
+    },
+    {
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": 1000000.0,
+      "expected_clamped_resonance": 0.0
+    },
+    {
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": -1000000.0,
+      "expected_clamped_resonance": 1.0
+    },
+    {
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 1000000.0,
+      "expected_clamped_resonance": 0.5
+    },
+    {
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": -1000000.0,
+      "expected_clamped_resonance": 0.5
+    }
+  ],
+  "rationale": "A 2 V constant audio input with drive 0 gives normalized input 0.4, allowing feedback to affect the filter rather than permanently saturating its input. The fixture remains classified as driven even if full resonance adds an autonomous component: every sample, including startup and all 257-frame boundaries, retains the original pointwise acceptance with no alignment, discard, tolerance relaxation or reclassification. Five audio lanes exercise two rounded groups and mono CV broadcast.",
+  "counterfactual_predeclaration": {
+    "frames_per_fresh_trace": 8192,
+    "seed_words": [
+      "0x123456789abcdef0",
+      "0xfedcba9876543210"
+    ],
+    "baseline": {
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 0.0
+    },
+    "nonzero_depth_minimum_difference_volts": 0.001,
+    "sensitivity": "Each of the four sign combinations runs from newly constructed DSP with identical post-constructor SDK/Rust RNG seed and input. Each connected output must differ from the fresh zero-depth baseline by more than 0.001 V in at least one sample; SDK and Rust are also compared with the original driven tolerance.",
+    "zero_depth_rejection": "Two separate fresh traces with depth zero and CV +1000000/-1000000 must be exactly equal to the fresh zero-CV, zero-depth baseline in every f32 output sample and initial/final RNG state, independently in SDK and Rust. No mixed-segment retained history is used for this proof."
+  }
+}

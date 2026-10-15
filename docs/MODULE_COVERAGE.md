@@ -43,13 +43,21 @@ explicit driver channel rule; all outputs were probed. Native host, hardware,
 durable transport/Session behavior and complete Core parity have separate gates.
 
 [Notes and Blank](ANNOTATIONS.md) add two zero-port annotation kinds, bringing the
-current catalog to 62. Notes stores bounded Unicode text; Blank stores a single
+catalog to 62 at that milestone. Notes stores bounded Unicode text; Blank stores a single
 HP width with a 3 HP minimum. Both share revision-checked UI/MCP transactions,
 presets, duplication, Initialize and history. GUI width/position resizing is one
 undo step, and browser thumbnails use the actual panels. These functional
 contracts do not qualify native text/IME/clipboard interactions or complete Rack
 layout parity; direct graph-only MCP/preset width edits cannot enforce collisions
 against the separately owned host layout.
+
+[Stock VCF](STOCK_VCF.md) adds a separate two-times IIR digital ladder with
+low-pass and high-pass outputs and all six controls, bringing the current
+catalog to 63. The existing circuit ladder retains its sound and patch schema.
+The [actual-class report](benchmarks/stock-vcf-reference.json) passes 54 cases
+(2,096,640 frames) and 21 fresh-history resonance audits, with zero measured
+f32 voltage error. Consumer/reconnect, lifecycle and UI gates are tracked
+separately; this does not complete all filter or host compatibility.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -170,7 +178,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 |---|---|---|---|
 | VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
 | Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
-| VCF | Filter | Partial: reference ladder implemented; legacy one-pole is separate | Analytic small-signal response, drive/IMD, resonance and numerical convergence; inventory missing ports/features |
+| VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
 | VCA | Amplifier | Partial: reference OTA VCA implemented; related legacy gain | Voltage gain law, saturation and CV response; distinguish circuit model from VCV behavior |
 | LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |

@@ -824,3 +824,13 @@ Session owns graph/content, while the desktop owns layout. GUI edge/direct-width
 resizes validate geometry and block collisions. An open Notes draft becomes stale
 after any external revision; it stays available to copy or edit, with Apply
 blocked until explicit reload. [Full contract](ANNOTATIONS.md).
+
+`stock_vcf` provides `lowpass` and `highpass` outputs, with `signal` setting
+polyphonic width and `cutoff_cv`, `resonance_cv`, `drive_cv` modulation inputs.
+Use `catalog` for stored frequency bounds: `frequency` is the reference's
+normalized pitch control, while the native readout edits Hz. Convert with
+`frequency = (log2(hz / 261.6256) + 5) / 10`. All three `*_cv_amount` parameters
+are signed −1..1 and default to zero. `drive` is −1..1 (nominal 0; the native
+display shows 0–200%). Capturing an otherwise unused named output activates it
+for the capture; unused outputs retain their separate resampler history. See
+[Stock VCF](STOCK_VCF.md) for deterministic noise and reset policies.

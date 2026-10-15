@@ -2633,6 +2633,11 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_vcf" {
+                if let Some(edit) = self.stock_vcf_panel(ui, node, rect, revision) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "adsr_eg" {
                 if let Some(edit) = self.adsr_eg_panel(ui, node, rect, revision, allow_manual_press)
                 {
@@ -2697,6 +2702,7 @@ impl Rack {
                     || node.kind == "random_values"
                     || node.kind == "sh_asr"
                     || node.kind == "adsr_eg"
+                    || node.kind == "stock_vcf"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -3416,7 +3422,11 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
-                        port,
+                        if node.kind == "stock_vcf" {
+                            stock_vcf_port_label(port)
+                        } else {
+                            port
+                        },
                         false,
                         false,
                         self.zoom,
@@ -3429,7 +3439,11 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    port,
+                    if node.kind == "stock_vcf" {
+                        stock_vcf_port_label(port)
+                    } else {
+                        port
+                    },
                     connected,
                     false,
                     self.zoom,
@@ -3520,7 +3534,13 @@ impl Rack {
                     paint_jack(
                         &painter,
                         output_point,
-                        if node.kind == "adsr_eg" { "ENV" } else { port },
+                        if node.kind == "adsr_eg" {
+                            "ENV"
+                        } else if node.kind == "stock_vcf" {
+                            stock_vcf_port_label(port)
+                        } else {
+                            port
+                        },
                         false,
                         true,
                         self.zoom,
@@ -3543,7 +3563,13 @@ impl Rack {
                     &painter,
                     output_point,
                     ui.id().with(("output", &node.id, port)),
-                    if node.kind == "adsr_eg" { "ENV" } else { port },
+                    if node.kind == "adsr_eg" {
+                        "ENV"
+                    } else if node.kind == "stock_vcf" {
+                        stock_vcf_port_label(port)
+                    } else {
+                        port
+                    },
                     connected,
                     true,
                     self.zoom,
@@ -7283,6 +7309,7 @@ impl Rack {
 include!("annotation_panel.rs");
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
+include!("stock_vcf_panel.rs");
 include!("midi_cc_panel.rs");
 include!("midi_gate_panel.rs");
 include!("midi_assignment_panel.rs");
@@ -7324,7 +7351,11 @@ fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value
 }
 
 fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
-    if adsr_eg_time_edit(edit) {
+    if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
+        stock_vcf_frequency_raw(parsed)
+    } else if edit.kind == "stock_vcf" && edit.parameter == "drive" {
+        parsed / 100.0 - 1.0
+    } else if adsr_eg_time_edit(edit) {
         parsed.log10() / 4.0
     } else if let Some(power) = edit.gain_power {
         if parsed == f32::NEG_INFINITY {
@@ -7391,6 +7422,14 @@ fn parameter_editor_contents_with_navigation(
         ui.label("Enter sustain from 0% to 100% of the nominal 10 V peak.");
     } else if edit.kind == "adsr_eg" {
         ui.label("Enter CV depth from −100% to +100%. Negative depth inverts the CV contribution.");
+    }
+    if edit.kind == "stock_vcf" {
+        ui.label(match edit.parameter.as_str() {
+            "frequency" => "Enter cutoff from 8 to 22,000 Hz, or a note such as A4.",
+            "drive" => "Enter drive from 0% to 200%; 100% is nominal drive.",
+            "resonance" => "Enter resonance from 0% to 100%.",
+            _ => "Enter CV depth from −100% to +100%. Negative depth inverts modulation.",
+        });
     }
     if edit.gain_power.is_some() {
         ui.label("Enter dB. -inf sets the gain to zero.");
@@ -7828,8 +7867,14 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     {
         text = text[..text.len() - 2].trim_end();
     }
-    if edit.kind == "adsr_eg" {
-        let suffix = if adsr_eg_time_edit(edit) { "ms" } else { "%" };
+    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf") {
+        let suffix = if adsr_eg_time_edit(edit) {
+            "ms"
+        } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
+            "Hz"
+        } else {
+            "%"
+        };
         if text
             .get(text.len().saturating_sub(suffix.len())..)
             .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
@@ -8002,6 +8047,13 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
     match kind {
         "midi_cc" if !input => return midi_cc_output_position(index),
         "midi_gate" if !input => return midi_assignment_output_position(index),
+        "stock_vcf" => {
+            return if input {
+                pos2(37.5 + index as f32 * 65.0, 337.0)
+            } else {
+                pos2(85.0 + index as f32 * 100.0, 374.0)
+            };
+        }
         "adsr_eg" => {
             return if input {
                 if index < 4 {
@@ -9114,6 +9166,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "sample_hold" => HP * 10.0,
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
+        "stock_vcf" => HP * 18.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
         "audio_out" => HP * 8.0,
@@ -9173,6 +9226,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "crossfade" => "CROSSFADE",
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
+        "stock_vcf" => "VCF",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -9403,6 +9457,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "crossfade" => &["mix", "law"],
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
+        "stock_vcf" => &STOCK_VCF_PARAMS,
         "adsr" => &["attack", "decay", "sustain", "release"],
         "adsr_eg" => &[
             "attack",
@@ -10917,7 +10972,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            62,
+            63,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -17534,6 +17589,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_vcf_ui_tests {
+        include!("stock_vcf_ui_tests.rs");
     }
     mod adsr_eg_ui_tests {
         include!("adsr_eg_ui_tests.rs");

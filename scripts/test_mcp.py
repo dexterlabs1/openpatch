@@ -1176,7 +1176,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 62)
+        self.assertEqual(len(catalog["modules"]), 63)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1236,7 +1236,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 62)
+        self.assertEqual(len(catalog["modules"]), 63)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1329,7 +1329,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 62)
+        self.assertEqual(len(catalog["modules"]), 63)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2367,6 +2367,32 @@ class OpenPatchMCPTests(unittest.TestCase):
         for action in ["hold_release", "push_release"]:
             self.require_tool_success("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
                 "module_events": [{"frame": 0, "id": "button", "action": action}]})
+
+    def test_stock_vcf_controls_capture_consumers_bypass_and_history(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_vcf"]
+        self.assertEqual(descriptor["inputs"], ["cutoff_cv", "resonance_cv", "drive_cv", "signal"])
+        self.assertEqual(descriptor["outputs"], ["lowpass", "highpass"])
+        self.assertEqual(descriptor["polyphony"]["primary_input"], "signal")
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "signal", "kind": "poly_constant", "params": {"channels": 5, "v1": 2}},
+                      {"id": "filter", "kind": "stock_vcf", "params": {"frequency": .7}}],
+            "cables": [{"from": "signal", "to": "filter", "input": "signal"}]}})
+        before = self.patch_snapshot()
+        for port in ["lowpass", "highpass"]:
+            args = {"id": "filter", "port": port, "seconds": .02, "points": 128}
+            capture = self.payload(self.require_tool_success("capture_signal", args))
+            self.assertGreater(max(abs(b["mean"]) for b in capture["bins"]), .001)
+            self.assertEqual(capture, self.payload(self.require_tool_success("capture_signal", args)))
+        self.assertEqual(before, self.patch_snapshot())
+        self.require_tool_error("set_parameter", {"id": "filter", "parameter": "drive", "value": 2})
+        self.require_tool_success("set_parameter", {"id": "filter", "parameter": "cutoff_cv_amount", "value": -.75})
+        self.require_tool_success("undo")
+        self.assertEqual(before["patch"], self.patch_snapshot()["patch"])
+        self.require_tool_success("set_bypass", {"id": "filter", "bypassed": True})
+        for port in ["lowpass", "highpass"]:
+            capture = self.payload(self.require_tool_success("capture_signal", {"id": "filter", "port": port, "seconds": .002, "points": 96}))
+            self.assertEqual([b["mean"] for b in capture["bins"]][2:], [2.0] * 94)
 
     def test_adsr_eg_cv_envelope_and_sampled_manual_events(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

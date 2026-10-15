@@ -21,6 +21,7 @@ use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
+use crate::stock_vcf::{self, StockVcf};
 use crate::studio_fx::{self, StudioFx};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
@@ -96,6 +97,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "pulses"
                 | "push"
                 | "adsr_eg"
+                | "stock_vcf"
                 | "random_values"
                 | "sh_asr"
                 | "scope"
@@ -141,6 +143,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
+        "stock_vcf" => stock_vcf::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
@@ -197,6 +200,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if kind == "random_values" {
         random_values::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_vcf" {
+        stock_vcf::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "adsr_eg" {
         adsr_eg::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
@@ -268,6 +273,7 @@ fn voice_policy(kind: &str) -> VoicePolicy {
     match kind {
         "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
+        "stock_vcf" => VoicePolicy::Primary(3),
         "mixer" | "crossfade" | "modal_resonator" => VoicePolicy::Maximum,
         _ => VoicePolicy::Primary(0),
     }
@@ -315,6 +321,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "random_values" {
         random_values::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_vcf" {
+        stock_vcf::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -511,6 +522,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "stock_vcf" {
+        stock_vcf::annotate(module);
+    }
     if kind == "adsr_eg" {
         adsr_eg::annotate(module);
     }
@@ -558,6 +572,7 @@ enum Model {
     Pulses(Box<Pulses>),
     Push(Box<Push>),
     AdsrEg(Box<AdsrEg>),
+    StockVcf(Box<StockVcf>),
     ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
     Scope(Box<Scope>),
@@ -613,6 +628,9 @@ impl Model {
         }
         if node.kind == "random_values" {
             return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
+        }
+        if node.kind == "stock_vcf" {
+            return Ok(Self::StockVcf(Box::new(StockVcf::build(node, rate)?)));
         }
         if node.kind == "adsr_eg" {
             return Ok(Self::AdsrEg(Box::new(AdsrEg::build(node, rate)?)));
@@ -804,7 +822,7 @@ impl PolyEngine {
     pub(crate) fn begin_taps(&mut self, taps: &[Option<usize>; 2]) {
         for node in &mut self.nodes {
             for tap in taps.iter().flatten() {
-                if matches!(node.model, Model::MidiCc(_))
+                if matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_))
                     && (node.output_start..node.output_start + node.output_count).contains(tap)
                 {
                     node.connected_mask |= 1 << (tap - node.output_start);
@@ -1119,6 +1137,10 @@ impl PolyEngine {
                 p.reset_state();
                 random_values::OUTPUTS.len()
             }
+            Model::StockVcf(p) => {
+                p.initialize_state();
+                stock_vcf::OUTPUTS.len()
+            }
             Model::AdsrEg(p) => {
                 p.reset_state();
                 adsr_eg::OUTPUTS.len()
@@ -1170,6 +1192,7 @@ impl PolyEngine {
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
             Model::AdsrEg(p) => p.initialize_state(),
+            Model::StockVcf(p) => p.initialize_state(),
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
@@ -1309,6 +1332,7 @@ impl PolyEngine {
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
                     "adsr_eg" => adsr_eg::OUTPUTS.len(),
+                    "stock_vcf" => stock_vcf::OUTPUTS.len(),
                     "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
@@ -1411,13 +1435,13 @@ impl PolyEngine {
         }
         for edge in &edges {
             let node = &mut nodes[edge.source_node];
-            if matches!(node.model, Model::MidiCc(_)) {
+            if matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_)) {
                 node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
             }
         }
         if let Some(output) = selected {
             for node in &mut nodes {
-                if matches!(node.model, Model::MidiCc(_))
+                if matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_))
                     && (node.output_start..node.output_start + node.output_count).contains(&output)
                 {
                     node.base_connected_mask |= 1 << (output - node.output_start);
@@ -1621,6 +1645,19 @@ impl PolyEngine {
                     a,
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                 ),
+                Model::StockVcf(p) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    p.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                        node.connected_mask,
+                    );
+                }
                 Model::AdsrEg(p) => {
                     let mut inputs = [PortFrame::default(); 6];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2071,6 +2108,11 @@ impl PolyEngine {
                 if bypass_changed {
                     p.release();
                 }
+            }
+            if let (Model::StockVcf(p), Model::StockVcf(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
             }
             if let (Model::AdsrEg(p), Model::AdsrEg(previous)) = (&mut node.model, &previous.model)
             {

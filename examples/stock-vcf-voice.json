@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "voice",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "stock_vcf",
+      "params": {
+        "frequency": 0.5875530690739214,
+        "resonance": 0.48,
+        "drive": 0.15,
+        "cutoff_cv_amount": 0.35
+      }
+    },
+    {
+      "id": "amplifier",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.65
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.15
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 2,
+        "duty": 0.35
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr_eg",
+      "params": {
+        "attack": 0.17,
+        "decay": 0.46,
+        "sustain": 0.18,
+        "release": 0.48
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.025,
+        "trigger_enabled": 0,
+        "x_scale": 1,
+        "y_scale": 1
+      }
+    },
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "FILTER VOICE\n\nSaw \u2192 VCF LP \u2192 VCA \u2192 stereo out.\n\nClock \u2192 ADSR EG opens the VCA and sweeps cutoff.\n\nScope X = low-pass, Y = high-pass.\n\nClick cutoff for Hz or note entry. Drive 100% is nominal; CV depths are bipolar.\n\nThe VCF has no lamps. Scope shows the actual captured signal."
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "voice",
+      "output": "saw",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "envelope",
+      "output": "out",
+      "to": "filter",
+      "input": "cutoff_cv"
+    },
+    {
+      "from": "envelope",
+      "output": "out",
+      "to": "amplifier",
+      "input": "cv"
+    },
+    {
+      "from": "filter",
+      "output": "lowpass",
+      "to": "amplifier",
+      "input": "signal"
+    },
+    {
+      "from": "filter",
+      "output": "lowpass",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "filter",
+      "output": "highpass",
+      "to": "scope",
+      "input": "y"
+    },
+    {
+      "from": "amplifier",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "amplifier",
+      "output": "out",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

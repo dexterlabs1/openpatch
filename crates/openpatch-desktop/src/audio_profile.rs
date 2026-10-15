@@ -19,6 +19,15 @@ fn patch(family: &str, voices: usize) -> Patch {
             "cables":[{"from":"chord","to":"source","input":"pitch"},
                 {"from":"source","output":"saw","to":"sum","input":"signal"}],
             "output":"sum"}),
+        "stock_vcf" => json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"chord","kind":"poly_constant"},
+                {"id":"source","kind":"multi_vco","params":{"frequency":130.8128}},
+                {"id":"filter","kind":"stock_vcf","params":{"frequency":0.65,"resonance":0.4}},
+                {"id":"sum","kind":"poly_sum","params":{"level":0.02}}],
+            "cables":[{"from":"chord","to":"source","input":"pitch"},
+                {"from":"source","output":"saw","to":"filter","input":"signal"},
+                {"from":"filter","output":"lowpass","to":"sum","input":"signal"}],
+            "output":"sum"}),
         "gates" => json!({"version":2,"sample_rate":48000,
             "nodes":[{"id":"chord","kind":"poly_constant"},
                 {"id":"source","kind":"multi_vco","params":{"frequency":1000}},
@@ -50,7 +59,7 @@ fn callback_timing_profile() {
         panic!("run with --release");
     }
     let mut workloads = Vec::new();
-    for family in ["functional", "circuit", "gates"] {
+    for family in ["functional", "circuit", "gates", "stock_vcf"] {
         for voices in [1, 16] {
             let initial = patch(family, voices);
             let (mut measured, mut updates, mut retired) = sequence_callback(&initial);

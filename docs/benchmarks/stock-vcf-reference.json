@@ -1,0 +1,3762 @@
+{
+  "reference": {
+    "fundamental_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/VCF.cpp",
+    "source_sha256": "e4a384d26e7235073791fdaf5d8e8f5cc7e8964f4dc306bc3482bec9a786bba9",
+    "compiled_prefix_sha256": "069c3c22daa1f236abf1cf220e85e68fc73e9dabf3aa6883e9ebff542325858b",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "dsp/approx.hpp": "1356dc25905e74ace9eeaabd72cfa663b331d8fe9e26ecd76c64671aed2025ca",
+      "dsp/common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+      "random.hpp": "2ccbca07e22d981811521beb93d8dea6b9390a5ae87452a7c39fd604ded64d34",
+      "simd/functions.hpp": "5f53878b105958127813f0fe1669bbf7ff8242afdbef64c412e618b50186412d",
+      "simd/Vector.hpp": "368c5e7a1ab8f550d689d0f11a2a9d85d71d00974bc1977a0ef3ec15c108207f",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2"
+    }
+  },
+  "acceptance": {
+    "version": 1,
+    "declared_before_first_comparison": true,
+    "stable_driven": {
+      "absolute_volts": 0.002,
+      "relative": 1e-05,
+      "alignment": "same frame and channel, no alignment or startup exemption"
+    },
+    "self_oscillation": {
+      "frames": 192000,
+      "startup_threshold_volts": 0.05,
+      "startup_absolute_seconds": 0.002,
+      "late_window_fraction": 0.5,
+      "rms_absolute_volts": 0.0,
+      "rms_relative": 0.01,
+      "frequency_absolute_hz": 0.0,
+      "frequency_relative": 0.001,
+      "method": "First absolute threshold crossing for startup; RMS and interpolated rising-zero-crossing frequency over final half of trace. Compare each visible lane and output independently. Both traces must cross startup threshold and contain at least ten late rising crossings.",
+      "justification": "Autonomous nonlinear oscillation accumulates phase error from f32 rounding. Fixed threshold crossing bounds growth timing to max(2 ms,1%); final-half RMS within1%, absolute peak within2%, and mean interpolated rising-crossing frequency within0.1% constrain envelope and tuning without waveform alignment. Genuine noise and several seeds, including a small early-noise seed, remain enabled. No post-comparison tolerance changes.",
+      "startup_relative": 0.01,
+      "peak_relative": 0.02,
+      "seeds": [
+        [
+          "0x123456789abcdef0",
+          "0xfedcba9876543210"
+        ],
+        [
+          "0x0000000000000001",
+          "0x0000000000000002"
+        ],
+        [
+          "0x7fffffffffffffff",
+          "0x0000000000000001"
+        ]
+      ]
+    },
+    "metadata": "channel counts exact; unexposed Rust output padding zero; every output finite"
+  },
+  "acceptance_sha256": "bc6ec7e0dd466d2d48baa2871ffd70d9126cc57fa5d351971c93b31ccceec62a",
+  "additional_fixture_predeclaration": {
+    "name": "resonance_cv_extremes",
+    "declared_before_first_fixture_comparison": true,
+    "classification": "driven",
+    "frames": 8192,
+    "sample_rates": [
+      44100,
+      48000,
+      96000
+    ],
+    "frequency": 0.5,
+    "raw_resonance": 0.5,
+    "drive": 0.0,
+    "audio_volts": 2.0,
+    "audio_channels": 5,
+    "connected_outputs": [
+      "lowpass",
+      "highpass"
+    ],
+    "segment_frames": 257,
+    "segments": [
+      {
+        "resonance_cv_amount": 1.0,
+        "resonance_cv_volts": 1000000.0,
+        "expected_clamped_resonance": 1.0
+      },
+      {
+        "resonance_cv_amount": 1.0,
+        "resonance_cv_volts": -1000000.0,
+        "expected_clamped_resonance": 0.0
+      },
+      {
+        "resonance_cv_amount": -1.0,
+        "resonance_cv_volts": 1000000.0,
+        "expected_clamped_resonance": 0.0
+      },
+      {
+        "resonance_cv_amount": -1.0,
+        "resonance_cv_volts": -1000000.0,
+        "expected_clamped_resonance": 1.0
+      },
+      {
+        "resonance_cv_amount": 0.0,
+        "resonance_cv_volts": 1000000.0,
+        "expected_clamped_resonance": 0.5
+      },
+      {
+        "resonance_cv_amount": 0.0,
+        "resonance_cv_volts": -1000000.0,
+        "expected_clamped_resonance": 0.5
+      }
+    ],
+    "rationale": "A 2 V constant audio input with drive 0 gives normalized input 0.4, allowing feedback to affect the filter rather than permanently saturating its input. The fixture remains classified as driven even if full resonance adds an autonomous component: every sample, including startup and all 257-frame boundaries, retains the original pointwise acceptance with no alignment, discard, tolerance relaxation or reclassification. Five audio lanes exercise two rounded groups and mono CV broadcast.",
+    "counterfactual_predeclaration": {
+      "frames_per_fresh_trace": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "baseline": {
+        "resonance_cv_amount": 0.0,
+        "resonance_cv_volts": 0.0
+      },
+      "nonzero_depth_minimum_difference_volts": 0.001,
+      "sensitivity": "Each of the four sign combinations runs from newly constructed DSP with identical post-constructor SDK/Rust RNG seed and input. Each connected output must differ from the fresh zero-depth baseline by more than 0.001 V in at least one sample; SDK and Rust are also compared with the original driven tolerance.",
+      "zero_depth_rejection": "Two separate fresh traces with depth zero and CV +1000000/-1000000 must be exactly equal to the fresh zero-CV, zero-depth baseline in every f32 output sample and initial/final RNG state, independently in SDK and Rust. No mixed-segment retained history is used for this proof."
+    }
+  },
+  "additional_fixture_predeclaration_sha256": "54317909622658760d3d8d074628d4662438d2fc2f03ca74743626a4eaf1e397",
+  "method": "Compile actual pinned VCF class prefix in temporary storage, replacing plugin.hpp only and omitting widgets. Genuine SDK random::uniform() remains intact. Seed SDK random::local() after constructing VCF, with the exact Rust algorithm and seed warmup. Assert actual SDK connected-output channel counts before adapting disconnected host output frames. Rust source is unchanged except appended test-only private RNG accessors; parameter changes rebuild production module and adopt all state. Compare every driven visible sample from frame zero. Decimal traces are parsed back to f32 before comparison; both print formats retain enough significant digits for exact f32 round-trip. Separate fixed self-oscillation metrics; no trace alignment or warmup.",
+  "production_source_sha256": "8d10d4db0bd32abc8152c347384ae24d310095fe11c3b7fc07a662f5e152391d",
+  "driver_sha256": {
+    "run.py": "6af309e210eee8935c8ab1f03f28b892ee82bf3920aee4b0efec1f1634f5cabe",
+    "sdk_probe.cpp": "f301e3cc9b72d326534022acce411c4a3ffd9b44594628dd195287576a9b56c3",
+    "rust_probe.rs": "17936a8411e0f4ba00f228afb3c65eff534b39232c5e19e21a06bd86e249e86d"
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "darwin",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "limitations": [
+    "No native app, GUI, audio device or speakers opened",
+    "Minimal adapters bypass Engine graph/cable delay, selected-output and tap consumers, public parameter validation, bypass and lifecycle; separate host tests qualify these",
+    "Nonfinite inputs and host finite-voltage clamp tested separately; oracle inputs are finite and host-bounded",
+    "Rust disconnected output frames are zeroed and retain audio-derived width; source disconnected storage is deliberately not exposed",
+    "Only the reported SDK/compiler/platform combination is numerically qualified"
+  ],
+  "cases": [
+    {
+      "name": "impulse",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "ac85c63b300418e725d5b989b82c6c9f206c3ee41e0bb55a1b55d0e6dc8f900d",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 1.592298792818525e-10,
+        "actual_volts": 1.592298792818525e-10,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000015925
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "dc",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "97a00326ddd60aaa14a80a553050bdb9bd603f7fd14ca1967627d1ef7c7e35f4",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.592298792818525e-10,
+        "actual_volts": -1.592298792818525e-10,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000015925
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "drive_extremes",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "37859066f2edbb630e908b1bc8e9385abc8d5c0d927587b3f4fe09fb0f7eb5af",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_cv_extremes",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "7f0aef91d07ab54aa2b3eac51b23d07684f590e5d25989f2532b609f0f5203f3",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_cv",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "f62e87155cb209139b3cbff77853b2662bdc385cb6d8288576cba993b0a5bf07",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_cv_broadcast",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "33186729ad6805a8bdd3197281c72c83873efbbc96f97709c66b82ccf43ac49a",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_cv",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "c7cfa28d1fd6f553c257a612397104f39d7f2a4066498c8673945d261939ffd8",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -2.892144470960632e-19,
+        "actual_volts": -2.892144470960632e-19,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_1",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "dfad3785629f461d193e210ec69a6a31b535ddeda68414a729caade777a97dee",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_4",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "43fe8873d53c68773722a711f90ff017fae66f24705178796b5a5689bcf3f6e4",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_5",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "47523abf0e2b3c46fda22fad6a957215a22fde9a39543a4f515fecb26e31dc11",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_16",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "18c75e35d9f76ac5659dc914a340dd73453490a3756703270ccb68de7673c000",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "shrink_regrow",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "014ad2b9add94ad07fb053772e4d17a04d3789df4fdec224ace4a9d80af4bb2b",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -7.801477846677526e-18,
+        "actual_volts": -7.801477846677526e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "rust_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "processed_group_draws": 19282,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "connectivity_reconnect",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "e6701fbd647feee9dcace4c7b88cb224249e2b58c2716f73a4fef730b3e58eea",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.9831156809639775e-18,
+        "actual_volts": -1.9831156809639775e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "rust_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "processed_group_draws": 12392,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "31740c51004af3d9e292c72b8e37b1aa1aae0f746714926bbffedf9b57472347",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -7.985804389772233e-21,
+        "actual_volts": -7.985804389772233e-21,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "resonance_cv_extremes",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "789d10c733192638c1a79279dee05f0c3466fdc9fc01d6790635377f28187088",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 6.37856018004257e-11,
+        "actual_volts": 6.37856018004257e-11,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002000000000000638
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 44100,
+      "frames": 192000,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -3.048516244921305e-17,
+        "actual_volts": -3.048516244921305e-17,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "rust_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.014875283446712018,
+            "rms_volts": 1.0724078245203623,
+            "peak_volts": 1.528446912765503,
+            "frequency_hz": 476.3402428880473,
+            "late_rising_crossings": 1037
+          },
+          "actual": {
+            "startup_seconds": 0.014875283446712018,
+            "rms_volts": 1.0724078245203623,
+            "peak_volts": 1.528446912765503,
+            "frequency_hz": 476.3402428880473,
+            "late_rising_crossings": 1037
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.014149659863945578,
+            "rms_volts": 4.44065997208589,
+            "peak_volts": 6.7499470710754395,
+            "frequency_hz": 476.34024189591804,
+            "late_rising_crossings": 1037
+          },
+          "actual": {
+            "startup_seconds": 0.014149659863945578,
+            "rms_volts": 4.44065997208589,
+            "peak_volts": 6.7499470710754395,
+            "frequency_hz": 476.34024189591804,
+            "late_rising_crossings": 1037
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x123456789abcdef0-0xfedcba9876543210-sdk.txt",
+          "sha256": "2c7aa89f036f9f606b461ef3d7c739654a2205d38167b3a5fd22ffcba5a25a0e"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x123456789abcdef0-0xfedcba9876543210-rust.txt",
+          "sha256": "a9944edccc5668d08362c3eed69a30b788e037e7e0489996b43e8e8bc78aedf5"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 44100,
+      "frames": 192000,
+      "seed_words": [
+        "0x0000000000000001",
+        "0x0000000000000002"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -2.442448937802692e-15,
+        "actual_volts": -2.442448937802692e-15,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "rust_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "reference_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "rust_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.014512471655328799,
+            "rms_volts": 1.0724109679908547,
+            "peak_volts": 1.5284466743469238,
+            "frequency_hz": 476.34024575714255,
+            "late_rising_crossings": 1037
+          },
+          "actual": {
+            "startup_seconds": 0.014512471655328799,
+            "rms_volts": 1.0724109679908547,
+            "peak_volts": 1.5284466743469238,
+            "frequency_hz": 476.34024575714255,
+            "late_rising_crossings": 1037
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.013764172335600906,
+            "rms_volts": 4.440620316351423,
+            "peak_volts": 6.749950408935547,
+            "frequency_hz": 476.34024158106706,
+            "late_rising_crossings": 1037
+          },
+          "actual": {
+            "startup_seconds": 0.013764172335600906,
+            "rms_volts": 4.440620316351423,
+            "peak_volts": 6.749950408935547,
+            "frequency_hz": 476.34024158106706,
+            "late_rising_crossings": 1037
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x0000000000000001-0x0000000000000002-sdk.txt",
+          "sha256": "04c8e266a57f9e3e32122f39e40f281331f79f0576ee10964da1246b78f45e12"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x0000000000000001-0x0000000000000002-rust.txt",
+          "sha256": "abbfc3d9d9316f0701211611d0f9a95003b3a180266c517bb7b792effa04aef4"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 44100,
+      "frames": 192000,
+      "seed_words": [
+        "0x7fffffffffffffff",
+        "0x0000000000000001"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -4.789261595757498e-18,
+        "actual_volts": -4.789261595757498e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "rust_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "reference_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "rust_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.016031746031746032,
+            "rms_volts": 1.0724418161452058,
+            "peak_volts": 1.5284464359283447,
+            "frequency_hz": 476.34024256038504,
+            "late_rising_crossings": 1037
+          },
+          "actual": {
+            "startup_seconds": 0.016031746031746032,
+            "rms_volts": 1.0724418161452058,
+            "peak_volts": 1.5284464359283447,
+            "frequency_hz": 476.34024256038504,
+            "late_rising_crossings": 1037
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.014761904761904763,
+            "rms_volts": 4.440770692613685,
+            "peak_volts": 6.7499494552612305,
+            "frequency_hz": 476.3402462065671,
+            "late_rising_crossings": 1036
+          },
+          "actual": {
+            "startup_seconds": 0.014761904761904763,
+            "rms_volts": 4.440770692613685,
+            "peak_volts": 6.7499494552612305,
+            "frequency_hz": 476.3402462065671,
+            "late_rising_crossings": 1036
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x7fffffffffffffff-0x0000000000000001-sdk.txt",
+          "sha256": "2c72a4cb69cbb8f278164789bcac4a241a0cdb460d3b854495b23500e32cd2ea"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-44100-0x7fffffffffffffff-0x0000000000000001-rust.txt",
+          "sha256": "3274ff0728a689850436097412d5ed31ec6f667aa08cab52315208be0cf86ee8"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "impulse",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "ac85c63b300418e725d5b989b82c6c9f206c3ee41e0bb55a1b55d0e6dc8f900d",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 1.1382505354928796e-10,
+        "actual_volts": 1.1382505354928796e-10,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000011385
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "dc",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "97a00326ddd60aaa14a80a553050bdb9bd603f7fd14ca1967627d1ef7c7e35f4",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.1382505354928796e-10,
+        "actual_volts": -1.1382505354928796e-10,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000011385
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "drive_extremes",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "37859066f2edbb630e908b1bc8e9385abc8d5c0d927587b3f4fe09fb0f7eb5af",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_cv_extremes",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "930d7c997838e1c9ff72b2432d3a605f4eff8252beaaaa48881ecc4ae3c9a9d6",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_cv",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "20fb764f1feccd58eed49c6d720b91f97e57ab9ce717455bcfaa363f23509534",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_cv_broadcast",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "7b7084c4060e68055b242d2f296212e44409b2567bee4721e0b6c45f655aa1e1",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_cv",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "d614846438dfabfd89003284fb548186d2759fd929bea4622fd931d5f5b48985",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -2.0648605900780058e-19,
+        "actual_volts": -2.0648605900780058e-19,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_1",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "2100104cf29a8eee3273e2e8bbf16893cf33b88434675be90a3f33e4d8650fff",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_4",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "b06c6717780f26977c30bd161f3ad678582effa7e5fb8ee059d4e9888cb39c0e",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_5",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "8e1c94678ef3a30e1e5c93c87d698a890bf3c6d98df2947ceeed6676ab44bc6b",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_16",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "d566fd20f2b91a047ebd2c72a0bea064ba5170c3012ccf0cd8a8977a6a02c450",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "shrink_regrow",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "f7eeb8c7cf0350c9f577f5ea33eb01fd422c3b3e0d40ddd5b4fd4f24b0551569",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -5.584285561997527e-18,
+        "actual_volts": -5.584285561997527e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "rust_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "processed_group_draws": 19282,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "connectivity_reconnect",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "bd47dcfe6cc88a7b9f24970bdb0a99421b26f7215c359cf3c7642ec0738c3014",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "rust_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "processed_group_draws": 12392,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "92f63d2102bafdb3bc57f162c5dd6ee86d087d52ff7386eb8bc8c7ed5be03750",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -5.694662727016664e-21,
+        "actual_volts": -5.694662727016664e-21,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "resonance_cv_extremes",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "789d10c733192638c1a79279dee05f0c3466fdc9fc01d6790635377f28187088",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 4.559694635752898e-11,
+        "actual_volts": 4.559694635752898e-11,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002000000000000456
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 48000,
+      "frames": 192000,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -2.1861697029868102e-17,
+        "actual_volts": -2.1861697029868102e-17,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "rust_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.015395833333333333,
+            "rms_volts": 1.0699556613365004,
+            "peak_volts": 1.5250581502914429,
+            "frequency_hz": 476.96382032200216,
+            "late_rising_crossings": 954
+          },
+          "actual": {
+            "startup_seconds": 0.015395833333333333,
+            "rms_volts": 1.0699556613365004,
+            "peak_volts": 1.5250581502914429,
+            "frequency_hz": 476.96382032200216,
+            "late_rising_crossings": 954
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.014104166666666666,
+            "rms_volts": 4.424016208407857,
+            "peak_volts": 6.728058815002441,
+            "frequency_hz": 476.9638241541839,
+            "late_rising_crossings": 954
+          },
+          "actual": {
+            "startup_seconds": 0.014104166666666666,
+            "rms_volts": 4.424016208407857,
+            "peak_volts": 6.728058815002441,
+            "frequency_hz": 476.9638241541839,
+            "late_rising_crossings": 954
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x123456789abcdef0-0xfedcba9876543210-sdk.txt",
+          "sha256": "8039c7d204d9fb688b62df8a524cb94efedf5f8991b87fd29b95000249101f64"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x123456789abcdef0-0xfedcba9876543210-rust.txt",
+          "sha256": "0d2b5b6770fb0d8ebd166f73faa7898ca439ea54568e365dcb13f88cdab581ef"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 48000,
+      "frames": 192000,
+      "seed_words": [
+        "0x0000000000000001",
+        "0x0000000000000002"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.7515436444851462e-15,
+        "actual_volts": -1.7515436444851462e-15,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "rust_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "reference_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "rust_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.015,
+            "rms_volts": 1.0700035454192889,
+            "peak_volts": 1.5250577926635742,
+            "frequency_hz": 476.96382188533465,
+            "late_rising_crossings": 954
+          },
+          "actual": {
+            "startup_seconds": 0.015,
+            "rms_volts": 1.0700035454192889,
+            "peak_volts": 1.5250577926635742,
+            "frequency_hz": 476.96382188533465,
+            "late_rising_crossings": 954
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.013729166666666667,
+            "rms_volts": 4.424276470134573,
+            "peak_volts": 6.728056907653809,
+            "frequency_hz": 476.96382286087237,
+            "late_rising_crossings": 953
+          },
+          "actual": {
+            "startup_seconds": 0.013729166666666667,
+            "rms_volts": 4.424276470134573,
+            "peak_volts": 6.728056907653809,
+            "frequency_hz": 476.96382286087237,
+            "late_rising_crossings": 953
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x0000000000000001-0x0000000000000002-sdk.txt",
+          "sha256": "7b54787960aa03cb631c3a747d05e213f7b2f3861be01978411cd272641c6e11"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x0000000000000001-0x0000000000000002-rust.txt",
+          "sha256": "8f8b6a9c4d847f3926b6f406aa5bc4534c35c34d49d862d81aaf41b6bb0f87bf"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 48000,
+      "frames": 192000,
+      "seed_words": [
+        "0x7fffffffffffffff",
+        "0x0000000000000001"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -3.434503534156924e-18,
+        "actual_volts": -3.434503534156924e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "rust_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "reference_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "rust_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.0154375,
+            "rms_volts": 1.070003647837972,
+            "peak_volts": 1.5250580310821533,
+            "frequency_hz": 476.9638190684652,
+            "late_rising_crossings": 954
+          },
+          "actual": {
+            "startup_seconds": 0.0154375,
+            "rms_volts": 1.070003647837972,
+            "peak_volts": 1.5250580310821533,
+            "frequency_hz": 476.9638190684652,
+            "late_rising_crossings": 954
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.0146875,
+            "rms_volts": 4.424276816078909,
+            "peak_volts": 6.728060245513916,
+            "frequency_hz": 476.96381988896445,
+            "late_rising_crossings": 953
+          },
+          "actual": {
+            "startup_seconds": 0.0146875,
+            "rms_volts": 4.424276816078909,
+            "peak_volts": 6.728060245513916,
+            "frequency_hz": 476.96381988896445,
+            "late_rising_crossings": 953
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x7fffffffffffffff-0x0000000000000001-sdk.txt",
+          "sha256": "70facf37bd71d9f2629ca7bf7188ecf864677305dca5d102e436905c134478bb"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-48000-0x7fffffffffffffff-0x0000000000000001-rust.txt",
+          "sha256": "c71a100dbfb3e7d13b6311f7ac317c9f78bc3736e630ae7c628da6a359f31337"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "impulse",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "ac85c63b300418e725d5b989b82c6c9f206c3ee41e0bb55a1b55d0e6dc8f900d",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 7.247743204208401e-12,
+        "actual_volts": 7.247743204208401e-12,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000000725
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "dc",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "97a00326ddd60aaa14a80a553050bdb9bd603f7fd14ca1967627d1ef7c7e35f4",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -7.247743204208401e-12,
+        "actual_volts": -7.247743204208401e-12,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.0020000000000000725
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "drive_extremes",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "37859066f2edbb630e908b1bc8e9385abc8d5c0d927587b3f4fe09fb0f7eb5af",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "signed_cv_extremes",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "043e058263de37cc47aaa6df9ce6c8a68b8ecbb06e3579853dfd91a4d17a0a78",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_cv",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "0d3ccff585e257fd72df78c1a84802c82030c524aa68612142f0eef7eae17cc2",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_cv_broadcast",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "e279a630af4d5ef0f2d828384cf23b12e45c3aa75d13e4dd689a708dc82910c6",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_cv",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "a2d2dfdb9e4f8fc36fc9dd4040df24b1862c7f44151e40835d734a7f51c4d062",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.3054713061328201e-20,
+        "actual_volts": -1.3054713061328201e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_1",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "d075fa275a2a1966b374dd94cc69cc0174d1f10250b737d3cf030a3e40517e8a",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_4",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "586def3665e95a90228e964f035f43346bd086f611aeb6e38b5682747c6a8147",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "rust_final_rng_state": [
+        8459004149500636436,
+        1468775627897694597
+      ],
+      "processed_group_draws": 8192,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_5",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "b28df8ba36c7b3b6900336f2d4679b34f02e3cda91d6fec1ff2f4eb6848312d0",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_16",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "3c22131323d1be7217499f5d89da02f059c94c02a68da9e768a06b1ed7c0b147",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "rust_final_rng_state": [
+        15676234271885373224,
+        2964467209311731245
+      ],
+      "processed_group_draws": 32768,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "shrink_regrow",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "c151e952bcb4310953bc31611161d2f1c54eed24a3022ebbc58f343c821b7003",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -3.5828578600304268e-19,
+        "actual_volts": -3.5828578600304268e-19,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "rust_final_rng_state": [
+        13352523358756306242,
+        6744951746317574000
+      ],
+      "processed_group_draws": 19282,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "connectivity_reconnect",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "c0a2ffceaced6b9152b506834d1a308a0068e5111b6a2c587d4cae76e61da3b6",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -9.026611665659182e-20,
+        "actual_volts": -9.026611665659182e-20,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "rust_final_rng_state": [
+        7127430878448775518,
+        17767226785661203850
+      ],
+      "processed_group_draws": 12392,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "930a15c03b2552826977672b38c373489be8283a26c4311d76318e2ab7a8cc0b",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -3.5758963859472597e-22,
+        "actual_volts": -3.5758963859472597e-22,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "resonance_cv_extremes",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "789d10c733192638c1a79279dee05f0c3466fdc9fc01d6790635377f28187088",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": 2.9033520379528888e-12,
+        "actual_volts": 2.9033520379528888e-12,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002000000000000029
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "seed_warmup_draws": 1,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "seed_words": [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.4176240983473336e-18,
+        "actual_volts": -1.4176240983473336e-18,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "reference_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "rust_final_rng_state": [
+        11636563044804930870,
+        5909584119188895749
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.015364583333333333,
+            "rms_volts": 1.0561370308342657,
+            "peak_volts": 1.505735158920288,
+            "frequency_hz": 480.5459508794834,
+            "late_rising_crossings": 481
+          },
+          "actual": {
+            "startup_seconds": 0.015364583333333333,
+            "rms_volts": 1.0561370308342657,
+            "peak_volts": 1.505735158920288,
+            "frequency_hz": 480.5459508794834,
+            "late_rising_crossings": 481
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.01409375,
+            "rms_volts": 4.329224030768423,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.54595192144774,
+            "late_rising_crossings": 481
+          },
+          "actual": {
+            "startup_seconds": 0.01409375,
+            "rms_volts": 4.329224030768423,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.54595192144774,
+            "late_rising_crossings": 481
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x123456789abcdef0-0xfedcba9876543210-sdk.txt",
+          "sha256": "055c713f80ff9f9a7be912b21f9f5510de11a8c116ec1dda3c84cd927776db36"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x123456789abcdef0-0xfedcba9876543210-rust.txt",
+          "sha256": "428ebcfc0b9e99ae3d67f10b2c56b7d998a9bf994ae52787ef38fa3f45a2b76f"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "seed_words": [
+        "0x0000000000000001",
+        "0x0000000000000002"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -1.1357901847424356e-16,
+        "actual_volts": -1.1357901847424356e-16,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "rust_initial_rng_state": [
+        36028797019013123,
+        206158430208
+      ],
+      "reference_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "rust_final_rng_state": [
+        11295276674161398794,
+        15412233886172825603
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.016375,
+            "rms_volts": 1.0561331338536177,
+            "peak_volts": 1.5057346820831299,
+            "frequency_hz": 480.54596214302194,
+            "late_rising_crossings": 481
+          },
+          "actual": {
+            "startup_seconds": 0.016375,
+            "rms_volts": 1.0561331338536177,
+            "peak_volts": 1.5057346820831299,
+            "frequency_hz": 480.54596214302194,
+            "late_rising_crossings": 481
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.01509375,
+            "rms_volts": 4.329217299162034,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.5459623978289,
+            "late_rising_crossings": 481
+          },
+          "actual": {
+            "startup_seconds": 0.01509375,
+            "rms_volts": 4.329217299162034,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.5459623978289,
+            "late_rising_crossings": 481
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x0000000000000001-0x0000000000000002-sdk.txt",
+          "sha256": "3801cb25d7c814db7ecefd9b52a2f814819243f02db95d9782fd3082b661c67a"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x0000000000000001-0x0000000000000002-rust.txt",
+          "sha256": "fdc5e607e59ba33950b4a8dbd3bea32d9e017ff71592494ab5c5624c9952c4b2"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "self_oscillation",
+      "sample_rate": 96000,
+      "frames": 192000,
+      "seed_words": [
+        "0x7fffffffffffffff",
+        "0x0000000000000001"
+      ],
+      "input_sha256": "85d9b9ae0ad8d4a0238bc03a96ded7dd045d22b1bbde8830ad1b0754d357c037",
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "output": 0,
+        "channel_zero_based": 0,
+        "reference_volts": -2.2271075435863073e-19,
+        "actual_volts": -2.2271075435863073e-19,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 0.002
+      },
+      "maximum_pointwise_tolerance_ratio": 0.0,
+      "reference_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "rust_initial_rng_state": [
+        9205357638345261057,
+        18446743970630336511
+      ],
+      "reference_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "rust_final_rng_state": [
+        12755925167244480135,
+        11098638745582302934
+      ],
+      "processed_group_draws": 192000,
+      "seed_warmup_draws": 1,
+      "metrics": [
+        {
+          "output": 0,
+          "reference": {
+            "startup_seconds": 0.016864583333333332,
+            "rms_volts": 1.0561502846492015,
+            "peak_volts": 1.5057344436645508,
+            "frequency_hz": 480.545959503125,
+            "late_rising_crossings": 481
+          },
+          "actual": {
+            "startup_seconds": 0.016864583333333332,
+            "rms_volts": 1.0561502846492015,
+            "peak_volts": 1.5057344436645508,
+            "frequency_hz": 480.545959503125,
+            "late_rising_crossings": 481
+          },
+          "passed": true
+        },
+        {
+          "output": 1,
+          "reference": {
+            "startup_seconds": 0.015572916666666667,
+            "rms_volts": 4.329274566281216,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.54595932190637,
+            "late_rising_crossings": 480
+          },
+          "actual": {
+            "startup_seconds": 0.015572916666666667,
+            "rms_volts": 4.329274566281216,
+            "peak_volts": 6.601239204406738,
+            "frequency_hz": 480.54595932190637,
+            "late_rising_crossings": 480
+          },
+          "passed": true
+        }
+      ],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x7fffffffffffffff-0x0000000000000001-sdk.txt",
+          "sha256": "178f70b7bb83f35a40235e31d35f78905fa1d5a30671f5767e79377c9807d1eb"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/self_oscillation-96000-0x7fffffffffffffff-0x0000000000000001-rust.txt",
+          "sha256": "b5752b1d6d6cff16f253e49e037cc4e3e04d0ecb3085eaca9e585b6fd0acecac"
+        }
+      },
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "resonance_counterfactual_audits": [
+    {
+      "configuration": "baseline",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 0.0,
+      "input_sha256": "e847076e8f11675fe27331b263133f61142e02a139ab88f9a2aaa09486768c86",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-baseline-sdk.txt",
+          "sha256": "cb443379941eb33c45d3693c35c12d0548be2a080a437d07471575b4bd6a44e0"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-baseline-rust.txt",
+          "sha256": "4448683e17422cf346575746d1957a5b5f1ccc030c7b2e0e80b9bd66f8bed71b"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_1",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "f5cfcc74b03ba98c644cb419fb4e121683b359de8abde30e255954cb5fb082be",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9681669473648071,
+          6.95156154641154
+        ],
+        "rust": [
+          1.9681669473648071,
+          6.95156154641154
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_1-sdk.txt",
+          "sha256": "57596efb76e12f328f61894413d302882995db721a09e19166baca4c62e179a2"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_1-rust.txt",
+          "sha256": "3961bc7bb09850ecb65d61af5f8204501fb1d01c17ab4dc925bf6281956bb734"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_2",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "f916b5c626b8559572f73b0b33b191aa54d032b8d74127da49d367bca8fd99f6",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5143184959888458,
+          0.17779667675495148
+        ],
+        "rust": [
+          1.5143184959888458,
+          0.17779667675495148
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_2-sdk.txt",
+          "sha256": "13b96ebc4f5b6cfbfcc1e00686d038bdde64b421e4e39e5b6e0d0fb0c31867ce"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_2-rust.txt",
+          "sha256": "c81bd60edfde901d18d1b345ba0b13f62b61b19d53f1e962189bee783804013e"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_3",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "d57cd6edd8f6757f9e9b79aca747ea68b267d08d9bc5db6fdecf468f351faef4",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5143184959888458,
+          0.17779667675495148
+        ],
+        "rust": [
+          1.5143184959888458,
+          0.17779667675495148
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_3-sdk.txt",
+          "sha256": "13b96ebc4f5b6cfbfcc1e00686d038bdde64b421e4e39e5b6e0d0fb0c31867ce"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_3-rust.txt",
+          "sha256": "c81bd60edfde901d18d1b345ba0b13f62b61b19d53f1e962189bee783804013e"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_4",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "96f89381848f59d514c153f6115eb026f723b7e73e24899f9ed68c23cb950011",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9681669473648071,
+          6.95156154641154
+        ],
+        "rust": [
+          1.9681669473648071,
+          6.95156154641154
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_4-sdk.txt",
+          "sha256": "57596efb76e12f328f61894413d302882995db721a09e19166baca4c62e179a2"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-sign_combination_4-rust.txt",
+          "sha256": "3961bc7bb09850ecb65d61af5f8204501fb1d01c17ab4dc925bf6281956bb734"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_1",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "6e21ac32048b8b42709b848405f37bd659221709a26bfd3e91cf9f5280c20f39",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-zero_depth_1-sdk.txt",
+          "sha256": "cb443379941eb33c45d3693c35c12d0548be2a080a437d07471575b4bd6a44e0"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-zero_depth_1-rust.txt",
+          "sha256": "4448683e17422cf346575746d1957a5b5f1ccc030c7b2e0e80b9bd66f8bed71b"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_2",
+      "sample_rate": 44100,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "c077af33f03ce4f7d1bec4049dc86df75efdb9976ed8ec5c66cb30dff0dbdc70",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-zero_depth_2-sdk.txt",
+          "sha256": "cb443379941eb33c45d3693c35c12d0548be2a080a437d07471575b4bd6a44e0"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-44100-zero_depth_2-rust.txt",
+          "sha256": "4448683e17422cf346575746d1957a5b5f1ccc030c7b2e0e80b9bd66f8bed71b"
+        }
+      }
+    },
+    {
+      "configuration": "baseline",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 0.0,
+      "input_sha256": "e847076e8f11675fe27331b263133f61142e02a139ab88f9a2aaa09486768c86",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-baseline-sdk.txt",
+          "sha256": "62a16cc73145c8f826951d1bfda133f109369e1834cfc51fc9f7462804e2af21"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-baseline-rust.txt",
+          "sha256": "1aabc8344a301f6853a3f9d3acebbb63db7f45e02bb7b18c88a10b9b3a1e4132"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_1",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "f5cfcc74b03ba98c644cb419fb4e121683b359de8abde30e255954cb5fb082be",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9651668071746826,
+          6.940374892453178
+        ],
+        "rust": [
+          1.9651668071746826,
+          6.940374892453178
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_1-sdk.txt",
+          "sha256": "b75bdaf8f66475234e78d28c5eb49339e910b42f53807559f824935059e8c3a8"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_1-rust.txt",
+          "sha256": "d83ab90bb15c82d0b711386efe07d9dd8301458136b56c66622c09f72d85598c"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_2",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "f916b5c626b8559572f73b0b33b191aa54d032b8d74127da49d367bca8fd99f6",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5137481689453125,
+          0.17779556661844254
+        ],
+        "rust": [
+          1.5137481689453125,
+          0.17779556661844254
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_2-sdk.txt",
+          "sha256": "0150b6390aa56dca9a534b2fe0c78fa7f02a804841ab3f607fae0b111726261e"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_2-rust.txt",
+          "sha256": "49bccfcad27b6cb50063d19dd1af435e99bc7e156f1971473e6e9a181b6ac778"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_3",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "d57cd6edd8f6757f9e9b79aca747ea68b267d08d9bc5db6fdecf468f351faef4",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5137481689453125,
+          0.17779556661844254
+        ],
+        "rust": [
+          1.5137481689453125,
+          0.17779556661844254
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_3-sdk.txt",
+          "sha256": "0150b6390aa56dca9a534b2fe0c78fa7f02a804841ab3f607fae0b111726261e"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_3-rust.txt",
+          "sha256": "49bccfcad27b6cb50063d19dd1af435e99bc7e156f1971473e6e9a181b6ac778"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_4",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "96f89381848f59d514c153f6115eb026f723b7e73e24899f9ed68c23cb950011",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9651668071746826,
+          6.940374892453178
+        ],
+        "rust": [
+          1.9651668071746826,
+          6.940374892453178
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_4-sdk.txt",
+          "sha256": "b75bdaf8f66475234e78d28c5eb49339e910b42f53807559f824935059e8c3a8"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-sign_combination_4-rust.txt",
+          "sha256": "d83ab90bb15c82d0b711386efe07d9dd8301458136b56c66622c09f72d85598c"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_1",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "6e21ac32048b8b42709b848405f37bd659221709a26bfd3e91cf9f5280c20f39",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-zero_depth_1-sdk.txt",
+          "sha256": "62a16cc73145c8f826951d1bfda133f109369e1834cfc51fc9f7462804e2af21"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-zero_depth_1-rust.txt",
+          "sha256": "1aabc8344a301f6853a3f9d3acebbb63db7f45e02bb7b18c88a10b9b3a1e4132"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_2",
+      "sample_rate": 48000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "c077af33f03ce4f7d1bec4049dc86df75efdb9976ed8ec5c66cb30dff0dbdc70",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-zero_depth_2-sdk.txt",
+          "sha256": "62a16cc73145c8f826951d1bfda133f109369e1834cfc51fc9f7462804e2af21"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-48000-zero_depth_2-rust.txt",
+          "sha256": "1aabc8344a301f6853a3f9d3acebbb63db7f45e02bb7b18c88a10b9b3a1e4132"
+        }
+      }
+    },
+    {
+      "configuration": "baseline",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 0.0,
+      "input_sha256": "e847076e8f11675fe27331b263133f61142e02a139ab88f9a2aaa09486768c86",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-baseline-sdk.txt",
+          "sha256": "e9dc095ac6e9153298529c66aa646c33aaabf91007c5c345d73966ba342cb078"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-baseline-rust.txt",
+          "sha256": "4e2210383f1c0d588c851148d2d21c9e3de6022e476ea75367184c7f0dcda625"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_1",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "f5cfcc74b03ba98c644cb419fb4e121683b359de8abde30e255954cb5fb082be",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9486179947853088,
+          6.877027472277405
+        ],
+        "rust": [
+          1.9486179947853088,
+          6.877027472277405
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_1-sdk.txt",
+          "sha256": "69ae6a2302418669cd2b2aee66303b4a8cbb393cd028bdbaf36ef757228b028f"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_1-rust.txt",
+          "sha256": "699aca5a8100ec2d081edc97685262fc220d9eebc5f14e13acddda8bbe717cd4"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_2",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": 1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "f916b5c626b8559572f73b0b33b191aa54d032b8d74127da49d367bca8fd99f6",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5104946792125702,
+          0.177651047706604
+        ],
+        "rust": [
+          1.5104946792125702,
+          0.177651047706604
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_2-sdk.txt",
+          "sha256": "6a3273c4b40666dc83fa3d63b6a651d6cb792e35edf9a638b839ac640726e438"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_2-rust.txt",
+          "sha256": "1d8ce4699fe2f8dc88840ab255892c4ce09fdd7a96ef484ff398bb8aa3a58f71"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_3",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "d57cd6edd8f6757f9e9b79aca747ea68b267d08d9bc5db6fdecf468f351faef4",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.5104946792125702,
+          0.177651047706604
+        ],
+        "rust": [
+          1.5104946792125702,
+          0.177651047706604
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_3-sdk.txt",
+          "sha256": "6a3273c4b40666dc83fa3d63b6a651d6cb792e35edf9a638b839ac640726e438"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_3-rust.txt",
+          "sha256": "1d8ce4699fe2f8dc88840ab255892c4ce09fdd7a96ef484ff398bb8aa3a58f71"
+        }
+      }
+    },
+    {
+      "configuration": "sign_combination_4",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": -1.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "96f89381848f59d514c153f6115eb026f723b7e73e24899f9ed68c23cb950011",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          1.9486179947853088,
+          6.877027472277405
+        ],
+        "rust": [
+          1.9486179947853088,
+          6.877027472277405
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_4-sdk.txt",
+          "sha256": "69ae6a2302418669cd2b2aee66303b4a8cbb393cd028bdbaf36ef757228b028f"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-sign_combination_4-rust.txt",
+          "sha256": "699aca5a8100ec2d081edc97685262fc220d9eebc5f14e13acddda8bbe717cd4"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_1",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": 1000000.0,
+      "input_sha256": "6e21ac32048b8b42709b848405f37bd659221709a26bfd3e91cf9f5280c20f39",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-zero_depth_1-sdk.txt",
+          "sha256": "e9dc095ac6e9153298529c66aa646c33aaabf91007c5c345d73966ba342cb078"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-zero_depth_1-rust.txt",
+          "sha256": "4e2210383f1c0d588c851148d2d21c9e3de6022e476ea75367184c7f0dcda625"
+        }
+      }
+    },
+    {
+      "configuration": "zero_depth_2",
+      "sample_rate": 96000,
+      "frames": 8192,
+      "resonance_cv_amount": 0.0,
+      "resonance_cv_volts": -1000000.0,
+      "input_sha256": "c077af33f03ce4f7d1bec4049dc86df75efdb9976ed8ec5c66cb30dff0dbdc70",
+      "maximum_sdk_rust_absolute_error_volts": 0.0,
+      "maximum_difference_from_fresh_zero_depth_baseline_volts": {
+        "sdk": [
+          0.0,
+          0.0
+        ],
+        "rust": [
+          0.0,
+          0.0
+        ]
+      },
+      "sdk_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "rust_initial_rng_state": [
+        12671385465507394191,
+        14884060381496397326
+      ],
+      "sdk_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "rust_final_rng_state": [
+        6845789820640834913,
+        10525562687449566666
+      ],
+      "processed_group_draws": 16384,
+      "passed": true,
+      "first_failures": [],
+      "raw_traces": {
+        "sdk": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-zero_depth_2-sdk.txt",
+          "sha256": "e9dc095ac6e9153298529c66aa646c33aaabf91007c5c345d73966ba342cb078"
+        },
+        "rust": {
+          "path": "/var/folders/31/rxr_fpnj7cxg40sl0r992kfr0000gp/T/stock-vcf-reference-traces/resonance-counterfactual-96000-zero_depth_2-rust.txt",
+          "sha256": "4e2210383f1c0d588c851148d2d21c9e3de6022e476ea75367184c7f0dcda625"
+        }
+      }
+    }
+  ],
+  "passed": true,
+  "counterfactual_reference_frames": 172032,
+  "total_frames": 2096640
+}

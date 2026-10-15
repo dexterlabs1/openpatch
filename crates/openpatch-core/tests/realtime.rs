@@ -295,3 +295,32 @@ fn midi_cc_first_callback_taps_learn_capture_and_adoption_allocate_nothing() {
     assert!(samples[0][0].active);
     assert!(samples[0][1].active);
 }
+
+#[test]
+fn stock_vcf_first_processing_taps_adoption_and_initialize_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame, TapSample};
+    let p:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,
+      "nodes":[{"id":"s","kind":"poly_constant","params":{"channels":16}}, {"id":"f","kind":"stock_vcf"}],
+      "cables":[{"from":"s","to":"f","input":"signal"}],"output":"f","output_port":"lowpass"})).unwrap();
+    let mut old = p.compile().unwrap();
+    let mut next = p.compile().unwrap();
+    let h = next.resolve_module_state("f").unwrap();
+    let taps = [
+        Some(next.resolve_tap("f", "lowpass", 0).unwrap()),
+        Some(next.resolve_tap("f", "highpass", 15).unwrap()),
+    ];
+    let mut frames = [PortFrame::default(); 129];
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[TapSample::default(); 2]; 129];
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACKING.with(|c| c.set(true));
+    old.process_poly_block(&mut frames);
+    next.adopt_state_from(&old);
+    next.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+    assert!(next.initialize_module_state(h));
+    assert!(next.reset_module_state(h));
+    next.process_poly_block(&mut frames);
+    TRACKING.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(samples[0][0].active && samples[0][1].active);
+}

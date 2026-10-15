@@ -82,7 +82,7 @@ impl Category {
         match kind {
             "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
             | "modal_resonator" | "colored_noise" => Self::Oscillators,
-            "lowpass" | "ladder_vcf" | "svf_filter" => Self::Filters,
+            "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "gate" | "random_values" | "sh_asr" => Self::Modulation,
@@ -1138,6 +1138,7 @@ mod tests {
         library.category = Category::Oscillators;
         assert_eq!(library.filtered(&catalog)[0]["kind"], "analog_vco");
         assert_eq!(Category::of_kind("ladder_vcf"), Category::Filters);
+        assert_eq!(Category::of_kind("stock_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
         assert_eq!(Category::of_kind("push"), Category::Utilities);

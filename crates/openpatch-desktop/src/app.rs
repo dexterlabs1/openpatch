@@ -2597,6 +2597,13 @@ impl OpenPatch {
                                 self.replace_from_menu(patch,"MIDI controller voice");
                                 ui.close();
                             }
+                            if ui.button("Stock VCF voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/stock-vcf-voice.json"
+                                )).expect("valid stock VCF voice");
+                                self.replace_from_menu(patch, "Stock VCF voice");
+                                ui.close();
+                            }
                             if ui.button("Polyphonic ADSR voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/polyphonic-adsr-voice.json"
@@ -3969,6 +3976,46 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
+    fn prepare_stock_vcf_fixture(&mut self) {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-vcf-voice.json")).unwrap();
+        let mut engine = patch.compile().unwrap();
+        let mut audio = vec![0.0; 16384];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|v| v.is_finite()));
+        assert!(audio.iter().any(|v| v.abs() > 0.001));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        assert!(scope.x[0].iter().any(|p| p.max.abs() > 0.01));
+        assert!(scope.y[0].iter().any(|p| p.max.abs() > 0.01));
+        let envelope = engine
+            .module_lights(engine.resolve_module_lights("envelope").unwrap())
+            .unwrap();
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.80,"pan":[24,12],"positions":{
+            "voice":[0,0],"filter":[330,0],"amplifier":[630,0],"out":[810,0],"guide":[1020,0],
+            "clock":[0,420],"envelope":[180,420],"scope":[570,420]}}))
+            .unwrap();
+        self.rack.set_module_states(
+            BTreeMap::from([("envelope".into(), envelope)]),
+            BTreeMap::new(),
+        );
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "VCF · clocked filter voice".into();
+        self.status = "Connected saw → VCF → VCA · actual LP/HP Scope capture · Hz entry and bipolar CV depth".into();
+    }
+
     fn prepare_midi_cc_fixture(&mut self) {
         let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
             "nodes":[{"id":"controller","kind":"midi_cc","params":{"cc1":7,"cc7":-1,"mpe":1,"high_resolution":1,"smooth":0}},
@@ -5112,6 +5159,15 @@ impl OpenPatch {
             self.rack.set_room_brightness(0.0);
             self.status="MIDI Gate · lights out · eight actual pad lamps and sixteen captured gate lanes · no live audio or MIDI device".into();
         }
+        if frame == 1828 {
+            self.prepare_stock_vcf_fixture();
+        }
+        if frame == 1838 {
+            self.rack.set_room_brightness(0.0);
+            self.status =
+                "VCF · lights out · the filter is passive; Scope emits the captured LP/HP signals"
+                    .into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5195,6 +5251,8 @@ impl OpenPatch {
                 | 1722
                 | 1772
                 | 1822
+                | 1832
+                | 1844
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5282,7 +5340,9 @@ impl OpenPatch {
                 66 => path.with_file_name("rack-annotations.png"),
                 67 => path.with_file_name("rack-annotations-lights-out.png"),
                 68 => path.with_file_name("notes-editor.png"),
-                _ => path.with_file_name("notes-editor-conflict.png"),
+                69 => path.with_file_name("notes-editor-conflict.png"),
+                70 => path.with_file_name("rack-stock-vcf.png"),
+                _ => path.with_file_name("rack-stock-vcf-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -5293,13 +5353,13 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/70 at frame {frame}: {}",
+                "Native smoke: capture {}/72 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 70 {
+            if captures == 72 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -5866,6 +5926,59 @@ mod project_workflow_tests {
         );
         preset_text(&output, "NOMINAL SHAPE");
         preset_text(&output, "ADSR EG");
+    }
+
+    #[test]
+    fn stock_vcf_example_and_smoke_use_real_connected_audio_and_scope_capture() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_stock_vcf_fixture();
+        assert_eq!(
+            app.patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "filter")
+                .unwrap()
+                .kind,
+            "stock_vcf"
+        );
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "voice" && c.to == "filter" && c.input == "signal"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "filter" && c.output == "lowpass" && c.to == "amplifier"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "envelope" && c.to == "filter" && c.input == "cutoff_cv"));
+        assert_eq!(app.rack.room_brightness(), 1.0);
+        let mut engine = app.patch.compile().unwrap();
+        let mut audio = vec![0.0; 48000];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|v| v.is_finite() && v.abs() < 1.0));
+        assert!(audio.iter().any(|v| v.abs() > 0.001));
+        assert!(engine.resolve_module_lights("filter").is_err());
+        app.rack.set_room_brightness(0.0);
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        preset_text(&output, "VCF");
+        preset_text(&output, "CUTOFF");
+        preset_text(&output, "SCOPE");
     }
 
     #[test]

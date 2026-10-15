@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "declared_before_first_comparison": true,
+  "stable_driven": {
+    "absolute_volts": 0.002,
+    "relative": 1e-05,
+    "alignment": "same frame and channel, no alignment or startup exemption"
+  },
+  "self_oscillation": {
+    "frames": 192000,
+    "startup_threshold_volts": 0.05,
+    "startup_absolute_seconds": 0.002,
+    "late_window_fraction": 0.5,
+    "rms_absolute_volts": 0.0,
+    "rms_relative": 0.01,
+    "frequency_absolute_hz": 0.0,
+    "frequency_relative": 0.001,
+    "method": "First absolute threshold crossing for startup; RMS and interpolated rising-zero-crossing frequency over final half of trace. Compare each visible lane and output independently. Both traces must cross startup threshold and contain at least ten late rising crossings.",
+    "justification": "Autonomous nonlinear oscillation accumulates phase error from f32 rounding. Fixed threshold crossing bounds growth timing to max(2 ms,1%); final-half RMS within1%, absolute peak within2%, and mean interpolated rising-crossing frequency within0.1% constrain envelope and tuning without waveform alignment. Genuine noise and several seeds, including a small early-noise seed, remain enabled. No post-comparison tolerance changes.",
+    "startup_relative": 0.01,
+    "peak_relative": 0.02,
+    "seeds": [
+      [
+        "0x123456789abcdef0",
+        "0xfedcba9876543210"
+      ],
+      [
+        "0x0000000000000001",
+        "0x0000000000000002"
+      ],
+      [
+        "0x7fffffffffffffff",
+        "0x0000000000000001"
+      ]
+    ]
+  },
+  "metadata": "channel counts exact; unexposed Rust output padding zero; every output finite"
+}
