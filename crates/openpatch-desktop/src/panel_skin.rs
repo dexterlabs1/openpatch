@@ -386,6 +386,30 @@ pub(crate) fn port_label(
     painter.galley(center - galley.size() * 0.5, galley, color);
 }
 
+/// A saved panel switch must shrink with its module instead of inheriting the
+/// host's full-size button font and minimum size at small rack zooms.
+pub(crate) fn toggle_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    label: &str,
+    selected: bool,
+    zoom: f32,
+) -> egui::Response {
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = vec2(6.0, 2.0) * zoom;
+        ui.spacing_mut().interact_size = egui::Vec2::ZERO;
+        ui.put(
+            rect,
+            egui::Button::new(egui::RichText::new(label).font(print_font(ui.ctx(), 12.0 * zoom)))
+                .selected(selected)
+                .min_size(rect.size())
+                .truncate()
+                .corner_radius(3.0 * zoom),
+        )
+    })
+    .inner
+}
+
 /// Material for native ComboBox/DragValue controls embedded in a panel.
 /// Geometry, font sizes, and selection/active colors remain owned by the caller.
 pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {

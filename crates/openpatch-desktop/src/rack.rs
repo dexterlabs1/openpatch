@@ -20,9 +20,13 @@ include!("parameter_choice.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 
+#[cfg(test)]
+#[path = "panel_toggle_scale_tests.rs"]
+mod panel_toggle_scale_tests;
+
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
-const PANEL_HEIGHT: f32 = 396.0;
+pub(crate) const PANEL_HEIGHT: f32 = 396.0;
 const MAX_PAN: f32 = 1_000_000.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
 const INK: Color32 = crate::panel_skin::INK;
@@ -2925,10 +2929,12 @@ impl Rack {
                         ),
                         vec2(width * 0.5 - 25.0, 25.0) * self.zoom,
                     );
-                    let response = ui.put(
+                    let response = crate::panel_skin::toggle_button(
+                        ui,
                         rect,
-                        egui::Button::new(if *name == "linear_fm" { "LFM" } else { "SOFT" })
-                            .selected(enabled),
+                        if *name == "linear_fm" { "LFM" } else { "SOFT" },
+                        enabled,
+                        self.zoom,
                     );
                     response.widget_info(|| {
                         egui::WidgetInfo::selected(
@@ -2968,7 +2974,8 @@ impl Rack {
                     } else {
                         "±5 V"
                     };
-                    let button = ui.put(rect, egui::Button::new(label).selected(enabled));
+                    let button =
+                        crate::panel_skin::toggle_button(ui, rect, label, enabled, self.zoom);
                     if button.clicked() {
                         self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
@@ -2994,14 +3001,16 @@ impl Rack {
                         point(x, 199.0),
                         vec2(width * 0.5 - 25.0, 26.0) * self.zoom,
                     );
-                    let button = ui.put(
+                    let button = crate::panel_skin::toggle_button(
+                        ui,
                         rect,
-                        egui::Button::new(if *name == "average" {
+                        if *name == "average" {
                             "Average"
                         } else {
                             "Invert"
-                        })
-                        .selected(value >= 0.5),
+                        },
+                        value >= 0.5,
+                        self.zoom,
                     );
                     if button.clicked() {
                         self.select_primary(node.id.clone());
