@@ -22,7 +22,7 @@ pub(crate) fn annotate(module: &mut Value) {
     if let Some(metadata) = module["input_metadata"].as_array_mut() {
         for meta in metadata {
             meta["channel_policy"] = json!("mono broadcasts; missing short-poly lanes zero");
-            meta["normal_volts"] = json!(if meta["name"] == "cv" { 10.0 } else { 0.0 });
+            meta["normalization"] = json!(if meta["name"] == "cv" { 10.0 } else { 0.0 });
         }
     }
     module["functional_reference"] = json!("https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/VCA-1.cpp");

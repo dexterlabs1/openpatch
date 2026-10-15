@@ -132,6 +132,17 @@ impl Rack {
             level = 1.0;
         }
         if slider.has_focus() {
+            // Arrow edits belong to this vertical fader; keep ordinary Tab
+            // traversal available, matching egui's built-in slider policy.
+            ui.ctx().memory_mut(|memory| {
+                memory.set_focus_lock_filter(
+                    slider.id,
+                    egui::EventFilter {
+                        vertical_arrows: true,
+                        ..Default::default()
+                    },
+                );
+            });
             let step = ui.input(|i| if i.modifiers.shift { 0.1 } else { 0.01 });
             if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                 level = (level + step).min(1.0);

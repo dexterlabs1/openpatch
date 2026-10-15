@@ -68,6 +68,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Choose the next cable colour | Toolbar **Cable** swatch; **[ / ]** cycle while the rack is idle. **Edit palettes…** saves personal sets |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value or expression | Right-click a knob, or click a printed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
+| Shape a voice with linear or exponential CV gain | **File → Stock VCA voice**; [controls and gain meter](docs/STOCK_VCA.md) |
 | Blend and synchronize audio waveforms | **File → Synced waveform voice** |
 | Layer voices with CV-controlled mixing | **File → Layered stereo morph** |
 | Add transpose and vibrato to a chord | **File → Stacked pitch voice** |
@@ -385,7 +386,14 @@ and Off modes. The toolbar **MCP** button starts the local bridge and provides
 Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
 and [session controls](docs/MCP_SESSIONS.md).
 
-**63 built-in kinds:** a separate [stock-style VCF](docs/STOCK_VCF.md) with low-pass/high-pass outputs and signed CV depths, editable [Notes and resizable Blank](docs/ANNOTATIONS.md), sixteen-pad [MIDI → Gate](docs/MIDI_GATE.md), sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+**64 built-in kinds:** a separate [stock-style VCA](docs/STOCK_VCA.md) with linear/fourth-power CV response and per-channel gain columns, a separate [stock-style VCF](docs/STOCK_VCF.md) with low-pass/high-pass outputs and signed CV depths, editable [Notes and resizable Blank](docs/ANNOTATIONS.md), sixteen-pad [MIDI → Gate](docs/MIDI_GATE.md), sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+
+The new Stock VCA's [pinned actual-class comparison](docs/benchmarks/stock-vca-reference.json)
+passes 72 traces at three sample rates: 55,872 frames and 800,328 active
+output/gain comparisons, with maximum absolute error 9.54e-7 under the frozen
+`2e-6 + 2e-6 * abs(reference)` gate. Host tests cover live gain publication,
+shared rack/browser rendering and edit history. Analog hardware, native macOS
+controls and audio devices require separate qualification.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 
@@ -409,6 +417,7 @@ Factory patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up
 | [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |
 | [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
 | [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |
+| [Stock VCA](docs/STOCK_VCA.md) | Percentage level, CV response modes, per-channel effective gain and bounded DSP qualification |
 | [Audio oscillator](docs/AUDIO_OSCILLATOR.md) | Polyphonic FM, PWM, sync and measured compatibility gaps |
 | [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
 | [MCP integration](docs/MCP.md) | Client configuration, tools, revision checks, and file safety |

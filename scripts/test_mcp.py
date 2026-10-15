@@ -2368,6 +2368,108 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.require_tool_success("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
                 "module_events": [{"frame": 0, "id": "button", "action": action}]})
 
+    def test_stock_vca_modes_render_presets_duplicate_history_and_atomic_rejection(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_vca"]
+        self.assertEqual(descriptor["min_patch_version"], 2)
+        self.assertEqual(descriptor["inputs"], ["cv", "signal"])
+        self.assertEqual(descriptor["outputs"], ["out"])
+        self.assertEqual(set(descriptor["params"]), {"level", "response"})
+        self.assertEqual([descriptor["params"]["level"][key] for key in ("default", "min", "max")], [1, 0, 1])
+        self.assertEqual(descriptor["params"]["level"]["display"], {"multiplier": 100, "unit": "%"})
+        self.assertEqual([descriptor["params"]["response"][key] for key in ("default", "min", "max", "step")], [1, 0, 1, 1])
+        self.assertEqual(descriptor["params"]["response"]["values"], [0, 1])
+        self.assertEqual(descriptor["light_names"], [f"gain_{voice}" for voice in range(1, 17)])
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 48000,
+            "nodes": [
+                {"id": "cv", "kind": "poly_constant", "params": {"channels": 5, "v1": 0, "v2": 5, "v3": 10, "v4": -5, "v5": 15}},
+                {"id": "signal", "kind": "constant", "params": {"value": .5}},
+                {"id": "amplifier", "kind": "stock_vca", "params": {"level": .5}},
+                {"id": "split", "kind": "poly_split"},
+            ],
+            "cables": [
+                {"from": "cv", "to": "amplifier", "input": "cv"},
+                {"from": "signal", "to": "amplifier", "input": "signal"},
+                {"from": "amplifier", "to": "split", "input": "signal"},
+            ], "output": "split", "output_port": "out2",
+        }})
+        before = self.patch_snapshot()
+        measured = self.payload(self.require_tool_success("analyze_signal", {
+            "id": "amplifier", "seconds": .001, "expected_revision": before["revision"],
+        }))
+        self.assertEqual(measured["max_channels"], 5)
+        self.assertEqual([channel["mean"] for channel in measured["channels"]], [0, .125, .25, 0, .25])
+        self.assertEqual([channel["active_frames"] for channel in measured["channels"]], [48, 47, 47, 47, 47])
+        self.require_tool_success("render_audio", {"filename": "vca-linear.wav", "seconds": .001})
+        self.assertEqual(self.patch_snapshot(), before, "offline analysis/render must preserve patch, revision and history")
+        self.require_tool_success("set_parameter", {"id": "amplifier", "parameter": "response", "value": 0})
+        exponential = self.patch_snapshot()
+        captured = self.payload(self.require_tool_success("capture_signal", {
+            "id": "amplifier", "channel": 2, "seconds": .001, "points": 64,
+            "expected_revision": exponential["revision"],
+        }))
+        self.assertEqual(captured["summary"]["active_frames"], 47)
+        self.assertEqual(captured["summary"]["dc"], .015625)
+        self.assertEqual(captured["bins"][0]["active_frames"], 0)
+        self.assertEqual([point["mean"] for point in captured["bins"]][1:], [.015625] * 47)
+        self.require_tool_success("render_audio", {"filename": "vca-exponential.wav", "seconds": .001})
+        for filename, expected in [("vca-linear.wav", 4096), ("vca-exponential.wav", 512)]:
+            with wave.open(str(self.workspace / filename)) as rendered:
+                self.assertEqual((rendered.getframerate(), rendered.getnchannels(), rendered.getnframes()), (48000, 1, 48))
+                samples = self._first_channel_samples(rendered.readframes(48), rendered.getsampwidth(), rendered.getnchannels())
+            self.assertEqual(samples[:2], [0, 0])
+            self.assertAlmostEqual(samples[-1], expected, delta=1)
+        # This stdio process has no live callback: it must not fabricate gain telemetry.
+        telemetry = self.payload(self.require_tool_success("inspect_performance", {"expected_revision": exponential["revision"]}))
+        self.assertFalse(telemetry["supported"])
+        self.assertIsNone(telemetry["performance"])
+        self.assertEqual(self.patch_snapshot(), exponential)
+
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "amplifier"}))["preset"]
+        self.assertEqual(preset["params"], {"level": .5, "response": 0})
+        self.require_tool_success("save_module_preset", {"filename": "vca-exponential.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "vca-exponential.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "amplifier", "parameter": "response", "value": 1}},
+            {"tool": "set_parameter", "arguments": {"id": "amplifier", "parameter": "level", "value": .25}},
+        ]})
+        changed = self.patch_snapshot()
+        restored = self.payload(self.require_tool_success("apply_module_preset", {
+            "id": "amplifier", "preset": reviewed, "expected_revision": changed["revision"],
+        }))
+        self.assertEqual(restored["patch"], exponential["patch"])
+        self.assertEqual(restored["history"]["undo_steps"], changed["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], changed["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], restored["patch"])
+        before_duplicate = self.patch_snapshot()
+        duplicated = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "amplifier", "new_id": "copy"}], "cable_mode": "inputs",
+            "expected_revision": before_duplicate["revision"],
+        }))
+        copy = next(node for node in duplicated["patch"]["nodes"] if node["id"] == "copy")
+        self.assertEqual(copy["params"], {"level": .5, "response": 0})
+        duplicate_capture = self.payload(self.require_tool_success("capture_signal", {
+            "id": "copy", "channel": 2, "seconds": .001, "points": 64,
+        }))
+        self.assertEqual(duplicate_capture["summary"]["dc"], .015625)
+        self.assertEqual(duplicated["history"]["undo_steps"], before_duplicate["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before_duplicate["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], duplicated["patch"])
+
+        before_rejection = self.patch_snapshot()
+        self.require_tool_error("set_parameter", {"id": "amplifier", "parameter": "response", "value": .5})
+        self.assertEqual(self.patch_snapshot(), before_rejection)
+        self.require_tool_error("apply_edits", {"expected_revision": before_rejection["revision"], "edits": [
+            {"tool": "set_parameter", "arguments": {"id": "amplifier", "parameter": "level", "value": .75}},
+            {"tool": "set_parameter", "arguments": {"id": "copy", "parameter": "response", "value": .5}},
+        ]})
+        self.assertEqual(self.patch_snapshot(), before_rejection, "fractional response must roll back the earlier level edit and history")
+        invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
+        self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
+        self.assertEqual(self.patch_snapshot(), before_rejection)
+
     def test_stock_vcf_controls_capture_consumers_bypass_and_history(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_vcf"]

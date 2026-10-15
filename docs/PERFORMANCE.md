@@ -381,8 +381,21 @@ larger mixed patches and broader hardware remain open.
 
 The separate stock-style digital VCF has a [real callback report](benchmarks/stock-vcf-callback-profile.json)
 for a VCO → VCF → Sum patch at 48 kHz/256 frames on an Apple M1 Max. Steady
-p99 was 0.127 ms at one voice and 0.672 ms at sixteen voices; the largest
-observed sixteen-voice adoption/crossfade buffer was 1.313 ms against a 5.333 ms
+p99 was 0.128 ms at one voice and 0.688 ms at sixteen voices; the largest
+observed sixteen-voice adoption/crossfade buffer was 1.367 ms against a 5.333 ms
 block deadline. Audio matched the uninstrumented callback exactly. These
 headless observations do not qualify device latency/xruns, hard real-time
 scheduling, or a performance advantage over Rack. See [model contract](STOCK_VCF.md).
+
+
+### Stock VCA voice callbacks
+
+The [stock VCA report](benchmarks/stock-vca-callback-profile.json) measures a
+connected VCO → Stock VCF → Stock VCA → Sum patch with shared mono ADSR EG at
+48 kHz/256 stereo frames on the same M1 Max. Steady p99 was 0.156 ms for one
+voice and 0.729 ms for sixteen voices. The largest observed sixteen-voice
+adoption/crossfade buffer was 1.413 ms against the 5.333 ms block deadline.
+The actual callback matched its uninstrumented audio exactly, and separate
+first-buffer/adoption tests found no heap activity. This measures the complete
+headless workload rather than isolated amplification or physical device behavior;
+it does not demonstrate a VCV Rack speed advantage.

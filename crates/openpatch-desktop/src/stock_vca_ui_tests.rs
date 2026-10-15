@@ -287,15 +287,19 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
         for browser in [false, true] {
             let ctx = egui::Context::default();
             crate::panel_skin::install_fonts(&ctx);
+            let mut preview = ModulePreview::new(module);
+            let size = vec2(panel_width("stock_vca"), PANEL_HEIGHT);
+            let bounds = Rect::from_min_size(pos2(24.0, 12.0), size * scale);
+            // Match preview.show's exact fitted geometry at fractional scales.
+            let fitted_scale = (bounds.width() / size.x).min(bounds.height() / size.y);
+            let fitted = Rect::from_center_size(bounds.center(), size * fitted_scale);
             let mut rack = Rack {
-                zoom: scale,
+                zoom: fitted_scale,
+                pan: Vec2::ZERO,
                 ..Rack::default()
             };
-            let mut preview = ModulePreview::new(module);
-            let bounds = Rect::from_min_size(
-                pos2(24.0, 12.0),
-                vec2(panel_width("stock_vca"), PANEL_HEIGHT) * scale,
-            );
+            rack.positions.insert("amplifier".into(), Pos2::ZERO);
+            let rack_patch = patch();
             let mut drawn = vec![];
             let mut primitives = vec![];
             for _ in 0..2 {
@@ -312,38 +316,73 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
                         },
                     )
                 } else {
-                    frame_output(&ctx, &mut rack, &patch(), 0.0, vec![]).1
+                    ctx.run(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            egui::CentralPanel::default().frame(egui::Frame::NONE).show(
+                                ctx,
+                                |ui| {
+                                    let mut child =
+                                        ui.new_child(egui::UiBuilder::new().max_rect(fitted));
+                                    child.set_clip_rect(ui.clip_rect().intersect(bounds));
+                                    let rendered = rack.render_modules(
+                                        &mut child,
+                                        &rack_patch,
+                                        &catalog,
+                                        fitted,
+                                        48_000,
+                                        0,
+                                        RenderMode::Interactive {
+                                            drag_interactive: false,
+                                            allow_manual_press: false,
+                                        },
+                                    );
+                                    assert!(rendered.action.is_none());
+                                },
+                            );
+                        },
+                    )
                 };
                 drawn.clear();
                 primitives.clear();
-                // Match the full faceplate primitive stream (rack framing is outside bounds).
-                fn primitives_in(shape: &egui::Shape, bounds: Rect, result: &mut Vec<String>) {
+                // Compare complete module primitive streams. Rack rails are host
+                // chrome, so render_modules isolates the same surface as preview.
+                fn primitives_in(shape: &egui::Shape, result: &mut Vec<String>) {
                     match shape {
                         egui::Shape::Vec(shapes) => {
                             for shape in shapes {
-                                primitives_in(shape, bounds, result)
+                                primitives_in(shape, result)
                             }
                         }
-                        egui::Shape::Text(t) if bounds.expand(0.5).contains(t.pos) => result.push(
-                            format!("text:{:?}:{}:{:?}", t.pos, t.galley.text(), t.galley.size()),
-                        ),
-                        egui::Shape::Rect(r) if bounds.contains_rect(r.rect) => {
-                            result.push(format!("rect:{r:?}"))
-                        }
-                        egui::Shape::Circle(c) if bounds.contains(c.center) => {
-                            result.push(format!("circle:{c:?}"))
-                        }
-                        egui::Shape::LineSegment { points, stroke }
-                            if points.iter().all(|p| bounds.contains(*p)) =>
-                        {
+                        egui::Shape::Text(t) => result.push(format!(
+                            "text:{:?}:{:?}:{}:{:?}:{:?}:{:?}:{:?}:{}:{}",
+                            t.pos,
+                            t.galley.size(),
+                            t.galley.text(),
+                            t.galley.job.sections,
+                            t.fallback_color,
+                            t.override_text_color,
+                            t.underline,
+                            t.opacity_factor,
+                            t.angle,
+                        )),
+                        egui::Shape::Rect(r) => result.push(format!("rect:{r:?}")),
+                        egui::Shape::Circle(c) => result.push(format!("circle:{c:?}")),
+                        egui::Shape::LineSegment { points, stroke } => {
                             result.push(format!("line:{points:?}:{stroke:?}"))
                         }
-                        _ => {}
+                        egui::Shape::Mesh(mesh) => {
+                            result.push(format!("mesh:{:?}:{:?}", mesh.vertices, mesh.indices))
+                        }
+                        other => result.push(format!("shape:{other:?}")),
                     }
                 }
                 for s in output.shapes {
                     texts(&s.shape, &mut drawn);
-                    primitives_in(&s.shape, bounds, &mut primitives);
+                    primitives_in(&s.shape, &mut primitives);
                 }
             }
             for label in [
@@ -707,4 +746,92 @@ fn stock_vca_bypassed_unavailable_meter_remains_explicitly_offline() {
         texts(&shape.shape, &mut drawn);
     }
     assert!(drawn.iter().any(|(text, _)| text == "BYPASS · GAIN FROZEN"));
+}
+
+#[test]
+fn stock_vca_vertical_slider_keeps_focus_for_repeated_arrow_edits() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+    let position = at(stock_vca_slider_rect().center());
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![egui::Event::PointerMoved(position), button(position, true)],
+        true,
+        true,
+        29,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", args)) = action else {
+        panic!("click slider at 50%")
+    };
+    assert_eq!(args["value"], 0.5);
+    patch.nodes[0].params.insert("level".into(), 0.5);
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![button(position, false)],
+        true,
+        true,
+        30,
+    );
+    let slider_id = egui::Id::new(("stock-vca", "amplifier", "level"));
+    assert!(
+        ctx.memory(|memory| memory.has_focus(slider_id)),
+        "clicked fader must retain focus"
+    );
+    for (step, (shift, expected)) in [(false, 0.49), (false, 0.48), (true, 0.38)]
+        .iter()
+        .enumerate()
+    {
+        let time = 2.0 + step as f64;
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            time,
+            vec![key(egui::Key::ArrowDown, *shift)],
+            true,
+            true,
+            30 + step as u64,
+        )
+        .0;
+        let Some(RackAction::Command("set_parameter", args)) = action else {
+            panic!("arrow edit {} lost fader focus", step + 1)
+        };
+        assert_eq!(args["id"], "amplifier");
+        assert_eq!(args["parameter"], "level");
+        let actual = args["value"].as_f64().unwrap();
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "step {step}: {actual} versus {expected}"
+        );
+        assert!(
+            ctx.memory(|memory| memory.has_focus(slider_id)),
+            "arrow edit {} must preserve fader focus",
+            step + 1
+        );
+        // Apply the emitted edit as the host does before the next key frame.
+        patch.nodes[0].params.insert("level".into(), actual as f32);
+        let mut release = key(egui::Key::ArrowDown, *shift);
+        if let egui::Event::Key { pressed, .. } = &mut release {
+            *pressed = false;
+        }
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            time + 0.1,
+            vec![release],
+            true,
+            true,
+            31 + step as u64,
+        );
+    }
 }

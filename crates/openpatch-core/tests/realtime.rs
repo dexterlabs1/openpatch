@@ -324,3 +324,49 @@ fn stock_vcf_first_processing_taps_adoption_and_initialize_allocate_nothing() {
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
     assert!(samples[0][0].active && samples[0][1].active);
 }
+
+#[test]
+fn stock_vca_first_processing_taps_lights_adoption_and_reset_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame, TapSample};
+    let p: Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"s","kind":"poly_constant","params":{"channels":1,"v1":2}},
+                 {"id":"cv","kind":"poly_constant","params":{"channels":16,"v1":5,"v16":10}},
+                 {"id":"vca","kind":"stock_vca","params":{"response":0}}],
+        "cables":[{"from":"s","to":"vca","input":"signal"},
+                  {"from":"cv","to":"vca","input":"cv"}],"output":"vca"
+    }))
+    .unwrap();
+    let mut old = p.compile().unwrap();
+    let mut next = p.compile().unwrap();
+    let state = next.resolve_module_state("vca").unwrap();
+    let lights = next.resolve_module_lights("vca").unwrap();
+    let taps = [
+        Some(next.resolve_tap("vca", "out", 0).unwrap()),
+        Some(next.resolve_tap("vca", "out", 15).unwrap()),
+    ];
+    let mut frames = [PortFrame::default(); 129];
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[TapSample::default(); 2]; 129];
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACKING.with(|c| c.set(true));
+    old.process_poly_block(&mut frames);
+    next.adopt_state_from(&old);
+    next.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+    let published = next.module_lights(lights).unwrap();
+    let initialized = next.initialize_module_state(state);
+    let cleared = next.module_lights(lights).unwrap();
+    let reset = next.reset_module_state(state);
+    next.process_poly_block(&mut frames);
+    TRACKING.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(initialized && reset);
+    assert_eq!(published.input_channels, Some(16));
+    assert_eq!(published.brightness[0], [0.0625, 0.0]);
+    assert_eq!(published.brightness[15], [1.0, 0.0]);
+    assert_eq!(cleared.input_channels, Some(1));
+    assert_eq!(cleared.brightness, [[0.0; 2]; 16]);
+    assert!(samples[0][0].active && samples[0][1].active);
+    assert_eq!(samples[0][0].value, 0.125);
+    assert_eq!(samples[0][1].value, 2.0);
+}

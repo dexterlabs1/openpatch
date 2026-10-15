@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 63 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 64 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Next product design priority
 
@@ -26,7 +26,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 63 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 63 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 64 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 64 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -328,7 +328,7 @@ existing global keyboard and offline MCP path without replacing the CC module.
 
 ## Notes and Blank: readable, portable instruments
 
-The catalog now includes 62 kinds. Original `notes` and `blank` close two missing
+The catalog reached 62 kinds at that milestone. Original `notes` and `blank` close two missing
 Core roles with typed module content, revision-checked `set_module_content`,
 atomic mixed edits, preset/duplicate/project/recovery persistence and shared
 history. Notes has a multiline draft editor with explicit Apply/Cancel and a
@@ -355,3 +355,27 @@ reconnect histories, rounded polyphonic groups, real graph consumers and no
 callback allocation. The original shared panel supplies Hz entry and signed
 CV depths; the connected voice pairs it with ADSR EG and Scope. This advances
 one stock signal role, not complete Rack/plugin/host parity.
+
+
+## Stock VCA milestone
+
+A separate `stock_vca` adds ideal polyphonic amplification, direct percentage
+level entry, linear/fourth-power response controls and per-channel effective
+gain columns. **File → Stock VCA voice** connects oscillator, Stock VCF, ADSR EG,
+amplifier and a before/after Scope. Silent audio can still show nonzero gain;
+bypass preserves raw signal width and freezes the meter. The catalog now has
+64 kinds; the reference OTA VCA and legacy `gain` retain their contracts.
+
+The [frozen contract](STOCK_VCA.md) and
+[actual-class report](benchmarks/stock-vca-reference.json) record 72 passing
+traces at 44.1/48/96 kHz, 55,872 frames and 800,328 active output/gain comparisons.
+Maximum absolute error is 9.54e-7 under the unchanged
+`2e-6 + 2e-6 * abs(reference)` gate from frame zero, with exact actual SDK channel
+metadata and visible gains. Fresh partial-CV traces distinguish both response
+modes, and their endpoint gains agree exactly.
+
+Six DSP unit tests, five public Engine tests and one core allocation
+guard pass. Fifteen desktop callback/panel tests pass. Actual Linux captures
+and platform CI are release gates; native macOS window/input/playback qualification remains
+separate outstanding work. This finite digital result is not measured hardware
+fidelity, a completed VCV inventory row or release qualification.

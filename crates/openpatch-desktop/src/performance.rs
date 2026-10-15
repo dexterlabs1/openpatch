@@ -48,6 +48,7 @@ enum ModuleKind {
     AdsrEg,
     MidiCc,
     MidiGate,
+    StockVca,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -70,6 +71,7 @@ impl ModuleKind {
             "adsr_eg" => Some(Self::AdsrEg),
             "midi_cc" => Some(Self::MidiCc),
             "midi_gate" => Some(Self::MidiGate),
+            "stock_vca" => Some(Self::StockVca),
             _ => None,
         }
     }
@@ -93,6 +95,7 @@ impl ModuleKind {
             Self::AdsrEg => "adsr_eg",
             Self::MidiCc => "midi_cc",
             Self::MidiGate => "midi_gate",
+            Self::StockVca => "stock_vca",
         }
     }
     fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {

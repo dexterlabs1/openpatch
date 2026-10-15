@@ -3997,7 +3997,10 @@ impl OpenPatch {
         patch.nodes.extend(proof.nodes);
         patch.cables.extend(proof.cables);
         let mut engine = patch.compile().unwrap();
-        let mut audio = vec![0.0; 16384];
+        // Capture 85 ms into the 500 ms clock period, while the real gate is
+        // high. A late release-phase capture suppresses Y through EXP's fourth
+        // power even though the scope and VCA are functioning correctly.
+        let mut audio = vec![0.0; 4096];
         engine.process_block(&mut audio);
         assert!(audio.iter().all(|v| v.is_finite()));
         assert!(audio.iter().any(|v| v.abs() > 0.001));

@@ -1,12 +1,35 @@
 # Stock VCA
 
-Status: work in progress. The standalone DSP oracle passes; host/UI integration
-and native captures have not been compiled or qualified yet. This branch is
-a recovery checkpoint, not a release.
+Local qualification: the actual-source DSP oracle, six DSP unit tests, five
+public Engine tests, one core allocation guard and fifteen desktop tests pass.
+The desktop tests cover real gain publication, heap-free callbacks, shared
+thumbnails and repeated keyboard edits. Cross-platform CI and actual Linux
+captures are required release gates. Native macOS window/input/playback and
+audio-device qualification are separate outstanding work.
 
 A separate `stock_vca` targets the VCV Free VCA-1 digital behavior, preserving
 `analog_vca` and legacy `gain`. This is ideal amplification and a specified CV
 response, not a measured analog hardware clone.
+
+## Play and inspect the voice
+
+Choose **File → Stock VCA voice** to open the connected oscillator → Stock VCF →
+Stock VCA example. A clock drives ADSR EG into the amplifier's CV input, and Scope
+compares the signal before and after amplification. Press **Play** to audition
+it.
+
+Drag the **LEVEL** fader or click its printed percentage to enter a value from
+0–100%. **LIN** applies CV proportionally; **EXP** applies a fourth-power curve.
+The module context menu offers the same response modes. The default is 100%
+level and linear response. At 5 V CV and full level, LIN gives 50% gain and EXP
+6.25%; both give zero at 0 V and full gain at 10 V. An unplugged CV input leaves
+the level control in charge; a connected 0 V cable mutes it.
+
+The meter's columns show each active channel's effective gain, including when
+its audio is silent. The fader marks the configured level. Browser inspection
+and unavailable telemetry show that setting with an explicit unavailable state;
+they do not display invented live gain. Bypass passes the raw signal's channel
+width and freezes the gain columns.
 
 ## Frozen contract and acceptance
 
@@ -73,3 +96,39 @@ or device latency from throughput. Native scenes must show actual measured
 polyphonic gains in normal/dark room; preserve all example Notes within their
 painted bounds. Cross-platform CI and actual Linux captures are release gates;
 native Mac window/input/playback remains separate qualification.
+
+## Recorded DSP qualification
+
+The [actual-class report](benchmarks/stock-vca-reference.json) passes 72 traces
+at 44.1, 48 and 96 kHz: 55,872 frames and 800,328 active output/gain comparisons.
+The maximum measured absolute error is 9.54e-7. The frozen gate above remains
+`2e-6 + 2e-6 * abs(reference)` for every active value from frame zero, with exact
+channel counts. No alignment, warmup or tolerance change was used.
+
+The runner compiles the genuine pinned `VCA_1` class against an installed Rack
+SDK, retaining its `std::pow(cv, 4.f)`, and compares actual output metadata,
+`lastChannels` and visible `lastGains`. Fresh counterfactuals give exactly 0.5
+linear gain versus 0.0625 exponential gain at 5 V CV; the 0 V and 10 V endpoints
+agree exactly. Acceptance and input hashes were frozen before comparison.
+[Method and reproduction](../scripts/stock_vca_reference/README.md) describe the
+adapters, SDK padding, unused output metadata and recorded source/toolchain hashes.
+
+This is finite digital DSP coverage. It does not measure analog hardware or
+qualify native macOS controls, audio devices or playback. Public Engine, desktop
+callback, panel, native capture and cross-platform gates remain separately
+tracked; passing this oracle does not complete VCV module or host parity.
+
+## Measured callback cost
+
+The [release callback profile](benchmarks/stock-vca-callback-profile.json) on an
+Apple M1 Max, ARM64/macOS 26.7.1, renders connected VCO → Stock VCF → Stock VCA →
+Sum lanes with a shared mono ADSR EG. At 48 kHz in 256-frame stereo buffers
+(5.333 ms deadline), observed steady p99 was 0.156 ms for one voice and 0.729 ms
+for sixteen voices. The largest observed sixteen-voice first buffer during
+graph adoption/crossfade was 1.413 ms. All measured VCA-workload buffers fit the
+block deadline. Instrumented and uninstrumented callbacks produced identical
+audio; separate callback tests found no heap activity.
+
+These headless observations include the oscillator, filter, envelope, summing
+and host conversion. They do not establish isolated VCA throughput, audio-device
+latency, hard real-time behavior, or a speed advantage over VCV Rack.

@@ -5498,6 +5498,7 @@ mod tests {
     include!("midi_cc_host_tests.rs");
     include!("midi_gate_host_tests.rs");
     include!("stock_vcf_audio_tests.rs");
+    include!("stock_vca_audio_tests.rs");
 }
 
 #[cfg(test)]

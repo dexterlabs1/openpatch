@@ -3,7 +3,7 @@ use serde_json::json;
 fn patch(audio_width: u8, cv_width: u8, response: u8) -> Patch {
     let mut p:Patch=serde_json::from_value(json!({"version":2,"sample_rate":48000,
       "nodes":[{"id":"audio","kind":"poly_constant","params":{"channels":audio_width,"v1":2,"v2":-4,"v3":6}},
-               {"id":"cv","kind":"poly_constant","params":{"channels":cv_width,"v1":0,"v2":2.5,"v3":5,"v4":10,"v5":20}},
+               {"id":"cv","kind":"poly_constant","params":{"channels":cv_width,"v1":0,"v2":2.5,"v3":5,"v4":10,"v5":16}},
                {"id":"vca","kind":"stock_vca","params":{"response":response}}],
       "cables":[{"from":"audio","to":"vca","input":"signal"},{"from":"cv","to":"vca","input":"cv"}],
       "output":"vca"})).unwrap();
@@ -33,6 +33,9 @@ fn stock_vca_catalog_enum_and_parameter_actions_are_explicit() {
     assert_eq!(m["min_patch_version"], 2);
     assert_eq!(m["params"]["response"]["default"], 1.0);
     assert_eq!(m["params"]["response"]["randomization"], "enum");
+    assert_eq!(m["input_metadata"][0]["normalization"], 10.0);
+    assert_eq!(m["input_metadata"][1]["normalization"], 0.0);
+    assert!(m["input_metadata"][0].get("normal_volts").is_none());
     for (name, value) in [
         ("response", 0.5),
         ("response", 2.0),

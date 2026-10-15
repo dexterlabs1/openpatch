@@ -95,8 +95,8 @@ analog hardware equivalence remain separate outstanding acceptance work.
 The [release callback profile](benchmarks/stock-vcf-callback-profile.json) on an
 Apple M1 Max, ARM64/macOS 26.7.1, renders a connected VCO → VCF → Sum voice at
 48 kHz in 256-frame stereo device buffers (5.333 ms deadline). Observed steady
-p99 was 0.127 ms for one voice and 0.672 ms for sixteen voices. The largest
-observed sixteen-voice first buffer during graph adoption/crossfade was 1.313 ms;
+p99 was 0.128 ms for one voice and 0.688 ms for sixteen voices. The largest
+observed sixteen-voice first buffer during graph adoption/crossfade was 1.367 ms;
 all measured buffers fit the block deadline. The actual callback and its
 uninstrumented path produced identical audio. Separate first-buffer/adoption
 tests found no heap activity.
