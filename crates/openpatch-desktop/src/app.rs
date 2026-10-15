@@ -3792,7 +3792,7 @@ impl OpenPatch {
         self.sync();
         self.rack = Rack::default();
         self.rack.restore_layout(&json!({"version":1,"zoom":0.95,"pan":[24,12],"positions":{
-            "envelope":[0,0],"scope":[390,0],"gates":[0,420],"attack-cv":[270,420],"decay-cv":[540,420]}})).unwrap();
+            "envelope":[0,0],"scope":[390,0],"gates":[0,420],"attack-cv":[390,420],"decay-cv":[780,420]}})).unwrap();
         self.rack.set_module_states(
             BTreeMap::from([("envelope".into(), lights)]),
             BTreeMap::new(),
