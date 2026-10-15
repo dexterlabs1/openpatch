@@ -10,6 +10,7 @@ use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
+use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
@@ -87,6 +88,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "seq3"
                 | "pulses"
                 | "push"
+                | "random_values"
                 | "scope"
                 | "gates"
         )
@@ -130,6 +132,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
+        "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "pulses" | "colored_noise" => None,
         "audio_stereo" => match name {
@@ -177,6 +180,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         scope::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "pulses" {
         pulses::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "random_values" {
+        random_values::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
         push::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "gates" {
@@ -277,6 +282,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "scope" {
         scope::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "random_values" {
+        random_values::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -449,6 +459,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "random_values" {
+        random_values::annotate(module);
+    }
     if kind == "gates" {
         gates::annotate(module);
     }
@@ -480,6 +493,7 @@ enum Model {
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
+    RandomValues(Box<RandomValues>),
     Scope(Box<Scope>),
     Gates(Box<Gates>),
     Switch(SequentialSwitch),
@@ -521,6 +535,9 @@ impl Model {
         }
         if node.kind == "scope" {
             return Ok(Self::Scope(Box::new(Scope::build(node, rate)?)));
+        }
+        if node.kind == "random_values" {
+            return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
         }
         if node.kind == "push" {
             return Ok(Self::Push(Box::new(Push::build(node, rate)?)));
@@ -709,6 +726,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.controls(),
             Some(Model::Pulses(p)) => Some(p.controls()),
             Some(Model::Push(p)) => Some(p.controls()),
+            Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
             _ => None,
         }
@@ -718,6 +736,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
+            Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::Sum(s)) => Some(s.lights()),
@@ -729,6 +748,10 @@ impl PolyEngine {
         match self.nodes.get_mut(index).map(|n| &mut n.model) {
             Some(Model::Signal(s)) => s.release(),
             Some(Model::Pulses(p)) => {
+                p.release();
+                true
+            }
+            Some(Model::RandomValues(p)) => {
                 p.release();
                 true
             }
@@ -752,6 +775,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.supports(action),
             Some(Model::Pulses(_)) => action.pulse_button().is_some(),
             Some(Model::Push(_)) => Push::supports(action),
+            Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
             _ => false,
         }
@@ -805,6 +829,12 @@ impl PolyEngine {
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if action == ModuleAction::PushRelease {
+                if let Model::RandomValues(p) = &mut self.nodes[node].model {
+                    p.release();
+                    return true;
+                }
+            }
             if action == ModuleAction::ResetRelease {
                 if let Model::Gates(g) = &mut self.nodes[node].model {
                     g.release();
@@ -840,6 +870,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
             Some(Model::Push(p)) => p.enqueue(action),
+            Some(Model::RandomValues(p)) => p.enqueue(action),
             Some(Model::Gates(g)) => g.enqueue(action),
             _ => false,
         }
@@ -888,6 +919,10 @@ impl PolyEngine {
                 s.reset();
                 scope::OUTPUTS.len()
             }
+            Model::RandomValues(p) => {
+                p.reset_state();
+                random_values::OUTPUTS.len()
+            }
             Model::Push(p) => {
                 p.reset_state();
                 push::OUTPUTS.len()
@@ -932,6 +967,7 @@ impl PolyEngine {
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
+            Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
             Model::ModalResonator(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
@@ -957,6 +993,7 @@ impl PolyEngine {
         match self.nodes.get(index).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
             Some(Model::Push(push)) => Some(SavedModuleState::PushHold(push.holding())),
+            Some(Model::RandomValues(p)) => Some(p.saved_state()),
             _ => None,
         }
     }
@@ -969,6 +1006,7 @@ impl PolyEngine {
                 push.set_holding(holding);
                 true
             }
+            (Some(Model::RandomValues(p)), state) => p.set_saved_state(state),
             _ => false,
         }
     }
@@ -1058,6 +1096,7 @@ impl PolyEngine {
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
+                    "random_values" => random_values::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
                     "gates" => gates::OUTPUTS.len(),
                     _ => 1,
@@ -1330,6 +1369,10 @@ impl PolyEngine {
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     );
                 }
+                Model::RandomValues(p) => p.process(
+                    a,
+                    &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                ),
                 Model::Push(p) => p.process(
                     &[a, b],
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
@@ -1740,6 +1783,14 @@ impl PolyEngine {
                 }
             }
             if let (Model::Pulses(p), Model::Pulses(previous)) = (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
+                if bypass_changed {
+                    p.release();
+                }
+            }
+            if let (Model::RandomValues(p), Model::RandomValues(previous)) =
+                (&mut node.model, &previous.model)
             {
                 p.adopt(previous);
                 if bypass_changed {

@@ -81,6 +81,12 @@ pub fn validate(preset: &Value) -> Result<(), String> {
             }
         }
     }
+    if kind == "random_values" {
+        let node: Node =
+            serde_json::from_value(json!({"id":"preset", "kind":kind,"params":params}))
+                .map_err(|error| error.to_string())?;
+        openpatch_core::initial_random_values_state(&node)?;
+    }
     if object
         .get("bypassed")
         .is_some_and(|value| !value.is_boolean())
@@ -118,6 +124,9 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
     let module = descriptor(&node.kind)?;
     let mut params = BTreeMap::new();
     for (name, spec) in module["params"].as_object().unwrap() {
+        if spec["hidden"] == true {
+            continue;
+        }
         params.insert(
             name.clone(),
             node.params
@@ -144,10 +153,7 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
                     }
                 )
             })?;
-        params.insert(
-            actual.parameter().into(),
-            if actual.value() { 1.0 } else { 0.0 },
-        );
+        actual.write_params(&mut params);
     }
     let mut preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
     if node.kind == "score_sequencer" {
@@ -346,6 +352,13 @@ mod tests {
             for (name, spec) in module["params"].as_object().unwrap() {
                 for boundary in ["min", "max"] {
                     let mut original = base.clone();
+                    // Reserved state fields are valid only within a complete
+                    // snapshot; never invent their catalog defaults individually.
+                    if spec["hidden"] == true {
+                        if let Some(state) = SavedModuleState::from_node(&base) {
+                            state.write_params(&mut original.params);
+                        }
+                    }
                     let value = spec[boundary].as_f64().unwrap() as f32;
                     original.params.insert(name.clone(), value);
                     let preset = capture_state(&original, SavedModuleState::from_node(&original))

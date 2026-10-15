@@ -157,16 +157,17 @@ mutations and live module actions with `session is closing`; inspection and expo
 ## Capture current project persistent state
 
 `capture_project_patch` accepts optional `expected_revision` and returns
-`patch`, `revision`, `state_id`, `running` and `holding` (module ID → boolean), `state_source`,
-and `frame`. It projects current SEQ-3 Run and Push HOLD into a cloned graph without modifying
+`patch`, `revision`, `state_id`, `running` and `holding` (module ID → boolean),
+`random_values` (module ID → `values[7][16]` and `rng_state`), `state_source`,
+and `frame`. It projects current persistent state into a cloned graph without modifying
 history, queuing controls, resetting DSP state, or writing a file. Native Save
 and recovery use this same capture path; the MCP result does not include layout.
 
-With live audio, every SEQ-3 and Push must be available at the requested revision
+With live audio, every SEQ-3, Push and Random Values module must be available at the requested revision
 and one completed callback frame. Stale, missing, or incoherent telemetry
 rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
-configured initial Run/HOLD when no backend is attached, or `parameters` when there
-are no SEQ-3 or Push modules. The latter two return a null frame. This is a point-in-time
+configured initial state when no backend is attached, or `parameters` when there
+are no persistent-state modules. The latter two return a null frame. This is a point-in-time
 capture, not an acknowledgment of controls awaiting audio processing.
 
 ## Initialize and Randomize
@@ -642,3 +643,9 @@ See [Gates timing, history, and numerical policies](GATES.md).
 ## Structured scores and long rendering
 
 `add_module` accepts optional typed `score` data for `score_sequencer`; `set_score` replaces it atomically with revision guards, undo/redo and batch support. `catalog` supplies its score schema. `render_arrangement` streams a reset-origin autonomous performance of up to 300 seconds to a new WAV, with bounded memory and preclip statistics. See [scores and studio modules](SCORE_AND_STUDIO.md).
+
+`save_patch` uses this coherent capture before writing JSON, including current
+Random Values voltages and generator state. It may now serialize implicit saved
+defaults, while leaving the live graph/history unchanged. Random Values
+`randomize_modules` derives a fresh generator from `max(1, FNV-1a32(id) XOR seed)`
+and refreshes all 112 voltages; PUSH/TRIG continue the current random stream.

@@ -28,7 +28,7 @@ Explicit `holding` assignments apply even if they equal the configured value. An
 
 Unrelated edits, module moves, and compatible graph adoption preserve the live latch, gate detectors and pulse history. Bypass releases physical controls and silences outputs while preserving HOLD and freezing pulse/detector processing. Emergency release clears both physical buttons and stale queued actions, preserving HOLD and pulse history. Assigning HOLD changes the next evaluated gate and can legitimately produce a trigger; it is not simulated by replaying a button action.
 
-Project/preset capture is read-only. It observes a completed callback, not an audio freeze or acknowledgment of queued controls. Raw MCP `save_patch` retains configured graph values; use `capture_project_patch` when a client needs live persistent state.
+Project/preset capture is read-only. It observes a completed callback, not an audio freeze or acknowledgment of queued controls. MCP `save_patch` now uses that same coherent capture; `capture_project_patch` returns the captured graph without writing it.
 
 ## MCP and telemetry
 

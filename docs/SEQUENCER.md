@@ -83,8 +83,8 @@ the step or producing a Run pulse. Preset, Initialize and Randomize history
 restore captured Run states; ordinary knob and rotation history remain
 parameter-only. Current Run is also preserved when copying a sequencer or
 undoing its removal. [Native projects](PROJECTS.md) preserve Run through the
-same read-only projection; other DSP histories still restart on load. Graph-only
-MCP `save_patch` retains its configured-parameter interchange behavior.
+same read-only projection; other DSP histories still restart on load. MCP
+`save_patch` now captures current Run through the same coherent projection.
 
 ## MCP performances
 

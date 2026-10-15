@@ -1,7 +1,7 @@
 # Projects, saving, and recovery
 
 Native projects now keep modules, cables, output selection, module positions,
-pan, zoom, and each SEQ-3’s current Run and Push’s HOLD settings in **one `.openpatch` file**. Files live in `~/OpenPatch` by
+pan, zoom, SEQ-3 Run, Push HOLD, and Random Values held voltages plus generator state in **one `.openpatch` file**. Files live in `~/OpenPatch` by
 default, or the directory selected with `--workspace`.
 
 ## Everyday controls
@@ -22,7 +22,7 @@ use ASCII letters, digits, hyphens, underscores, and periods, with no directory
 components. A standard operating-system file picker remains future work.
 
 The title's asterisk follows saved **content**, including layout and view
-changes and live SEQ-3 Run or Push HOLD toggles. Advancing steps and audio frames do not mark
+changes, live SEQ-3 Run or Push HOLD toggles, and Random Values draws. Advancing steps and audio frames do not mark
 the project changed. Returning to saved content clears the asterisk. A later
 Run/HOLD toggle or MCP edit during Save remains unsaved. Open, New, Revert, and Close offer Save / Discard /
 Cancel when needed; Save continues the requested action only if no newer edits
@@ -150,14 +150,16 @@ Legacy `.json` patches and `.json.layout.json` sidecars import without being
 modified. Their first native save uses Save As. An invalid present sidecar
 rejects the import instead of partially loading a graph with a bad view.
 
-MCP `save_patch` and `load_patch` remain **graph-only JSON interchange** commands.
-They do not read native `.openpatch` envelopes or save the view. Agents can
-continue editing the live native session while the user saves complete native
-projects through File. Read-only MCP `capture_project_patch` exposes the same
-Run/HOLD projection and provenance, without layout or disk writes. Full project-level
-MCP operations remain a separate gate.
+MCP `save_patch` now captures current persistent module state into JSON, using
+the same coherent snapshot as `capture_project_patch`: SEQ-3 Run, Push HOLD,
+and all Random Values voltages plus generator state. With no live backend it
+captures configured/initial state. Saving does not edit the session or history.
+This replaces its earlier configured-parameters-only behavior; defaults such as
+SEQ-3 `running: 1` may become explicit in the file. `load_patch` restores that
+JSON graph. These commands do not read native `.openpatch` envelopes or save the
+view. Full project-level MCP operations remain a separate gate.
 
-Native documents preserve SEQ-3 Run and Push HOLD, but not sequence position, oscillator
+Native documents preserve SEQ-3 Run, Push HOLD and Random Values state, but not sequence position, oscillator
 phase, delay history, held controls, external assets,
 custom GLSL, keyboard/device preferences, or the undo stack. Device preferences
 remain separate host settings. [Native module presets](MODULE_PRESETS.md) are
@@ -170,3 +172,8 @@ conflicts, failures before/after publication, active/orphan recovery ownership,
 content-based dirty state, concurrent MCP edits during Save, stale Close/load
 decisions, keyboard Save/Cancel continuation, and blocked rack gestures beneath
 dialogs. Native CI renders the Save and unsaved-change dialogs on Linux.
+
+Random Values participates in the same revision/frame coherence, dirty-content,
+Save/Save As, template and recovery rules described above for Run/HOLD. Its
+112 held voltages and next-draw generator state are preserved; trigger detector
+history and physical button state are not. See [its contract](RANDOM_VALUES.md).

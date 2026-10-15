@@ -40,46 +40,55 @@ pub(super) fn live_saved(
     {
         return Err(format!("live state kind mismatch for module '{id}'"));
     }
-    let value = module["state"][expected.parameter()]
-        .as_bool()
-        .ok_or_else(|| {
-            format!(
-                "live {} state unavailable for module '{id}'",
-                if expected.kind() == "seq3" {
-                    "Run"
-                } else {
-                    "HOLD"
+    let state = match expected {
+        SavedModuleState::RandomValues { .. } => {
+            let rows = module["state"]["values"]
+                .as_array()
+                .filter(|rows| rows.len() == 7)
+                .ok_or_else(|| format!("live Random Values state unavailable for module '{id}'"))?;
+            let mut values = [[0_u32; 16]; 7];
+            for (output, row) in rows.iter().enumerate() {
+                let row = row
+                    .as_array()
+                    .filter(|row| row.len() == 16)
+                    .ok_or_else(|| format!("invalid Random Values voices for module '{id}'"))?;
+                for (channel, value) in row.iter().enumerate() {
+                    let value = value
+                        .as_f64()
+                        .filter(|value| value.is_finite() && (-10.0..=10.0).contains(value))
+                        .ok_or_else(|| format!("invalid Random Values voltage for module '{id}'"))?
+                        as f32;
+                    values[output][channel] = value.to_bits();
                 }
-            )
-        })?;
+            }
+            let rng = module["state"]["rng_state"]
+                .as_u64()
+                .and_then(|rng| u32::try_from(rng).ok())
+                .filter(|rng| *rng != 0)
+                .ok_or_else(|| format!("invalid Random Values RNG for module '{id}'"))?;
+            SavedModuleState::RandomValues { values, rng }
+        }
+        _ => {
+            let (parameter, _) = expected
+                .boolean()
+                .ok_or("persistent state has no boolean field")?;
+            let value = module["state"][parameter]
+                .as_bool()
+                .ok_or_else(|| format!("live {parameter} state unavailable for module '{id}'"))?;
+            expected.with_value(value)
+        }
+    };
     let frame = module["frame"]
         .as_u64()
         .ok_or_else(|| format!("coherent live frame unavailable for module '{id}'"))?;
-    Ok((expected.with_value(value), frame))
+    Ok((state, frame))
 }
 
 pub(super) fn load_saved(
     backend: &dyn LiveModuleEvents,
     states: &BTreeMap<String, SavedModuleState>,
 ) {
-    let mut running = BTreeMap::new();
-    let mut holding = BTreeMap::new();
-    for (id, state) in states {
-        match state {
-            SavedModuleState::Seq3Run(value) => {
-                running.insert(id.clone(), *value);
-            }
-            SavedModuleState::PushHold(value) => {
-                holding.insert(id.clone(), *value);
-            }
-        }
-    }
-    if !running.is_empty() {
-        backend.load_module_running(&running);
-    }
-    if !holding.is_empty() {
-        backend.load_module_holding(&holding);
-    }
+    backend.load_module_saved_states(states);
 }
 
 impl Session {
@@ -129,12 +138,28 @@ impl Session {
         args: &Value,
         effects: &mut EditEffects,
     ) -> Result<(), String> {
+        let prior_seed = candidate
+            .nodes
+            .iter()
+            .find(|node| node.id == args["id"].as_str().unwrap_or(""))
+            .and_then(|node| node.params.get("seed"))
+            .copied()
+            .unwrap_or(1.0);
         let targets: Vec<String> = match name {
             "initialize_modules" | "randomize_modules" => {
                 parameter_action_ids(candidate, args)?.into_iter().collect()
             }
             "apply_module_preset" | "remove_module" => vec![string(args, "id")?.to_owned()],
-            "set_parameter" if args["parameter"] == "running" || args["parameter"] == "holding" => {
+            "set_parameter"
+                if candidate.nodes.iter().any(|node| {
+                    node.id == args["id"].as_str().unwrap_or("") && node.kind == "random_values"
+                }) || args["parameter"] == "running"
+                    || args["parameter"] == "holding"
+                    || args["parameter"] == "seed"
+                    || args["parameter"]
+                        .as_str()
+                        .is_some_and(|p| p.starts_with("value") || p.starts_with("rng_")) =>
+            {
                 vec![string(args, "id")?.to_owned()]
             }
             _ => Vec::new(),
@@ -193,19 +218,84 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
-                    let explicit = if name == "apply_module_preset" {
-                        args["preset"]["params"]
-                            .get(current.parameter())
-                            .and_then(Value::as_f64)
-                    } else if name == "set_parameter" && args["parameter"] == current.parameter() {
-                        args.get("value").and_then(Value::as_f64)
-                    } else if name == "initialize_modules" && current.kind() == "push" {
-                        Some(0.0)
+                    let explicit = if current.kind() == "random_values" {
+                        let previous = effects.working_saved.get(&id).copied().unwrap_or(current);
+                        if name == "initialize_modules" {
+                            Some(previous)
+                        } else if name == "randomize_modules" {
+                            let node = candidate.nodes.iter().find(|node| node.id == id).unwrap();
+                            let seed = args["seed"]
+                                .as_u64()
+                                .and_then(|seed| u32::try_from(seed).ok())
+                                .ok_or("seed must be a u32")?;
+                            let SavedModuleState::RandomValues { values, .. } = previous else {
+                                return Err("Random Values state kind mismatch".into());
+                            };
+                            let seeded = SavedModuleState::RandomValues {
+                                values,
+                                rng: module_random_seed(&id, seed).max(1),
+                            };
+                            Some(openpatch_core::randomize_random_values_state(node, seeded)?)
+                        } else if (name == "apply_module_preset"
+                            && args["preset"]["params"].get("rng_hi").is_some())
+                            || (name == "set_parameter"
+                                && args["parameter"].as_str().is_some_and(|name| {
+                                    name.starts_with("value") || name.starts_with("rng_")
+                                }))
+                        {
+                            Some(current)
+                        } else if name == "set_parameter" && args["parameter"] == "seed" {
+                            let node = candidate.nodes.iter().find(|node| node.id == id).unwrap();
+                            if node.params.get("seed").copied().unwrap_or(1.0) != prior_seed {
+                                let mut fresh = node.clone();
+                                fresh.params.retain(|name, _| {
+                                    !name.starts_with("value") && !name.starts_with("rng_")
+                                });
+                                Some(openpatch_core::initial_random_values_state(&fresh)?)
+                            } else {
+                                None
+                            }
+                        } else if name == "apply_module_preset"
+                            && args["preset"]["params"].get("seed").is_some()
+                        {
+                            let node = candidate.nodes.iter().find(|node| node.id == id).unwrap();
+                            if node.params.get("seed").copied().unwrap_or(1.0) != prior_seed {
+                                let mut fresh = node.clone();
+                                fresh.params.retain(|name, _| {
+                                    !name.starts_with("value") && !name.starts_with("rng_")
+                                });
+                                Some(openpatch_core::initial_random_values_state(&fresh)?)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     } else {
-                        None
+                        let explicit = if name == "apply_module_preset" {
+                            args["preset"]["params"]
+                                .get(current.parameter())
+                                .and_then(Value::as_f64)
+                        } else if name == "set_parameter"
+                            && args["parameter"] == current.parameter()
+                        {
+                            args.get("value").and_then(Value::as_f64)
+                        } else if name == "initialize_modules" && current.kind() == "push" {
+                            Some(0.0)
+                        } else {
+                            None
+                        };
+                        explicit.map(|value| current.with_value(value as f32 == 1.0))
                     };
                     if let Some(value) = explicit {
-                        let value = current.with_value(value as f32 == 1.0);
+                        if value.kind() == "random_values" {
+                            let node = candidate
+                                .nodes
+                                .iter_mut()
+                                .find(|node| node.id == id)
+                                .unwrap();
+                            value.write_params(&mut node.params);
+                        }
                         effects.working_saved.insert(id.clone(), value);
                         effects.after_saved.insert(id.clone(), value);
                         effects.load_saved.insert(id.clone(), value);
@@ -231,10 +321,7 @@ impl Session {
                 .find(|node| node.id == id)
                 .unwrap();
             if name == "duplicate_modules" {
-                node.params.insert(
-                    value.parameter().into(),
-                    if value.value() { 1.0 } else { 0.0 },
-                );
+                value.write_params(&mut node.params);
             }
             effects.replaced.insert(id.clone());
             effects.working_saved.insert(id.clone(), value);

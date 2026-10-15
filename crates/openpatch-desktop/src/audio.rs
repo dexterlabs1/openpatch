@@ -553,6 +553,16 @@ impl Audio {
         self.performance.sequence_state(id)
     }
 
+    pub fn random_values_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| module["kind"] == "random_values" && module["available"] == true)
+            .map(|(id, module)| (id.clone(), module["state"].clone()))
+            .collect()
+    }
+
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
@@ -5340,6 +5350,7 @@ mod tests {
         assert_eq!(reopened.performance.sequence_state("seq").unwrap().step, 2);
         assert_eq!(sender.snapshot()["applied"], 256);
     }
+    include!("random_values_host_tests.rs");
 }
 
 #[cfg(test)]

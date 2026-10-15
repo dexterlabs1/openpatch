@@ -42,6 +42,7 @@ enum ModuleKind {
     Pulses,
     Push,
     Gates,
+    RandomValues,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -59,6 +60,7 @@ impl ModuleKind {
             "pulses" => Some(Self::Pulses),
             "push" => Some(Self::Push),
             "gates" => Some(Self::Gates),
+            "random_values" => Some(Self::RandomValues),
             _ => None,
         }
     }
@@ -77,12 +79,18 @@ impl ModuleKind {
             Self::Pulses => "pulses",
             Self::Push => "push",
             Self::Gates => "gates",
+            Self::RandomValues => "random_values",
         }
     }
     fn manual(self) -> bool {
         matches!(
             self,
-            Self::Logic | Self::Process | Self::Pulses | Self::Push | Self::Gates
+            Self::Logic
+                | Self::Process
+                | Self::Pulses
+                | Self::Push
+                | Self::Gates
+                | Self::RandomValues
         )
     }
     fn sequential(self) -> bool {
@@ -101,6 +109,9 @@ impl ModuleKind {
                 action,
                 ModuleAction::ResetPress | ModuleAction::ResetRelease
             ),
+            Self::RandomValues => {
+                matches!(action, ModuleAction::PushPress | ModuleAction::PushRelease)
+            }
             Self::Push => matches!(
                 action,
                 ModuleAction::PushPress
@@ -194,6 +205,8 @@ struct Meter {
     value: AtomicU32,
     flags: AtomicU32,
     saved_state: AtomicU32,
+    random_values: [[AtomicU32; 16]; 7],
+    random_rng: AtomicU32,
     input_channels: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
@@ -207,6 +220,8 @@ impl Meter {
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
             saved_state: AtomicU32::new(0),
+            random_values: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
+            random_rng: AtomicU32::new(0),
             input_channels: AtomicU32::new(u32::MAX),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
@@ -230,6 +245,15 @@ impl Meter {
             match snapshot.saved_state {
                 Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 2),
                 Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 2),
+                Some(SavedModuleState::RandomValues { values, rng }) => {
+                    for (row, values) in self.random_values.iter().zip(values) {
+                        for (slot, value) in row.iter().zip(values) {
+                            slot.store(value, Ordering::SeqCst);
+                        }
+                    }
+                    self.random_rng.store(rng, Ordering::SeqCst);
+                    3
+                }
                 None => 0,
             },
             Ordering::SeqCst,
@@ -263,6 +287,14 @@ impl Meter {
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
             let saved_state = self.saved_state.load(Ordering::SeqCst);
+            let random_state = (saved_state & 3 == 3).then(|| SavedModuleState::RandomValues {
+                values: std::array::from_fn(|row| {
+                    std::array::from_fn(|channel| {
+                        self.random_values[row][channel].load(Ordering::SeqCst)
+                    })
+                }),
+                rng: self.random_rng.load(Ordering::SeqCst),
+            });
             let input_channels = self.input_channels.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
@@ -285,6 +317,7 @@ impl Meter {
                     saved_state: match saved_state & 3 {
                         1 => Some(SavedModuleState::Seq3Run(saved_state & 4 != 0)),
                         2 => Some(SavedModuleState::PushHold(saved_state & 4 != 0)),
+                        3 => random_state,
                         _ => None,
                     },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
@@ -309,7 +342,7 @@ struct Shared {
     emergency_release_epochs: [AtomicU64; MAX_NODES],
     emergency_release_requests: AtomicU64,
     emergency_release_applied: AtomicU64,
-    meters: [Meter; MAX_NODES],
+    meters: Box<[Meter; MAX_NODES]>,
     closed: AtomicBool,
     // One writer (the audio callback) surrounds the complete meter batch.
     // Readers can reject a partial cross-module publication without waiting.
@@ -373,7 +406,7 @@ pub(super) struct ModulePlan {
     scope_cursor: usize,
     scope_interval: u64,
     pub bindings: [Option<Binding>; MAX_NODES],
-    pub states: [Option<StateBinding>; MAX_NODES],
+    pub states: Box<[Option<StateBinding>; MAX_NODES]>,
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
     // Compile/control owns these fixed-capacity allocations. Queued graph
     // moves carry pointers; retired graphs free them back on the control side.
@@ -387,7 +420,11 @@ impl Default for ModulePlan {
             scope_cursor: 0,
             scope_interval: 1,
             bindings: [None; MAX_NODES],
-            states: [None; MAX_NODES],
+            states: vec![None; MAX_NODES]
+                .into_boxed_slice()
+                .try_into()
+                .ok()
+                .expect("fixed state binding capacity"),
             fresh_states: [None; MAX_NODES],
             cables: vec![None; MAX_CABLES]
                 .into_boxed_slice()
@@ -562,7 +599,13 @@ impl Performance {
             emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_requests: AtomicU64::new(0),
             emergency_release_applied: AtomicU64::new(0),
-            meters: std::array::from_fn(|_| Meter::new()),
+            meters: (0..MAX_NODES)
+                .map(|_| Meter::new())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+                .try_into()
+                .ok()
+                .expect("fixed meter capacity"),
             closed: AtomicBool::new(false),
             publish_serial: AtomicU64::new(0),
             frame: AtomicU64::new(0),
@@ -765,7 +808,7 @@ impl Performance {
         self.shared.closed.store(true, Ordering::Release);
         self.diagnostics.close();
     }
-    fn load_saved_states(&self, states: &BTreeMap<String, bool>, kind: SavedModuleState) {
+    fn load_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if self.shared.closed.load(Ordering::Acquire) {
             return;
@@ -775,13 +818,13 @@ impl Performance {
             let Some(state) = control.state_entries.get_mut(id).filter(|state| {
                 state
                     .desired_state
-                    .is_some_and(|desired| desired.kind() == kind.kind())
+                    .is_some_and(|desired| desired.kind() == value.kind())
             }) else {
                 continue;
             };
             state.saved_generation = state.saved_generation.saturating_add(1);
             state.saved_revision = revision;
-            state.desired_state = Some(kind.with_value(*value));
+            state.desired_state = Some(*value);
             if let Some(entry) = control.entries.get_mut(id) {
                 entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
                 self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
@@ -854,11 +897,25 @@ impl LiveModuleEvents for Performance {
             "x":bins(&s.x),"y":bins(&s.y)}))
     }
     fn load_module_running(&self, states: &BTreeMap<String, bool>) {
-        self.load_saved_states(states, SavedModuleState::Seq3Run(false));
+        self.load_saved_states(
+            &states
+                .iter()
+                .map(|(id, value)| (id.clone(), SavedModuleState::Seq3Run(*value)))
+                .collect(),
+        );
     }
 
     fn load_module_holding(&self, states: &BTreeMap<String, bool>) {
-        self.load_saved_states(states, SavedModuleState::PushHold(false));
+        self.load_saved_states(
+            &states
+                .iter()
+                .map(|(id, value)| (id.clone(), SavedModuleState::PushHold(*value)))
+                .collect(),
+        );
+    }
+
+    fn load_module_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
+        self.load_saved_states(states);
     }
 
     fn release_module_controls(&self, ids: &[String]) {
@@ -1161,6 +1218,9 @@ impl LiveModuleEvents for Performance {
                 "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
                     if let Some(SavedModuleState::PushHold(holding)) = snapshot.saved_state {
                         Some(json!({"holding":holding}))
+                    } else if let Some(SavedModuleState::RandomValues { values, rng }) = snapshot.saved_state {
+                        let values = values.map(|row| row.map(f32::from_bits));
+                        Some(json!({"values":values,"rng_state":rng,"active_channels":snapshot.lights.and_then(|lights| lights.input_channels).unwrap_or(1)}))
                     } else {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
@@ -1449,5 +1509,77 @@ mod tests {
             assert_eq!(final_snapshot["modules"][id]["available"], true);
             assert_eq!(final_snapshot["modules"][id]["frame"], 2_000);
         }
+    }
+    #[test]
+    fn random_values_host_snapshot_keeps_all_voltages_rng_and_channels_in_one_frame() {
+        let (performance, _reader, _timing) = Performance::new(48_000);
+        {
+            let mut control = performance.control.lock().unwrap();
+            control.revision = 1;
+            for slot in 0..2 {
+                control.entries.insert(
+                    format!("random{slot}"),
+                    Entry {
+                        slot,
+                        token: slot as u64 + 11,
+                        born_revision: 1,
+                        kind: ModuleKind::RandomValues,
+                        bypassed: false,
+                        action_epoch: 1,
+                    },
+                );
+            }
+        }
+        let shared = performance.shared.clone();
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=1_000_u64 {
+                shared.publish_frame(frame, || {
+                    for slot in 0..2 {
+                        let voltage = (frame % 20) as f32 * 0.5;
+                        shared.meters[slot].write(
+                            slot as u64 + 11,
+                            ModuleSnapshot {
+                                revision: 1,
+                                frame,
+                                state: None,
+                                saved_state: Some(SavedModuleState::RandomValues {
+                                    values: [[voltage.to_bits(); 16]; 7],
+                                    rng: frame as u32,
+                                }),
+                                controls: None,
+                                lights: Some(ModuleLightState {
+                                    input_channels: Some((frame % 16 + 1) as u8),
+                                    ..ModuleLightState::default()
+                                }),
+                            },
+                        );
+                        std::thread::yield_now();
+                    }
+                });
+            }
+        });
+        for _ in 0..1_000 {
+            let snapshot = performance.snapshot();
+            if snapshot["coherent"] == false {
+                for id in ["random0", "random1"] {
+                    assert_eq!(snapshot["modules"][id]["available"], false);
+                }
+            } else if snapshot["modules"]["random0"]["available"] == true {
+                let frame = snapshot["frame"].as_u64().unwrap();
+                for id in ["random0", "random1"] {
+                    let module = &snapshot["modules"][id];
+                    assert_eq!(module["available"], true);
+                    assert_eq!(module["frame"], frame);
+                    assert_eq!(module["state"]["rng_state"], frame);
+                    assert_eq!(module["state"]["active_channels"], frame % 16 + 1);
+                    for row in module["state"]["values"].as_array().unwrap() {
+                        for value in row.as_array().unwrap() {
+                            assert_eq!(*value, json!((frame % 20) as f32 * 0.5));
+                        }
+                    }
+                }
+            }
+        }
+        writer.join().unwrap();
     }
 }

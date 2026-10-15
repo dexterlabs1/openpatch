@@ -270,6 +270,7 @@ impl ModulePreview {
                 .as_object()
                 .into_iter()
                 .flatten()
+                .filter(|(_, spec)| spec["hidden"] != true)
                 .filter_map(|(name, spec)| {
                     spec["default"].as_f64().map(|v| (name.clone(), v as f32))
                 })
@@ -371,6 +372,7 @@ pub struct Rack {
     module_lights: BTreeMap<String, ModuleLightState>,
     module_controls: BTreeMap<String, ModuleControlState>,
     held_manual: Option<HeldManual>,
+    random_values_states: BTreeMap<String, Value>,
     construction_animation: crate::cable_animation::Tracker,
 }
 
@@ -406,6 +408,7 @@ impl Default for Rack {
             module_lights: BTreeMap::new(),
             module_controls: BTreeMap::new(),
             held_manual: None,
+            random_values_states: BTreeMap::new(),
             construction_animation: crate::cable_animation::Tracker::default(),
         }
     }
@@ -819,6 +822,14 @@ impl Rack {
         self.module_controls = controls;
     }
 
+    /// Actual engine snapshots only: saved seed/held parameters are never meters.
+    pub fn set_random_values_states(&mut self, states: BTreeMap<String, Value>) {
+        self.random_values_states = states
+            .into_iter()
+            .filter(|(_, state)| random_values_snapshot_valid(state))
+            .collect();
+    }
+
     fn release_manual_if_needed(&mut self, ui: &egui::Ui, patch: &Patch) -> Option<RackAction> {
         let held = self.held_manual.as_ref()?;
         let eligible = ui.is_enabled()
@@ -829,10 +840,13 @@ impl Rack {
                 i.focused
                     && i.pointer.primary_down()
                     && !i.pointer.button_released(PointerButton::Primary)
-                    && (!matches!(held.kind.as_str(), "pulses" | "push" | "gates")
-                        || i.pointer
-                            .latest_pos()
-                            .is_some_and(|position| held.button_rect.contains(position)))
+                    && (!matches!(
+                        held.kind.as_str(),
+                        "pulses" | "push" | "gates" | "random_values"
+                    ) || i
+                        .pointer
+                        .latest_pos()
+                        .is_some_and(|position| held.button_rect.contains(position)))
                     && !i
                         .raw
                         .events
@@ -2315,6 +2329,13 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "random_values" {
+                if let Some(edit) =
+                    self.random_values_panel(ui, node, module, rect, revision, allow_manual_press)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "colored_noise" {
                 if let Some(edit) = self.noise_panel(ui, node, module, rect, device_rate, revision)
                 {
@@ -2356,6 +2377,7 @@ impl Rack {
                 if node.kind == "scope"
                     || node.kind == "modal_resonator"
                     || node.kind == "colored_noise"
+                    || node.kind == "random_values"
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
@@ -3122,7 +3144,10 @@ impl Rack {
                         true,
                         self.zoom,
                         is_voltage_utility(&node.kind)
-                            || matches!(node.kind.as_str(), "pulses" | "colored_noise"),
+                            || matches!(
+                                node.kind.as_str(),
+                                "pulses" | "colored_noise" | "random_values"
+                            ),
                     );
                     self.paint_output_signal_light(&painter, node, port_index, output_point);
                     continue;
@@ -3137,8 +3162,11 @@ impl Rack {
                     true,
                     self.zoom,
                     is_voltage_utility(&node.kind)
-                        || matches!(node.kind.as_str(), "pulses" | "colored_noise"),
-                    if node.kind == "colored_noise" {
+                        || matches!(
+                            node.kind.as_str(),
+                            "pulses" | "colored_noise" | "random_values"
+                        ),
+                    if matches!(node.kind.as_str(), "colored_noise" | "random_values") {
                         12.0
                     } else {
                         18.0
@@ -3261,6 +3289,297 @@ impl Rack {
                 self.zoom,
             );
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn random_values_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+        revision: u64,
+        allow_press: bool,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let screen = |local: Rect| {
+            Rect::from_min_max(
+                point(local.min.x, local.min.y),
+                point(local.max.x, local.max.y),
+            )
+        };
+        let painter = ui.painter().clone();
+        let mut action = None;
+        for (name, y) in [("RANGE", 88.0), ("SEED", 118.0)] {
+            painter.text(
+                point(20.0, y),
+                Align2::LEFT_CENTER,
+                name,
+                crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
+                INK,
+            );
+        }
+        if let Some(spec) = module.and_then(|module| module["params"].get("range")) {
+            if let Some(RackAction::Command(tool, mut args)) = self.choice_parameter(
+                ui,
+                node,
+                "range",
+                spec,
+                screen(random_values_range_rect()),
+                &RANDOM_VALUES_RANGES,
+            ) {
+                args["expected_revision"] = json!(revision);
+                action = Some(RackAction::Command(tool, args));
+            }
+        }
+        if let Some(spec) = module.and_then(|module| module["params"].get("seed")) {
+            let value = node
+                .params
+                .get("seed")
+                .copied()
+                .unwrap_or(spec["default"].as_f64().unwrap_or(1.0) as f32);
+            let seed_rect = screen(random_values_seed_rect());
+            crate::panel_skin::readout(
+                &painter,
+                seed_rect.center(),
+                &format!("{value:.0}"),
+                seed_rect.width(),
+                zoom,
+            );
+            let response = ui.interact(
+                seed_rect,
+                ui.id().with((&node.id, "random-values-seed")),
+                Sense::click(),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    format!("Edit {} seed value, {value:.0}", node.id),
+                )
+            });
+            let make_edit = |surface| ParameterEdit {
+                id: node.id.clone(),
+                kind: node.kind.clone(),
+                parameter: "seed".into(),
+                revision,
+                surface,
+                menu_popup: None,
+                stale: false,
+                text: format!("{value:.0}"),
+                min: 0.0,
+                max: 16_777_215.0,
+                step: Some(1.0),
+                display_scale: 1.0,
+                display_unit: String::new(),
+                slew_min: None,
+                gain_power: None,
+                raw_max: 16_777_215.0,
+                focus: true,
+            };
+            if response.clicked() {
+                self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            if self
+                .requested_parameter_menu
+                .as_ref()
+                .is_some_and(|(id, name)| id == &node.id && name == "seed")
+            {
+                egui::Popup::open_id(ui.ctx(), response.id.with("popup"));
+                self.requested_parameter_menu = None;
+            }
+            let mut popup = egui::Popup::context_menu(&response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
+            if !response.secondary_clicked()
+                && egui::Popup::position_of_id(ui.ctx(), response.id.with("popup")).is_none()
+            {
+                popup = popup.anchor(egui::PopupAnchor::Position(response.rect.right_bottom()));
+            }
+            popup.show(|ui| {
+                if !self.editing.as_ref().is_some_and(|edit| {
+                    edit.surface == ParameterEditSurface::KnobMenu
+                        && edit.id == node.id
+                        && edit.parameter == "seed"
+                }) {
+                    self.editing = Some(make_edit(ParameterEditSurface::KnobMenu));
+                }
+                self.editing.as_mut().unwrap().menu_popup = Some(response.id.with("popup"));
+                ui.set_min_width(244.0);
+                ui.strong("SEED · 24 BIT");
+                match parameter_editor_contents(ui, self.editing.as_mut().unwrap()) {
+                    ParameterEditOutcome::Keep => {}
+                    ParameterEditOutcome::Apply(raw) => {
+                        action = Some(parameter_edit_action(&self.editing.take().unwrap(), raw));
+                        ui.close();
+                    }
+                    ParameterEditOutcome::Cancel => {
+                        self.editing = None;
+                        ui.close();
+                    }
+                }
+            });
+            response.on_hover_text("Click to enter an exact 24-bit seed or expression. Changing the seed rerolls every held value immediately. Range changes affect future draws only.");
+        }
+        let enabled = ui.is_enabled()
+            && self.shortcuts_enabled
+            && self.performance_available
+            && !node.bypassed
+            && ui.input(|i| i.focused);
+        let pressed = self
+            .module_controls
+            .get(&node.id)
+            .is_some_and(|state| state.pressed_mask & 1 != 0);
+        let button_rect = screen(random_values_push_rect());
+        let response = ui.interact(
+            button_rect,
+            ui.id().with((&node.id, "random-values-push")),
+            Sense::click_and_drag(),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                enabled,
+                format!("Random Values {} PUSH performance button", node.id),
+            )
+        });
+        painter.rect_filled(
+            button_rect.translate(vec2(1.0, 2.0) * zoom),
+            3.0 * zoom,
+            Color32::from_black_alpha(70),
+        );
+        painter.rect_filled(
+            button_rect,
+            3.0 * zoom,
+            if pressed {
+                Color32::from_rgb(226, 197, 143)
+            } else if enabled && response.hovered() {
+                Color32::from_rgb(246, 237, 210)
+            } else {
+                Color32::from_rgb(190, 186, 175)
+            },
+        );
+        painter.rect_stroke(
+            button_rect,
+            3.0 * zoom,
+            Stroke::new(zoom, Color32::from_rgb(89, 85, 76)),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            button_rect.center(),
+            Align2::CENTER_CENTER,
+            "PUSH",
+            crate::panel_skin::print_font(ui.ctx(), 12.0 * zoom),
+            if enabled { INK } else { MUTED },
+        );
+        if enabled
+            && allow_press
+            && self.held_manual.is_none()
+            && self.editing.is_none()
+            && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
+        {
+            if response.clicked_by(PointerButton::Primary) {
+                self.select_primary(node.id.clone());
+                action = Some(RackAction::ManualClick {
+                    id: node.id.clone(),
+                    press: "push_press",
+                    release: "push_release",
+                });
+            } else if response.is_pointer_button_down_on() {
+                self.held_manual = Some(HeldManual {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                    release: "push_release",
+                    button_rect,
+                });
+                self.select_primary(node.id.clone());
+                action = Some(RackAction::Command(
+                    "trigger_module",
+                    json!({"id":node.id,"action":"push_press"}),
+                ));
+            }
+        }
+        response.on_hover_text(if enabled {
+            "Draw all seven outputs once. Holding does not redraw. TRIG draws a fresh value for each channel on its rising edge. Release or move outside to end the press."
+        } else { "PUSH requires a live audio engine and an active module." });
+        painter.text(
+            point(228.0, 151.0),
+            Align2::CENTER_CENTER,
+            "7 × 16",
+            crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
+            MUTED,
+        );
+        let state = self.random_values_states.get(&node.id);
+        let channels = state.and_then(|s| s["active_channels"].as_u64());
+        for index in 0..RANDOM_VALUES_OUTPUTS.len() {
+            let y = random_values_row_y(index);
+            painter.line_segment(
+                [point(18.0, y - 14.0), point(282.0, y - 14.0)],
+                Stroke::new(0.5 * zoom, Color32::from_rgb(173, 169, 157)),
+            );
+            painter.text(
+                point(20.0, y),
+                Align2::LEFT_CENTER,
+                format!("OUT {}", index + 1),
+                crate::panel_skin::print_font(ui.ctx(), 10.0 * zoom),
+                INK,
+            );
+            let readout = screen(random_values_readout_rect(index));
+            let display = random_values_voltage_text(state, index);
+            crate::panel_skin::readout(&painter, readout.center(), &display, readout.width(), zoom);
+            let detail = state.map_or_else(
+                || "Held values unavailable. No engine snapshot has been published.".to_owned(),
+                |s| {
+                    let mut text = format!(
+                        "OUT {} · {} active channel{}\nActual held engine voltages",
+                        index + 1,
+                        channels.unwrap(),
+                        if channels == Some(1) { "" } else { "s" }
+                    );
+                    for channel in 0..16 {
+                        text.push_str(&format!(
+                            "\nCH {:02}: {:+.5} V{}",
+                            channel + 1,
+                            s["values"][index][channel].as_f64().unwrap(),
+                            if channel < channels.unwrap() as usize {
+                                ""
+                            } else {
+                                " · held, inactive"
+                            }
+                        ));
+                    }
+                    text
+                },
+            );
+            ui.interact(
+                readout,
+                ui.id().with((&node.id, "random-values-readout", index)),
+                Sense::hover(),
+            )
+            .on_hover_text(detail);
+        }
+        painter.text(
+            point(150.0, 382.0),
+            Align2::CENTER_CENTER,
+            state.map_or_else(
+                || "HELD VALUES UNAVAILABLE".to_owned(),
+                |_| {
+                    format!(
+                        "{} · {} CHANNEL{}",
+                        if self.performance_available {
+                            "LIVE"
+                        } else {
+                            "LAST ENGINE STATE"
+                        },
+                        channels.unwrap(),
+                        if channels == Some(1) { "" } else { "S" }
+                    )
+                },
+            ),
+            crate::panel_skin::print_font(ui.ctx(), 8.0 * zoom),
+            MUTED,
+        );
+        action
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -5514,11 +5833,13 @@ impl Rack {
                             * self.zoom;
                     let hit = Rect::from_center_size(
                         center,
-                        Vec2::splat((29.0 * self.zoom).max(if node.kind == "colored_noise" {
-                            12.0
-                        } else {
-                            18.0
-                        })),
+                        Vec2::splat((29.0 * self.zoom).max(
+                            if matches!(node.kind.as_str(), "colored_noise" | "random_values") {
+                                12.0
+                            } else {
+                                18.0
+                            },
+                        )),
                     )
                     .intersect(clip);
                     let distance = center.distance_sq(pos);
@@ -6403,6 +6724,13 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "random_values" => {
+            return if input {
+                pos2(34.0, 150.0)
+            } else {
+                pos2(width - 25.0, random_values_row_y(index))
+            }
+        }
         "colored_noise" if !input => return pos2(width - 25.0, noise_row_y(index)),
         "modal_resonator" => {
             return pos2(
@@ -7248,6 +7576,7 @@ fn panel_button(
 
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "random_values" => HP * 20.0,
         "colored_noise" => HP * 16.0,
         "modal_resonator" => HP * 32.0,
         "scope" => HP * 42.0,
@@ -7315,6 +7644,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
         "colored_noise" => "NOISE",
+        "random_values" => "RANDOM VALUES",
         "sample_hold" => "S&H",
         "attenuverter8" => "8VERT",
         "mutes10" => "MUTES 10",
@@ -7401,6 +7731,7 @@ pub(crate) fn parameter_label(name: &str) -> &str {
         "duty" => "DUTY",
         "initial" => "INITIAL",
         "seed" => "SEED",
+        "range" => "RANGE",
         "level" => "LEVEL",
         "mix" => "MIX",
         "law" => "CURVE",
@@ -7517,6 +7848,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "mix6" => &["level", "average", "invert"],
         "octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
+        "random_values" => &["range", "seed"],
         "attenuverter" => &["gain", "offset"],
         "crossfade" => &["mix", "law"],
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
@@ -7547,6 +7879,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         .filter_map(|name| {
             params
                 .get_key_value(*name)
+                .filter(|(_, spec)| spec["hidden"] != true)
                 .map(|(name, spec)| (name.as_str(), spec))
         })
         .collect();
@@ -7554,11 +7887,61 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
     ordered.extend(
         params
             .iter()
-            .filter(|(name, _)| !order.contains(&name.as_str()))
+            .filter(|(name, spec)| !order.contains(&name.as_str()) && spec["hidden"] != true)
             .map(|(name, spec)| (name.as_str(), spec)),
     );
     ordered
 }
+const RANDOM_VALUES_RANGES: [&str; 6] = [
+    "0..10 V",
+    "0..5 V",
+    "0..1 V",
+    "−10..10 V",
+    "−5..5 V",
+    "−1..1 V",
+];
+const RANDOM_VALUES_OUTPUTS: [&str; 7] = ["out1", "out2", "out3", "out4", "out5", "out6", "out7"];
+fn random_values_row_y(index: usize) -> f32 {
+    183.0 + index as f32 * 30.0
+}
+fn random_values_range_rect() -> Rect {
+    Rect::from_min_size(pos2(80.0, 78.0), vec2(202.0, 20.0))
+}
+fn random_values_seed_rect() -> Rect {
+    Rect::from_min_size(pos2(80.0, 108.0), vec2(202.0, 20.0))
+}
+fn random_values_push_rect() -> Rect {
+    Rect::from_min_size(pos2(91.0, 137.0), vec2(104.0, 27.0))
+}
+fn random_values_readout_rect(index: usize) -> Rect {
+    Rect::from_center_size(pos2(165.0, random_values_row_y(index)), vec2(166.0, 20.0))
+}
+fn random_values_snapshot_valid(state: &Value) -> bool {
+    state["active_channels"]
+        .as_u64()
+        .is_some_and(|count| count <= 16)
+        && state["rng_state"]
+            .as_u64()
+            .is_some_and(|rng| rng <= u32::MAX as u64)
+        && state["values"].as_array().is_some_and(|outputs| {
+            outputs.len() == 7
+                && outputs.iter().all(|output| {
+                    output.as_array().is_some_and(|channels| {
+                        channels.len() == 16
+                            && channels
+                                .iter()
+                                .all(|voltage| voltage.as_f64().is_some_and(f64::is_finite))
+                    })
+                })
+        })
+}
+fn random_values_voltage_text(state: Option<&Value>, output: usize) -> String {
+    state.map_or_else(
+        || "UNAVAILABLE".to_owned(),
+        |s| format!("CH 1  {:+.3} V", s["values"][output][0].as_f64().unwrap()),
+    )
+}
+
 // The row geometry is shared by real sockets, previews, labels, and picking.
 const NOISE_OUTPUTS: [&str; 7] = ["white", "pink", "red", "violet", "blue", "gray", "black"];
 fn noise_row_y(index: usize) -> f32 {
@@ -8184,7 +8567,7 @@ fn paint_panel(
     );
     if !matches!(
         node.kind.as_str(),
-        "pulses" | "svf_filter" | "audio_stereo" | "modal_resonator"
+        "pulses" | "svf_filter" | "audio_stereo" | "modal_resonator" | "random_values"
     ) {
         let studio_footer = matches!(
             node.kind.as_str(),
@@ -8636,6 +9019,9 @@ mod tests {
     mod resonator_ui_tests {
         include!("resonator_ui_tests.rs");
     }
+    mod random_values_ui_tests {
+        include!("random_values_ui_tests.rs");
+    }
     mod noise_ui_tests {
         include!("noise_ui_tests.rs");
     }
@@ -8794,7 +9180,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            55,
+            56,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -8897,6 +9283,7 @@ mod tests {
             "audio_stereo",
             "modal_resonator",
             "colored_noise",
+            "random_values",
         ] {
             let module = catalog["modules"]
                 .as_array()
@@ -13305,8 +13692,13 @@ mod tests {
             };
             assert_eq!(
                 ordered_parameters(&node, Some(module)).len(),
-                module["params"].as_object().unwrap().len(),
-                "{} controls were hidden",
+                module["params"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .filter(|spec| spec["hidden"] != true)
+                    .count(),
+                "{} public controls were hidden",
                 node.kind
             );
         }

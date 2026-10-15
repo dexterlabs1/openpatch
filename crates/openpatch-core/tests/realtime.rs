@@ -157,3 +157,29 @@ fn colored_noise_first_callback_adoption_initialize_and_bypass_allocate_nothing(
         .iter()
         .all(|f| f.channels == 1 && f.values.iter().all(|v| v.is_finite())));
 }
+
+#[test]
+fn random_values_actions_capture_restore_and_adoption_allocate_nothing() {
+    use openpatch_core::{ModuleAction, Patch, PortFrame};
+    let p:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"r","kind":"random_values"}],"output":"r","output_port":"out7"})).unwrap();
+    let mut a = p.compile().unwrap();
+    let mut b = p.compile().unwrap();
+    let h = a.resolve_module_control("r").unwrap();
+    let hb = b.resolve_module_state("r").unwrap();
+    let mut frames = [PortFrame::default(); 128];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for _ in 0..50 {
+        a.handle_module_event(h, ModuleAction::PushPress);
+        a.handle_module_event(h, ModuleAction::PushRelease);
+        a.process_poly_block(&mut frames);
+        let state = a.module_saved_state(h).unwrap();
+        b.set_module_saved_state(hb, state);
+        b.adopt_state_from(&a);
+        a.initialize_module_state(h);
+        std::hint::black_box(a.module_control_state(h));
+        std::hint::black_box(a.module_lights(h));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

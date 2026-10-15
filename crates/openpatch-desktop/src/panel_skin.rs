@@ -12,7 +12,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         }
         "modal_resonator" | "colored_noise" => Color32::from_rgb(151, 93, 57),
         "lowpass" | "ladder_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
-        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer" => {
+        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer" | "random_values" => {
             Color32::from_rgb(116, 96, 136)
         }
         "gain"
@@ -59,6 +59,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "midi_cv" => "MIDI INTERFACE",
         "white_noise" => "NOISE GENERATOR",
         "colored_noise" => "SEVEN NOISE COLORS",
+        "random_values" => "HELD RANDOM VOLTAGES",
         "mixer" => "SIGNAL SUMMER",
         "mix6" => "SIX-CHANNEL MIXER",
         "vca_mix" => "VOLTAGE CONTROLLED MIXER",

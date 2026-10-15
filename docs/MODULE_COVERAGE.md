@@ -16,8 +16,10 @@ independent polyphonic X/Y acquisition and passthrough, bringing the catalog to
 53 kinds; [Scope contract and bounded reference](RACK_SCOPE.md).
 The original [physical modal resonator](MODAL_RESONATOR.md) brings the catalog to
 54 kinds. It is an additional acoustic model, not completion of a stock VCV target.
-[Seven-color Noise](COLORED_NOISE.md) brings the current catalog to 55 kinds,
+[Seven-color Noise](COLORED_NOISE.md) brings the catalog to 55 kinds,
 with original filters and explicitly bounded spectral qualification.
+[Random Values](RANDOM_VALUES.md) adds seven polyphonic held-voltage outputs and
+coherent saved state, bringing the current catalog to 56 kinds.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -170,7 +172,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Process | Voltage processing | Implemented signal role: `process`, two held samples, track/hold pairs, slew, glide and manual gate | Reference exponential/timing differences, direct traces, runtime state import and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
 | Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
-| Random Values | Source | Planned | Sampling events, statistics and repeatability |
+| Random Values | Source | `random_values`: seven outputs × sixteen held voices, per-voice TRIG and manual PUSH, six ranges, coherent saved voltages and generator state; [contract](RANDOM_VALUES.md) | Original seeded generator and explicit edge ordering; VCV random-sequence equivalence, Rack import and native device qualification remain open. |
 | Push | Gate utility | Implemented signal role: `push`, manual/CV push and HOLD, XOR gate, rising-gate trigger, coherent saved latch and native controls | Direct reference traces, saved-state import, smoothed reference lights and native qualification; [contract](PUSH.md) |
 | Sample & Hold Analog Shift Register | Sampling | Partial: single `sample_hold`, hysteresis and live-state continuity | Eight rows, shift ordering, clear/random modes and runtime JSON persistence |
 

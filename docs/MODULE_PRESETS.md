@@ -115,3 +115,13 @@ The custom Run behavior follows Fundamental 2.6.4
 and Rack 2.6.4's
 [module history](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/src/history.cpp).
 See also the [Rack preset workflow](https://vcvrack.com/manual/Presets).
+
+## Random Values snapshots
+
+Random Values presets capture all 112 held voltages and the generator position
+from the same coherent runtime snapshot as Run/HOLD. The reserved snapshot
+parameters are included only as a complete set; generic defaults never invent
+zero voltages. Applying a complete snapshot restores it even if its configured
+fields already match, and undo/redo restore the captured states. A range-only
+preset preserves held values; a seed-only preset rerolls only when the seed
+changes. Physical PUSH and trigger-detector histories are not preset content.

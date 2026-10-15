@@ -1147,10 +1147,10 @@ impl OpenPatch {
             .try_lock()
             .ok()
             .and_then(|live| live.capture_project_running(Some(self.revision)).ok())
-            .map(|snapshot| (snapshot.running, snapshot.holding));
+            .map(|snapshot| snapshot.saved_states);
         if self
             .documents
-            .observe_runtime(&self.patch, self.revision, &self.rack, running)
+            .observe_saved_runtime(&self.patch, self.revision, &self.rack, running)
         {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
@@ -1165,11 +1165,11 @@ impl OpenPatch {
             .try_lock()
             .map_err(|_| "Project is busy; try again".to_string())?
             .capture_project_patch(Some(self.revision))?;
-        if self.documents.observe_runtime(
+        if self.documents.observe_saved_runtime(
             &self.patch,
             self.revision,
             &self.rack,
-            Some((captured.running, captured.holding)),
+            Some(captured.saved_states),
         ) {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
@@ -2280,6 +2280,15 @@ impl OpenPatch {
                                 .unwrap();
                                 ui.close();
                                 self.replace_from_menu(patch, "Manual push voice");
+                            }
+                            if ui.button("Random values voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/random-values-voice.json"
+                                ))
+                                .expect("valid bundled random values voice");
+                                ui.close();
+                                self.replace_from_menu(patch, "Random values voice");
+                                self.rack.set_zoom(0.75);
                             }
                             if ui.button("Noise colors").clicked() {
                                 let patch = serde_json::from_str(include_str!(
@@ -4151,6 +4160,44 @@ impl OpenPatch {
                 "Offline DSP capture · white X / pink Y · panel curves show filter configuration"
                     .into();
         }
+        if frame == 850 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/random-values-voice.json"))
+                    .expect("random values smoke patch");
+            let mut engine = patch.compile().expect("random values smoke engine");
+            engine.process_block(&mut vec![0.0; 96000]);
+            let scope = engine
+                .module_scope(engine.resolve_module_scope("scope").unwrap())
+                .unwrap()
+                .clone();
+            let state = engine
+                .module_saved_state(engine.resolve_module_state("values").unwrap())
+                .unwrap();
+            let openpatch_core::SavedModuleState::RandomValues { values, rng } = state else {
+                panic!("random values snapshot");
+            };
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+                    "values":[0,0],"scope":[330,0],"clock":[0,420],
+                    "notes":[240,420],"vco":[420,420],"out":[750,420]
+                }}))
+                .unwrap();
+            self.rack.set_scope_states(BTreeMap::from([(
+                "scope".into(),
+                std::sync::Arc::new(scope),
+            )]));
+            self.rack.set_random_values_states(BTreeMap::from([(
+                "values".into(),
+                json!({"values":values.map(|row| row.map(f32::from_bits)),
+                    "rng_state":rng,"active_channels":1}),
+            )]));
+            self.title = "Random values voice · held voltages".into();
+            self.status = "Offline DSP capture · seven held outputs · seeded melody through a pentatonic quantizer".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -4202,6 +4249,7 @@ impl OpenPatch {
                 | 788
                 | 816
                 | 844
+                | 872
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4263,7 +4311,8 @@ impl OpenPatch {
                 40 => path.with_file_name("rack-scope-xy.png"),
                 41 => path.with_file_name("rack-scope-external.png"),
                 42 => path.with_file_name("rack-modal-resonator.png"),
-                _ => path.with_file_name("rack-colored-noise.png"),
+                43 => path.with_file_name("rack-colored-noise.png"),
+                _ => path.with_file_name("rack-random-values.png"),
             };
             image::save_buffer(
                 &target,
@@ -4274,18 +4323,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/44 at frame {frame}: {}",
+                "Native smoke: capture {}/45 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 44 {
+            if captures == 45 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 878, "Native screenshot timeout");
+        assert!(frame < 906, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4383,6 +4432,18 @@ impl eframe::App for OpenPatch {
                     }
                 }
             }
+            let random_values = self
+                .audio
+                .as_ref()
+                .filter(|_| {
+                    self.patch
+                        .nodes
+                        .iter()
+                        .any(|node| node.kind == "random_values")
+                })
+                .map(|audio| audio.random_values_states())
+                .unwrap_or_default();
+            self.rack.set_random_values_states(random_values);
             self.rack.set_module_states(lights, controls);
             self.rack.set_scope_states(scopes);
         }
@@ -7212,6 +7273,100 @@ mod project_workflow_tests {
         assert_eq!(app.shared.lock().unwrap().snapshot(), before);
         // Break the test backend's intentional Session reference cycle.
         app.shared.lock().unwrap().set_live_module_events(None);
+    }
+
+    #[test]
+    fn random_values_host_native_save_and_recovery_track_triggered_values_and_rng() {
+        use openpatch_core::{ModuleAction, SavedModuleState};
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert!(app.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+            {"id":"trigger","kind":"push"},
+            {"id":"random","kind":"random_values","params":{"seed":42,"range":3}}
+        ],"cables":[{"from":"trigger","output":"gate","to":"random","input":"trig"}]}})
+        ));
+        app.save_document("random.openpatch", true);
+        assert!(!app.dirty());
+        let mut engine = app.patch.compile().unwrap();
+        let source = engine.resolve_module_event("trigger").unwrap();
+        engine.process_block(&mut [0.0; 2]);
+        assert!(engine.handle_module_event(source, ModuleAction::PushPress));
+        engine.process_block(&mut [0.0; 2]);
+        assert!(engine.handle_module_event(source, ModuleAction::PushRelease));
+        engine.process_block(&mut [0.0; 2]);
+        let saved = engine
+            .module_saved_state(engine.resolve_module_state("random").unwrap())
+            .unwrap();
+        let SavedModuleState::RandomValues { values, rng } = saved else {
+            unreachable!()
+        };
+        assert_ne!(
+            Some(saved),
+            SavedModuleState::from_node(&app.patch.nodes[1])
+        );
+        let telemetry = std::sync::Arc::new(ProjectTelemetry(std::sync::Mutex::new(json!({
+            "coherent":true,"modules":{
+                "trigger":{"kind":"push","available":true,"revision":app.revision,"frame":128,"state":{"holding":false}},
+                "random":{"kind":"random_values","available":true,"revision":app.revision,"frame":128,
+                    "state":{"values":values.map(|row| row.map(f32::from_bits)),"rng_state":rng,"active_channels":1}}
+            }
+        }))));
+        app.shared
+            .lock()
+            .unwrap()
+            .set_live_module_events(Some(telemetry.clone()));
+        let raw = app.shared.lock().unwrap().snapshot();
+        app.observe_document();
+        assert!(
+            app.dirty(),
+            "an electrical trigger changes persisted content"
+        );
+        make_autosave_due(&mut app);
+        app.autosave();
+        let files = recovery_files(dir.path());
+        assert_eq!(files.len(), 1);
+        std::fs::copy(&files[0], dir.path().join("recovery-copy.openpatch")).unwrap();
+        let recovered = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("recovery-copy.openpatch")
+            .unwrap()
+            .document;
+        assert_eq!(
+            SavedModuleState::from_node(&recovered.patch.nodes[1]),
+            Some(saved)
+        );
+        app.save_current();
+        assert!(!app.dirty());
+        let loaded = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("random.openpatch")
+            .unwrap()
+            .document;
+        assert!(loaded.equivalent(&recovered));
+        assert_eq!(app.shared.lock().unwrap().snapshot(), raw);
+        // PRNG position alone is saved content, even if every voltage is unchanged.
+        telemetry.0.lock().unwrap()["modules"]["random"]["state"]["rng_state"] = json!(rng ^ 1);
+        app.observe_document();
+        assert!(app.dirty());
+        // A transient read failure cannot silently mark the project clean or save seed-only state.
+        telemetry.0.lock().unwrap()["coherent"] = json!(false);
+        app.save_current();
+        assert!(app.dirty());
+        assert!(app.status.contains("Save needs current live state"));
+        let unchanged = app
+            .projects
+            .as_ref()
+            .unwrap()
+            .load("random.openpatch")
+            .unwrap()
+            .document;
+        assert!(loaded.equivalent(&unchanged));
     }
 
     struct ProjectTelemetry(std::sync::Mutex<Value>);

@@ -46,6 +46,8 @@ pub use parameter_actions::ModuleParameterActions;
 mod poly;
 mod pulses;
 mod push;
+mod random_values;
+pub use random_values::{initial_random_values_state, randomize_random_values_state};
 mod scope;
 mod scope_measurement;
 pub use scope::{ScopePoint, ScopeSnapshot, SCOPE_BINS};
@@ -271,6 +273,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(push::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(random_values::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

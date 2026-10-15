@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "values",
+      "kind": "random_values",
+      "params": {
+        "range": 2,
+        "seed": 123
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 3
+      }
+    },
+    {
+      "id": "notes",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 110
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 1,
+        "trigger_enabled": 0,
+        "x_scale": 3,
+        "y_scale": 3
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "square",
+      "to": "values",
+      "input": "trig"
+    },
+    {
+      "from": "values",
+      "output": "out1",
+      "to": "notes",
+      "input": "pitch"
+    },
+    {
+      "from": "notes",
+      "to": "vco",
+      "input": "pitch"
+    },
+    {
+      "from": "vco",
+      "output": "sine",
+      "to": "out",
+      "input": "signal"
+    },
+    {
+      "from": "values",
+      "output": "out1",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "values",
+      "output": "out2",
+      "to": "scope",
+      "input": "y"
+    }
+  ],
+  "output": "out"
+}

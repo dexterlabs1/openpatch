@@ -1,7 +1,7 @@
 //! Content-based saved state, independent of revision/history identities.
 //! Refreshed when graph, persisted rack layout, or effective persistent module state changes.
 use crate::{project::Document, rack::Rack};
-use openpatch_core::Patch;
+use openpatch_core::{Patch, SavedModuleState};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -10,22 +10,19 @@ pub struct DocumentState {
     baseline: Option<Value>,
     observed: Option<(u64, u64)>,
     dirty: bool,
-    running: BTreeMap<String, bool>,
-    holding: BTreeMap<String, bool>,
+    saved_states: BTreeMap<String, SavedModuleState>,
     known: bool,
 }
 impl DocumentState {
     pub fn new(patch: &Patch, revision: u64, rack: &Rack) -> Self {
-        let running = configured_running(patch);
-        let holding = configured_holding(patch);
-        let current = content(patch, rack.layout(), &running, &holding);
+        let saved_states = configured_saved_states(patch);
+        let current = saved_content(patch, rack.layout(), &saved_states);
         Self {
             baseline: Some(current.clone()),
             current,
             observed: Some((revision, rack.layout_revision())),
             dirty: false,
-            running,
-            holding,
+            saved_states,
             known: true,
         }
     }
@@ -53,6 +50,7 @@ impl DocumentState {
             running.map(|running| (running, configured_holding(patch))),
         )
     }
+    #[cfg(test)]
     pub fn observe_runtime(
         &mut self,
         patch: &Patch,
@@ -60,26 +58,44 @@ impl DocumentState {
         rack: &Rack,
         states: Option<(BTreeMap<String, bool>, BTreeMap<String, bool>)>,
     ) -> bool {
-        let Some((running, holding)) = states else {
+        let states = states.map(|(running, holding)| {
+            let mut states = configured_saved_states(patch);
+            states.extend(
+                running
+                    .into_iter()
+                    .map(|(id, value)| (id, SavedModuleState::Seq3Run(value))),
+            );
+            states.extend(
+                holding
+                    .into_iter()
+                    .map(|(id, value)| (id, SavedModuleState::PushHold(value))),
+            );
+            states
+        });
+        self.observe_saved_runtime(patch, revision, rack, states)
+    }
+    pub fn observe_saved_runtime(
+        &mut self,
+        patch: &Patch,
+        revision: u64,
+        rack: &Rack,
+        states: Option<BTreeMap<String, SavedModuleState>>,
+    ) -> bool {
+        let Some(saved_states) = states else {
             let changed = self.known;
             self.known = false;
             self.observed = None;
             return changed;
         };
         let key = (revision, rack.layout_revision());
-        if self.known
-            && self.observed == Some(key)
-            && self.running == running
-            && self.holding == holding
-        {
+        if self.known && self.observed == Some(key) && self.saved_states == saved_states {
             return false;
         }
         let was_unknown = !self.known;
         self.known = true;
         self.observed = Some(key);
-        let next = content(patch, rack.layout(), &running, &holding);
-        self.running = running;
-        self.holding = holding;
+        let next = saved_content(patch, rack.layout(), &saved_states);
+        self.saved_states = saved_states;
         let changed = was_unknown || self.current != next;
         self.current = next;
         self.dirty = self.baseline.as_ref() != Some(&self.current);
@@ -105,6 +121,7 @@ impl DocumentState {
     }
 }
 
+#[cfg(test)]
 fn configured_running(patch: &Patch) -> BTreeMap<String, bool> {
     patch
         .nodes
@@ -119,6 +136,7 @@ fn configured_running(patch: &Patch) -> BTreeMap<String, bool> {
         .collect()
 }
 
+#[cfg(test)]
 fn configured_holding(patch: &Patch) -> BTreeMap<String, bool> {
     patch
         .nodes
@@ -133,35 +151,47 @@ fn configured_holding(patch: &Patch) -> BTreeMap<String, bool> {
         .collect()
 }
 
+fn configured_saved_states(patch: &Patch) -> BTreeMap<String, SavedModuleState> {
+    patch
+        .nodes
+        .iter()
+        .filter_map(|node| SavedModuleState::from_node(node).map(|state| (node.id.clone(), state)))
+        .collect()
+}
+
 fn document_content(document: &Document) -> Value {
-    content(
+    saved_content(
         &document.patch,
         document.layout.clone(),
-        &configured_running(&document.patch),
-        &configured_holding(&document.patch),
+        &configured_saved_states(&document.patch),
     )
 }
 
-// Omitted persistent flags and their explicit defaults are equal saved content.
-// Normalize only the serialized projection; never edit the live patch/history.
-fn content(
+// Normalize omitted state to its deterministic initial state only in this projection.
+fn saved_content(
     patch: &Patch,
     layout: Value,
-    running: &BTreeMap<String, bool>,
-    holding: &BTreeMap<String, bool>,
+    states: &BTreeMap<String, SavedModuleState>,
 ) -> Value {
-    let mut value = json!({"patch":patch,"layout":layout});
+    let bits = states
+        .iter()
+        .filter_map(|(id, state)| match state {
+            SavedModuleState::RandomValues { values, rng } => {
+                Some((id, json!({"values":values,"rng":rng})))
+            }
+            _ => None,
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut value = json!({"patch":patch,"layout":layout,"persistent_bits":bits});
     for node in value["patch"]["nodes"]
         .as_array_mut()
         .expect("serialized patch nodes")
     {
-        let (parameter, values) = match node["kind"].as_str() {
-            Some("seq3") => ("running", running),
-            Some("push") => ("holding", holding),
-            _ => continue,
-        };
-        if let Some(value) = node["id"].as_str().and_then(|id| values.get(id)) {
-            node["params"][parameter] = json!(if *value { 1.0 } else { 0.0 });
+        if let Some(state) = node["id"].as_str().and_then(|id| states.get(id)) {
+            let mut params: BTreeMap<String, f32> =
+                serde_json::from_value(node["params"].clone()).expect("serialized params");
+            state.write_params(&mut params);
+            node["params"] = json!(params);
         }
     }
     value

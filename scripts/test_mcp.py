@@ -953,6 +953,84 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("redo", {})
         self.assertEqual(len(self.patch_snapshot()["patch"]["nodes"]), 1)
 
+    def test_random_values_golden_draws_polyphony_and_saved_state(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        model = modules["random_values"]
+        self.assertEqual(model["inputs"], ["trig"])
+        self.assertEqual(model["outputs"], [f"out{i}" for i in range(1, 8)])
+        self.assertEqual(model["runtime_actions"], ["push_press", "push_release"])
+        self.assertEqual(sum(spec.get("hidden", False) for spec in model["params"].values()), 114)
+
+        def f32(value):
+            return struct.unpack("<f", struct.pack("<f", value))[0]
+
+        def draw(state, low, width):
+            state ^= (state << 13) & 0xffffffff
+            state ^= state >> 17
+            state ^= (state << 5) & 0xffffffff
+            return state, f32(low + f32(width * ((state >> 8) / 16777216)))
+
+        # Public sequence contract checked independently through JSON-RPC, all
+        # 112 retained voltages, two boundary seeds and every supported range.
+        for seed in [0, 16777215]:
+            for range_index, (low, width) in enumerate([(0, 10), (0, 5), (0, 1), (-10, 20), (-5, 10), (-1, 2)]):
+                self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+                    "nodes": [{"id": "values", "kind": "random_values", "params": {"seed": seed, "range": range_index}}],
+                    "output": "values", "output_port": "out1"}})
+                saved = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+                params = saved["nodes"][0]["params"]
+                state = seed ^ 0xA341316C
+                expected = [[0.0] * 16 for _ in range(7)]
+                for lane in range(16):
+                    for output in range(7):
+                        state, expected[output][lane] = draw(state, low, width)
+                        self.assertAlmostEqual(params[f"value{output+1}_{lane+1}"], expected[output][lane], delta=1e-6)
+                self.assertEqual(int(params["rng_hi"]) * 65536 + int(params["rng_lo"]), state)
+                # A fresh render starts from the saved state, not the seed's
+                # beginning. The first manual press consumes exactly seven draws.
+                self.require_tool_success("replace_patch", {"patch": saved})
+                _, after = draw(state, low, width)
+                response = self.payload(self.require_tool_success("capture_signal", {
+                    "id": "values", "port": "out1", "seconds": .002, "points": 96,
+                    "module_events": [{"frame": 32, "id": "values", "action": "push_press"},
+                                      {"frame": 33, "id": "values", "action": "push_release"}]}))
+                for frame, point in enumerate(response["bins"]):
+                    self.assertAlmostEqual(point["mean"], expected[0][0] if frame < 32 else after, delta=1e-6)
+        before = self.patch_snapshot()
+        for param, value in [("range", 6), ("range", 0.5), ("seed", -1), ("seed", 16777216)]:
+            self.require_tool_error("set_parameter", {"id": "values", "parameter": param, "value": value})
+        self.assertEqual(self.patch_snapshot(), before)
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "values"}))["preset"]
+        self.assertEqual(len([key for key in preset["params"] if key.startswith("value")]), 112)
+        self.require_tool_success("save_patch", {"filename": "values.json"})
+        disk = json.loads((self.workspace / "values.json").read_text())
+        # File JSON uses shortest float32 decimals; RPC JSON can promote them
+        # to float64 decimals. Compare the actual stored float32 bits.
+        bits = lambda params: {key: struct.pack("<f", value) for key, value in params.items()}
+        self.assertEqual(bits(disk["nodes"][0]["params"]), bits(before["patch"]["nodes"][0]["params"]))
+        self.require_tool_success("load_patch", {"filename": "values.json"})
+        self.assertEqual(bits(self.patch_snapshot()["patch"]["nodes"][0]["params"]), bits(disk["nodes"][0]["params"]))
+        self.require_tool_success("randomize_modules", {"ids": ["values"], "seed": 42})
+        randomized = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+        self.assertNotEqual(randomized["nodes"][0]["params"], disk["nodes"][0]["params"])
+        self.require_tool_success("undo", {})
+        restored = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+        self.assertEqual(bits(restored["nodes"][0]["params"]), bits(disk["nodes"][0]["params"]))
+        # Public polyphonic interface keeps all seven outputs at 16 channels.
+        self.require_tool_success("add_module", {"id": "lanes", "kind": "poly_constant", "params": {"channels": 16}})
+        self.require_tool_success("connect", {"from": "lanes", "to": "values", "input": "trig"})
+        for port in ["out1", "out7"]:
+            measured = self.payload(self.require_tool_success("analyze_signal", {"id": "values", "port": port, "seconds": .002}))
+            self.assertEqual(len(measured["channels"]), 16)
+            self.assertTrue(all(c["active_frames"] > 90 for c in measured["channels"]))
+        example = json.loads((REPOSITORY / "examples/random-values-voice.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": example})
+        self.require_tool_success("render_audio", {"filename": "values-voice.wav", "seconds": 0.2})
+        with wave.open(str(self.workspace / "values-voice.wav")) as rendered:
+            samples = self._first_channel_samples(rendered.readframes(9600), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(x) > 100 for x in samples))
+        self.assertLess(max(abs(x) for x in samples), 32767)
+
     def test_noise_colors_named_outputs_seed_history_and_persistence(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         colors = ["white", "pink", "red", "violet", "blue", "gray", "black"]
@@ -1857,7 +1935,7 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_error("set_bypass", {"id": "mutes", "bypassed": False, "expected_revision": before["revision"]})
         self.assertEqual(self.patch_snapshot(), stable)
         self.require_tool_success("set_parameter", {"id": "mutes", "parameter": "mute3", "value": 0})
-        saved = self.patch_snapshot()["patch"]
+        saved = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
         self.require_tool_success("save_patch", {"filename": "bypassed.json"})
         self.require_tool_success("set_bypass", {"id": "mutes", "bypassed": False})
         self.assertNotIn("bypassed", self.patch_snapshot()["patch"]["nodes"][0])
@@ -1907,11 +1985,13 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(self.patch_snapshot(), before)
         self.require_tool_success("save_patch", {"filename": "manual-utilities.json"})
         serialized = json.loads((self.workspace / "manual-utilities.json").read_text())
-        self.assertEqual(serialized, before["patch"])
+        expected = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+        self.assertEqual(serialized, expected)
+        self.assertEqual(self.patch_snapshot(), before)  # Saving does not edit the graph.
         for node in serialized["nodes"]:
             self.assertNotIn("pressed", node)
             self.assertNotIn("bypassed", node)
-            self.assertEqual(node["params"], {})
+            self.assertEqual(node["params"], {"running": 1.0} if node["kind"] == "seq3" else {})
         self.require_tool_success("set_bypass", {"id": "process", "bypassed": True})
         self.require_tool_error("render_audio", {"filename": "invalid-bypassed-press.wav", "seconds": 0.001,
             "module_events": [{"frame": 0, "id": "process", "action": "gate_press"}]})
@@ -1919,7 +1999,7 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("capture_signal", {"id": "process", "port": "sh1", "seconds": 0.001,
             "module_events": [{"frame": 0, "id": "process", "action": "gate_release"}]})
         self.require_tool_success("load_patch", {"filename": "manual-utilities.json"})
-        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.assertEqual(self.patch_snapshot()["patch"], expected)
 
     def test_pulses_indexed_events_ports_and_transient_project_state(self) -> None:
         modules = {item["kind"]: item for item in self.payload(self.require_tool_success("catalog"))["modules"]}

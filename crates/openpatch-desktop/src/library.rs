@@ -84,7 +84,7 @@ impl Category {
             "lowpass" | "ladder_vcf" | "svf_filter" => Self::Filters,
             "adsr" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
-            "lfo" | "multi_lfo" | "gate" => Self::Modulation,
+            "lfo" | "multi_lfo" | "gate" | "random_values" => Self::Modulation,
             "gain"
             | "mixer"
             | "analog_vca"
@@ -196,8 +196,9 @@ impl ModuleLibrary {
             })
             || module["params"].as_object().is_some_and(|params| {
                 params
-                    .keys()
-                    .any(|name| name.to_lowercase().contains(query))
+                    .iter()
+                    .filter(|(_, spec)| spec["hidden"] != true)
+                    .any(|(name, _)| name.to_lowercase().contains(query))
             })
     }
 

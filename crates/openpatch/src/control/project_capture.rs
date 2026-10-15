@@ -8,6 +8,7 @@ pub struct ProjectPatchSnapshot {
     pub state_id: u64,
     pub running: BTreeMap<String, bool>,
     pub holding: BTreeMap<String, bool>,
+    pub saved_states: BTreeMap<String, SavedModuleState>,
     pub state_source: &'static str,
     pub frame: Option<u64>,
 }
@@ -19,6 +20,7 @@ pub struct ProjectRunningSnapshot {
     pub state_id: u64,
     pub running: BTreeMap<String, bool>,
     pub holding: BTreeMap<String, bool>,
+    pub saved_states: BTreeMap<String, SavedModuleState>,
     pub state_source: &'static str,
     pub frame: Option<u64>,
 }
@@ -33,6 +35,7 @@ impl Session {
         self.check_revision(expected_revision)?;
         let mut running = BTreeMap::new();
         let mut holding = BTreeMap::new();
+        let mut saved_states = BTreeMap::new();
         let mut frame = None;
         let has_state = self
             .patch
@@ -70,6 +73,7 @@ impl Session {
             } else {
                 initial
             };
+            saved_states.insert(node.id.clone(), state);
             match state {
                 SavedModuleState::Seq3Run(value) => {
                     running.insert(node.id.clone(), value);
@@ -77,6 +81,7 @@ impl Session {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
+                SavedModuleState::RandomValues { .. } => {}
             }
         }
         Ok(ProjectRunningSnapshot {
@@ -84,6 +89,7 @@ impl Session {
             state_id: self.state_id,
             running,
             holding,
+            saved_states,
             state_source,
             frame,
         })
@@ -97,15 +103,9 @@ impl Session {
         let captured = self.capture_project_running(expected_revision)?;
         let mut patch = self.patch.clone();
         for node in &mut patch.nodes {
-            let Some(state) = SavedModuleState::from_node(node) else {
-                continue;
-            };
-            let value = match state {
-                SavedModuleState::Seq3Run(_) => captured.running[&node.id],
-                SavedModuleState::PushHold(_) => captured.holding[&node.id],
-            };
-            node.params
-                .insert(state.parameter().into(), if value { 1.0 } else { 0.0 });
+            if let Some(state) = captured.saved_states.get(&node.id) {
+                state.write_params(&mut node.params);
+            }
         }
         Ok(ProjectPatchSnapshot {
             patch,
@@ -113,6 +113,7 @@ impl Session {
             state_id: captured.state_id,
             running: captured.running,
             holding: captured.holding,
+            saved_states: captured.saved_states,
             state_source: captured.state_source,
             frame: captured.frame,
         })
