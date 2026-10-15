@@ -94,7 +94,12 @@ impl Rack {
         color: Option<[u8; 3]>,
         dragging: bool,
     ) {
+        let palette_selection = (operation == CableOperation::Create && color.is_none())
+            .then_some(self.new_cable_selection)
+            .flatten();
+        let color = color.or_else(|| palette_selection.map(|selection| selection.color));
         self.pending = Some(PendingCable {
+            palette_selection,
             origin: menu.origin.clone(),
             operation,
             shift_at_press: false,
@@ -119,6 +124,27 @@ impl Rack {
             self.open_cable_menu(origin.clone(), patch);
         }
         let menu = self.cable_menu.as_ref().unwrap().clone();
+        let palette_colors: Vec<_> = if self.cable_palette_colors.is_empty() {
+            CABLES.to_vec()
+        } else {
+            self.cable_palette_colors
+                .iter()
+                .map(|[r, g, b]| Color32::from_rgb(*r, *g, *b))
+                .collect()
+        };
+        let palette_entries: Vec<_> = palette_colors
+            .iter()
+            .map(|color| {
+                let name = CABLES
+                    .iter()
+                    .position(|candidate| candidate == color)
+                    .map(|index| COLOR_NAMES[index].to_owned())
+                    .unwrap_or_else(|| {
+                        format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b())
+                    });
+                (*color, name)
+            })
+            .collect();
         if !self.shortcuts_enabled || !menu_input_valid(ui) {
             ui.disable();
         }
@@ -162,7 +188,7 @@ impl Rack {
                 self.menu_pickup(&menu, CableOperation::Create, &[], None, dragging);
             }
             ui.menu_button("New cable colour", |ui| {
-                for (color, name) in CABLES.iter().zip(COLOR_NAMES) {
+                for (color, name) in &palette_entries {
                     let response = ui.add(
                         egui::Button::new(egui::RichText::new(format!("● {name}")).color(*color))
                             .sense(Sense::click_and_drag()),
@@ -234,7 +260,7 @@ impl Rack {
                             ui.separator();
                             ui.label("Cable colour");
                             let effective = rgb(cable_instance_color(cable));
-                            for (color, name) in CABLES.iter().zip(COLOR_NAMES) {
+                            for (color, name) in &palette_entries {
                                 if ui
                                     .add_enabled(
                                         rgb(*color) != effective,

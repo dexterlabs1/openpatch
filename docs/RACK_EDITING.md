@@ -205,8 +205,32 @@ recovery restore exact endpoint ranks. This deliberately adds atomic cancellatio
 and exact ordering history to Rack's pickup behavior. Rack promotes on pickup
 and does not store plug ranks in its cable history actions.
 
-Editable palette presets, next-colour cycling, and physical native input
-qualification remain open.
+### Saved cable palettes
+
+The toolbar **Cable** swatch shows the next colour. Open it to choose a colour,
+switch between named palettes, or turn **Advance after each cable** on or off.
+With the rack idle, **[** and **]** select the previous/next colour. These keys
+leave text fields, the library, dialogs and active gestures alone.
+
+**Edit palettes…** opens a draft editor. Copy, rename or delete a palette; edit
+RGB values; add, remove or reorder colours. **Apply** saves the draft; **Cancel**
+leaves the current settings intact. Up to 12 palettes with 1–16 colours each are
+stored in host preferences. Presets start with Studio, Bright and Muted sets.
+
+A new cable captures the chosen RGB when its gesture starts. The next choice
+advances only after that connection succeeds, and only if the choice has not
+changed meanwhile. Cancellation, a failed/stale connection, moving and cloning
+never consume the next colour. An explicit **New cable colour** menu choice is
+an override and also leaves that choice alone. Menu colour rows use the active
+palette. Clones keep their original effective colour.
+
+Palette settings do not change patch history, the document's dirty state or
+existing routes. New palette-created routes save explicit RGB in projects,
+recovery and MCP state. Older uncoloured routes retain their source/port-derived
+appearance; editing a palette does not recolour them. Undoing a cable restores
+the graph without rewinding the host's next-colour choice.
+
+Physical native input qualification remains open.
 
 
 These gestures are independently implemented against the pinned

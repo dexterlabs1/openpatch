@@ -75,7 +75,7 @@ fn pointer_drag_guidance_tracks_release_shift_and_press_captured_intent() {
         "{}",
         guidance_text(&output)
     );
-    assert!(guidance_text(&output).contains("src · OUT → dest · IN"));
+    assert!(guidance_text(&output).contains("src · OUT -> dest · IN"));
     let before = serde_json::to_value(&patch).unwrap();
     let orders = (
         openpatch_core::cable_endpoint_order(
@@ -343,7 +343,7 @@ fn badge_stays_in_offset_canvas_at_edges_and_uses_screen_sized_text() {
             canvas,
             canvas.max,
             &CableGestureGuidance {
-                route: "src · OUT → target · IN".into(),
+                route: "src · OUT -> target · IN".into(),
                 action: "Release: Move".into(),
             },
             true,

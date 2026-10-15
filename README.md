@@ -65,6 +65,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Stack / remove cables | Drop onto a version-2 input to add a signal; **Shift-click** a jack deletes its top cable |
 | Bring a buried plug forward | Right-click its jack → select the cable → **Move this cable**, then return it to the same jack; the opposite end keeps its order |
 | Edit cable bundles / colours | Right-click either jack → **Move all cables**, individual cable actions, or **Custom RGB…**; each operation is undoable |
+| Choose the next cable colour | Toolbar **Cable** swatch; **[ / ]** cycle while the rack is idle. **Edit palettes…** saves personal sets |
 | Adjust a control | Drag vertically; hold **Cmd** for fine adjustment; double-click to reset |
 | Type a value or expression | Right-click a knob, or click a printed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
 | Blend and synchronize audio waveforms | **File → Synced waveform voice** |

@@ -292,6 +292,8 @@ pub struct OpenPatch {
     keyboard: Keyboard,
     keyboard_open: bool,
     rack: Rack,
+    cable_palette: crate::cable_palette::Palette,
+    cable_palette_ui: crate::cable_palette_ui::Panel,
     visualizer: Option<Visualizer>,
     gl: Option<std::sync::Arc<glow::Context>>,
     shader: String,
@@ -473,6 +475,8 @@ impl OpenPatch {
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(mcp),
             construction: crate::construction_ui::Panel::default(),
+            cable_palette: crate::cable_palette::Palette::default(),
+            cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,
             documents,
             projects: startup.store,
@@ -544,6 +548,8 @@ impl OpenPatch {
         }
     }
     fn apply_host_preferences(&mut self, preferences: &Value) {
+        self.cable_palette =
+            crate::cable_palette::Palette::from_settings(&preferences["cable_palette"]);
         self.rack.set_room_brightness(
             preferences["room_brightness"]
                 .as_f64()
@@ -578,7 +584,8 @@ impl OpenPatch {
                 "output_device": self.output_device, "midi_device": self.midi_device,
                 "module_favorites": self.library.favorites(),
                 "lock_module_positions": self.rack.positions_locked(),
-                "room_brightness": self.rack.room_brightness()
+                "room_brightness": self.rack.room_brightness(),
+                "cable_palette": self.cable_palette.settings()
             }))
             .map_err(|e| e.to_string())?;
             let mut file = std::fs::OpenOptions::new()
@@ -671,6 +678,7 @@ impl OpenPatch {
             && !egui::Popup::is_any_open(ctx)
             && playing
             && !ctx.wants_keyboard_input()
+            && !self.cable_palette_ui.keyboard_active()
             && ctx.input(|i| i.focused)
             && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
             && self.preset_dialog.is_none()
@@ -955,6 +963,26 @@ impl OpenPatch {
             }
         }
     }
+    fn connect_from_palette(
+        &mut self,
+        arguments: Value,
+        selection: crate::cable_palette::Selection,
+    ) {
+        // `connect` always adds exactly one cable when its transaction succeeds.
+        // Preference failure must never roll back that accepted graph change.
+        let result = execute_shared(&self.shared, "connect", arguments);
+        match result {
+            Ok(_) => {
+                self.status = "Cable connected".into();
+                if self.cable_palette.advance_on_commit(selection) {
+                    self.save_host_settings();
+                }
+            }
+            Err(error) => self.status = error,
+        }
+        self.sync();
+    }
+
     fn edit_parameter_and_navigate(&mut self, arguments: Value, forward: bool) {
         // Capture the accepted revision at the transaction boundary. A following
         // MCP edit or a busy GUI sync must never rebase the editor silently.
@@ -2120,10 +2148,29 @@ impl OpenPatch {
         if !self.library_enabled()
             || !ctx.input(|i| i.focused)
             || ctx.wants_keyboard_input()
+            || self.cable_palette_ui.keyboard_active()
             || egui::Popup::is_any_open(ctx)
             || egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
         {
             return;
+        }
+        if !(self.browser_open && self.library.keyboard_active())
+            && !self.cable_palette_ui.keyboard_active()
+            && self.rack.navigation_idle()
+            && ctx.input(|i| i.modifiers == egui::Modifiers::NONE && !i.pointer.any_down())
+        {
+            let direction = ctx.input_mut(|input| {
+                if input.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket) {
+                    Some(false)
+                } else if input.consume_key(egui::Modifiers::NONE, egui::Key::CloseBracket) {
+                    Some(true)
+                } else {
+                    None
+                }
+            });
+            if direction.is_some_and(|forward| self.cable_palette.cycle(forward)) {
+                self.save_host_settings();
+            }
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
             self.toggle_play();
@@ -2515,6 +2562,10 @@ impl OpenPatch {
                         // the remaining width. Long project names cannot hide transport.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             self.mcp_session.toolbar(ui, &self.shared, Path::new(&self.workspace));
+                            let palette_enabled = self.library_enabled();
+                            if self.cable_palette_ui.toolbar(ui, &mut self.cable_palette, palette_enabled) {
+                                self.save_host_settings();
+                            }
                             if icon_button(
                                 ui,
                                 Icon::Settings,
@@ -2791,6 +2842,10 @@ impl OpenPatch {
     fn rack_workspace(&mut self, ctx: &egui::Context, library_action: Option<LibraryAction>) {
         let mut action = None;
         let mut pending_add = None;
+        self.rack.set_cable_palette(
+            self.cable_palette.selection(),
+            &self.cable_palette.presets()[self.cable_palette.active_index()].colors,
+        );
         if !self.library_enabled() || !ctx.input(|i| i.focused) {
             egui::DragAndDrop::clear_payload(ctx);
         }
@@ -2801,6 +2856,7 @@ impl OpenPatch {
                 && !self.audio_performance_open
                 && !self.shader_open
                 && !self.mcp_session.is_open()
+                && !self.cable_palette_ui.keyboard_active()
                 && self.preset_dialog.is_none()
                 && self.template_save.is_none(),
         );
@@ -2878,6 +2934,12 @@ impl OpenPatch {
         match action {
             Some(RackAction::Command(name, args)) => {
                 self.command(name, args);
+            }
+            Some(RackAction::PaletteConnect {
+                arguments,
+                selection,
+            }) => {
+                self.connect_from_palette(arguments, selection);
             }
             Some(RackAction::ParameterEditAndNavigate { arguments, forward }) => {
                 self.edit_parameter_and_navigate(arguments, forward);
@@ -4532,6 +4594,38 @@ impl OpenPatch {
             self.rack.set_room_brightness(0.0);
             self.status = "Lights out · patching guidance and active route stay readable".into();
         }
+        if frame == 1250 {
+            self.rack.set_room_brightness(1.0);
+            self.cable_palette = crate::cable_palette::Palette::default();
+            self.cable_palette_ui.open();
+            self.title = "Cable palettes · compose a personal set".into();
+            self.status =
+                "Draft palette editor · Apply commits host preferences; the patch stays unchanged"
+                    .into();
+        }
+        if frame == 1272 {
+            assert!(
+                self.cable_palette_ui.is_open(),
+                "Palette capture must contain the actual editor"
+            );
+            assert_eq!(self.patch.cables.len(), 3);
+        }
+        if frame == 1290 {
+            self.cable_palette_ui = crate::cable_palette_ui::Panel::default();
+            self.cable_palette = crate::cable_palette::Palette::default();
+            self.cable_palette.select_preset(1);
+            self.title = "A reviewed colour · one real cable".into();
+            self.status = "Synthetic pointer creates one Bright cable; the next choice advances after acceptance".into();
+        }
+        if frame == 1310 {
+            assert_eq!(self.patch.cables.len(), 4);
+            assert_eq!(
+                self.patch.cables.last().unwrap().color,
+                Some([244, 104, 111])
+            );
+            assert_eq!(self.cable_palette.next_index(), 1);
+            self.status = "One new cable, explicit RGB · next colour advanced only after its successful commit".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -4603,6 +4697,8 @@ impl OpenPatch {
                 | 1176
                 | 1206
                 | 1236
+                | 1272
+                | 1328
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4678,7 +4774,9 @@ impl OpenPatch {
                 54 => path.with_file_name("module-inspection.png"),
                 55 => path.with_file_name("parameter-precision-navigation.png"),
                 56 => path.with_file_name("cable-gesture-guidance.png"),
-                _ => path.with_file_name("cable-gesture-lights-out.png"),
+                57 => path.with_file_name("cable-gesture-lights-out.png"),
+                58 => path.with_file_name("cable-palette-editor.png"),
+                _ => path.with_file_name("cable-palette-created.png"),
             };
             image::save_buffer(
                 &target,
@@ -4689,18 +4787,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/58 at frame {frame}: {}",
+                "Native smoke: capture {}/60 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 58 {
+            if captures == 60 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1270, "Native screenshot timeout");
+        assert!(frame < 1362, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4726,7 +4824,7 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
-            if *frame == 1184 {
+            if matches!(*frame, 1184 | 1240) {
                 input.events.push(egui::Event::Key {
                     key: egui::Key::Escape,
                     physical_key: None,
@@ -4735,11 +4833,11 @@ impl eframe::App for OpenPatch {
                     modifiers: egui::Modifiers::NONE,
                 });
             }
-            if matches!(*frame, 1190 | 1192) {
+            if matches!(*frame, 1190 | 1192 | 1296 | 1300 | 1304) {
                 let canvas = ctx
                     .data(|data| data.get_temp::<egui::Rect>(egui::Id::new("smoke-rack-canvas")))
                     .expect("Rendered smoke rack canvas");
-                let position = if *frame == 1190 {
+                let position = if matches!(*frame, 1190 | 1296) {
                     self.rack.port_center_for_smoke(
                         canvas,
                         &self.patch,
@@ -4760,14 +4858,30 @@ impl eframe::App for OpenPatch {
                 }
                 .expect("Real smoke port");
                 input.events.push(egui::Event::PointerMoved(position));
-                if *frame == 1190 {
+                if matches!(*frame, 1190 | 1296 | 1304) {
                     input.events.push(egui::Event::PointerButton {
                         pos: position,
                         button: egui::PointerButton::Primary,
-                        pressed: true,
+                        pressed: *frame != 1304,
                         modifiers: egui::Modifiers::NONE,
                     });
                 }
+            }
+            if *frame == 1240 {
+                let position = input
+                    .events
+                    .iter()
+                    .find_map(|event| match event {
+                        egui::Event::PointerMoved(position) => Some(*position),
+                        _ => None,
+                    })
+                    .unwrap_or(egui::pos2(800.0, 700.0));
+                input.events.push(egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
             }
         }
     }
@@ -4799,6 +4913,13 @@ impl eframe::App for OpenPatch {
             .set_construction_motion_mode(self.construction.motion_mode());
         self.footer(ctx);
         let library_action = self.browser(ctx);
+        let palette_enabled = self.library_enabled();
+        if self
+            .cable_palette_ui
+            .show(ctx, &mut self.cable_palette, palette_enabled)
+        {
+            self.save_host_settings();
+        }
         self.global_shortcuts(ctx);
         if let Some(action) = self.deferred_action.take() {
             self.request_action(action);
@@ -4935,6 +5056,9 @@ mod project_workflow_tests {
     mod precision_host_tests {
         include!("precision_host_tests.rs");
     }
+    mod palette_host_tests {
+        include!("palette_host_tests.rs");
+    }
 
     // Headless host state: no window, graphics context, device, or MIDI access.
     fn host(path: &Path) -> OpenPatch {
@@ -4997,6 +5121,8 @@ mod project_workflow_tests {
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(true),
             construction: crate::construction_ui::Panel::default(),
+            cable_palette: crate::cable_palette::Palette::default(),
+            cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,
             documents,
             projects: Some(store),
@@ -5095,7 +5221,7 @@ mod project_workflow_tests {
         let ctx = egui::Context::default();
         // Run the same logical scene progression and raw-input hook as native
         // smoke, without a graphics context, screenshot events or audio devices.
-        while app.smoke_test.as_ref().unwrap().1 < 1236 {
+        while app.smoke_test.as_ref().unwrap().1 < 1328 {
             let logical = app.smoke_test.as_ref().unwrap().1;
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -5112,6 +5238,9 @@ mod project_workflow_tests {
                 app.toolbar(ctx);
                 app.footer(ctx);
                 let action = app.browser(ctx);
+                let palette_enabled = app.library_enabled();
+                app.cable_palette_ui
+                    .show(ctx, &mut app.cable_palette, palette_enabled);
                 app.global_shortcuts(ctx);
                 app.rack_workspace(ctx, action);
                 app.smoke(ctx);
@@ -5132,9 +5261,14 @@ mod project_workflow_tests {
                     "actual drop guidance must remain painted with room lights on or off");
             }
         }
-        assert!(app.rack.cable_is_dragging_for_smoke());
-        assert_eq!(app.rack.room_brightness(), 0.0);
-        assert_eq!(app.patch.cables.len(), 3);
+        assert!(!app.rack.cable_is_dragging_for_smoke());
+        assert_eq!(app.rack.room_brightness(), 1.0);
+        assert_eq!(app.patch.cables.len(), 4);
+        assert_eq!(
+            app.patch.cables.last().unwrap().color,
+            Some([244, 104, 111])
+        );
+        assert_eq!(app.cable_palette.next_index(), 1);
         assert!(app.audio.is_none());
     }
 

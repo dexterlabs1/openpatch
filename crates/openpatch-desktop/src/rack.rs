@@ -59,6 +59,10 @@ const PUSH_RELEASE: [&str; 2] = ["push_release", "hold_release"];
 
 pub(crate) enum RackAction {
     Command(&'static str, Value),
+    PaletteConnect {
+        arguments: Value,
+        selection: crate::cable_palette::Selection,
+    },
     ParameterEditAndNavigate {
         arguments: Value,
         forward: bool,
@@ -175,6 +179,7 @@ struct PendingCable {
     original: Option<Cable>,
     companions: Vec<Cable>,
     color: Option<[u8; 3]>,
+    palette_selection: Option<crate::cable_palette::Selection>,
     revision: u64,
     stack_requested: bool,
 }
@@ -203,6 +208,7 @@ impl PendingCable {
             original,
             companions: Vec::new(),
             color: None,
+            palette_selection: None,
             revision,
             stack_requested: false,
             shift_at_press: false,
@@ -361,6 +367,8 @@ pub struct Rack {
     pending_center_zoom_ratio: f32,
     positions_locked: bool,
     lighting: crate::lighting::RoomLighting,
+    new_cable_selection: Option<crate::cable_palette::Selection>,
+    cable_palette_colors: Vec<[u8; 3]>,
     pending: Option<PendingCable>,
     cable_press: Option<PendingCable>,
     cable_menu: Option<CableMenu>,
@@ -407,6 +415,8 @@ impl Default for Rack {
             pending_center_zoom_ratio: 1.0,
             positions_locked: false,
             lighting: crate::lighting::RoomLighting::default(),
+            new_cable_selection: None,
+            cable_palette_colors: Vec::new(),
             pending: None,
             cable_press: None,
             cable_menu: None,
@@ -441,6 +451,17 @@ impl Default for Rack {
 }
 
 impl Rack {
+    pub(crate) fn set_cable_palette(
+        &mut self,
+        selection: crate::cable_palette::Selection,
+        colors: &[[u8; 3]],
+    ) {
+        self.new_cable_selection = Some(selection);
+        if self.cable_palette_colors != colors {
+            self.cable_palette_colors = colors.to_vec();
+        }
+    }
+
     pub(crate) fn clear_construction_animation(&mut self) {
         self.construction_animation.clear();
     }
@@ -1626,12 +1647,15 @@ impl Rack {
                     })
                 }) {
                     if position.is_finite() {
-                        action = cable_release_action(
-                            patch,
+                        action = palette_commit_action(
                             &pending,
-                            nearest_jack(position).map(|(target, _)| target),
-                            catalog,
-                            modifiers.shift,
+                            cable_release_action(
+                                patch,
+                                &pending,
+                                nearest_jack(position).map(|(target, _)| target),
+                                catalog,
+                                modifiers.shift,
+                            ),
                         );
                     }
                 }
@@ -3285,7 +3309,7 @@ impl Rack {
                         );
                     }
                     value_response.on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text("Click to type a value or expression. Tab applies and moves to the next type-entry control.");
+                        .on_hover_text("Click to type a value or expression. With multiple type-entry controls, Tab applies and moves to the next one.");
                 }
             }
             if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
@@ -6867,6 +6891,10 @@ impl Rack {
         } else {
             CableOperation::Move
         };
+        if pending.operation == CableOperation::Create {
+            pending.palette_selection = self.new_cable_selection;
+            pending.color = pending.palette_selection.map(|selection| selection.color);
+        }
         pending
     }
 
@@ -6997,12 +7025,15 @@ impl Rack {
             if let Some(pending) = self.pending.take() {
                 if pending.origin != end || pending.operation == CableOperation::Move {
                     if cable_plan(&pending, &end).is_some() {
-                        *action = cable_action_mode(
-                            patch,
+                        *action = palette_commit_action(
                             &pending,
-                            &end,
-                            catalog,
-                            response.ctx.input(|i| i.modifiers.shift),
+                            cable_action_mode(
+                                patch,
+                                &pending,
+                                &end,
+                                catalog,
+                                response.ctx.input(|i| i.modifiers.shift),
+                            ),
                         );
                     } else {
                         self.pending = pressed;
@@ -8153,6 +8184,20 @@ fn incomplete_cable_drop(
         })
 }
 
+fn palette_commit_action(pending: &PendingCable, action: Option<RackAction>) -> Option<RackAction> {
+    match (pending.operation, pending.palette_selection, action) {
+        (
+            CableOperation::Create,
+            Some(selection),
+            Some(RackAction::Command("connect", arguments)),
+        ) => Some(RackAction::PaletteConnect {
+            arguments,
+            selection,
+        }),
+        (_, _, action) => action,
+    }
+}
+
 fn cable_release_action(
     patch: &Patch,
     pending: &PendingCable,
@@ -8216,19 +8261,19 @@ fn cable_gesture_guidance(
     let endpoint = |node: &str, port: &str| format!("{node} · {}", port_label(port).to_uppercase());
     let route = if let Some((cable, _)) = &plan {
         format!(
-            "{} → {}",
+            "{} -> {}",
             endpoint(&cable.from, &cable.output),
             endpoint(&cable.to, &cable.input)
         )
     } else if let Some(old) = &pending.original {
         match pending.origin {
-            CableEnd::Input { .. } => format!("{} → IN ?", endpoint(&old.from, &old.output)),
-            CableEnd::Output { .. } => format!("OUT ? → {}", endpoint(&old.to, &old.input)),
+            CableEnd::Input { .. } => format!("{} -> IN ?", endpoint(&old.from, &old.output)),
+            CableEnd::Output { .. } => format!("OUT ? -> {}", endpoint(&old.to, &old.input)),
         }
     } else {
         match &pending.origin {
-            CableEnd::Input { node, port } => format!("OUT ? → {}", endpoint(node, port)),
-            CableEnd::Output { node, port } => format!("{} → IN ?", endpoint(node, port)),
+            CableEnd::Input { node, port } => format!("OUT ? -> {}", endpoint(node, port)),
+            CableEnd::Output { node, port } => format!("{} -> IN ?", endpoint(node, port)),
         }
     };
     let duplicate_deleted = !pending.allow_duplicate(shift)
@@ -17236,6 +17281,7 @@ mod tests {
         let to = fixture_jack(&rack, &patch, "dest", "signal", true);
         // This is the draft produced by the input menu's "Move this cable".
         rack.pending = Some(PendingCable {
+            palette_selection: None,
             operation: CableOperation::Move,
             shift_at_press: false,
             origin: CableEnd::Input {
@@ -17276,6 +17322,9 @@ mod tests {
             if args["cable_ids"] == json!(["one"]) && args["promote"] == true));
     }
     include!("cable_gesture_tests.rs");
+    mod palette_gesture_tests {
+        include!("palette_gesture_tests.rs");
+    }
     mod cable_guidance_tests {
         include!("cable_guidance_tests.rs");
     }

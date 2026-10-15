@@ -132,6 +132,10 @@ impl ModuleLibrary {
         }
     }
 
+    pub(crate) fn keyboard_active(&self) -> bool {
+        self.focused_last_frame.is_some()
+    }
+
     pub fn request_focus(&mut self) {
         self.focus_search = true;
         self.focused_last_frame = None;
