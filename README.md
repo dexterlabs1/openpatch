@@ -28,6 +28,7 @@
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with sliders and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
 - **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
+- **Explore macro synthesis.** MACRO VOICE offers eight engines: detuned analog, wavefolding, feedback FM, harmonic spectra, spectral wavetables, four-note chords, swarm, and metallic tones. It supports 16 independent voices, OUT/AUX outputs, three timbral CVs, and a trigger-driven decaying low-pass gate. Leave TRIG unpatched for sustained sounds. Its FM and additive shaping adapt MIT-licensed Plaits algorithms; this native instrument is not a sample-identical Plaits port.
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
 - **Build longer arrangements.** Use SCORE through MCP for chords, ratchets and automation, then shape the mix with native drums, stereo delay, reverb and sidechain compression. [Scores and studio modules →](docs/SCORE_AND_STUDIO.md)
 - **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
@@ -36,7 +37,7 @@
 - **Clear space to work.** Adjust cable transparency and tension in View, reveal routes by hovering a port, and set plug-light brightness independently. Turning plug lights off stops their observation work. [Cable presentation →](docs/CABLE_PRESENTATION.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
-- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, animated cable additions, shared undo, and a native progress panel offering Pause, Resume and Cancel. Choose Full, Reduced or Off for module, cable and parameter motion.
+- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, shared undo, and Pause, Resume and Cancel. Existing cables unplug, travel and settle when MCP repatches them, including direct tool calls. **View → Agent motion** offers Full, Reduced or Off for the [module, cable and parameter cues](docs/CONSTRUCTION_MOTION.md).
 
 ## Get started on macOS
 

@@ -4,6 +4,7 @@
 use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
+use crate::macro_voice::{self, MacroVoice};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::midi_cc::{self, MidiCc};
 use crate::midi_gate::{self, MidiGate};
@@ -74,6 +75,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || kind == "colored_noise"
         || kind == "score_sequencer"
         || kind == "modal_resonator"
+        || kind == "macro_voice"
         || studio_fx::input_names(kind).is_some()
         || voice_tools::input_names(kind).is_some()
         || routing::input_names(kind).is_some()
@@ -115,6 +117,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if kind == "macro_voice" {
+        return macro_voice::INPUTS.iter().position(|p| *p == name);
+    }
     if kind == "modal_resonator" {
         return modal_resonator::INPUTS.iter().position(|p| *p == name);
     }
@@ -163,6 +168,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "macro_voice" {
+        return macro_voice::OUTPUTS.iter().position(|p| *p == name);
+    }
     if kind == "colored_noise" {
         return colored_noise::OUTPUTS.iter().position(|p| *p == name);
     }
@@ -283,7 +291,12 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if kind == "colored_noise" {
+    let outputs = if kind == "macro_voice" {
+        macro_voice::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "colored_noise" {
         colored_noise::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -513,6 +526,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "modal_resonator" {
         modal_resonator::annotate(module);
     }
+    if kind == "macro_voice" {
+        macro_voice::annotate(module);
+    }
     if kind == "seq3" {
         sequence::annotate(module);
     }
@@ -555,6 +571,7 @@ enum Model {
     Score(Box<ScoreSequencer>),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
+    MacroVoice(Box<MacroVoice>),
     VoiceTools(Box<VoiceTools>),
     Voices {
         template: Dsp,
@@ -602,6 +619,9 @@ impl Model {
         }
         if node.kind == "modal_resonator" {
             return ModalResonator::build(node, rate).map(|s| Self::ModalResonator(Box::new(s)));
+        }
+        if node.kind == "macro_voice" {
+            return MacroVoice::build(node, rate).map(|s| Self::MacroVoice(Box::new(s)));
         }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
@@ -1145,6 +1165,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::MacroVoice(s) => {
+                s.reset_state();
+                node.output_count
+            }
             Model::StudioFx(s) => {
                 s.reset_state();
                 node.output_count
@@ -1234,6 +1258,7 @@ impl PolyEngine {
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
             Model::ModalResonator(s) => s.reset_state(),
+            Model::MacroVoice(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
@@ -1340,7 +1365,9 @@ impl PolyEngine {
                 connected_mask: 0,
                 base_connected_mask: 0,
             });
-            let count = if node.kind == "colored_noise" {
+            let count = if node.kind == "macro_voice" {
+                macro_voice::OUTPUTS.len()
+            } else if node.kind == "colored_noise" {
                 colored_noise::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
@@ -1623,6 +1650,7 @@ impl PolyEngine {
                 Model::Score(_)
                 | Model::StudioFx(_)
                 | Model::VoiceTools(_)
+                | Model::MacroVoice(_)
                 | Model::ModalResonator(_) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -1642,6 +1670,7 @@ impl PolyEngine {
                             s.process(&inputs, outputs);
                         }
                         Model::ModalResonator(s) => s.process(&inputs, outputs),
+                        Model::MacroVoice(s) => s.process(&inputs, outputs),
                         Model::StudioFx(s) => s.process(&inputs, outputs),
                         Model::VoiceTools(s) => s.process(&inputs, outputs),
                         _ => unreachable!(),
@@ -2248,6 +2277,8 @@ impl PolyEngine {
             };
             let strike_unchanged = self.nodes[*index].kind != "modal_resonator"
                 || self.input_unchanged(*index, old, *old_index, 1);
+            let macro_trigger_unchanged = self.nodes[*index].kind != "macro_voice"
+                || self.input_unchanged(*index, old, *old_index, 1);
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
@@ -2266,6 +2297,9 @@ impl PolyEngine {
                 }
                 (Model::ModalResonator(s), Model::ModalResonator(old)) => {
                     s.adopt(old, strike_unchanged)
+                }
+                (Model::MacroVoice(s), Model::MacroVoice(old)) => {
+                    s.adopt(old, macro_trigger_unchanged)
                 }
                 (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
                 (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),

@@ -45,15 +45,7 @@ impl Rack {
             return;
         };
         let color = color.gamma_multiply(brightness);
-        let start = crate::lighting::next(painter);
-        // Our own lens artwork. Additive emission retains the passive dark lens
-        // at low levels; source RGB channels are clamped only at paint time.
-        painter.circle_filled(point, 2.0 * self.zoom, color);
-        if self.lighting.amount() < 1.0 {
-            painter.circle_filled(point, 3.4 * self.zoom, color.gamma_multiply(0.12));
-            painter.circle_filled(point, 2.6 * self.zoom, color.gamma_multiply(0.20));
-        }
-        self.lighting.preserve(painter, start);
+        self.lighting.port(painter, point, self.zoom, color);
     }
 
     fn port_signal_description(

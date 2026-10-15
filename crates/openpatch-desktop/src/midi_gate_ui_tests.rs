@@ -301,7 +301,7 @@ fn midi_gate_activity_and_learning_use_actual_telemetry_and_emit_in_darkroom() {
                     .find_map(|s| match &s.shape {
                         egui::Shape::Circle(c)
                             if c.center.distance(*center) < 0.1
-                                && (c.radius - 2.3).abs() < 0.01 =>
+                                && (c.radius - crate::lighting::lamp_radius(2.3)).abs() < 0.01 =>
                         {
                             Some(c.fill)
                         }

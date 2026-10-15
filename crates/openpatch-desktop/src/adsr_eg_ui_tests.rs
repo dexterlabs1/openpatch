@@ -278,7 +278,7 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
                     .iter()
                     .filter_map(|s| match &s.shape {
                         egui::Shape::Circle(c)
-                            if c.center.distance(*center) < 0.1 && (c.radius - 2.5).abs() < 0.1 =>
+                            if c.center.distance(*center) < 0.1 && (c.radius - crate::lighting::lamp_radius(2.5)).abs() < 0.1 =>
                         {
                             Some(c.fill)
                         }

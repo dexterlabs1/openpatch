@@ -7,7 +7,7 @@ keyboard, or edit a slider's percentage. Double-click its rail to reset it.
 | Control | Range | Default and reset | Effect |
 | --- | --- | --- | --- |
 | Cable opacity | 0–100% | 100% | Fades cable bodies and shadows together. Plugs, signal lights and patching guidance retain their visibility. Hovering a connected port reveals its cables; an active dragged cable stays visible. |
-| Cable tension | 0–100% | 50% | Changes the hanging curve from loose to straight, keeping both ends attached to their jacks. |
+| Cable tension | 0–100% | 50% | Changes the hanging curve from loose to taut with a slight gravity bow, keeping both ends attached to their jacks. |
 | Plug light brightness | 0–100% | 100% | Dims signal lenses and their halos together. At zero, signal-light observation and publication stop; module lamps and Scope continue normally. |
 
 These are host preferences, saved in the workspace's `.host-settings.json`.

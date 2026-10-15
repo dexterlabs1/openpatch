@@ -10,6 +10,35 @@ thread_local! {
 }
 
 #[test]
+fn macro_voice_all_engines_first_callback_and_adoption_use_no_heap() {
+    let mut engines = (0..8)
+        .map(|engine| {
+            let p = patch(
+                vec![
+                    node("pitch", "poly_constant", &[("channels", 16.0)]),
+                    node("voice", "macro_voice", &[("engine", engine as f32)]),
+                ],
+                vec![cable("pitch", "out", "voice", "pitch")],
+                "voice",
+            );
+            (p.compile().unwrap(), p.compile().unwrap())
+        })
+        .collect::<Vec<_>>();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|n| n.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for (old, new) in &mut engines {
+        for length in [0, 1, 3, 64, 128, 129] {
+            old.process_poly_block(&mut frames[..length]);
+            new.adopt_state_from(old);
+            new.process_poly_block(&mut frames[..length]);
+        }
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}
+
+#[test]
 fn multi_vco_first_callback_and_state_adoption_use_no_heap() {
     let mut p = patch(
         vec![

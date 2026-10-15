@@ -3109,6 +3109,35 @@ impl Rack {
                     });
                     continue;
                 }
+                if node.kind == "macro_voice" && *name == "engine" {
+                    painter.text(
+                        point(25.0, 88.0),
+                        Align2::LEFT_CENTER,
+                        "ENGINE",
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
+                        INK,
+                    );
+                    let choices = spec["labels"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|s| s.as_str().unwrap())
+                        .collect::<Vec<_>>();
+                    if let Some(edit) = self.choice_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        Rect::from_min_size(
+                            point(100.0, 75.0),
+                            vec2(width - 125.0, 27.0) * self.zoom,
+                        ),
+                        &choices,
+                    ) {
+                        action = Some(edit);
+                    }
+                    continue;
+                }
                 let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
                 let mut max = spec["max"].as_f64().unwrap_or(1.0) as f32;
                 if let Some(ratio) = spec["sample_rate_max_ratio"].as_f64() {
@@ -3150,6 +3179,14 @@ impl Rack {
                     (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
                     (pos2(60.0 + index as f32 * 120.0, 130.0), 24.0)
+                } else if node.kind == "macro_voice" {
+                    (
+                        pos2(
+                            width * ((index - 1) % 3) as f32 / 3.0 + width / 6.0,
+                            154.0 + ((index - 1) / 3) as f32 * 102.0,
+                        ),
+                        22.0,
+                    )
                 } else if node.kind == "stereo_delay" {
                     (
                         pos2(
@@ -6837,14 +6874,23 @@ impl Rack {
         ui.scope_builder(
             egui::UiBuilder::new()
                 .max_rect(rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center))
                 .id_salt((&node.id, parameter)),
             |ui| {
                 *ui.visuals_mut() = egui::Visuals::light();
                 crate::panel_skin::control_style(ui, self.zoom);
                 let font = crate::panel_skin::print_font(ui.ctx(), 12.0 * self.zoom);
                 ui.style_mut().override_font_id = Some(font);
+                let spacing = ui.spacing_mut();
+                spacing.button_padding = vec2(6.0, 3.0) * self.zoom;
+                spacing.icon_width = 14.0 * self.zoom;
+                spacing.icon_width_inner = 8.0 * self.zoom;
+                spacing.icon_spacing = 4.0 * self.zoom;
+                spacing.interact_size = vec2(40.0, 18.0) * self.zoom;
+                spacing.item_spacing = vec2(8.0, 3.0) * self.zoom;
                 egui::ComboBox::from_id_salt("choice")
                     .width(rect.width())
+                    .wrap_mode(egui::TextWrapMode::Truncate)
                     .selected_text(choices[value])
                     .show_ui(ui, |ui| {
                         for (index, label) in choices.iter().enumerate() {
@@ -8348,6 +8394,12 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "macro_voice" => {
+            return pos2(
+                width * (index + 1) as f32 / (count + 1) as f32,
+                if input { 337.0 } else { 378.0 },
+            )
+        }
         "midi_cc" if !input => return midi_cc_output_position(index),
         "midi_gate" if !input => return midi_assignment_output_position(index),
         "stock_vca" => {
@@ -9454,6 +9506,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
         "modal_resonator" => HP * 32.0,
+        "macro_voice" => HP * 20.0,
         "scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
@@ -9496,6 +9549,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "notes" => "NOTES",
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
+        "macro_voice" => "MACRO VOICE",
         "scope" => "SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
@@ -9563,6 +9617,10 @@ pub(crate) fn title(kind: &str) -> &str {
 pub(crate) fn parameter_label(name: &str) -> &str {
     match name {
         "tempo" => "TEMPO",
+        "engine" => "ENGINE",
+        "harmonics" => "HARMONICS",
+        "timbre" => "TIMBRE",
+        "morph" => "MORPH",
         "dc_block" => "DC FILTER",
         "swing" => "SWING",
         "running" => "RUN",
@@ -9635,6 +9693,7 @@ pub(crate) fn parameter_label(name: &str) -> &str {
 }
 fn port_label(name: &str) -> &str {
     match name {
+        "harmonics" => "HARM",
         "complement" => "COMP",
         "mix_cv" => "MIX CV",
         "not_a" => "NOT A",
@@ -9678,6 +9737,15 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "macro_voice" => &[
+            "engine",
+            "frequency",
+            "harmonics",
+            "timbre",
+            "morph",
+            "decay",
+            "level",
+        ],
         "modal_resonator" => &[
             "frequency",
             "stiffness",
@@ -11440,7 +11508,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            64,
+            65,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -11533,6 +11601,9 @@ mod tests {
         }
         let catalog = openpatch_core::catalog();
         for kind in [
+            "macro_voice",
+            "mix6",
+            "multi_lfo",
             "poly_viz",
             "score_sequencer",
             "drum_voice",
@@ -11552,7 +11623,7 @@ mod tests {
                 .iter()
                 .find(|m| m["kind"] == kind)
                 .unwrap();
-            for scale in [0.42, 0.85, 1.0] {
+            for scale in [0.25, 0.42, 0.85, 1.0] {
                 let ctx = egui::Context::default();
                 crate::panel_skin::install_fonts(&ctx);
                 let mut preview = ModulePreview::new(module);
@@ -11577,6 +11648,12 @@ mod tests {
                         collect(&shape.shape, &mut texts);
                     }
                     for (name, _) in ordered_parameters(&preview.patch.nodes[0], Some(module)) {
+                        if matches!(
+                            (kind, name),
+                            ("mix6", "average" | "invert") | ("multi_lfo", "unipolar" | "invert")
+                        ) {
+                            continue;
+                        }
                         assert!(
                             texts.iter().any(|(text, _)| text == parameter_label(name)
                                 || (kind == "sh_asr"
@@ -11585,7 +11662,9 @@ mod tests {
                             "{kind}: missing parameter label {name}"
                         );
                     }
-                    if let Some((_, footer)) = texts.iter().find(|(text, _)| text == "OPENPATCH") {
+                    if let Some((_, footer)) = texts.iter().find(|(text, _)| {
+                        text == "OPENPATCH" && !matches!(kind, "mix6" | "multi_lfo")
+                    }) {
                         for shape in &output.shapes {
                             if let egui::Shape::Circle(circle) = &shape.shape {
                                 assert!(

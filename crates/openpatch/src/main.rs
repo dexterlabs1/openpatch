@@ -62,12 +62,16 @@ fn run() -> Result<(), String> {
             );
             Ok(())
         }
+        Some("--third-party-licenses") if args.len() == 1 => {
+            print!("{}", openpatch_core::THIRD_PARTY_LICENSES);
+            Ok(())
+        }
         Some("--version") => {
             println!("OpenPatch {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),

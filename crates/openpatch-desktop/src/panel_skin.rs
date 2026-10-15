@@ -25,7 +25,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
             Color32::from_rgb(151, 93, 57)
         }
-        "modal_resonator" | "colored_noise" => Color32::from_rgb(151, 93, 57),
+        "modal_resonator" | "colored_noise" | "macro_voice" => Color32::from_rgb(151, 93, 57),
         "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
         "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer"
         | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
@@ -63,6 +63,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "analog_vco" => "ANALOG OSCILLATOR",
         "oscillator" => "SINE OSCILLATOR",
         "multi_vco" => "MULTI-WAVE OSCILLATOR",
+        "macro_voice" => "8 ENGINE POLYPHONIC SYNTH",
         "lowpass" => "LOW-PASS FILTER",
         "ladder_vcf" => "TRANSISTOR FILTER",
         "stock_vcf" => "POLYPHONIC LP / HP FILTER",

@@ -81,7 +81,7 @@ impl Category {
     fn of_kind(kind: &str) -> Self {
         match kind {
             "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
-            | "modal_resonator" | "colored_noise" => Self::Oscillators,
+            | "modal_resonator" | "colored_noise" | "macro_voice" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,

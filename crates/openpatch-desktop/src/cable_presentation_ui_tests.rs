@@ -48,7 +48,7 @@ fn lenses(output: &egui::FullOutput, zoom: f32) -> Vec<(Pos2, Color32)> {
         .iter()
         .filter_map(|shape| match &shape.shape {
             egui::Shape::Circle(circle)
-                if (circle.radius - 2.0 * zoom).abs() < 0.001
+                if (circle.radius - crate::lighting::port_lamp_radius(zoom)).abs() < 0.001
                     && circle.fill.a() == 0
                     && circle.fill != Color32::TRANSPARENT =>
             {

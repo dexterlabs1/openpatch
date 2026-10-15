@@ -8,6 +8,9 @@
 //! attenuverter.signal to 10 V. Signals are unclipped in normal use, with a
 //! ±1,000,000 safety bound on arithmetic modules; WAV export clips to ±1.
 
+/// Full notices for third-party algorithms included in this crate.
+pub const THIRD_PARTY_LICENSES: &str = include_str!("../LICENSE-THIRD-PARTY");
+
 use serde::{Deserialize, Serialize};
 mod cable_order;
 pub use cable_order::{
@@ -48,6 +51,7 @@ mod midi_learn;
 pub use midi_cc::{initial_midi_cc_state, MidiCcLearnCompletion};
 pub use midi_gate::initial_midi_gate_state;
 pub use midi_learn::{MidiLearnCompletion, MidiLearnKind};
+mod macro_voice;
 mod mixing;
 mod modal_resonator;
 mod multi_lfo;
@@ -282,6 +286,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(multi_vco::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(macro_voice::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
