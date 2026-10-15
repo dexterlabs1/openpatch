@@ -94,12 +94,17 @@ At that outer bound, zoom anchoring yields to the view limit.
 **View → Room brightness** adjusts rack illumination from 0 to 100%. **Darkroom**
 sets 10%; **Lights on** restores 100%, the default. Panels, printed labels, controls,
 cables, and rack rails dim together. Actual module lamps, meters, step indicators,
-and Scope screens keep emitting from the latest engine telemetry. A missing engine
+Scope screens, and connected top-plug signal lights keep emitting from the latest engine telemetry. A missing engine
 publication stays unavailable; no display blink timer substitutes for a signal.
 Small lamp halos increase as the room darkens. Cables still pass in front of lamps
 and scope traces. Selection, menus, numeric editors, patching guidance, construction
 cues, and host chrome keep their normal contrast. Browser previews use neutral 100%
 lighting to help identify modules.
+
+Plug signal lights show green/red for positive/negative mono signals and blue for
+polyphonic signal energy. Each input shows its actual sum, so stacked signals can
+cancel while their source plugs remain lit. Cable color and patching highlights
+have separate meanings. See [signal lights](PORT_LIGHTS.md).
 
 Room illumination is a host preference, saved as `room_brightness` in
 `.host-settings.json` (a finite number from 0 to 1). It does not change a project,

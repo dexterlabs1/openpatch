@@ -1,6 +1,8 @@
 //! Native output with control-thread compilation and bounded ownership transfer.
 //! The running callback never allocates, locks, formats errors, or drops engines.
 
+use crate::port_light_transport::{self, PortLightProducer, PortLightReader};
+pub(crate) use crate::port_light_transport::{offline_frame, PortLightFrame, PortLightKey};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use openpatch::control::LiveModuleEvents;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
@@ -364,6 +366,8 @@ struct PreparedGraph {
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
+    port_lights: Option<PortLightProducer>,
+    port_light_reader: Option<PortLightReader>,
 }
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
@@ -372,7 +376,18 @@ impl From<Engine> for PreparedGraph {
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
+            port_lights: None,
+            port_light_reader: None,
         }
+    }
+}
+impl PreparedGraph {
+    /// Control-thread preparation; never resolve endpoints inside rendering.
+    fn prepare_port_lights(&mut self, patch: &Patch) -> Result<(), String> {
+        let (producer, reader) = port_light_transport::prepare(patch, &mut self.engine)?;
+        self.port_lights = Some(producer);
+        self.port_light_reader = Some(reader);
+        Ok(())
     }
 }
 impl Deref for PreparedGraph {
@@ -400,7 +415,7 @@ fn prepare_graph(
         .map(|binding| binding.resolve(&device_patch, &engine, strict))
         .transpose()?
         .unwrap_or([None; 2]);
-    Ok(PreparedGraph {
+    let mut graph = PreparedGraph {
         engine,
         modules: ModulePlan::default(),
         revision: 0,
@@ -409,7 +424,11 @@ fn prepare_graph(
             enabled: binding.is_some(),
             taps,
         },
-    })
+        port_lights: None,
+        port_light_reader: None,
+    };
+    graph.prepare_port_lights(&device_patch)?;
+    Ok(graph)
 }
 
 /// The stream keeps running during transport pause so gain can fade to silence.
@@ -432,6 +451,7 @@ pub struct Audio {
     scope_packets: Consumer<ScopePacket>,
     performance: Arc<Performance>,
     submitted_revision: u64,
+    port_light_reader: PortLightReader,
 }
 
 impl Audio {
@@ -476,6 +496,14 @@ impl Audio {
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
         let mut callback = Callback::new(engine, updates, recycle, shared.clone(), sample_rate);
+        callback.graphs.active.prepare_port_lights(&device_patch)?;
+        let port_light_reader = callback
+            .graphs
+            .active
+            .port_light_reader
+            .as_ref()
+            .unwrap()
+            .clone();
         callback.performance.sync_patch(patch, 0);
         callback.graphs.active.modules =
             callback
@@ -515,6 +543,7 @@ impl Audio {
             scope_packets,
             performance,
             submitted_revision: 0,
+            port_light_reader,
         })
     }
 
@@ -537,6 +566,7 @@ impl Audio {
         )?;
         graph.modules = self.performance.plan(patch, &graph.engine, revision)?;
         graph.revision = revision;
+        self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.submitted_revision = revision;
         self.scope_generation = generation;
@@ -604,6 +634,14 @@ impl Audio {
     pub fn module_scope(&self, id: &str) -> Option<Arc<openpatch_core::ScopeSnapshot>> {
         self.performance.scope_frame(id).map(|frame| frame.snapshot)
     }
+    /// Actual active-graph endpoint state; unavailable before acquisition, for a
+    /// pending revision, or 250ms after the reader last observed a new packet.
+    pub(crate) fn port_lights(&self, revision: u64) -> Option<Arc<PortLightFrame>> {
+        (revision == self.submitted_revision)
+            .then(|| self.port_light_reader.read(revision))
+            .flatten()
+    }
+
     pub fn module_lights(&self, id: &str) -> Option<openpatch_core::ModuleLightState> {
         self.performance.module_lights(id)
     }
@@ -627,6 +665,7 @@ impl Audio {
             .performance
             .plan(patch, &graph.engine, self.submitted_revision)?;
         graph.revision = self.submitted_revision;
+        self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.scope_binding = binding;
         self.scope_generation = generation;
@@ -865,6 +904,9 @@ struct Callback {
     performance: Arc<Performance>,
     module_events: EventReader,
     timing: audio_diagnostics::Recorder,
+    // Stream-global cadence survives every graph edit and same-revision rebuild.
+    next_port_publish_frame: u64,
+    port_publish_interval: u64,
 }
 
 impl Callback {
@@ -899,6 +941,8 @@ impl Callback {
             fade_position: 0,
             scope_cursor: 0,
             scope_decimation: 0,
+            next_port_publish_frame: 0,
+            port_publish_interval: u64::from(rate).div_ceil(30),
         }
     }
 
@@ -939,6 +983,11 @@ impl Callback {
                         }
                     }
                 }
+            }
+            // The retiring crossfade graph is still processed for sound, but
+            // only the active displayed graph pays passive observer cost.
+            if let Some(previous) = self.graphs.previous.as_mut() {
+                previous.engine.set_port_lights_enabled(false);
             }
             let active = &mut self.graphs.active;
             active.modules.initialize_pending(
@@ -1128,6 +1177,15 @@ impl Callback {
             self.graphs.active.revision,
             self.frame_clock,
         );
+        if self.frame_clock >= self.next_port_publish_frame {
+            let active = &mut self.graphs.active;
+            if active.port_lights.as_mut().is_some_and(|producer| {
+                producer.publish(&active.engine, active.revision, self.frame_clock)
+            }) {
+                self.next_port_publish_frame =
+                    self.frame_clock.saturating_add(self.port_publish_interval);
+            }
+        }
         self.shared
             .waveform_cursor
             .store(self.scope_cursor, Ordering::Release);
@@ -1396,6 +1454,7 @@ mod tests {
         shared.volume.store(1.0_f32.to_bits(), Ordering::Relaxed);
         let mut callback =
             Callback::new(patch.compile().unwrap(), incoming, retired, shared, 48000);
+        callback.graphs.active.prepare_port_lights(&patch).unwrap();
         let mut stereo = [0.0_f32; 2034];
         without_heap_activity(|| callback.render(&mut stereo, 2));
         for frame in stereo.as_chunks::<2>().0 {
@@ -1434,6 +1493,11 @@ mod tests {
                 shared,
                 48000,
             );
+            callback
+                .graphs
+                .active
+                .prepare_port_lights(&original)
+                .unwrap();
             callback.gain.value = 1.0;
             let mut warmup = [0.0_f32; 129];
             callback.render(&mut warmup, 1);
@@ -1481,6 +1545,7 @@ mod tests {
         shared.volume.store(1.0_f32.to_bits(), Ordering::Relaxed);
         let mut callback =
             Callback::new(patch.compile().unwrap(), incoming, retired, shared, 48000);
+        callback.graphs.active.prepare_port_lights(patch).unwrap();
         callback.gain.value = 1.0;
         (callback, updates, disposal)
     }
@@ -5499,6 +5564,7 @@ mod tests {
     include!("midi_gate_host_tests.rs");
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
+    include!("port_light_host_tests.rs");
 }
 
 #[cfg(test)]

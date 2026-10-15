@@ -788,8 +788,29 @@ pub(crate) struct PolyEngine {
     outputs: Vec<PortFrame>,
     selected: Option<usize>,
     stereo: bool,
+    pub(crate) port_lights: crate::port_lights::Observer,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_port_light(
+        &self,
+        id: &str,
+        direction: crate::PortDirection,
+        port: &str,
+    ) -> Result<Option<usize>, String> {
+        let &node = self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("module '{id}' does not exist"))?;
+        let compiled = &self.nodes[node];
+        let local = match direction {
+            crate::PortDirection::Input => {
+                input_port(&compiled.kind, compiled.model.template(), port)
+            }
+            crate::PortDirection::Output => output_port(&compiled.kind, port),
+        }
+        .ok_or_else(|| format!("module '{id}': unknown {direction:?} port '{port}'"))?;
+        Ok(self.port_lights.find(node, direction, local))
+    }
     pub(crate) fn midi_gate_mut(&mut self, index: usize) -> Option<&mut MidiGate> {
         if let Model::MidiGate(midi) = &mut self.nodes.get_mut(index)?.model {
             Some(midi)
@@ -1467,7 +1488,24 @@ impl PolyEngine {
         for node in &mut nodes {
             node.connected_mask = node.base_connected_mask;
         }
+        let mut port_lights = crate::port_lights::Observer::default();
+        for (node, compiled) in nodes.iter().enumerate() {
+            for (port, group) in compiled.inputs.iter().enumerate() {
+                if let Some(group) = group {
+                    port_lights.add(node, crate::PortDirection::Input, port, *group);
+                }
+            }
+        }
+        for edge in &edges {
+            port_lights.add(
+                edge.source_node,
+                crate::PortDirection::Output,
+                edge.source_port - nodes[edge.source_node].output_start,
+                edge.source_port,
+            );
+        }
         Ok(Self {
+            port_lights,
             rate: patch.sample_rate,
             nodes,
             node_lookup,
@@ -1962,6 +2000,24 @@ impl PolyEngine {
                 }
             }
         }
+        // Passive extraction reads the actual processed input sums and outputs.
+        // edge_frames below are next sample's inputs, not this observation.
+        if self.port_lights.due() {
+            for binding in &mut self.port_lights.bindings {
+                let frame = match binding.direction {
+                    crate::PortDirection::Input => &self.input_frames[binding.source],
+                    crate::PortDirection::Output => &self.outputs[binding.source],
+                };
+                binding.state = Some(crate::port_lights::step_port_light(
+                    binding.state.unwrap_or_default(),
+                    true,
+                    frame.channels,
+                    &frame.values,
+                    self.rate,
+                ));
+            }
+        }
+        self.port_lights.advance(1);
         // Publish counts and values only after every node has completed. All
         // cycles, including self-loops, therefore have a defined sample delay.
         for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
@@ -2004,6 +2060,127 @@ impl PolyEngine {
                 && same_identity
         })
     }
+    // Port histories are stricter than DSP histories: changes to either a
+    // physical input route or an output's incident connections start dark.
+    fn port_light_route_unchanged(
+        &self,
+        binding: &crate::port_lights::Binding,
+        old: &Self,
+        old_node: usize,
+        excluded: &[bool; MAX_NODES],
+        excluded_cables: &[bool; MAX_CABLES],
+    ) -> bool {
+        let incident = |edge: &Edge, node: usize, start: usize| match binding.direction {
+            crate::PortDirection::Output => {
+                edge.source_node == node && edge.source_port == start + binding.port
+            }
+            crate::PortDirection::Input => edge.destination_node == node,
+        };
+        if binding.direction == crate::PortDirection::Input
+            && !self.input_unchanged(binding.node, old, old_node, binding.port)
+        {
+            return false;
+        }
+        // For inputs, restrict membership to the actual group, not all inputs.
+        let contains = |engine: &Self, node: usize, index: usize, edge: &Edge| {
+            if !incident(edge, node, engine.nodes[node].output_start) {
+                return false;
+            }
+            if binding.direction == crate::PortDirection::Output {
+                return true;
+            }
+            let Some(group) = engine.nodes[node].inputs[binding.port] else {
+                return false;
+            };
+            let group = &engine.input_groups[group];
+            engine.input_edges[group.start..group.start + group.len].contains(&index)
+        };
+        let count = self
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(i, e)| contains(self, binding.node, *i, e))
+            .count();
+        let old_count = old
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(i, e)| contains(old, old_node, *i, e))
+            .count();
+        if count != old_count {
+            return false;
+        }
+        self.edges.iter().enumerate().all(|(index, edge)| {
+            if !contains(self, binding.node, index, edge) {
+                return true;
+            }
+            if excluded_cables[index]
+                || excluded[edge.source_node]
+                || excluded[edge.destination_node]
+            {
+                return false;
+            }
+            let old_index = old.edge_lookup.get(&edge.identity).copied().or_else(|| {
+                if matches!(edge.identity, EdgeIdentity::Explicit(_))
+                    && self.route_counts.get(&edge.route) == Some(&1)
+                    && old.route_counts.get(&edge.route) == Some(&1)
+                {
+                    old.unique_legacy_routes.get(&edge.route).copied().flatten()
+                } else {
+                    None
+                }
+            });
+            let Some(old_index) = old_index else {
+                return false;
+            };
+            let old_edge = &old.edges[old_index];
+            edge.route == old_edge.route
+                && self.nodes[edge.source_node].kind == old.nodes[old_edge.source_node].kind
+                && self.nodes[edge.destination_node].kind
+                    == old.nodes[old_edge.destination_node].kind
+        })
+    }
+    fn adopt_port_lights(
+        &mut self,
+        old: &Self,
+        excluded: &[bool; MAX_NODES],
+        excluded_cables: &[bool; MAX_CABLES],
+    ) {
+        self.port_lights.adopt_clock(&old.port_lights);
+        if !self.port_lights.can_adopt(&old.port_lights) {
+            return;
+        }
+        for (id, &node) in &self.node_lookup {
+            let Some(&old_node) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if excluded[node] || self.nodes[node].kind != old.nodes[old_node].kind {
+                continue;
+            }
+            for index in 0..self.port_lights.bindings.len() {
+                let binding = &self.port_lights.bindings[index];
+                if binding.node != node {
+                    continue;
+                }
+                let Some(old_index) =
+                    old.port_lights
+                        .find(old_node, binding.direction, binding.port)
+                else {
+                    continue;
+                };
+                if self.port_light_route_unchanged(
+                    binding,
+                    old,
+                    old_node,
+                    excluded,
+                    excluded_cables,
+                ) {
+                    self.port_lights.bindings[index].state =
+                        old.port_lights.bindings[old_index].state;
+                }
+            }
+        }
+    }
     #[cfg(test)]
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
         self.adopt_state_from_excluding(old, &[false; MAX_NODES], &[false; MAX_CABLES]);
@@ -2015,8 +2192,10 @@ impl PolyEngine {
         excluded_cables: &[bool; MAX_CABLES],
     ) {
         if self.rate != old.rate {
+            self.port_lights.reset_epoch();
             return;
         }
+        self.adopt_port_lights(old, excluded, excluded_cables);
         for (id, index) in &self.node_lookup {
             if excluded[*index] {
                 continue;

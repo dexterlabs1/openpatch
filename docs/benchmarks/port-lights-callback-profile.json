@@ -1,0 +1,175 @@
+{
+  "block_frames": 256,
+  "nodes": 65,
+  "pairs": [
+    {
+      "callbacks": 128,
+      "disabled_ns": 149393167,
+      "enabled_ns": 165487417
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 148800500,
+      "enabled_ns": 166016625
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149005375,
+      "enabled_ns": 165932000
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149414875,
+      "enabled_ns": 167770166
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149264542,
+      "enabled_ns": 165978625
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149410583,
+      "enabled_ns": 165732084
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149309458,
+      "enabled_ns": 165848792
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 148601417,
+      "enabled_ns": 165614417
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149390291,
+      "enabled_ns": 165581791
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149054291,
+      "enabled_ns": 165535875
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149394958,
+      "enabled_ns": 165982958
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149128875,
+      "enabled_ns": 165575000
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 148728958,
+      "enabled_ns": 165517833
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 148717042,
+      "enabled_ns": 165795791
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 149158375,
+      "enabled_ns": 165374792
+    },
+    {
+      "callbacks": 128,
+      "disabled_ns": 148923333,
+      "enabled_ns": 165886042
+    }
+  ],
+  "physical_endpoints": 128,
+  "profile": "port_light_callback",
+  "voices": 16,
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "architecture": "arm64",
+    "macos": "26.7.1",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "mode": "release; offline actual engine/callback; no device/GUI; no concurrent build or oracle during timed trials"
+  },
+  "source_sha256": {
+    "crates/openpatch-core/src/lib.rs": "826fb0ce2d880ac3627cfc70c8ff918b4a15ff45aa323969af1fb7e266022f25",
+    "crates/openpatch-core/src/poly.rs": "d7bcaea42d8e6d6ef1608749e8e282f6a6aeafdb23425d2431edc1e815f74d97",
+    "crates/openpatch-core/src/port_lights.rs": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
+    "crates/openpatch-core/tests/port_lights_profile.rs": "e4ea4fd91cd2a3ba3c3619a98a40d7d6e370e0627458cedaef905683d8442a7e",
+    "crates/openpatch-desktop/src/audio.rs": "3fd5538cc43b0f94540b70dfaaaa403b9a8b710133e850fbc8e1fa168bc38852",
+    "crates/openpatch-desktop/src/port_light_transport.rs": "14383734b2ed9c200c72b25a5471880a9d55b694de7d0b432e8a304da6f10eb0",
+    "crates/openpatch-desktop/src/port_light_host_tests.rs": "ea5caecb95e3f5892edb353a4c0fc75eedca593f11a8b0e9a30bbff01bf556c1"
+  },
+  "sample_rate": 48000,
+  "device_buffer_channels": 1,
+  "method": "headless actual Callback::render; 64 warmup blocks, 16 alternating paired trials, 128 callbacks per trial; exact device-output equality; no hardware/device/UI latency qualification",
+  "audio_identical": true,
+  "enabled_ns_per_callback": {
+    "median": 1295030.76171875,
+    "p95": 1310704.421875,
+    "trials": [
+      1292870.4453125,
+      1297004.8828125,
+      1296343.75,
+      1310704.421875,
+      1296708.0078125,
+      1294781.90625,
+      1295693.6875,
+      1293862.6328125,
+      1293607.7421875,
+      1293249.0234375,
+      1296741.859375,
+      1293554.6875,
+      1293108.0703125,
+      1295279.6171875,
+      1291990.5625,
+      1295984.703125
+    ]
+  },
+  "disabled_ns_per_callback": {
+    "median": 1165184.5703125,
+    "p95": 1167303.7109375,
+    "trials": [
+      1167134.1171875,
+      1162503.90625,
+      1164104.4921875,
+      1167303.7109375,
+      1166129.234375,
+      1167270.1796875,
+      1166480.140625,
+      1160948.5703125,
+      1167111.6484375,
+      1164486.6484375,
+      1167148.109375,
+      1165069.3359375,
+      1161944.984375,
+      1161851.890625,
+      1165299.8046875,
+      1163463.5390625
+    ]
+  },
+  "incremental_ns_per_callback": {
+    "median": 130086.26171875,
+    "p95": 143400.7109375,
+    "trials": [
+      125736.328125,
+      134500.9765625,
+      132239.2578125,
+      143400.7109375,
+      130578.7734375,
+      127511.7265625,
+      129213.546875,
+      132914.0625,
+      126496.09375,
+      128762.375,
+      129593.75,
+      128485.3515625,
+      131163.0859375,
+      133427.7265625,
+      126690.7578125,
+      132521.1640625
+    ]
+  }
+}

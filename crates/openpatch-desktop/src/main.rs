@@ -17,6 +17,7 @@ mod lighting;
 mod mcp_session_ui;
 mod midi;
 mod panel_skin;
+mod port_light_transport;
 mod project;
 #[cfg(test)]
 mod project_acceptance_tests;

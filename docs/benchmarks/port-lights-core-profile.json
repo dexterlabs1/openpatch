@@ -1,0 +1,254 @@
+{
+  "architecture": "aarch64",
+  "detector_cadence_samples": 7,
+  "kind": "offline core release CPU measurement",
+  "os": "macos",
+  "physical_or_native_host_qualification": false,
+  "profiles": [
+    {
+      "alternating_order": true,
+      "cables": 8,
+      "channels_per_endpoint": 16,
+      "connected_unique_endpoints": 16,
+      "disabled_ns_per_frame": {
+        "median": 212.20970153808594,
+        "p95": 308.502197265625,
+        "trials": [
+          308.502197265625,
+          198.67324829101562,
+          198.19769287109375,
+          198.50540161132812,
+          212.23068237304688,
+          212.39599609375,
+          212.24021911621094,
+          212.1410369873047,
+          212.20970153808594,
+          212.20335388183594,
+          212.3425750732422
+        ]
+      },
+      "enabled_ns_per_frame": {
+        "median": 262.2000427246094,
+        "p95": 262.5929412841797,
+        "trials": [
+          262.10340881347656,
+          262.4530792236328,
+          262.1637878417969,
+          262.03346252441406,
+          262.3087615966797,
+          262.5929412841797,
+          262.2000427246094,
+          262.29222106933594,
+          262.0843200683594,
+          262.2540740966797,
+          262.12310791015625
+        ]
+      },
+      "frames_per_trial": 65536,
+      "incremental_ns_per_frame": {
+        "median": 50.07807922363281,
+        "p95": 63.966094970703125,
+        "trials": [
+          -46.39878845214844,
+          63.77983093261719,
+          63.966094970703125,
+          63.52806091308594,
+          50.07807922363281,
+          50.19694519042969,
+          49.95982360839844,
+          50.15118408203125,
+          49.87461853027344,
+          50.05072021484375,
+          49.78053283691406
+        ]
+      },
+      "nodes": 2,
+      "output_hashes_equal": true,
+      "output_hashes_fnv1a64": [
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325",
+        "e3aa00ede7d62325"
+      ],
+      "trials": 11,
+      "warmup_frames": 2048
+    },
+    {
+      "alternating_order": true,
+      "cables": 128,
+      "channels_per_endpoint": 16,
+      "connected_unique_endpoints": 256,
+      "disabled_ns_per_frame": {
+        "median": 3000.6917724609375,
+        "p95": 3002.0701904296875,
+        "trials": [
+          2997.0347900390625,
+          3001.042724609375,
+          3000.6917724609375,
+          3001.7242431640625,
+          3000.5594482421875,
+          3001.0579833984375,
+          3002.0701904296875,
+          3001.77001953125,
+          3000.0,
+          3000.457763671875,
+          3000.1068115234375
+        ]
+      },
+      "enabled_ns_per_frame": {
+        "median": 3974.044799804687,
+        "p95": 3980.667114257813,
+        "trials": [
+          3973.927856445313,
+          3977.8289794921875,
+          3973.922729492188,
+          3976.8625488281245,
+          3974.0396728515625,
+          3973.988891601563,
+          3980.667114257813,
+          3974.9500732421875,
+          3974.044799804687,
+          3975.4993896484375,
+          3974.0091552734375
+        ]
+      },
+      "frames_per_trial": 8192,
+      "incremental_ns_per_frame": {
+        "median": 974.044799804687,
+        "p95": 978.5969238281255,
+        "trials": [
+          976.8930664062505,
+          976.7862548828125,
+          973.2309570312505,
+          975.138305664062,
+          973.480224609375,
+          972.9309082031255,
+          978.5969238281255,
+          973.1800537109375,
+          974.044799804687,
+          975.0416259765625,
+          973.90234375
+        ]
+      },
+      "nodes": 17,
+      "output_hashes_equal": true,
+      "output_hashes_fnv1a64": [
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325",
+        "ab23d5cc36dca325"
+      ],
+      "trials": 11,
+      "warmup_frames": 2048
+    },
+    {
+      "alternating_order": true,
+      "cables": 1024,
+      "channels_per_endpoint": 16,
+      "connected_unique_endpoints": 2048,
+      "disabled_ns_per_frame": {
+        "median": 26206.54296875,
+        "p95": 26273.600341796875,
+        "trials": [
+          25978.90234375,
+          26273.600341796875,
+          26238.250732421875,
+          26233.235595703125,
+          26206.1259765625,
+          26204.081298828125,
+          26114.817138671875,
+          26261.12890625,
+          26234.456298828125,
+          26206.54296875,
+          26205.535888671875
+        ]
+      },
+      "enabled_ns_per_frame": {
+        "median": 34128.0517578125,
+        "p95": 34207.50927734375,
+        "trials": [
+          34112.69140625,
+          34153.6865234375,
+          34129.353759765625,
+          34128.0517578125,
+          34105.77392578125,
+          34102.89501953125,
+          34171.32568359375,
+          34207.50927734375,
+          34161.427978515625,
+          34019.76513671875,
+          34109.029052734375
+        ]
+      },
+      "frames_per_trial": 4096,
+      "incremental_ns_per_frame": {
+        "median": 7899.64794921875,
+        "p95": 8133.7890625,
+        "trials": [
+          8133.7890625,
+          7880.086181640625,
+          7891.10302734375,
+          7894.816162109375,
+          7899.64794921875,
+          7898.813720703125,
+          8056.508544921875,
+          7946.38037109375,
+          7926.9716796875,
+          7813.22216796875,
+          7903.4931640625
+        ]
+      },
+      "nodes": 129,
+      "output_hashes_equal": true,
+      "output_hashes_fnv1a64": [
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325",
+        "cf651d639d3f6325"
+      ],
+      "trials": 11,
+      "warmup_frames": 2048
+    }
+  ],
+  "sample_rate": 48000,
+  "schema": 1,
+  "source_revision": "working tree based on 3e73cad; exact sources identified by SHA256",
+  "timing_scope": "process_poly_block + black_box; hashing/assertions outside timer",
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "architecture": "arm64",
+    "macos": "26.7.1",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "mode": "release; offline actual engine/callback; no device/GUI; no concurrent build or oracle during timed trials"
+  },
+  "source_sha256": {
+    "crates/openpatch-core/src/lib.rs": "826fb0ce2d880ac3627cfc70c8ff918b4a15ff45aa323969af1fb7e266022f25",
+    "crates/openpatch-core/src/poly.rs": "d7bcaea42d8e6d6ef1608749e8e282f6a6aeafdb23425d2431edc1e815f74d97",
+    "crates/openpatch-core/src/port_lights.rs": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
+    "crates/openpatch-core/tests/port_lights_profile.rs": "e4ea4fd91cd2a3ba3c3619a98a40d7d6e370e0627458cedaef905683d8442a7e",
+    "crates/openpatch-desktop/src/audio.rs": "3fd5538cc43b0f94540b70dfaaaa403b9a8b710133e850fbc8e1fa168bc38852",
+    "crates/openpatch-desktop/src/port_light_transport.rs": "14383734b2ed9c200c72b25a5471880a9d55b694de7d0b432e8a304da6f10eb0",
+    "crates/openpatch-desktop/src/port_light_host_tests.rs": "ea5caecb95e3f5892edb353a4c0fc75eedca593f11a8b0e9a30bbff01bf556c1"
+  }
+}

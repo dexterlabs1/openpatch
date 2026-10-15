@@ -33,6 +33,9 @@ clear signal flow, readable typography and fewer decorative hardware cues.
 Shared generic controls now use direct vertical faders with numeric entry,
 plus catalog-defined labeled choices for waveform, law, DC filtering, Score run
 state and drum type.
+Signal-driven top-plug lights now observe actual input summation and mono/poly
+signals, with dark-room emission and bounded audio observation.
+See [the detector and transport contract](PORT_LIGHTS.md).
 Specialized panels keep their dedicated editors. Held cable drags pan at visible
 rack edges. The broader module layout and material review remains open.
 Any changes must preserve cable targets, explicit values, undo and MCP edits.

@@ -3983,6 +3983,77 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
+    fn prepare_port_lights_fixture(&mut self) {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,"nodes":[
+            {"id":"positive","kind":"constant","params":{"value":5}},
+            {"id":"negative","kind":"constant","params":{"value":-5}},
+            {"id":"cancellation","kind":"gain"},
+            {"id":"scope","kind":"scope","params":{"trigger_enabled":0}},
+            {"id":"polyphonic","kind":"poly_constant","params":{"channels":2,"v1":3,"v2":4}},
+            {"id":"poly-vca","kind":"stock_vca","params":{"level":1,"response":1}},
+            {"id":"zero","kind":"constant","params":{"value":0}},
+            {"id":"silent-vca","kind":"stock_vca","params":{"level":1,"response":1}}
+        ],"cables":[
+            {"from":"positive","to":"cancellation","input":"signal"},
+            {"from":"negative","to":"cancellation","input":"signal"},
+            {"from":"cancellation","to":"scope","input":"x"},
+            {"from":"polyphonic","to":"poly-vca","input":"signal"},
+            {"from":"poly-vca","to":"scope","input":"y"},
+            {"from":"zero","to":"silent-vca","input":"signal"},
+            {"from":"silent-vca","to":"scope","input":"y"}
+        ],"output":"cancellation"}))
+        .unwrap();
+        let mut engine = patch.compile().unwrap();
+        engine.set_port_lights_enabled(true);
+        engine.process_block(&mut [0.0; 8192]);
+        let check = |id, direction, port| {
+            engine
+                .port_light(engine.resolve_port_light(id, direction, port).unwrap())
+                .unwrap()
+        };
+        use openpatch_core::PortDirection::{Input, Output};
+        assert_eq!(check("positive", Output, "out").raw_rgb[1], 0.5);
+        assert_eq!(check("negative", Output, "out").raw_rgb[0], 0.5);
+        assert_eq!(check("cancellation", Input, "signal").raw_rgb, [0.0; 3]);
+        assert_eq!(check("polyphonic", Output, "out").raw_rgb[2], 0.5);
+        assert_eq!(check("silent-vca", Output, "out").raw_rgb, [0.0; 3]);
+        let mut lights = BTreeMap::new();
+        for id in ["poly-vca", "silent-vca"] {
+            lights.insert(
+                id.into(),
+                engine
+                    .module_lights(engine.resolve_module_lights(id).unwrap())
+                    .unwrap(),
+            );
+        }
+        assert_eq!(lights["silent-vca"].brightness[0][0], 1.0);
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+                "positive":[0,0],"negative":[240,0],"cancellation":[480,0],"scope":[720,0],
+                "polyphonic":[0,420],"poly-vca":[360,420],"zero":[570,420],"silent-vca":[810,420]
+            }}))
+            .unwrap();
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "Signal at every connected plug".into();
+        self.status = "Actual offline DSP · green +5 / red −5 cancel at IN · blue [3,4] V · silent full-gain VCA has dark plugs".into();
+    }
+
     fn prepare_parameter_choices_fixture(&mut self) {
         // Configured settings only: no invented signal activity or device IO.
         let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
@@ -5291,6 +5362,13 @@ impl OpenPatch {
                 "Lights out · categorical choices are passive panel settings, not signal lamps"
                     .into();
         }
+        if frame == 1902 {
+            self.prepare_port_lights_fixture();
+        }
+        if frame == 1920 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Lights out · actual signal plugs emit; cancelled and silent signals remain dark · VCA gain lamps are independent".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5380,6 +5458,8 @@ impl OpenPatch {
                 | 1868
                 | 1882
                 | 1896
+                | 1910
+                | 1928
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5473,7 +5553,9 @@ impl OpenPatch {
                 72 => path.with_file_name("rack-stock-vca.png"),
                 73 => path.with_file_name("rack-stock-vca-lights-out.png"),
                 74 => path.with_file_name("rack-parameter-choices.png"),
-                _ => path.with_file_name("rack-parameter-choices-lights-out.png"),
+                75 => path.with_file_name("rack-parameter-choices-lights-out.png"),
+                76 => path.with_file_name("rack-port-lights.png"),
+                _ => path.with_file_name("rack-port-lights-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -5484,18 +5566,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/76 at frame {frame}: {}",
+                "Native smoke: capture {}/78 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 76 {
+            if captures == 78 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1910, "Native screenshot timeout");
+        assert!(frame < 1942, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5630,6 +5712,11 @@ impl eframe::App for OpenPatch {
         self.scope.service(&self.patch, self.audio.as_mut());
         self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
+            self.rack.set_port_lights(
+                self.audio
+                    .as_ref()
+                    .and_then(|audio| audio.port_lights(self.revision)),
+            );
             let states = self
                 .patch
                 .nodes

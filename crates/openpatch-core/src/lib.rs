@@ -58,6 +58,8 @@ mod svf_resampler;
 mod voice_tools;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;
+pub mod port_lights;
+pub use port_lights::{PortDirection, PortLightState, ResolvedPortLight};
 mod pulses;
 mod push;
 mod shift_register;
@@ -515,6 +517,7 @@ struct LegacyEngine {
     state_lookup: BTreeMap<String, usize>,
     buffers: Vec<[f32; BLOCK_SIZE]>,
     output: Option<usize>,
+    port_lights: port_lights::Observer,
 }
 
 fn parameter(node: &Node, name: &str, default: f32, min: f32, max: f32) -> Result<f32, String> {
@@ -823,7 +826,7 @@ impl Patch {
         for (new, &old) in order.iter().enumerate() {
             remap[old] = new;
         }
-        let nodes = order
+        let nodes: Vec<CompiledNode> = order
             .iter()
             .map(|&old| CompiledNode {
                 kind: self.nodes[old].kind.clone(),
@@ -835,7 +838,17 @@ impl Patch {
                 inputs: inputs[old].map(|source| source.map(|old_source| remap[old_source])),
             })
             .collect();
+        let mut port_lights = port_lights::Observer::default();
+        for (node, compiled) in nodes.iter().enumerate() {
+            for (port, source) in compiled.inputs.iter().enumerate() {
+                if let Some(source) = source {
+                    port_lights.add(node, PortDirection::Input, port, *source);
+                    port_lights.add(*source, PortDirection::Output, 0, *source);
+                }
+            }
+        }
         Ok(LegacyEngine {
+            port_lights,
             sample_rate: self.sample_rate as f64,
             nodes,
             state_lookup: ids
@@ -904,6 +917,84 @@ impl LegacyEngine {
                     *state = *old_state;
                 }
                 _ => {}
+            }
+        }
+    }
+
+    fn adopt_port_lights(&mut self, old: &Self, excluded: &[bool; MAX_NODES]) {
+        self.port_lights.adopt_clock(&old.port_lights);
+        if !self.port_lights.can_adopt(&old.port_lights) {
+            return;
+        }
+        for (id, &node) in &self.state_lookup {
+            let Some(&old_node) = old.state_lookup.get(id) else {
+                continue;
+            };
+            if excluded[node] || self.nodes[node].kind != old.nodes[old_node].kind {
+                continue;
+            }
+            for direction in [PortDirection::Input, PortDirection::Output] {
+                for port in 0..if direction == PortDirection::Input {
+                    2
+                } else {
+                    1
+                } {
+                    let (Some(index), Some(old_index)) = (
+                        self.port_lights.find(node, direction, port),
+                        old.port_lights.find(old_node, direction, port),
+                    ) else {
+                        continue;
+                    };
+                    // A route includes both endpoint kinds and incarnations.
+                    let unchanged = match direction {
+                        PortDirection::Input => {
+                            let source = self.nodes[node].inputs[port].unwrap();
+                            let old_source = old.nodes[old_node].inputs[port].unwrap();
+                            !excluded[source]
+                                && self.nodes[source].kind == old.nodes[old_source].kind
+                                && self.state_lookup.iter().any(|(id, &index)| {
+                                    index == source && old.state_lookup.get(id) == Some(&old_source)
+                                })
+                        }
+                        PortDirection::Output => {
+                            let count = self
+                                .nodes
+                                .iter()
+                                .flat_map(|n| n.inputs)
+                                .filter(|s| *s == Some(node))
+                                .count();
+                            let old_count = old
+                                .nodes
+                                .iter()
+                                .flat_map(|n| n.inputs)
+                                .filter(|s| *s == Some(old_node))
+                                .count();
+                            count == old_count
+                                && self.state_lookup.iter().all(|(id, &destination)| {
+                                    self.nodes[destination].inputs.iter().enumerate().all(
+                                        |(port, source)| {
+                                            if *source != Some(node) {
+                                                return true;
+                                            }
+                                            let Some(&old_destination) = old.state_lookup.get(id)
+                                            else {
+                                                return false;
+                                            };
+                                            !excluded[destination]
+                                                && self.nodes[destination].kind
+                                                    == old.nodes[old_destination].kind
+                                                && old.nodes[old_destination].inputs[port]
+                                                    == Some(old_node)
+                                        },
+                                    )
+                                })
+                        }
+                    };
+                    if unchanged {
+                        self.port_lights.bindings[index].state =
+                            old.port_lights.bindings[old_index].state;
+                    }
+                }
             }
         }
     }
@@ -1021,6 +1112,20 @@ impl LegacyEngine {
                     Dsp::Output => buffer[..length].copy_from_slice(&a[..length]),
                 }
             }
+            if let Some(first) = self.port_lights.first_offset() {
+                for binding in &mut self.port_lights.bindings {
+                    for sample in (first..length).step_by(7) {
+                        binding.state = Some(port_lights::step_port_light(
+                            binding.state.unwrap_or_default(),
+                            true,
+                            1,
+                            &self.buffers[binding.source][sample..sample + 1],
+                            self.sample_rate as u32,
+                        ));
+                    }
+                }
+            }
+            self.port_lights.advance(length);
             if let Some(index) = self.output {
                 chunk.copy_from_slice(&self.buffers[index][..length]);
             } else {
@@ -1068,6 +1173,85 @@ enum EngineKind {
     Poly(Box<poly::PolyEngine>),
 }
 impl Engine {
+    fn port_light_observer(&self) -> &port_lights::Observer {
+        match &self.inner {
+            EngineKind::Legacy(engine) => &engine.port_lights,
+            EngineKind::Poly(engine) => &engine.port_lights,
+        }
+    }
+    fn port_light_observer_mut(&mut self) -> &mut port_lights::Observer {
+        match &mut self.inner {
+            EngineKind::Legacy(engine) => &mut engine.port_lights,
+            EngineKind::Poly(engine) => &mut engine.port_lights,
+        }
+    }
+    /// Opt in to passive signal observation. Default disabled. No allocation or
+    /// destruction occurs on a toggle. Enabling clears visual history until the
+    /// next acquisition; the global seven-sample clock advances while disabled.
+    pub fn set_port_lights_enabled(&mut self, enabled: bool) {
+        self.port_light_observer_mut().set_enabled(enabled);
+    }
+    /// Resolve any real named endpoint on the control thread, including valid
+    /// unplugged ports. Handles belong only to this compiled engine.
+    pub fn resolve_port_light(
+        &self,
+        id: &str,
+        direction: PortDirection,
+        port: &str,
+    ) -> Result<ResolvedPortLight, String> {
+        let index = match &self.inner {
+            EngineKind::Legacy(engine) => {
+                let &node = engine
+                    .state_lookup
+                    .get(id)
+                    .ok_or_else(|| format!("module '{id}' does not exist"))?;
+                let local = match direction {
+                    PortDirection::Input => engine.nodes[node].dsp.port(port),
+                    PortDirection::Output => (port == "out").then_some(0),
+                }
+                .ok_or_else(|| format!("module '{id}': unknown {direction:?} port '{port}'"))?;
+                engine.port_lights.find(node, direction, local)
+            }
+            EngineKind::Poly(engine) => engine.resolve_port_light(id, direction, port)?,
+        };
+        Ok(ResolvedPortLight {
+            owner: self.identity,
+            index,
+        })
+    }
+    /// Immutable O(1) read; no demand, taps, masks or signal frames are changed.
+    /// Disabled, foreign and not-yet-acquired endpoints return None. A valid
+    /// physically unplugged endpoint reports the default disconnected state.
+    pub fn port_light(&self, handle: ResolvedPortLight) -> Option<PortLightState> {
+        if handle.owner != self.identity {
+            return None;
+        }
+        self.port_light_observer().get(handle.index)
+    }
+    /// Bounded allocation-free immutable batch read. Length mismatch returns
+    /// false without writing; stale/foreign/unavailable endpoints write None.
+    pub fn copy_port_lights(
+        &self,
+        handles: &[ResolvedPortLight],
+        out: &mut [Option<PortLightState>],
+    ) -> bool {
+        if handles.len() != out.len() {
+            return false;
+        }
+        for (handle, state) in handles.iter().zip(out) {
+            *state = self.port_light(*handle);
+        }
+        true
+    }
+    /// Global sample index of the latest actual acquisition, if available.
+    pub fn port_light_observation_frame(&self) -> Option<u64> {
+        self.port_light_observer().last()
+    }
+    /// Count of processed samples across all rendering APIs, including disabled
+    /// observation. Compatible same-version/rate adoption retains this clock.
+    pub fn port_light_processed_frames(&self) -> u64 {
+        self.port_light_observer().processed()
+    }
     /// Resolve an explicit version-2 cable ID for state adoption exclusions.
     pub fn resolve_cable_state(&self, id: &str) -> Result<CableHandle, String> {
         let EngineKind::Poly(engine) = &self.inner else {
@@ -1231,7 +1415,13 @@ impl Engine {
             return false;
         }
         match &mut self.inner {
-            EngineKind::Poly(engine) => engine.reset_module_state(handle.node),
+            EngineKind::Poly(engine) => {
+                let reset = engine.reset_module_state(handle.node);
+                if reset {
+                    engine.port_lights.clear_node(handle.node);
+                }
+                reset
+            }
             _ => false,
         }
     }
@@ -1242,8 +1432,20 @@ impl Engine {
             return false;
         }
         match &mut self.inner {
-            EngineKind::Legacy(engine) => handle.node < engine.nodes.len(),
-            EngineKind::Poly(engine) => engine.initialize_module_state(handle.node),
+            EngineKind::Legacy(engine) => {
+                if handle.node >= engine.nodes.len() {
+                    return false;
+                }
+                engine.port_lights.clear_node(handle.node);
+                true
+            }
+            EngineKind::Poly(engine) => {
+                let initialized = engine.initialize_module_state(handle.node);
+                if initialized {
+                    engine.port_lights.clear_node(handle.node);
+                }
+                initialized
+            }
         }
     }
     /// Restore SEQ3's running latch without synthesizing a Run action or
@@ -1583,12 +1785,14 @@ impl Engine {
             (EngineKind::Legacy(current), EngineKind::Legacy(old))
                 if current.sample_rate == old.sample_rate =>
             {
-                current.adopt_state_from_excluding(old, &mask)
+                current.adopt_state_from_excluding(old, &mask);
+                current.adopt_port_lights(old, &mask);
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
                 current.adopt_state_from_excluding(old, &mask, &cable_mask)
             }
-            _ => {}
+            (EngineKind::Legacy(current), _) => current.port_lights.reset_epoch(),
+            (EngineKind::Poly(current), _) => current.port_lights.reset_epoch(),
         }
     }
     /// Mono adapter: select channel zero; never sum polyphonic voices.

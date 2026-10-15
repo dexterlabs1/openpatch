@@ -18,6 +18,7 @@ use cable_menu::CableMenu;
 include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
 include!("cable_autopan.rs");
+include!("port_signal.rs");
 
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
@@ -401,6 +402,7 @@ pub struct Rack {
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
+    port_lights: Option<Arc<crate::audio::PortLightFrame>>,
     module_controls: BTreeMap<String, ModuleControlState>,
     held_manual: Option<HeldManual>,
     random_values_states: BTreeMap<String, Value>,
@@ -454,6 +456,7 @@ impl Default for Rack {
             sequence_states: BTreeMap::new(),
             performance_available: false,
             module_lights: BTreeMap::new(),
+            port_lights: None,
             module_controls: BTreeMap::new(),
             held_manual: None,
             random_values_states: BTreeMap::new(),
@@ -1797,6 +1800,7 @@ impl Rack {
                 candidate
             });
         let ordered_patch = provisional.as_ref().unwrap_or(patch);
+        let mut lit_anchors = BTreeSet::new();
         for output in [true, false] {
             let locations = if output { &outputs } else { &inputs };
             let end = if output {
@@ -1840,6 +1844,15 @@ impl Rack {
                         1.0
                     });
                     paint_cable_plug(&painter, point, color, self.zoom);
+                    if ordinal + 1 == order.len() && !picked_up {
+                        let direction = if output {
+                            openpatch_core::PortDirection::Output
+                        } else {
+                            openpatch_core::PortDirection::Input
+                        };
+                        self.paint_port_signal(&painter, point, node, direction, port);
+                        lit_anchors.insert((node, direction, port));
+                    }
                     let traced = nearest.is_some_and(|(target, _)| match target {
                         CableEnd::Output {
                             node: target_node,
@@ -1927,6 +1940,33 @@ impl Rack {
                         );
                         paint_jack_light(&painter, anchor, self.zoom, color);
                     }
+                    // Only the attached end can read an existing physical port.
+                    // The free pointer/hover target never acquires activity.
+                    let (id, direction, port) = if let Some(old) = &pending.original {
+                        if picked_output {
+                            (&old.to, openpatch_core::PortDirection::Input, &old.input)
+                        } else {
+                            (
+                                &old.from,
+                                openpatch_core::PortDirection::Output,
+                                &old.output,
+                            )
+                        }
+                    } else {
+                        match &pending.origin {
+                            CableEnd::Input { node, port } => {
+                                (node, openpatch_core::PortDirection::Input, port)
+                            }
+                            CableEnd::Output { node, port } => {
+                                (node, openpatch_core::PortDirection::Output, port)
+                            }
+                        }
+                    };
+                    if lit_anchors.insert((id, direction, port))
+                        || pending.operation != CableOperation::Move
+                    {
+                        self.paint_port_signal(&painter, anchor, id, direction, port);
+                    }
                 }
                 for cable in &pending.companions {
                     let anchor = match pending.origin {
@@ -1949,6 +1989,21 @@ impl Rack {
                             configured_bus(patch, catalog, &cable.from),
                             0.0,
                         );
+                        let (id, direction, port) = match pending.origin {
+                            CableEnd::Input { .. } => (
+                                &cable.from,
+                                openpatch_core::PortDirection::Output,
+                                &cable.output,
+                            ),
+                            CableEnd::Output { .. } => (
+                                &cable.to,
+                                openpatch_core::PortDirection::Input,
+                                &cable.input,
+                            ),
+                        };
+                        if lit_anchors.insert((id, direction, port)) {
+                            self.paint_port_signal(&painter, anchor, id, direction, port);
+                        }
                     }
                 }
                 if let Some((_, target)) = nearest {
@@ -3594,6 +3649,11 @@ impl Rack {
                 if cables.len() > 8 {
                     details.push_str("\nMore cables in the right-click list.");
                 }
+                details.push_str(&self.port_signal_description(
+                    &node.id,
+                    openpatch_core::PortDirection::Input,
+                    port,
+                ));
                 jack.on_hover_text(details);
             }
             for (port_index, port) in output_ports.iter().enumerate() {
@@ -3743,7 +3803,7 @@ impl Rack {
                         }
                     }
                 });
-                jack.on_hover_text(format!("{}.{}\nCapacity: up to {capacity} channels; {units}.\nThis is the port specification, not a live channel meter.\nDrag moves the top OUT plug. Cmd/Ctrl-drag adds a cable; Cmd/Ctrl+Shift clones; Shift-click deletes the top cable.", node.id, port));
+                jack.on_hover_text(format!("{}.{}\nCapacity: up to {capacity} channels; {units}.{}\nDrag moves the top OUT plug. Cmd/Ctrl-drag adds a cable; Cmd/Ctrl+Shift clones; Shift-click deletes the top cable.", node.id, port, self.port_signal_description(&node.id, openpatch_core::PortDirection::Output, port)));
             }
         }
 
@@ -10911,6 +10971,9 @@ mod tests {
     }
     mod lighting_ui_tests {
         include!("lighting_ui_tests.rs");
+    }
+    mod port_signal_ui_tests {
+        include!("port_signal_ui_tests.rs");
     }
     use super::*;
 

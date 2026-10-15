@@ -1,0 +1,1027 @@
+{
+  "reference": {
+    "reference_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "sdk_source_commit": "061ccf63c1758599396ac1bb10d47345d9d34076",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sources": {
+      "8ea470f343058ade6f75f16d503a1eb330e1700c": {
+        "url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/src/engine/Module.cpp",
+        "source_sha256": "48b7427b781072b61d6c1ed0742965ded3480087e4a528ab017dd5eba641c6aa",
+        "detector_block_sha256": "7c69a4d9a5ebf41bb83e1832fac49663c12a4ed78d9da6e46b27909ad07c63c7"
+      },
+      "061ccf63c1758599396ac1bb10d47345d9d34076": {
+        "url": "https://raw.githubusercontent.com/VCVRack/Rack/061ccf63c1758599396ac1bb10d47345d9d34076/src/engine/Module.cpp",
+        "source_sha256": "48b7427b781072b61d6c1ed0742965ded3480087e4a528ab017dd5eba641c6aa",
+        "detector_block_sha256": "7c69a4d9a5ebf41bb83e1832fac49663c12a4ed78d9da6e46b27909ad07c63c7"
+      }
+    },
+    "sdk_header_sha256": {
+      "include/engine/Port.hpp": {
+        "sha256": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+        "source_url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/include/engine/Port.hpp",
+        "matches_pin": true
+      },
+      "include/engine/Light.hpp": {
+        "sha256": "70affe4a5f167d5e018633da41931d7d1666a113ea8358fa8f01a63cae46e4c2",
+        "source_url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/include/engine/Light.hpp",
+        "matches_pin": true
+      }
+    },
+    "runtime_version": "2.6.6"
+  },
+  "acceptance": {
+    "reference_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "sdk_source_commit": "061ccf63c1758599396ac1bb10d47345d9d34076",
+    "sdk_version": "2.6.6",
+    "detector_block_sha256": "7c69a4d9a5ebf41bb83e1832fac49663c12a4ed78d9da6e46b27909ad07c63c7",
+    "absolute": 2e-06,
+    "relative": 2e-06,
+    "sample_rates": [
+      44100,
+      48000,
+      96000
+    ],
+    "frames_per_case": 4096,
+    "cases": [
+      "mono_positive",
+      "mono_negative",
+      "mono_zero",
+      "mono_overrange",
+      "sign_reversal",
+      "fall_to_zero",
+      "stepped_unipolar",
+      "audio_rate_bipolar",
+      "poly_3_4",
+      "poly_16_sparse",
+      "poly_16_full",
+      "poly_16_silent",
+      "poly_16_varying",
+      "width_transitions",
+      "inactive_padding",
+      "cadence_impulses",
+      "bypass_paths",
+      "independent_endpoints"
+    ],
+    "comparison": "Every frame and both endpoint raw RGB values; abs(error) <= absolute + relative * abs(SDK). Exact frame/channel metadata and SDK process counters. No fitting or per-fixture tolerance."
+  },
+  "acceptance_sha256": "cc079a0b3bb022aa2e32e69fbbe46d1488383e6a42eff2e8e2418729b9907a57",
+  "fixtures_sha256": "f00a51c1f95e35d42e7b96f2bbd3a707f97d80555337f65fad85f1a5dacd463a",
+  "production_source_sha256": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
+  "driver_sha256": {
+    "run.py": "90fa7816a67c0ad7f0548909d21877069443f7ed10237529aa054542cfb76a15",
+    "sdk_probe.cpp": "2a930e3ec140e2b679e114c64192e5300669181dac44bcbb63b772f4c57f2dd7",
+    "rust_probe.rs": "74d7ad7b1fd8375e3b2400773b6948b1c9ad6835e98f965c6a2102ff4bb2ed61"
+  },
+  "method": "Actual linked SDK Module::doProcess with no-op processing callbacks; actual production Rust detector and Observer included unchanged. Both ports compared every sample before display clamping. No translated C++ detector and no Cargo invocation.",
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "darwin",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O"
+    ]
+  },
+  "limitations": [
+    "Finite detector and seven-sample Observer cadence qualification only; engine routing, block APIs, adoption, host publication and UI require integration tests",
+    "SDK zero channels represents disconnected; OpenPatch connected zero-channel semantics and invalid/overflow protections require separate core tests",
+    "No GUI, audio devices, MIDI devices, speakers or application launched",
+    "SDK 2.6.6 is a different commit from audit pin; relevant detector source block and Port/Light headers are verified identical",
+    "Only the recorded SDK binary/compiler/platform combination qualified"
+  ],
+  "cases": [
+    {
+      "name": "mono_positive",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f5184193fd5cd10a442fb1d75ba389e92abe2dd76fc5211e63ee573f41b33ce6",
+      "trace_sha256": {
+        "sdk": "77635962788783109e3f81510f392260f9aab8178d5a1551f91d8700c24fd368",
+        "rust": "43730669417d5451b79f7bec632eb2e38fe7ad4fea117995bdf0a5cf305e7ad8"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.011267170181479184,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_negative",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "32c11035a075509f02bb02af6f4b8cc04a92ad4fa3ba79db1146ab1d434cea4f",
+      "trace_sha256": {
+        "sdk": "66cb48b34e7bddeed6532f36b3034bc9908b19fc4d61a0ab9f0198e5e91db8b4",
+        "rust": "ed3d979ca3af25a3daaee2b063fe2debb04077b9d0b1780e0cf9b164a8c332e8"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.018116270878685153,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_zero",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "22d1fb0d2e7fe768434885bb798be44b019ecc03ddbd5a5ce8a9b7466c2f8d3d",
+      "trace_sha256": {
+        "sdk": "070f42531d518625d8d4f9a11c44274f7f234bf6568bdcee14d1f9dd3f16ad3f",
+        "rust": "29216f00f704f6f049e992768b820dc7e37bc7f4fbf89b9b541be8a3ba8aa630"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_overrange",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "916e085c790fe2e5a7ce883db084a9892380f8edf04450f5428adcf224148f56",
+      "trace_sha256": {
+        "sdk": "d4409df414d7bfd017492359ef6816512fd2b09d030e014f704037fdf71c6d45",
+        "rust": "23a730b8a9779b8cdaba8caaae05fdff187d2390083523ee5097f4ba37d4cb7b"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "maximum_tolerance_ratio": 0.051829055129892165,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sign_reversal",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "8e0088972b86bb63d39205a2f6b0640c3ae913608c998e8a210c5091f0fae366",
+      "trace_sha256": {
+        "sdk": "ee863236d04cded0de56c6fadf011cb631a29b5075341a3018eadd804635e394",
+        "rust": "f7948f4f46e20c78dd5250f28c74b95c0414ccb1910347d2a8ef8e9b456fe06f"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.023454170784828154,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "fall_to_zero",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fdcc805c1129a9b575f4a602549af05e0e5d36e80b33512b3b0b94248405a6f2",
+      "trace_sha256": {
+        "sdk": "77a3dd04f10de6d58276f03c860278a319eb722354c709dc28414bf828ce0121",
+        "rust": "3b39a97f661d48180320c90c4830f572fbb8708ca2caca2e8e51aaf92158b1fb"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.012684830506753526,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "stepped_unipolar",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "c5073e7464db7e0c8e4c4e629c8db52a9e9d91ffe8410d0155ddaeefe5926f3f",
+      "trace_sha256": {
+        "sdk": "9006fc770bf0a1cbab754bb42af5acc8972812c34a3f5eec2f7d39ea8bce32c7",
+        "rust": "358f910e535438a00baf70bccc062079e171b9e5dc5190113d494b2c1050eb4f"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.862645149230957e-09,
+      "maximum_tolerance_ratio": 0.0009149873286607309,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_bipolar",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "a567f3c6159b94e8ebe4339d350d975b887d5e7def1899509e0e148932308558",
+      "trace_sha256": {
+        "sdk": "361862bba2d15323bd8ba7e9ef750caf85095cb8f72b155910622a154cc3bcfb",
+        "rust": "43f792c631d2f150bce868cfe00f9b90d4d04bd398026b2d96b14d04930dd5ef"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.1920928955078125e-07,
+      "maximum_tolerance_ratio": 0.028144548147722857,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_3_4",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "e0e9afea4c10a458e916ebe0d53482aef80ca39676bdc51064536d888962ed6f",
+      "trace_sha256": {
+        "sdk": "d3cffa801e4e62e1d86ab4941621739b4dd4e3402d0bbe9035c287806ff7d12b",
+        "rust": "35bedda91b63863c96884fba84dee6d8c60438dcb22128dbcf8bf3c082449109"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_sparse",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "60f20056cef3326a0bce7413b3a04e54415dd3aa97f9f9ded19dbb680d79af70",
+      "trace_sha256": {
+        "sdk": "a7bde327371c08773f8a0fc9bdaed23bed03de7941c010db44c2611e0311ec56",
+        "rust": "525274d290a459a4b7651c1feda9cd9bb9683788e00644bbe043c44fac30822e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01027666276557697,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_full",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "38777ad3d276b26b119e6dd974343635c168db30c2afb4f6af2f9c144d0237ed",
+      "trace_sha256": {
+        "sdk": "d6fc65c183d4637748816624bcbcd9d7b86a2b7a10a66f063b1dbbf1aeea2e9d",
+        "rust": "9c235617d7407644a6c76b03d21241e1359af6c3f659b792e5cfec15a789ac34"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "maximum_tolerance_ratio": 0.04455345189006882,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_silent",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "ecda50c0afda11b1c3c2baa702acd07876cdf7e1a9818d4273baf4c0c6abdc12",
+      "trace_sha256": {
+        "sdk": "9a7666bfeb415d70d6c025db8211fda49f9ae86c1536784d37b485cc980483bd",
+        "rust": "f71238f15ce22f0a284d159ae7b39840f05f326eb0d351d98300d5355882cf6e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_varying",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "63a6357f1d1b1b5527a2e615050f2cab45b3566e022542beeed7e32084395c50",
+      "trace_sha256": {
+        "sdk": "6dcd4361b055e7f5de1b38e22ccbe594797361815d3adab679965d795297a883",
+        "rust": "19bd3092084d7a8fef8d6e859b9f265f933a4af11862b04c17a3386dfe225839"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "maximum_tolerance_ratio": 0.037579408107787364,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_transitions",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fde14ab1dc23debc93690d89a6a7aa5ce93ac7fc2fe81b20ab47ef57d91318be",
+      "trace_sha256": {
+        "sdk": "51e44cd65e5b43f7c8c73267fa5be11ffca386ec7f0a9d86d3ac95e0f36ce046",
+        "rust": "694fe7b07063c0bdfd0d8478bf3d5161fc55d9ca9a6252abff6d283da97ce498"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.4901161193847656e-08,
+      "maximum_tolerance_ratio": 0.0060890316531368996,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "inactive_padding",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "db9de00387c8029559a04135fae752102e9cbbac472ba59f4d9de54d690b9950",
+      "trace_sha256": {
+        "sdk": "740c00a9e9047f86221793e51f410d5887e9bc3139e46bd7710134881108f913",
+        "rust": "6ce4e55e817f3d2106cafc020567f364aec7911adc0c9b7794f5357996b3b1f6"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cadence_impulses",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f2838d2731b30ec3228d74041f592e0536440559064bfef2a11f1ccbecb9e1f8",
+      "trace_sha256": {
+        "sdk": "917e4b232740d39293a02c5af0fc1aa6af5afb75239937805163d2008342a396",
+        "rust": "b2652b78a5161efaf8887b936243c8062be776c48e9db41540ccd338b3a8ec2a"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.015764630783361214,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "bypass_paths",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "09f5c98a1839865c7a509d555f3b46aa522317318250459f0b7d53d7cd6dde1e",
+      "trace_sha256": {
+        "sdk": "969f3cc357f7f614297e6ac871df348146ec5b5429c5bc23890844b3ae848eb0",
+        "rust": "9b31e744156f7fcede86348ebabe14fb7509a5118b5c0ebd17f80e4697a73837"
+      },
+      "sdk_process_calls": 2068,
+      "sdk_bypass_calls": 2028,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.017670492599261962,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_endpoints",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "990624848e1e695d04ede49eefc35c7cc95c2e297a2b9ba11fd16a6b1200440a",
+      "trace_sha256": {
+        "sdk": "3b865ffd138f557ac65e2abd0fd3f1f872b10679285cfead3b26627fe75fc8a1",
+        "rust": "e75cf8c1e75673b1704a504571f76ddf870fe52fb0ec00a06bcf132994860b95"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.011443667391455156,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_positive",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f5184193fd5cd10a442fb1d75ba389e92abe2dd76fc5211e63ee573f41b33ce6",
+      "trace_sha256": {
+        "sdk": "d27de73b2928dd8f098c61949a685a6192b37eb227e93715946cc1934c9c62d6",
+        "rust": "2770ea5d257fcce5a40cb257ec2e3ebdc257f7446e11cbce4328a6a7a42d6f27"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.011550067045829188,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_negative",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "32c11035a075509f02bb02af6f4b8cc04a92ad4fa3ba79db1146ab1d434cea4f",
+      "trace_sha256": {
+        "sdk": "9710d5cd9bbab4b7868bbe02b7cf81e40f43fe67ecaf7469d3da3b2744fda1f3",
+        "rust": "6d2ac3060303b3942b3a928c20747924e4fdc775040e6970de8b2e90d04214ef"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.018858974699403033,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_zero",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "22d1fb0d2e7fe768434885bb798be44b019ecc03ddbd5a5ce8a9b7466c2f8d3d",
+      "trace_sha256": {
+        "sdk": "070f42531d518625d8d4f9a11c44274f7f234bf6568bdcee14d1f9dd3f16ad3f",
+        "rust": "29216f00f704f6f049e992768b820dc7e37bc7f4fbf89b9b541be8a3ba8aa630"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_overrange",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "916e085c790fe2e5a7ce883db084a9892380f8edf04450f5428adcf224148f56",
+      "trace_sha256": {
+        "sdk": "de887aedb567dcf0cd730b45c34663ee7eef100f2566b08ca3377fee309447be",
+        "rust": "fbb4dad8e4200808d22594bfad76c4a15fbc32a8a7a6ae1dc6aed50c2bf8324b"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.7881393432617188e-07,
+      "maximum_tolerance_ratio": 0.051125840427867386,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sign_reversal",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "8e0088972b86bb63d39205a2f6b0640c3ae913608c998e8a210c5091f0fae366",
+      "trace_sha256": {
+        "sdk": "4bb0cecce54eda6e0bef66f0ae3cb3156086e30c7641cc83cb716ded9f51cd88",
+        "rust": "5436a5d09c8ece578f3d13180647e423703eadfd993d7aa903a8108cfb900b17"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01168039923417696,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "fall_to_zero",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fdcc805c1129a9b575f4a602549af05e0e5d36e80b33512b3b0b94248405a6f2",
+      "trace_sha256": {
+        "sdk": "938f941399e042d618fed67bf60cb90c043f12f421d2d83ad8c8372a9e38f60b",
+        "rust": "2dcd130968a8b8314ac61f025b98b81761615bbaf060c9691b6e3a3616b4b55a"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.4901161193847656e-08,
+      "maximum_tolerance_ratio": 0.007127620809689099,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "stepped_unipolar",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "c5073e7464db7e0c8e4c4e629c8db52a9e9d91ffe8410d0155ddaeefe5926f3f",
+      "trace_sha256": {
+        "sdk": "956036f1ce77bc7c0c3736283846ec2b36cb4de35135010bd1a902aad367f02d",
+        "rust": "f8e4ef4e5e8215413ac9c1dde476d172ae27b1d3f22255bf45a576b854fbc799"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 9.313225746154785e-10,
+      "maximum_tolerance_ratio": 0.0004617775330028478,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_bipolar",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "dcd2679a89d4ed2cebe214ed8752be0018690f2bd055b394204af7405ffd0473",
+      "trace_sha256": {
+        "sdk": "bdbb381e5466032bb408690957cc541d869b6c805d5e73b9d3415e4b4e9acdf8",
+        "rust": "bf72cc3b5288c9db13ba5ea2b790500f505a5df70043c958edd5a5fb4d575f7e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.1920928955078125e-07,
+      "maximum_tolerance_ratio": 0.029245716131369653,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_3_4",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "e0e9afea4c10a458e916ebe0d53482aef80ca39676bdc51064536d888962ed6f",
+      "trace_sha256": {
+        "sdk": "d3cffa801e4e62e1d86ab4941621739b4dd4e3402d0bbe9035c287806ff7d12b",
+        "rust": "35bedda91b63863c96884fba84dee6d8c60438dcb22128dbcf8bf3c082449109"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_sparse",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "60f20056cef3326a0bce7413b3a04e54415dd3aa97f9f9ded19dbb680d79af70",
+      "trace_sha256": {
+        "sdk": "a7bde327371c08773f8a0fc9bdaed23bed03de7941c010db44c2611e0311ec56",
+        "rust": "525274d290a459a4b7651c1feda9cd9bb9683788e00644bbe043c44fac30822e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01027666276557697,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_full",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "38777ad3d276b26b119e6dd974343635c168db30c2afb4f6af2f9c144d0237ed",
+      "trace_sha256": {
+        "sdk": "d6fc65c183d4637748816624bcbcd9d7b86a2b7a10a66f063b1dbbf1aeea2e9d",
+        "rust": "9c235617d7407644a6c76b03d21241e1359af6c3f659b792e5cfec15a789ac34"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "maximum_tolerance_ratio": 0.04455345189006882,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_silent",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "ecda50c0afda11b1c3c2baa702acd07876cdf7e1a9818d4273baf4c0c6abdc12",
+      "trace_sha256": {
+        "sdk": "9a7666bfeb415d70d6c025db8211fda49f9ae86c1536784d37b485cc980483bd",
+        "rust": "f71238f15ce22f0a284d159ae7b39840f05f326eb0d351d98300d5355882cf6e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_varying",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "92e9bada48d5d83230f83706bba8708fc760be441cdaea9a7dc94cbedcc1f91a",
+      "trace_sha256": {
+        "sdk": "f29ac014916d1f2235da17ecc411f84ec08483da0ed5cbb03b18a5d24c1b3c74",
+        "rust": "ed72b50e22436b7959648709a83c5ad088ed1c3898ed2ca053b751085f5d074a"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "maximum_tolerance_ratio": 0.038178955454321935,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_transitions",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fde14ab1dc23debc93690d89a6a7aa5ce93ac7fc2fe81b20ab47ef57d91318be",
+      "trace_sha256": {
+        "sdk": "f04cc7f585da3f6a5ee785a9baf3b053682fceca57649e44377476edd27cc28e",
+        "rust": "b9a6b9a4baee8e3054a3bfcdfc7a234e49c8a30ca69b0dd024d8b997933319a3"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.4901161193847656e-08,
+      "maximum_tolerance_ratio": 0.0060890316531368996,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "inactive_padding",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "db9de00387c8029559a04135fae752102e9cbbac472ba59f4d9de54d690b9950",
+      "trace_sha256": {
+        "sdk": "740c00a9e9047f86221793e51f410d5887e9bc3139e46bd7710134881108f913",
+        "rust": "6ce4e55e817f3d2106cafc020567f364aec7911adc0c9b7794f5357996b3b1f6"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cadence_impulses",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f2838d2731b30ec3228d74041f592e0536440559064bfef2a11f1ccbecb9e1f8",
+      "trace_sha256": {
+        "sdk": "e0a4111585e35dcf7aa2dfa6f4aedfbc047da791afb85d0a3c7cf3ee5d1edee1",
+        "rust": "dded2d2ac1fcabec84c1f414d19bd09ef672e946a35e86c652ac09ba6b3d832b"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.015531387956582814,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "bypass_paths",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "09f5c98a1839865c7a509d555f3b46aa522317318250459f0b7d53d7cd6dde1e",
+      "trace_sha256": {
+        "sdk": "3e2ee27d61f5f4cb01788325711e2f789849b100ffe98bc11d2df097090b2ef6",
+        "rust": "b1b7a1cee8e752b58bf7b644dbacb899bcb610a1fd892afe6c90d5a44c21c8e7"
+      },
+      "sdk_process_calls": 2068,
+      "sdk_bypass_calls": 2028,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.017670492599261962,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_endpoints",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "990624848e1e695d04ede49eefc35c7cc95c2e297a2b9ba11fd16a6b1200440a",
+      "trace_sha256": {
+        "sdk": "42efc7ff9ba0aec54af5d78c210854d11ef47f5910451c30ab1121bb6fb18e4e",
+        "rust": "1f24543823e239e7443aa31b75f12f820ff041f4f5294b0e154078888817da68"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01366935347149874,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_positive",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f5184193fd5cd10a442fb1d75ba389e92abe2dd76fc5211e63ee573f41b33ce6",
+      "trace_sha256": {
+        "sdk": "e384c55465e687158bba22d523fefe302631cf2270412831123947e33bfe14da",
+        "rust": "8afbaaa8873ff67687f1142e14ba6f3004a49312361632687cc24151f9365bcd"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 5.820766091346741e-11,
+      "maximum_tolerance_ratio": 2.9080001857714272e-05,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_negative",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "32c11035a075509f02bb02af6f4b8cc04a92ad4fa3ba79db1146ab1d434cea4f",
+      "trace_sha256": {
+        "sdk": "b0df8fccf44903ee9b48616ddc70c1c6e9e34449c6745fd7fe1534ddebac9815",
+        "rust": "32b3268b34e888d597efc6257f0791a23f09985901c153e9f7dcef723b5c35ef"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.1641532182693481e-10,
+      "maximum_tolerance_ratio": 5.811242449167935e-05,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_zero",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "22d1fb0d2e7fe768434885bb798be44b019ecc03ddbd5a5ce8a9b7466c2f8d3d",
+      "trace_sha256": {
+        "sdk": "070f42531d518625d8d4f9a11c44274f7f234bf6568bdcee14d1f9dd3f16ad3f",
+        "rust": "29216f00f704f6f049e992768b820dc7e37bc7f4fbf89b9b541be8a3ba8aa630"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_overrange",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "916e085c790fe2e5a7ce883db084a9892380f8edf04450f5428adcf224148f56",
+      "trace_sha256": {
+        "sdk": "68567bc3ed4562432d61d00d5a8f61897bdef58a414e1f4d24cc48564ef0b515",
+        "rust": "26cef72252b8f2c82e265f141bb804e13d3493e1404a8c4804af91b60f8a62ed"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "maximum_tolerance_ratio": 0.04595658986477963,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "sign_reversal",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "8e0088972b86bb63d39205a2f6b0640c3ae913608c998e8a210c5091f0fae366",
+      "trace_sha256": {
+        "sdk": "5fd7c554ae360d556b568dce2e22e912f09958c0a9d795c46d81ed527cc30402",
+        "rust": "4580037ff7ef761033e8c26145ce4a6eaa8672b22d6d48693fc53a9fca438925"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.1641532182693481e-10,
+      "maximum_tolerance_ratio": 5.811242449167935e-05,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "fall_to_zero",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fdcc805c1129a9b575f4a602549af05e0e5d36e80b33512b3b0b94248405a6f2",
+      "trace_sha256": {
+        "sdk": "4bfc1d0e2bbc4464e999b2882043659d92d2f1aedc2513d1b93625651fe155eb",
+        "rust": "657f5666e2872b76a73d239bade1c286f5f62b88ed674e8baf4a1ae24a319cad"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01163991422500648,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "stepped_unipolar",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "c5073e7464db7e0c8e4c4e629c8db52a9e9d91ffe8410d0155ddaeefe5926f3f",
+      "trace_sha256": {
+        "sdk": "ce666d3ae9aef47c598c8df8d92f4c750989433aae03fd1634ab7a483305267d",
+        "rust": "1035db6fc0495ff40fe45938905bea496bf6c62eadfa2eebf212cbca79e84101"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.862645149230957e-09,
+      "maximum_tolerance_ratio": 0.0009205328732829151,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "audio_rate_bipolar",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "a09b4a83ebe057c9ab7d8e890dad076a94774f41a5e12743fb594db8d793e95b",
+      "trace_sha256": {
+        "sdk": "39d94be21d60d486f51a71f6e5d105925222943a1ae21ea94bdbf4dc0d47fbc3",
+        "rust": "119e2f7197a1ea6247e49f51ab6108f561a1660ee36b73b710331a4f7420ada9"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.1920928955078125e-07,
+      "maximum_tolerance_ratio": 0.027045283324224484,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_3_4",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "e0e9afea4c10a458e916ebe0d53482aef80ca39676bdc51064536d888962ed6f",
+      "trace_sha256": {
+        "sdk": "d3cffa801e4e62e1d86ab4941621739b4dd4e3402d0bbe9035c287806ff7d12b",
+        "rust": "35bedda91b63863c96884fba84dee6d8c60438dcb22128dbcf8bf3c082449109"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_sparse",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "60f20056cef3326a0bce7413b3a04e54415dd3aa97f9f9ded19dbb680d79af70",
+      "trace_sha256": {
+        "sdk": "a7bde327371c08773f8a0fc9bdaed23bed03de7941c010db44c2611e0311ec56",
+        "rust": "525274d290a459a4b7651c1feda9cd9bb9683788e00644bbe043c44fac30822e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.9802322387695312e-08,
+      "maximum_tolerance_ratio": 0.01027666276557697,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_full",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "38777ad3d276b26b119e6dd974343635c168db30c2afb4f6af2f9c144d0237ed",
+      "trace_sha256": {
+        "sdk": "d6fc65c183d4637748816624bcbcd9d7b86a2b7a10a66f063b1dbbf1aeea2e9d",
+        "rust": "9c235617d7407644a6c76b03d21241e1359af6c3f659b792e5cfec15a789ac34"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 4.76837158203125e-07,
+      "maximum_tolerance_ratio": 0.04455345189006882,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_silent",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "ecda50c0afda11b1c3c2baa702acd07876cdf7e1a9818d4273baf4c0c6abdc12",
+      "trace_sha256": {
+        "sdk": "9a7666bfeb415d70d6c025db8211fda49f9ae86c1536784d37b485cc980483bd",
+        "rust": "f71238f15ce22f0a284d159ae7b39840f05f326eb0d351d98300d5355882cf6e"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "poly_16_varying",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "7f048d0b0ac75c6ab2425ef0671ab6d8492b5e8419cff075c8e69d36bac44102",
+      "trace_sha256": {
+        "sdk": "29c9373ca1ef6b9ad95be533fe52ebecffcc92a3cb79f0ed86312bc4d4ed0a71",
+        "rust": "d7133e26dfd51f6b403e3a14bc99474e3c81e1a4232b1946ea8820efc2b258d9"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "maximum_tolerance_ratio": 0.034736350750440646,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "width_transitions",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "fde14ab1dc23debc93690d89a6a7aa5ce93ac7fc2fe81b20ab47ef57d91318be",
+      "trace_sha256": {
+        "sdk": "e05e031ad7bf94176fad0aecfc79fba69121b5ba8de64fe6bf71e584c2a57e68",
+        "rust": "e037478392a6e8ff5a1b814d21a8483baa666c2d330a085bfb2b38251eb2f597"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.4901161193847656e-08,
+      "maximum_tolerance_ratio": 0.0060890316531368996,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "inactive_padding",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "db9de00387c8029559a04135fae752102e9cbbac472ba59f4d9de54d690b9950",
+      "trace_sha256": {
+        "sdk": "740c00a9e9047f86221793e51f410d5887e9bc3139e46bd7710134881108f913",
+        "rust": "6ce4e55e817f3d2106cafc020567f364aec7911adc0c9b7794f5357996b3b1f6"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 0.0,
+      "maximum_tolerance_ratio": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "cadence_impulses",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "f2838d2731b30ec3228d74041f592e0536440559064bfef2a11f1ccbecb9e1f8",
+      "trace_sha256": {
+        "sdk": "9bf7a76757fd79ea2cc53f88df4da7cb6f64864ac2bf6ccd573e0c7e1967e8d9",
+        "rust": "f4a7736783b2ae8c34262513e0ca0244aebb47fef8ca11aff34926bdfbab1a36"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 7.450580596923828e-09,
+      "maximum_tolerance_ratio": 0.003377589870894397,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "bypass_paths",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "09f5c98a1839865c7a509d555f3b46aa522317318250459f0b7d53d7cd6dde1e",
+      "trace_sha256": {
+        "sdk": "93fbed88a314da2d92abe16131a5b68437ba4b204752ae4545fc681001cc987a",
+        "rust": "5354b13e9d86a664e1f6b03b70ccf4b88f71c0e77f9d773a4e2b629c18a94974"
+      },
+      "sdk_process_calls": 2068,
+      "sdk_bypass_calls": 2028,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "maximum_tolerance_ratio": 0.017670492599261962,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_endpoints",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "compared_values": 24576,
+      "input_sha256": "990624848e1e695d04ede49eefc35c7cc95c2e297a2b9ba11fd16a6b1200440a",
+      "trace_sha256": {
+        "sdk": "5cf78f80b6c0e8ebb2975e43108bc470d88bacb0c06910340d5ff1bed484baf8",
+        "rust": "c44f5da93692ef9b64e615c6ad025d629d10ccef0de16fb35a24c7ff1ce7ee98"
+      },
+      "sdk_process_calls": 4096,
+      "sdk_bypass_calls": 0,
+      "maximum_absolute_error": 1.862645149230957e-09,
+      "maximum_tolerance_ratio": 0.0009154588307306479,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "probe_binary_sha256": {
+    "sdk": "736970cd16d907326a9c5a5271eda951e9d9073f166b4ad657cefa940958701f",
+    "rust": "92a7d8896cbafab241708c4fa0a7d367f9baa07939f729ca73d1af9c59fda38f"
+  },
+  "rendered_rust_probe_sha256": "54e97563d63d8d02e2684295756911d53f5d09a48a9e0896ca05f1a183164384",
+  "passed": true,
+  "total_frames": 221184,
+  "total_compared_values": 1327104,
+  "maximum_absolute_error": 4.76837158203125e-07
+}

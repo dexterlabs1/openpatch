@@ -1,0 +1,18 @@
+{
+  "reference_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+  "sdk_source_commit": "061ccf63c1758599396ac1bb10d47345d9d34076",
+  "sdk_version": "2.6.6",
+  "detector_block_sha256": "7c69a4d9a5ebf41bb83e1832fac49663c12a4ed78d9da6e46b27909ad07c63c7",
+  "absolute": 0.000002,
+  "relative": 0.000002,
+  "sample_rates": [44100, 48000, 96000],
+  "frames_per_case": 4096,
+  "cases": [
+    "mono_positive", "mono_negative", "mono_zero", "mono_overrange",
+    "sign_reversal", "fall_to_zero", "stepped_unipolar", "audio_rate_bipolar",
+    "poly_3_4", "poly_16_sparse", "poly_16_full", "poly_16_silent",
+    "poly_16_varying", "width_transitions", "inactive_padding",
+    "cadence_impulses", "bypass_paths", "independent_endpoints"
+  ],
+  "comparison": "Every frame and both endpoint raw RGB values; abs(error) <= absolute + relative * abs(SDK). Exact frame/channel metadata and SDK process counters. No fitting or per-fixture tolerance."
+}
