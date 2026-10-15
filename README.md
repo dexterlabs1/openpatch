@@ -34,7 +34,7 @@
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
 - **Sound into motion.** Open the optional Aurora, Spectrum, or Waveform view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
 - **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
-- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, animated cable additions, shared undo, and a native progress panel offering Pause, Resume and Cancel. Cable motion is optional.
+- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, animated cable additions, shared undo, and a native progress panel offering Pause, Resume and Cancel. Choose Full, Reduced or Off for module, cable and parameter motion.
 
 ## Get started on macOS
 
@@ -345,13 +345,19 @@ The library stays open while you patch cables and edit controls. Its thumbnails 
 
 ## Claude & Codex
 
-Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. On macOS and Linux, `openpatch attach` connects clients to an already-open rack: Claude and Codex can share the same live patch, revision checks and undo history. Click **MCP ready** in the window to copy its attachment command. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
+Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. On macOS and Linux, `openpatch attach` connects clients to an already-open rack: Claude and Codex can share the same live patch, revision checks and undo history. Click **MCP** in the toolbar to start the bridge and copy connection details. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
 
 The desktop `--mcp` mode launches a new window per client and remains available on all three platforms; Windows attachment is still ahead. The separate CLI also supports headless MCP, offline rendering, and visualizer export.
 
 ## Where it stands
 
 **Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
+
+**Watch the patch take shape.** Progressive MCP construction now gives real
+committed steps coordinated module, cable and parameter motion, with Reduced
+and Off modes. The toolbar **MCP** button starts the local bridge and provides
+Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
+and [session controls](docs/MCP_SESSIONS.md).
 
 **57 built-in kinds:** [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 

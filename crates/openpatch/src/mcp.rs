@@ -1,6 +1,8 @@
 //! Bounded newline-delimited JSON-RPC over stdio and local Unix streams.
 //! Listener ownership remains with the host; this module opens no listener.
-use crate::control::{execute_shared, tools, Application, SharedSession};
+#[cfg(test)]
+use crate::control::execute_shared;
+use crate::control::{execute_shared_authorized, tools, Application, SharedSession};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -51,12 +53,15 @@ struct Connection {
     initialized: bool,
     ready: bool,
     bounded_socket_jobs: bool,
+    authorization: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 // The socket host bounds client workers separately. These permits additionally
 // bound CPU-heavy snapshots and preflight across socket connections, before copying a
 // patch or acquiring the shared session lock. Stdio retains its original policy.
 const MAX_SOCKET_JOBS: usize = 2;
 static SOCKET_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+pub(crate) static SOCKET_JOB_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 struct SocketJobGuard;
 impl SocketJobGuard {
@@ -107,7 +112,7 @@ impl Connection {
         } else {
             None
         };
-        execute_shared(&self.session, name, args)
+        execute_shared_authorized(&self.session, name, args, self.authorization.as_deref())
     }
 
     fn handle(&mut self, msg: Value) -> Option<Value> {
@@ -224,6 +229,7 @@ fn run<R: BufRead, W: Write>(
         initialized: false,
         ready: false,
         bounded_socket_jobs: false,
+        authorization: None,
     };
     while let Some(line) = read_message(&mut input).map_err(|e| e.to_string())? {
         let response = match line {
@@ -356,6 +362,15 @@ pub fn run_socket(
     stream: std::os::unix::net::UnixStream,
     session: SharedSession,
 ) -> Result<(), String> {
+    run_socket_authorized(stream, session, None)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub(crate) fn run_socket_authorized(
+    stream: std::os::unix::net::UnixStream,
+    session: SharedSession,
+    authorization: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<(), String> {
     use std::time::Duration;
     run_socket_with_limits(
         stream,
@@ -365,6 +380,7 @@ pub fn run_socket(
             frame: Duration::from_secs(30),
             write: Duration::from_secs(10),
         },
+        authorization,
     )
 }
 
@@ -373,6 +389,7 @@ fn run_socket_with_limits(
     stream: std::os::unix::net::UnixStream,
     session: SharedSession,
     limits: SocketLimits,
+    authorization: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<(), String> {
     stream
         .set_nonblocking(false)
@@ -385,6 +402,7 @@ fn run_socket_with_limits(
         initialized: false,
         ready: false,
         bounded_socket_jobs: true,
+        authorization,
     };
     let result = (|| loop {
         let line = read_socket_message(
@@ -550,7 +568,7 @@ mod tests {
                     .unwrap();
                 let (sender, finished) = mpsc::channel();
                 let worker = thread::spawn(move || {
-                    let _ = sender.send(run_socket_with_limits(server, session, limits));
+                    let _ = sender.send(run_socket_with_limits(server, session, limits, None));
                 });
                 Self {
                     reader: io::BufReader::new(client),
@@ -806,6 +824,7 @@ mod tests {
 
         #[test]
         fn socket_snapshot_jobs_are_global_bounded_and_busy_never_locks_session() {
+            let _serial = SOCKET_JOB_TEST_LOCK.lock().unwrap();
             let (session, directory) = session();
             let first = SocketJobGuard::acquire().unwrap();
             let second = SocketJobGuard::acquire().unwrap();
@@ -815,6 +834,7 @@ mod tests {
                 initialized: true,
                 ready: true,
                 bounded_socket_jobs: true,
+                authorization: None,
             };
             // Holding this mutex proves rejection happens before snapshot/lock.
             let lock = session.lock().unwrap();

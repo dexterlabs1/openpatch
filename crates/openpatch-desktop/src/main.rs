@@ -3,6 +3,7 @@ mod app;
 mod audio;
 mod cable_animation;
 mod chrome;
+mod construction_motion;
 mod construction_ui;
 mod document_state;
 mod expression;
@@ -10,6 +11,7 @@ mod keyboard;
 #[cfg(test)]
 mod keyboard_acceptance_tests;
 mod library;
+mod mcp_session_ui;
 mod midi;
 mod panel_skin;
 mod project;

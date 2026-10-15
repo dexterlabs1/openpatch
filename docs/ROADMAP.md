@@ -5,7 +5,10 @@ Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13]
 ## Next product design priority
 
 The feedback shared on 2026-10-14 makes the next design pass a priority before
-another batch of modules. Keep familiar rack patching and a single shared
+another batch of modules. The immediate work is visible agent construction and
+a real toolbar MCP session control, followed by room lighting with a dark-room
+preset that preserves actual LED/display emission. Room lighting is still planned.
+ Keep familiar rack patching and a single shared
 module/browser renderer, while improving controls for a computer: ordinary
 click and keyboard value entry, direct sliders or other appropriate editors,
 clear signal flow, readable typography and fewer decorative hardware cues.

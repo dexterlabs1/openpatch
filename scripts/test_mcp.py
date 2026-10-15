@@ -14,6 +14,7 @@ import subprocess
 import struct
 import tempfile
 import threading
+import time
 import unittest
 import wave
 from pathlib import Path
@@ -2208,6 +2209,62 @@ class OpenPatchMCPTests(unittest.TestCase):
             samples = self._first_channel_samples(rendered.readframes(rendered.getnframes()), rendered.getsampwidth(), rendered.getnchannels())
         self.assertGreater(max(abs(s) for s in samples), 100)
         self.assertLess(max(abs(s) for s in samples), 32767)
+
+    def test_construction_receipts_are_real_bounded_and_revision_matched(self) -> None:
+        before = self.patch_snapshot()
+        steps = [
+            {"label": "Add a source", "edits": [{"tool": "add_module", "arguments": {"id": "source", "kind": "constant"}}]},
+            {"label": "Add a level control", "edits": [{"tool": "add_module", "arguments": {"id": "level", "kind": "gain"}}]},
+            {"label": "Connect the signal", "edits": [{"tool": "connect", "arguments": {"from": "source", "to": "level", "input": "signal", "cable_id": "visible"}}]},
+            {"label": "Adjust the level", "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "level", "parameter": "gain", "value": .75}},
+                {"tool": "set_parameter", "arguments": {"id": "level", "parameter": "gain", "value": .25}},
+            ]},
+            {"label": "Recreate the cable", "edits": [
+                {"tool": "disconnect", "arguments": {"cable_id": "visible"}},
+                {"tool": "connect", "arguments": {"from": "source", "to": "level", "input": "signal", "cable_id": "visible"}},
+            ]},
+        ]
+        observed = []
+        for index, step in enumerate(steps):
+            # One-step plans retain the exact completed receipt indefinitely;
+            # client scheduling cannot skip it while subsequent steps commit.
+            started = self.payload(self.require_tool_success("start_construction", {
+                "expected_revision": before["revision"] + index,
+                "interval_ms": 100, "steps": [step],
+            }))
+            self.assertIsNone(started["last_commit"])
+            deadline = time.monotonic() + 10
+            while True:
+                state = self.payload(self.require_tool_success("inspect_construction", {"plan_id": started["plan_id"]}))
+                if state["status"] == "completed":
+                    break
+                self.assertEqual(state["status"], "running")
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(.01)
+            receipt = state["last_commit"]
+            self.assertEqual(receipt["plan_id"], started["plan_id"])
+            self.assertEqual(receipt["revision"], before["revision"] + index + 1)
+            self.assertEqual(receipt["revision"], receipt["before_revision"] + 1)
+            self.assertEqual(receipt["revision"], state["last_revision"])
+            self.assertEqual(receipt["step_index"], 0)
+            self.assertEqual(state["completed_steps"], 1)
+            self.assertIsInstance(receipt["age_ms"], int)
+            self.assertGreaterEqual(receipt["age_ms"], 0)
+            self.assertIsInstance(receipt["invalidate_existing_cables"], bool)
+            self.assertLessEqual(sum(len(receipt[k]) for k in ("new_modules", "new_cables", "parameter_changes")), 128)
+            observed.append(receipt)
+        self.assertEqual(observed[0]["new_modules"], [{"id": "source", "kind": "constant"}])
+        self.assertEqual(observed[2]["new_cables"], [{"id": "visible", "from": "source", "output": "out", "to": "level", "input": "signal"}])
+        self.assertEqual(observed[3]["parameter_changes"], [{"id": "level", "kind": "gain", "parameter": "gain", "old_effective": 1, "new_effective": .25}])
+        self.assertEqual(observed[4]["new_cables"], [])
+        self.assertTrue(observed[4]["invalidate_existing_cables"])
+        final = self.patch_snapshot()
+        self.assertEqual(final["history"]["undo_steps"], before["history"]["undo_steps"] + 5)
+        self.assertEqual(final["revision"], before["revision"] + 5)
+        self.require_tool_success("undo")
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], final["patch"])
 
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()

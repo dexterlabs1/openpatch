@@ -9,7 +9,7 @@ mod tests;
 pub struct Panel {
     snapshot: Value,
     dismissed: Option<u64>,
-    animate_cables: bool,
+    motion_mode: crate::construction_motion::MotionMode,
 }
 
 impl Default for Panel {
@@ -17,7 +17,7 @@ impl Default for Panel {
         Self {
             snapshot: Value::Null,
             dismissed: None,
-            animate_cables: true,
+            motion_mode: crate::construction_motion::MotionMode::Full,
         }
     }
 }
@@ -28,8 +28,11 @@ pub struct Action {
 }
 
 impl Panel {
-    pub fn animate_cables(&self) -> bool {
-        self.animate_cables
+    pub(crate) fn set_motion_mode(&mut self, mode: crate::construction_motion::MotionMode) {
+        self.motion_mode = mode;
+    }
+    pub(crate) fn motion_mode(&self) -> crate::construction_motion::MotionMode {
+        self.motion_mode
     }
 
     pub fn observe(&mut self, snapshot: Value) {
@@ -59,6 +62,7 @@ impl Panel {
             _ => "Construction stopped",
         };
         let mut action = None;
+        let mut selected_mode = self.motion_mode;
         egui::TopBottomPanel::top("construction_progress")
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -106,8 +110,11 @@ impl Panel {
                     if !active && ui.small_button("Dismiss").clicked() {
                         self.dismissed = Some(plan_id);
                     }
-                    ui.checkbox(&mut self.animate_cables, "Animate cables")
-                        .on_hover_text("Briefly reveal newly committed construction cables. This is edit feedback, not signal flow or audio timing. Turning this off shows all connections immediately. Remembered for this window only.");
+                    ui.label(RichText::new("Motion").small().weak());
+                    for mode in [crate::construction_motion::MotionMode::Full,crate::construction_motion::MotionMode::Reduced,crate::construction_motion::MotionMode::Off] {
+                        ui.selectable_value(&mut selected_mode,mode,mode.label())
+                            .on_hover_text("Presentation of committed edits only. Full adds short movement accents; Reduced uses static accents; Off settles everything immediately. Changing modes affects future steps. No audio or camera changes. Remembered for this window.");
+                    }
                 });
                 if let Some(error) = self.snapshot["error"].as_str() {
                     ui.label(RichText::new(error).color(ui.visuals().warn_fg_color));
@@ -120,6 +127,7 @@ impl Panel {
                         self.snapshot["last_revision"], self.snapshot["current_revision"]
                     ));
             });
+        self.set_motion_mode(selected_mode);
         action
     }
 }

@@ -656,3 +656,9 @@ actions, coherent saved holds/RNG, presets, duplication and history.
 `capture_project_patch` includes a `shift_registers` map of eight actual voltages
 and `rng_state` per module. Host Randomize is a no-op for this kind;
 [full contract](SHIFT_REGISTER.md).
+
+The native toolbar's **MCP** button starts or reuses the local bridge, shows live
+attachment status, and provides copyable Claude/Codex connection details.
+[Session controls](MCP_SESSIONS.md) describes Start/Stop and transport boundaries.
+Progressive plans also publish authoritative `last_commit` receipts for native
+module, cable and parameter cues; [motion contract](CONSTRUCTION_MOTION.md).

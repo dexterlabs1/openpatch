@@ -374,7 +374,9 @@ pub struct Rack {
     held_manual: Option<HeldManual>,
     random_values_states: BTreeMap<String, Value>,
     shift_register_states: BTreeMap<String, Value>,
-    construction_animation: crate::cable_animation::Tracker,
+    construction_animation: crate::construction_motion::Tracker,
+    construction_anchors: BTreeMap<(String, String), crate::construction_motion::Anchor>,
+    construction_clock: Option<std::time::Instant>,
 }
 
 impl Default for Rack {
@@ -411,7 +413,9 @@ impl Default for Rack {
             held_manual: None,
             random_values_states: BTreeMap::new(),
             shift_register_states: BTreeMap::new(),
-            construction_animation: crate::cable_animation::Tracker::default(),
+            construction_animation: crate::construction_motion::Tracker::default(),
+            construction_anchors: BTreeMap::new(),
+            construction_clock: None,
         }
     }
 }
@@ -419,6 +423,19 @@ impl Default for Rack {
 impl Rack {
     pub(crate) fn clear_construction_animation(&mut self) {
         self.construction_animation.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn construction_effect_counts_at(
+        &mut self,
+        now: std::time::Instant,
+    ) -> (usize, usize, usize) {
+        self.construction_animation.tick(now);
+        (
+            self.construction_animation.modules.len(),
+            self.construction_animation.cables.len(),
+            self.construction_animation.parameters.len(),
+        )
     }
 
     #[cfg(test)]
@@ -430,6 +447,65 @@ impl Rack {
         self.construction_animation.progress(cable, now)
     }
 
+    pub(crate) fn set_construction_motion_mode(
+        &mut self,
+        mode: crate::construction_motion::MotionMode,
+    ) {
+        if self.construction_animation.set_mode(mode) {
+            self.construction_anchors.clear();
+        }
+    }
+    /// Deterministic rendering only; never changes the host or audio clock.
+    pub(crate) fn set_construction_clock_override(&mut self, now: Option<std::time::Instant>) {
+        self.construction_clock = now;
+    }
+    fn construction_now(&self) -> std::time::Instant {
+        self.construction_clock
+            .unwrap_or_else(std::time::Instant::now)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn observe_construction_transition_at(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        previous_revision: u64,
+        revision: u64,
+        construction: &Value,
+        mode: crate::construction_motion::MotionMode,
+        now: std::time::Instant,
+    ) {
+        static MOTION_CATALOG: OnceLock<Value> = OnceLock::new();
+        self.set_construction_motion_mode(mode);
+        self.construction_animation.observe(
+            before,
+            after,
+            previous_revision,
+            revision,
+            construction,
+            MOTION_CATALOG.get_or_init(openpatch_core::catalog),
+            now,
+        );
+    }
+    pub(crate) fn observe_construction_transition_with_mode(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        previous_revision: u64,
+        revision: u64,
+        construction: &Value,
+        mode: crate::construction_motion::MotionMode,
+    ) {
+        self.observe_construction_transition_at(
+            before,
+            after,
+            previous_revision,
+            revision,
+            construction,
+            mode,
+            std::time::Instant::now(),
+        );
+    }
+    #[cfg(test)]
     pub(crate) fn observe_construction_transition(
         &mut self,
         before: &Patch,
@@ -439,17 +515,18 @@ impl Rack {
         construction: &Value,
         enabled: bool,
     ) {
-        // Only an exact, observed construction commit gets visual feedback.
-        // Gaps, human edits and history traversal show the current graph directly.
-        if enabled
-            && previous_revision.checked_add(1) == Some(revision)
-            && construction["last_revision"].as_u64() == Some(revision)
-        {
-            self.construction_animation
-                .observe(before, after, std::time::Instant::now());
-        } else {
-            self.construction_animation.clear();
-        }
+        self.observe_construction_transition_with_mode(
+            before,
+            after,
+            previous_revision,
+            revision,
+            construction,
+            if enabled {
+                crate::construction_motion::MotionMode::Full
+            } else {
+                crate::construction_motion::MotionMode::Off
+            },
+        );
     }
 
     /// Open a real knob context menu on the next paint for the native smoke fixture.
@@ -1058,7 +1135,7 @@ impl Rack {
         device_rate: u32,
         revision: u64,
     ) -> Option<RackAction> {
-        let animation_now = std::time::Instant::now();
+        let animation_now = self.construction_now();
         if self.construction_animation.tick(animation_now) {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(16));
@@ -1390,10 +1467,17 @@ impl Rack {
                 allow_manual_press: released_manual.is_none(),
             },
         );
+        if let Some(RackAction::Command("set_parameter", args)) = &module_action {
+            if let (Some(id), Some(parameter)) = (args["id"].as_str(), args["parameter"].as_str()) {
+                self.construction_animation
+                    .interrupt_parameter(id, parameter);
+            }
+        }
         if module_action.is_some() {
             action = module_action;
         }
 
+        self.paint_construction_overlays(ui, patch, catalog, canvas, animation_now);
         let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
         let nearest_jack = |pointer: Pos2| {
             if !canvas.contains(pointer) {
@@ -1487,28 +1571,44 @@ impl Rack {
                 } else {
                     1.0
                 });
-                let progress = if picked_up || traced {
-                    None
-                } else {
-                    self.construction_animation.progress(cable, animation_now)
+                let fan = {
+                    let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
+                    let ordinal = cable_ordinals[cable_index];
+                    if count > 1 {
+                        (ordinal as f32 / (count - 1) as f32 - 0.5) * 40.0
+                    } else {
+                        0.0
+                    }
                 };
-                paint_committed_cable_curves(
+                let curve_hover = self.pending.is_none()
+                    && self
+                        .construction_animation
+                        .cables
+                        .phase(cable, animation_now)
+                        .is_some()
+                    && pointer.is_some_and(|p| {
+                        cable_curve_near(
+                            cable_curve_points(from, to, self.zoom, fan),
+                            p,
+                            (4.5 * self.zoom).max(3.0),
+                        )
+                    });
+                if picked_up || traced || curve_hover {
+                    self.construction_animation.cables.interrupt(cable);
+                }
+                let phase = self
+                    .construction_animation
+                    .cables
+                    .phase(cable, animation_now);
+                paint_motion_cable_curves(
                     &painter,
                     from,
                     to,
                     color,
                     self.zoom,
                     configured_bus(patch, catalog, &cable.from),
-                    {
-                        let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
-                        let ordinal = cable_ordinals[cable_index];
-                        if count > 1 {
-                            (ordinal as f32 / (count - 1) as f32 - 0.5) * 40.0
-                        } else {
-                            0.0
-                        }
-                    },
-                    progress,
+                    fan,
+                    phase,
                 );
             }
         }
@@ -1790,6 +1890,9 @@ impl Rack {
         revision: u64,
         mode: RenderMode,
     ) -> RenderedModules<'a> {
+        if mode.is_interactive() {
+            self.construction_anchors.clear();
+        }
         let interactive = mode.is_interactive() && ui.is_enabled();
         let (drag_interactive, allow_manual_press) = match mode {
             RenderMode::Interactive {
@@ -3028,6 +3131,53 @@ impl Rack {
                             format!("Edit {} {} value, {}", node.id, name, display_value),
                         )
                     });
+                    if let Some(cue) = self
+                        .construction_animation
+                        .parameter(&node.id, &node.kind, name)
+                    {
+                        let old = cue.old;
+                        let old_text = if let Some(power) = gain_power {
+                            gain_db_display(old, power)
+                        } else if fade_percent || vco_percent {
+                            format!("{:.1}%", old * 100.0)
+                        } else if clock_ratio {
+                            format!("{:.4}x", old * display_scale)
+                        } else if let Some(min) = slew_min {
+                            format!("{:.2} ms/V", slew_display(old, min))
+                        } else if scaled_gain {
+                            format!(
+                                "{:.2}{}",
+                                old * display_scale,
+                                if multiplier == 1.0 { "%" } else { "x" }
+                            )
+                        } else {
+                            parameter_value(name, old, spec)
+                        };
+                        let old_normalized = if geometric {
+                            normalize_geometric(old, min, max)
+                        } else {
+                            normalize(old, min, max, logarithmic)
+                        };
+                        self.register_construction_anchor(
+                            ui,
+                            node,
+                            name,
+                            crate::construction_motion::Anchor {
+                                rect: knob_rect.union(value_response.rect),
+                                old_text,
+                                new_text: display_value.clone(),
+                                marker: step.is_none().then_some(
+                                    crate::construction_motion::Marker::Knob {
+                                        center,
+                                        radius: radius * self.zoom,
+                                        old: old_normalized,
+                                        new: normalized,
+                                    },
+                                ),
+                            },
+                            &[value_response.id, ui.id().with(("knob", &node.id, name))],
+                        );
+                    }
                     if value_response.clicked() {
                         consume_parameter_activation(ui.ctx());
                         self.editing = Some(make_edit(ParameterEditSurface::Window));
@@ -3311,6 +3461,263 @@ impl Rack {
                 brightness,
                 self.zoom,
             );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_construction_anchor(
+        &mut self,
+        ui: &egui::Ui,
+        node: &Node,
+        name: &str,
+        anchor: crate::construction_motion::Anchor,
+        ids: &[egui::Id],
+    ) {
+        if self
+            .construction_animation
+            .parameter(&node.id, &node.kind, name)
+            .is_none()
+        {
+            return;
+        }
+        let focused = ids.iter().any(|id| ui.ctx().memory(|m| m.has_focus(*id)));
+        let interacting = ui.input(|i| {
+            let pointer = i.pointer.interact_pos().or(i.pointer.hover_pos());
+            ((i.pointer.any_pressed() || i.pointer.primary_down())
+                && pointer.is_some_and(|p| anchor.rect.contains(p)))
+                || (focused
+                    && i.events.iter().any(|e| {
+                        matches!(
+                            e,
+                            egui::Event::Key { pressed: true, .. } | egui::Event::Text(_)
+                        )
+                    }))
+        });
+        if interacting {
+            self.construction_animation
+                .interrupt_parameter(&node.id, name);
+            return;
+        }
+        self.construction_anchors
+            .insert((node.id.clone(), name.into()), anchor);
+    }
+
+    fn paint_construction_overlays(
+        &mut self,
+        ui: &egui::Ui,
+        patch: &Patch,
+        catalog: &Value,
+        canvas: Rect,
+        now: std::time::Instant,
+    ) {
+        use crate::construction_motion::{ease, fraction, Marker, MotionMode};
+        if self.construction_animation.mode == MotionMode::Off {
+            return;
+        }
+        let reduced = self.construction_animation.mode == MotionMode::Reduced;
+        let painter = ui
+            .painter()
+            .with_clip_rect(canvas.intersect(ui.clip_rect()));
+        let gold = Color32::from_rgb(225, 179, 105);
+        for node in &patch.nodes {
+            let Some(position) = self.positions.get(&node.id) else {
+                continue;
+            };
+            let rect = Rect::from_min_size(
+                canvas.min + self.pan + position.to_vec2() * self.zoom,
+                vec2(panel_width(&node.kind), PANEL_HEIGHT) * self.zoom,
+            );
+            if !painter.clip_rect().intersects(rect) {
+                continue;
+            }
+            let header_focused = ui
+                .ctx()
+                .memory(|m| m.has_focus(ui.id().with(("module-header", &node.id))));
+            let header_keyboard = header_focused
+                && ui.input(|i| {
+                    i.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            egui::Event::Key { pressed: true, .. } | egui::Event::Text(_)
+                        )
+                    })
+                });
+            if header_keyboard
+                || ui.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer.interact_pos().is_some_and(|p| rect.contains(p))
+                })
+            {
+                self.construction_animation.interrupt_module(&node.id);
+            }
+            if let Some(cue) = self
+                .construction_animation
+                .modules
+                .iter()
+                .find(|m| m.id == node.id && m.kind == node.kind)
+            {
+                let t = fraction(cue.started, now, if reduced { 300 } else { 320 });
+                let fade = 1.0 - ease(t);
+                if !reduced {
+                    painter.rect_filled(
+                        rect.shrink(self.zoom),
+                        2.0 * self.zoom,
+                        gold.gamma_multiply(0.065 * fade),
+                    );
+                }
+                painter.rect_stroke(
+                    rect.shrink(1.5 * self.zoom),
+                    2.0 * self.zoom,
+                    Stroke::new(1.5 * self.zoom, gold.gamma_multiply((1.0 - t) * 0.8)),
+                    egui::StrokeKind::Inside,
+                );
+                painter.rect_stroke(
+                    rect.shrink(4.0 * self.zoom),
+                    1.0 * self.zoom,
+                    Stroke::new(0.65 * self.zoom, gold.gamma_multiply(fade * 0.35)),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            if let Some(cue) = self
+                .construction_animation
+                .focus
+                .iter()
+                .find(|m| m.id == node.id && m.kind == node.kind)
+            {
+                let t = fraction(cue.started, now, if reduced { 300 } else { 420 });
+                painter.line_segment(
+                    [
+                        rect.min + vec2(14.0, 5.0) * self.zoom,
+                        rect.right_top() + vec2(-14.0, 5.0) * self.zoom,
+                    ],
+                    Stroke::new(2.0 * self.zoom, gold.gamma_multiply((1.0 - t) * 0.5)),
+                );
+            }
+            let header = Rect::from_min_size(rect.min, vec2(rect.width(), 65.0 * self.zoom));
+            if header_keyboard
+                || ui.input(|i| {
+                    i.pointer.any_pressed()
+                        && i.pointer.interact_pos().is_some_and(|p| header.contains(p))
+                })
+            {
+                self.construction_animation
+                    .parameters
+                    .retain(|p| p.id != node.id);
+            }
+            let cues = self
+                .construction_animation
+                .parameters
+                .iter()
+                .filter(|p| p.id == node.id && p.kind == node.kind)
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut fallback = Vec::new();
+            let mut fallback_fade = 0.0_f32;
+            for cue in cues {
+                let t = fraction(cue.started, now, if reduced { 300 } else { 360 });
+                let fade = (1.0 - ((t - 0.7) / 0.3).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+                if self
+                    .editing
+                    .as_ref()
+                    .is_some_and(|e| e.id == cue.id && e.parameter == cue.parameter)
+                {
+                    self.construction_animation
+                        .interrupt_parameter(&cue.id, &cue.parameter);
+                    continue;
+                }
+                if let Some(anchor) = self
+                    .construction_anchors
+                    .get(&(cue.id.clone(), cue.parameter.clone()))
+                {
+                    painter.rect_stroke(
+                        anchor.rect.expand(3.0 * self.zoom),
+                        4.0 * self.zoom,
+                        Stroke::new(1.1 * self.zoom, gold.gamma_multiply(0.75 * fade)),
+                        egui::StrokeKind::Outside,
+                    );
+                    if !reduced {
+                        match &anchor.marker {
+                            Some(Marker::Knob {
+                                center,
+                                radius,
+                                old,
+                                new,
+                            }) => {
+                                let value = old + (new - old) * ease(t);
+                                let angle = (-225.0 + value.clamp(0.0, 1.0) * 270.0).to_radians();
+                                let direction = vec2(angle.cos(), angle.sin());
+                                painter.line_segment(
+                                    [
+                                        *center + direction * (*radius + 4.0 * self.zoom),
+                                        *center + direction * (*radius + 10.0 * self.zoom),
+                                    ],
+                                    Stroke::new(1.6 * self.zoom, gold.gamma_multiply(fade)),
+                                );
+                            }
+                            Some(Marker::Slider { rect, old, new }) => {
+                                let x = rect.left()
+                                    + rect.width() * (old + (new - old) * ease(t)).clamp(0.0, 1.0);
+                                painter.line_segment(
+                                    [
+                                        pos2(x, rect.top() - 3.0 * self.zoom),
+                                        pos2(x, rect.bottom() + 3.0 * self.zoom),
+                                    ],
+                                    Stroke::new(1.3 * self.zoom, gold.gamma_multiply(fade)),
+                                );
+                            }
+                            None => {}
+                        }
+                    }
+                    let label = format!("{} → {}", anchor.old_text, anchor.new_text);
+                    let center = pos2(
+                        anchor.rect.center().x,
+                        (anchor.rect.top() - 9.0 * self.zoom).max(rect.top() + 74.0 * self.zoom),
+                    );
+                    paint_motion_badge(&painter, center, &label, rect, self.zoom, fade);
+                } else {
+                    let spec = catalog["modules"]
+                        .as_array()
+                        .and_then(|m| m.iter().find(|m| m["kind"] == node.kind))
+                        .and_then(|m| m["params"].get(&cue.parameter));
+                    let value = spec.map_or_else(
+                        || format!("{}", cue.new),
+                        |spec| {
+                            spec["labels"]
+                                .as_array()
+                                .and_then(|labels| {
+                                    let index = spec["values"]
+                                        .as_array()
+                                        .and_then(|values| {
+                                            values.iter().position(|v| {
+                                                v.as_f64().is_some_and(|v| v as f32 == cue.new)
+                                            })
+                                        })
+                                        .or_else(|| {
+                                            (cue.new >= 0.0 && cue.new.fract() == 0.0)
+                                                .then_some(cue.new as usize)
+                                        });
+                                    index
+                                        .and_then(|index| labels.get(index))
+                                        .and_then(Value::as_str)
+                                        .map(str::to_owned)
+                                })
+                                .unwrap_or_else(|| parameter_value(&cue.parameter, cue.new, spec))
+                        },
+                    );
+                    fallback_fade = fallback_fade.max(fade);
+                    fallback.push(format!("{}  {}", parameter_label(&cue.parameter), value));
+                }
+            }
+            if !fallback.is_empty() {
+                paint_motion_badge(
+                    &painter,
+                    rect.min + vec2(rect.width() * 0.5, 51.0 * self.zoom),
+                    &fallback.join(" · "),
+                    rect,
+                    self.zoom,
+                    fallback_fade * 0.95,
+                );
+            }
         }
     }
 
@@ -4154,6 +4561,8 @@ impl Rack {
             if name == "seed" && slider.clicked() {
                 self.editing = Some(make_edit(ParameterEditSurface::Window));
             }
+            let motion_slider_id = slider.id;
+            let motion_slider_rect = slider.rect.shrink2(vec2(slider.rect.height() * 0.2, 0.0));
             slider.on_hover_text(format!(
                 "{}\nLevel: drag or use arrow keys; double-click to reset. Click the value to type.\n{}",
                 display,
@@ -4180,6 +4589,33 @@ impl Rack {
             });
             if readout.clicked() {
                 self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            if let Some(cue) = self
+                .construction_animation
+                .parameter(&node.id, &node.kind, name)
+            {
+                self.register_construction_anchor(
+                    ui,
+                    node,
+                    name,
+                    crate::construction_motion::Anchor {
+                        rect: slider_rect.union(value_rect),
+                        old_text: if name == "seed" {
+                            format!("{:.0}", cue.old)
+                        } else {
+                            parameter_value(name, cue.old, spec)
+                        },
+                        new_text: display.clone(),
+                        marker: (name == "level").then_some(
+                            crate::construction_motion::Marker::Slider {
+                                rect: motion_slider_rect,
+                                old: normalize(cue.old, min, max, false),
+                                new: normalize(cue.new, min, max, false),
+                            },
+                        ),
+                    },
+                    &[motion_slider_id, readout.id],
+                );
             }
             readout.on_hover_text("Click to type a value or expression");
         }
@@ -4391,6 +4827,8 @@ impl Rack {
                     }
                 }
             });
+            let motion_slider_id = slider.id;
+            let motion_slider_rect = slider.rect.shrink2(vec2(slider.rect.height() * 0.2, 0.0));
             slider.on_hover_text(format!(
                 "{}\nDrag or use arrow keys; double-click to reset. Click the value to type.\n{}",
                 display,
@@ -4417,6 +4855,45 @@ impl Rack {
             });
             if readout.clicked() {
                 self.editing = Some(make_edit(ParameterEditSurface::Window));
+            }
+            if let Some(cue) = self
+                .construction_animation
+                .parameter(&node.id, &node.kind, name)
+            {
+                self.register_construction_anchor(
+                    ui,
+                    node,
+                    name,
+                    crate::construction_motion::Anchor {
+                        rect: slider_rect.union(value_rect),
+                        old_text: if percent {
+                            format!("{:.1}%", cue.old * scale)
+                        } else if matches!(name, "strike_strength" | "level") {
+                            format!("{:.2}×", cue.old)
+                        } else {
+                            parameter_value(name, cue.old, spec)
+                        },
+                        new_text: display.clone(),
+                        marker: step.is_none().then_some(
+                            crate::construction_motion::Marker::Slider {
+                                rect: motion_slider_rect,
+                                old: motion_slider_normalize(
+                                    cue.old,
+                                    min,
+                                    max,
+                                    matches!(name, "frequency" | "decay"),
+                                ),
+                                new: motion_slider_normalize(
+                                    cue.new,
+                                    min,
+                                    max,
+                                    matches!(name, "frequency" | "decay"),
+                                ),
+                            },
+                        ),
+                    },
+                    &[motion_slider_id, readout.id],
+                );
             }
             readout.on_hover_text("Click to type a value or expression");
         }
@@ -5779,6 +6256,23 @@ impl Rack {
                     });
             },
         );
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, parameter)
+        {
+            self.register_construction_anchor(
+                ui,
+                node,
+                parameter,
+                crate::construction_motion::Anchor {
+                    rect,
+                    old_text: choices.get(cue.old as usize).unwrap_or(&"?").to_string(),
+                    new_text: choices.get(cue.new as usize).unwrap_or(&"?").to_string(),
+                    marker: None,
+                },
+                &[],
+            );
+        }
         (value != old).then(|| {
             RackAction::Command(
                 "set_parameter",
@@ -6117,6 +6611,30 @@ impl Rack {
         response.widget_info(|| {
             egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, parameter))
         });
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, parameter)
+        {
+            let display = |raw: f32| {
+                if step.is_some() {
+                    format!("{:.0}{suffix}", raw * scale)
+                } else {
+                    format!("{:.2}{suffix}", raw * scale)
+                }
+            };
+            self.register_construction_anchor(
+                ui,
+                node,
+                parameter,
+                crate::construction_motion::Anchor {
+                    rect,
+                    old_text: display(cue.old),
+                    new_text: display(cue.new),
+                    marker: None,
+                },
+                &[response.id],
+            );
+        }
         if response.drag_started() {
             self.gesture = self.gesture.wrapping_add(1);
             ui.data_mut(|data| data.insert_temp(id, format!("rack-value-{}", self.gesture)));
@@ -9219,6 +9737,26 @@ fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32) -> [Pos2; 4] {
     ]
 }
 
+// Decoration-only hover sampling: no widget, pointer capture or route hit target.
+fn cable_curve_near(points: [Pos2; 4], pointer: Pos2, radius: f32) -> bool {
+    let mut previous = points[0];
+    for step in 1..=32 {
+        let t = step as f32 / 32.0;
+        let next = cable_curve_prefix(points, t)[3];
+        let segment = next - previous;
+        let u = if segment.length_sq() > 0.0 {
+            ((pointer - previous).dot(segment) / segment.length_sq()).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if pointer.distance(previous + segment * u) <= radius {
+            return true;
+        }
+        previous = next;
+    }
+    false
+}
+
 // De Casteljau subdivision preserves the original curve, including stacked
 // fan-out and polyphonic width. No independent easing of endpoint geometry.
 fn cable_curve_prefix(points: [Pos2; 4], progress: f32) -> [Pos2; 4] {
@@ -9228,6 +9766,117 @@ fn cable_curve_prefix(points: [Pos2; 4], progress: f32) -> [Pos2; 4] {
     let d = a.lerp(b, progress);
     let e = b.lerp(c, progress);
     [points[0], a, d, d.lerp(e, progress)]
+}
+
+// Native egui log sliders use geometric mapping for these positive ranges.
+fn motion_slider_normalize(value: f32, min: f32, max: f32, logarithmic: bool) -> f32 {
+    if logarithmic && min > 0.0 && max > min {
+        normalize_geometric(value, min, max)
+    } else {
+        normalize(value, min, max, false)
+    }
+}
+
+fn paint_motion_badge(
+    painter: &egui::Painter,
+    center: Pos2,
+    label: &str,
+    panel: Rect,
+    zoom: f32,
+    fade: f32,
+) {
+    let mut job = egui::text::LayoutJob::simple(
+        label.to_owned(),
+        crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+        Color32::from_rgb(242, 228, 201).gamma_multiply(fade),
+        (panel.width() - 22.0 * zoom).max(1.0),
+    );
+    job.wrap.max_rows = 1;
+    let galley = painter.layout_job(job);
+    let size = galley.size() + vec2(12.0, 6.0) * zoom;
+    let min_x = panel.left() + size.x * 0.5 + 5.0 * zoom;
+    let max_x = panel.right() - size.x * 0.5 - 5.0 * zoom;
+    let x = if min_x <= max_x {
+        center.x.clamp(min_x, max_x)
+    } else {
+        panel.center().x
+    };
+    let bounds = Rect::from_center_size(pos2(x, center.y), size);
+    painter.rect_filled(
+        bounds.translate(vec2(0.0, 1.5) * zoom),
+        3.0 * zoom,
+        Color32::from_black_alpha((60.0 * fade) as u8),
+    );
+    painter.rect_filled(
+        bounds,
+        3.0 * zoom,
+        Color32::from_rgb(42, 43, 40).gamma_multiply(fade),
+    );
+    painter.rect_stroke(
+        bounds,
+        3.0 * zoom,
+        Stroke::new(
+            0.65 * zoom,
+            Color32::from_rgb(191, 154, 99).gamma_multiply(fade),
+        ),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(
+        bounds.center() - galley.size() * 0.5,
+        galley,
+        Color32::WHITE,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_motion_cable_curves(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    fan: f32,
+    phase: Option<crate::cable_animation::Phase>,
+) {
+    let Some(phase) = phase else {
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        return;
+    };
+    if phase.reduced {
+        paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        painter.circle_stroke(
+            to,
+            11.5 * zoom,
+            Stroke::new(1.4 * zoom, color.gamma_multiply(phase.fade)),
+        );
+        return;
+    }
+    paint_committed_cable_curves(
+        painter,
+        from,
+        to,
+        color,
+        zoom,
+        bus,
+        fan,
+        Some(phase.progress),
+    );
+    let points = cable_curve_points(from, to, zoom, fan);
+    let tip = cable_curve_prefix(points, phase.progress)[3];
+    let ring = if phase.progress >= 1.0 {
+        9.0 + 8.0 * crate::construction_motion::ease(phase.settle)
+    } else {
+        4.0
+    };
+    painter.circle_stroke(
+        tip,
+        ring * zoom,
+        Stroke::new(1.35 * zoom, color.gamma_multiply(phase.fade)),
+    );
+    if phase.progress < 1.0 {
+        painter.circle_filled(tip, 1.8 * zoom, Color32::from_rgb(247, 233, 202));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -16197,4 +16846,7 @@ mod tests {
     include!("cable_gesture_tests.rs");
     include!("cable_menu_tests.rs");
     include!("cable_animation_render_tests.rs");
+    mod construction_motion_render_tests {
+        include!("construction_motion_render_tests.rs");
+    }
 }

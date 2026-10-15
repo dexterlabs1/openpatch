@@ -1,3 +1,17 @@
+fn construction_test_snapshot(
+    before: &Patch,
+    after: &Patch,
+    previous: u64,
+    revision: u64,
+) -> Value {
+    let cables = after
+        .cables
+        .iter()
+        .filter(|c| !before.cables.iter().any(|old| old.id == c.id))
+        .map(|c| json!({"id":c.id,"from":c.from,"output":c.output,"to":c.to,"input":c.input}))
+        .collect::<Vec<_>>();
+    json!({"plan_id":1,"completed_steps":1,"current_revision":revision,"last_revision":revision,"last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":1,"step_index":0,"before_revision":previous,"revision":revision,"label":"Connect","new_modules":[],"new_cables":cables,"parameter_changes":[]}})
+}
 // Included in rack::tests to exercise production geometry and input handling.
 #[test]
 fn construction_reveal_is_an_exact_prefix_of_the_committed_curve() {
@@ -90,7 +104,7 @@ fn construction_animation_requires_an_exact_observed_commit_and_clears_on_human_
         &after,
         9,
         10,
-        &json!({"last_revision":10}),
+        &construction_test_snapshot(&before, &after, 9, 10),
         true,
     );
     assert!(rack
@@ -103,7 +117,7 @@ fn construction_animation_requires_an_exact_observed_commit_and_clears_on_human_
         &after,
         10,
         11,
-        &json!({"last_revision":10}),
+        &construction_test_snapshot(&before, &after, 9, 10),
         true,
     );
     assert!(rack
@@ -116,7 +130,7 @@ fn construction_animation_requires_an_exact_observed_commit_and_clears_on_human_
         &after,
         11,
         14,
-        &json!({"last_revision":14}),
+        &construction_test_snapshot(&before, &after, 11, 14),
         true,
     );
     assert!(rack
@@ -128,7 +142,7 @@ fn construction_animation_requires_an_exact_observed_commit_and_clears_on_human_
         &after,
         14,
         15,
-        &json!({"last_revision":15}),
+        &construction_test_snapshot(&before, &after, 14, 15),
         false,
     );
     assert!(rack
@@ -141,7 +155,7 @@ fn construction_animation_requires_an_exact_observed_commit_and_clears_on_human_
         &after,
         15,
         16,
-        &json!({"last_revision":16}),
+        &construction_test_snapshot(&before, &after, 15, 16),
         true,
     );
     assert!(rack
@@ -163,7 +177,7 @@ fn construction_cables_keep_connected_jack_pickup_and_guarded_editing() {
         &after,
         9,
         10,
-        &json!({"last_revision":10}),
+        &construction_test_snapshot(&before, &after, 9, 10),
         true,
     );
     frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);

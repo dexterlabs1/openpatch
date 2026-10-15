@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -314,13 +314,9 @@ pub struct OpenPatch {
     template_save: Option<TemplateSave>,
     catalog: Value,
     start: Instant,
-    mcp: bool,
+    mcp_session: crate::mcp_session_ui::Panel,
     construction: crate::construction_ui::Panel,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    local_mcp: Option<openpatch::local_mcp::LocalServer>,
-    local_mcp_error: Option<String>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    local_mcp_command: String,
+    smoke_motion_origin: Option<Instant>,
     documents: DocumentState,
     projects: Option<Store>,
     active_file: Option<String>,
@@ -345,59 +341,11 @@ pub struct OpenPatch {
 impl OpenPatch {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub fn set_local_mcp(&mut self, server: Result<openpatch::local_mcp::LocalServer, String>) {
-        match server {
-            Ok(server) => {
-                let cli = std::env::current_exe()
-                    .ok()
-                    .and_then(|path| path.parent().map(|parent| parent.join("openpatch")))
-                    .filter(|path| path.is_file());
-                let executable = cli
-                    .map(|path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''")))
-                    .unwrap_or_else(|| "openpatch".into());
-                self.local_mcp_command =
-                    format!("{executable} attach --session {}", server.session_id());
-                self.local_mcp = Some(server);
-            }
-            Err(error) => self.local_mcp_error = Some(error),
-        }
+        self.mcp_session.set_server(server);
     }
 
-    fn mcp_status(&self, ui: &mut egui::Ui) {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if let Some(server) = &self.local_mcp {
-            let clients = server.client_count();
-            let label = if clients == 0 {
-                "MCP ready".to_owned()
-            } else {
-                format!("MCP · {clients} attached")
-            };
-            let command = &self.local_mcp_command;
-            if ui
-                .small_button(RichText::new(label).color(ACCENT).size(10.0))
-                .on_hover_text(format!(
-                    "Connect an MCP client to this rack. Click to copy:\n{command}\nPlayback stays under your control.{}",
-                    if self.mcp { "\nA stdio connection is also enabled." } else { "" }
-                ))
-                .clicked()
-            {
-                ui.ctx().copy_text(command.clone());
-            }
-            return;
-        }
-        if self.mcp {
-            ui.label(RichText::new("MCP stdio").color(ACCENT).size(10.0))
-                .on_hover_text(
-                    "The client that launched this window controls its live patch over stdio.",
-                );
-        }
-        if let Some(error) = &self.local_mcp_error {
-            ui.label(
-                RichText::new("MCP attach unavailable")
-                    .color(ACCENT)
-                    .size(10.0),
-            )
-            .on_hover_text(error);
-        }
+    fn mcp_status(&mut self, ui: &mut egui::Ui) {
+        self.mcp_session.status(ui);
     }
 
     pub fn new(
@@ -523,13 +471,9 @@ impl OpenPatch {
             template_save: None,
             catalog: catalog(),
             start: Instant::now(),
-            mcp,
+            mcp_session: crate::mcp_session_ui::Panel::new(mcp),
             construction: crate::construction_ui::Panel::default(),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            local_mcp: None,
-            local_mcp_error: None,
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            local_mcp_command: String::new(),
+            smoke_motion_origin: None,
             documents,
             projects: startup.store,
             active_file: startup.active_file,
@@ -727,6 +671,7 @@ impl OpenPatch {
             && self.template_save.is_none()
             && self.file_mode.is_none()
             && !self.shader_open
+            && !self.mcp_session.is_open()
             && !self.settings_open
             && !self.audio_performance_open
             && !self.recovery_open
@@ -1038,6 +983,34 @@ impl OpenPatch {
             let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
+            if let Some(now) = self.smoke_motion_origin {
+                // The smoke fixture captures controlled presentation phases of
+                // a real commit. Normalize only its cloned presentation age;
+                // scheduler delays must not erase the phase being inspected.
+                // The authoritative host receipt and production clock are untouched.
+                let mut presentation = construction.clone();
+                if presentation["last_commit"].is_object() {
+                    presentation["last_commit"]["age_ms"] = json!(0);
+                }
+                self.rack.observe_construction_transition_at(
+                    &self.patch,
+                    s.patch(),
+                    self.revision,
+                    s.revision(),
+                    &presentation,
+                    self.construction.motion_mode(),
+                    now,
+                );
+            } else {
+                self.rack.observe_construction_transition_with_mode(
+                    &self.patch,
+                    s.patch(),
+                    self.revision,
+                    s.revision(),
+                    &construction,
+                    self.construction.motion_mode(),
+                );
+            }
             if s.revision() != self.revision {
                 // Preview positions never belong to the outgoing history state.
                 // Cancel even when a grouped edit retains the same state ID.
@@ -1052,14 +1025,7 @@ impl OpenPatch {
                 }
                 let retained: BTreeSet<_> = s.history_state_ids().collect();
                 self.history_layouts.retain(|id, _| retained.contains(id));
-                self.rack.observe_construction_transition(
-                    &self.patch,
-                    s.patch(),
-                    self.revision,
-                    s.revision(),
-                    &construction,
-                    self.construction.animate_cables(),
-                );
+
                 self.patch = s.patch().clone();
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
@@ -2492,6 +2458,7 @@ impl OpenPatch {
                         // Allocate fixed controls from the right, then give the title
                         // the remaining width. Long project names cannot hide transport.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            self.mcp_session.toolbar(ui, &self.shared, Path::new(&self.workspace));
                             if icon_button(
                                 ui,
                                 Icon::Settings,
@@ -2777,6 +2744,7 @@ impl OpenPatch {
                 && !self.settings_open
                 && !self.audio_performance_open
                 && !self.shader_open
+                && !self.mcp_session.is_open()
                 && self.preset_dialog.is_none()
                 && self.template_save.is_none(),
         );
@@ -2794,6 +2762,7 @@ impl OpenPatch {
                     && self.preset_dialog.is_none()
                     && self.template_save.is_none()
                     && !self.audio_performance_open
+                    && !self.mcp_session.is_open()
                     && !self.allow_close;
                 let canvas = ui.available_rect_before_wrap();
                 ui.add_enabled_ui(interactive && drag.is_none(), |ui| {
@@ -2897,6 +2866,7 @@ impl OpenPatch {
             && !self.settings_open
             && !self.audio_performance_open
             && !self.shader_open
+            && !self.mcp_session.is_open()
             && !self.allow_close
     }
 
@@ -3447,6 +3417,61 @@ impl OpenPatch {
             .expect("Rack Scope snapshot")
             .clone();
         (patch, snapshot)
+    }
+
+    /// A real single-step commit gives deterministic presentation phases even
+    /// if the observing thread is descheduled. Progressive worker sequencing is
+    /// covered separately by the host's controlled-worker integration tests.
+    fn prepare_motion_fixture(&mut self, origin: Instant) -> Vec<Value> {
+        assert!(self.command(
+            "replace_patch",
+            json!({"patch":{"version":2,"nodes":[
+                {"id":"voice","kind":"multi_vco","params":{"frequency":110}},
+                {"id":"filter","kind":"ladder_vcf","params":{"cutoff":800}}
+            ]}})
+        ));
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[100,64],"positions":{
+                "voice":[0,0],"filter":[330,0],"out":[570,0]
+            }}))
+            .unwrap();
+        self.smoke_motion_origin = Some(origin);
+        self.rack.set_construction_clock_override(Some(origin));
+        let before = self.revision;
+        execute_shared(&self.shared, "start_construction", json!({
+            "title":"Shape an analog voice","expected_revision":before,"interval_ms":100,
+            "steps":[{"label":"Connect and shape the voice","edits":[
+                {"tool":"add_module","arguments":{"id":"out","kind":"audio_out"}},
+                {"tool":"connect","arguments":{"from":"voice","output":"saw","to":"filter","input":"signal","cable_id":"motion-tone"}},
+                {"tool":"connect","arguments":{"from":"filter","to":"out","input":"signal","cable_id":"motion-output"}},
+                {"tool":"set_parameter","arguments":{"id":"voice","parameter":"frequency","value":220}},
+                {"tool":"set_parameter","arguments":{"id":"filter","parameter":"cutoff","value":2400}},
+                {"tool":"set_output","arguments":{"id":"out"}}
+            ]}]
+        })).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let state = loop {
+            let state = self.shared.lock().unwrap().construction_snapshot();
+            if state["status"] == "completed" {
+                break state;
+            }
+            assert_eq!(state["status"], "running", "{state}");
+            assert!(Instant::now() < deadline, "Motion fixture did not complete");
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(state["completed_steps"], 1);
+        assert_eq!(state["last_commit"]["before_revision"], before);
+        while self.revision < state["last_commit"]["revision"].as_u64().unwrap() {
+            self.sync();
+            assert!(
+                Instant::now() < deadline,
+                "Fixture could not observe commit"
+            );
+            std::thread::yield_now();
+        }
+        assert_eq!(state["last_commit"]["revision"], self.revision);
+        vec![state["last_commit"].clone()]
     }
 
     fn smoke(&mut self, ctx: &egui::Context) {
@@ -4258,6 +4283,37 @@ impl OpenPatch {
             self.status =
                 "Offline DSP capture · rows 1 / 3 / 5 play a three-voice pentatonic canon".into();
         }
+        if frame == 906 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            self.prepare_motion_fixture(Instant::now());
+            self.title = "A voice taking shape".into();
+            self.status =
+                "Motion study · one real construction commit · controlled presentation clock"
+                    .into();
+        }
+        if matches!(frame, 912 | 934 | 956 | 978) {
+            let millis = match frame {
+                912 => 80,
+                934 => 180,
+                956 => 340,
+                _ => 450,
+            };
+            self.rack.set_construction_clock_override(Some(
+                self.smoke_motion_origin.unwrap() + Duration::from_millis(millis),
+            ));
+        }
+        if frame == 1000 {
+            self.mcp_session.open();
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            self.mcp_session
+                .set_server(openpatch::local_mcp::LocalServer::start(
+                    self.shared.clone(),
+                    Path::new(&self.workspace),
+                ));
+            self.status =
+                "Real local MCP bridge · ready for a client · playback remains paused".into();
+        }
         if frame == 622 {
             assert!(
                 egui::Popup::is_any_open(ctx),
@@ -4311,6 +4367,11 @@ impl OpenPatch {
                 | 844
                 | 872
                 | 900
+                | 928
+                | 950
+                | 972
+                | 994
+                | 1022
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4374,7 +4435,12 @@ impl OpenPatch {
                 42 => path.with_file_name("rack-modal-resonator.png"),
                 43 => path.with_file_name("rack-colored-noise.png"),
                 44 => path.with_file_name("rack-random-values.png"),
-                _ => path.with_file_name("rack-shift-register.png"),
+                45 => path.with_file_name("rack-shift-register.png"),
+                46 => path.with_file_name("construction-motion-080.png"),
+                47 => path.with_file_name("construction-motion-180.png"),
+                48 => path.with_file_name("construction-motion-340.png"),
+                49 => path.with_file_name("construction-motion-settled.png"),
+                _ => path.with_file_name("mcp-session.png"),
             };
             image::save_buffer(
                 &target,
@@ -4385,18 +4451,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/46 at frame {frame}: {}",
+                "Native smoke: capture {}/51 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 46 {
+            if captures == 51 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 934, "Native screenshot timeout");
+        assert!(frame < 1056, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4446,9 +4512,8 @@ impl eframe::App for OpenPatch {
             };
             self.sync();
         }
-        if !self.construction.animate_cables() {
-            self.rack.clear_construction_animation();
-        }
+        self.rack
+            .set_construction_motion_mode(self.construction.motion_mode());
         self.footer(ctx);
         let library_action = self.browser(ctx);
         self.global_shortcuts(ctx);
@@ -4518,6 +4583,8 @@ impl eframe::App for OpenPatch {
             self.rack.set_scope_states(scopes);
         }
         self.rack_workspace(ctx, library_action);
+        self.mcp_session
+            .show(ctx, &self.shared, Path::new(&self.workspace));
         self.observe_document();
         self.files_window(ctx);
         self.preset_window(ctx);
@@ -4569,8 +4636,7 @@ impl eframe::App for OpenPatch {
         }
     }
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        drop(self.local_mcp.take());
+        self.mcp_session.shutdown();
         if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
             v.destroy(gl);
         }
@@ -4642,13 +4708,9 @@ mod project_workflow_tests {
             template_save: None,
             catalog: catalog(),
             start: Instant::now(),
-            mcp: true,
+            mcp_session: crate::mcp_session_ui::Panel::new(true),
             construction: crate::construction_ui::Panel::default(),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            local_mcp: None,
-            local_mcp_error: None,
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            local_mcp_command: String::new(),
+            smoke_motion_origin: None,
             documents,
             projects: Some(store),
             active_file: None,
@@ -8131,6 +8193,104 @@ mod project_workflow_tests {
     }
 
     #[test]
+    fn actual_construction_receipts_drive_cues_without_changing_final_history_or_view() {
+        use crate::construction_motion::MotionMode;
+        let mut results = Vec::new();
+        for mode in [MotionMode::Full, MotionMode::Off] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            app.construction.set_motion_mode(mode);
+            let origin = Instant::now();
+            let receipts = app.prepare_motion_fixture(origin);
+            for (index, receipt) in receipts.iter().enumerate() {
+                assert_eq!(receipt["step_index"], index);
+                assert_eq!(
+                    receipt["revision"].as_u64().unwrap(),
+                    receipt["before_revision"].as_u64().unwrap() + 1
+                );
+            }
+            let mid = origin + Duration::from_millis(180);
+            assert_eq!(
+                app.rack.construction_effect_counts_at(mid),
+                if mode == MotionMode::Full {
+                    (1, 2, 2)
+                } else {
+                    (0, 0, 0)
+                }
+            );
+            let snapshot = app.shared.lock().unwrap().snapshot();
+            let layout = app.rack.layout();
+            assert_eq!(
+                app.rack
+                    .construction_effect_counts_at(origin + Duration::from_millis(450)),
+                (0, 0, 0)
+            );
+            app.sync();
+            assert_eq!(app.shared.lock().unwrap().snapshot(), snapshot);
+            assert_eq!(app.rack.layout(), layout);
+            results.push((snapshot, layout));
+        }
+        assert_eq!(results[0], results[1]);
+    }
+
+    #[test]
+    fn a_new_construction_plan_clears_prior_motion_before_any_new_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let origin = Instant::now();
+        app.prepare_motion_fixture(origin);
+        assert_eq!(app.rack.construction_effect_counts_at(origin), (1, 2, 2));
+        let revision = app.revision;
+        let plan = execute_shared(&app.shared, "start_construction", json!({"expected_revision":revision,"interval_ms":2000,
+            "steps":[{"label":"A new plan","edits":[{"tool":"set_parameter","arguments":{"id":"voice","parameter":"frequency","value":330}}]}]})).unwrap();
+        app.sync();
+        assert_eq!(app.revision, revision);
+        assert_eq!(app.rack.construction_effect_counts_at(origin), (0, 0, 0));
+        execute_shared(
+            &app.shared,
+            "cancel_construction",
+            json!({"plan_id":plan["plan_id"]}),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn mcp_connection_window_owns_shortcuts_and_blocks_rack_gestures() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.mcp_session.open();
+        assert!(!app.library_enabled());
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let ctx = egui::Context::default();
+        let _ = ctx.run(
+            egui::RawInput {
+                focused: true,
+                modifiers: egui::Modifiers::COMMAND,
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(940.0, 680.0),
+                )),
+                events: vec![performance_key(
+                    egui::Key::Z,
+                    true,
+                    egui::Modifiers::COMMAND,
+                )],
+                ..Default::default()
+            },
+            |ctx| {
+                app.global_shortcuts(ctx);
+                assert!(!app.performance_keyboard_enabled(ctx, true));
+                app.rack_workspace(ctx, None);
+                app.mcp_session
+                    .show(ctx, &app.shared, Path::new(&app.workspace));
+            },
+        );
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        assert_eq!(app.rack.layout(), layout);
+    }
+
+    #[test]
     fn human_receipt_installation_clears_construction_reveals_even_without_sync_revision_change() {
         for action in ["add", "duplicate", "move", "replace"] {
             let dir = tempfile::tempdir().unwrap();
@@ -8144,7 +8304,11 @@ mod project_workflow_tests {
                 &app.patch,
                 app.revision - 1,
                 app.revision,
-                &json!({"last_revision":app.revision}),
+                &json!({"plan_id":1,"completed_steps":1,"last_revision":app.revision,"current_revision":app.revision,
+                    "last_commit":{"plan_id":1,"step_index":0,"before_revision":app.revision-1,
+                        "revision":app.revision,"label":"Connect signal","age_ms":0,"invalidate_existing_cables":false, "new_modules":[],
+                        "new_cables":[{"id":cable.id,"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input}],
+                        "parameter_changes":[]}}),
                 true,
             );
             assert!(

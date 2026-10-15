@@ -174,10 +174,28 @@ pub type Application = Session;
 /// offline rendering, benchmarks, or file I/O. Those operations use a coherent
 /// snapshot; graph edits remain serialized by the live session mutex.
 pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Result<Value, String> {
+    execute_shared_authorized(session, name, args, None)
+}
+
+/// Local transports carry a revocable authorization. Check it while holding
+/// the same lock as edits, so bridge Stop can revoke queued requests atomically
+/// with pausing construction. Stdio and native controls have no bridge token.
+pub(crate) fn execute_shared_authorized(
+    session: &SharedSession,
+    name: &str,
+    args: Value,
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Value, String> {
     if name == "start_construction" {
-        return construction::start(session, args);
+        return construction::start(session, args, authorization);
     }
+    #[cfg(test)]
+    transport_authorization_tests::pause_if_requested(
+        session,
+        transport_authorization_tests::Boundary::Dispatch,
+    );
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+    check_transport_authorization(authorization)?;
     match name {
         "export_visualizer"
         | "save_patch"
@@ -196,6 +214,18 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
         _ => live.execute(name, args),
     }
 }
+
+fn check_transport_authorization(
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<(), String> {
+    if authorization.is_some_and(|active| !active.load(std::sync::atomic::Ordering::Acquire)) {
+        return Err("local MCP bridge stopped; reconnect to a running bridge".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod transport_authorization_tests;
 
 fn string<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
     args.get(name)
@@ -1639,7 +1669,7 @@ pub fn tools() -> Value {
     let plan_id = json!({"type":"integer","minimum":1});
     json!([
         tool("start_construction","Preflight every intermediate graph on an isolated snapshot, then progressively apply a reviewed plan to this session. Accepts 1..64 labelled steps, 1..8 graph edits per step, at most 256 edits total; labels/title are bounded to 160/128 UTF-8 bytes. Each step commits one revision and ordinary undo entry after its interval. External edits, undo, redo, or layout checkpoints stop the plan as conflicted; the plan never rebases. A client disconnect does not cancel it.",json!({"expected_revision":rev,"title":{"type":"string","maxLength":128},"steps":construction_steps,"interval_ms":{"type":"integer","minimum":100,"maximum":2000,"default":500}}),&["expected_revision","steps"],false),
-        tool("inspect_construction","Read the latest construction plan and current revision, or idle when no plan exists. Optional plan_id must identify the latest retained plan.",json!({"plan_id":plan_id}),&[],true),
+        tool("inspect_construction","Read the latest construction plan and current revision, or idle when no plan exists. Optional plan_id must identify the latest retained plan. Additive last_commit reports the latest successful step's exact plan/zero-based step/revisions/label and up to 128 total new_modules, new_cables, and visible effective parameter_changes. Module replacements are arrivals; cables require an ID absent before the step. Equal or hidden values and parameters on arrivals are excluded. The receipt survives pause, cancellation, and completion; a new plan clears it.",json!({"plan_id":plan_id}),&[],true),
         tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),

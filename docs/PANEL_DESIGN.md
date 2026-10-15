@@ -45,7 +45,7 @@ and presentation state; a catalog change replaces it. No thumbnail image
 assets or separately maintained miniature control layouts are used.
 
 The shared-renderer regressions compare primitive geometry and drawing for all
-45 built-in kinds at default settings at 42%, 85%, and 100% scale, including
+57 built-in kinds at default settings at 42%, 85%, and 100% scale, including
 real rack instance IDs. Interaction tests cover full-width and narrow cards, preview input
 isolation and card click/drag behavior over specialized controls. Native Linux
 CI captures qualify the appearance; macOS device playback is not part of these

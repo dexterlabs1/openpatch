@@ -220,33 +220,21 @@ fn idle_session_snapshot_draws_no_panel_and_emits_no_patch_work() {
 }
 
 #[test]
-fn animate_cables_pointer_toggle_is_local_and_survives_plan_observation_and_dismissal() {
+fn motion_mode_controls_are_local_and_survive_plan_observation_and_dismissal() {
+    use crate::construction_motion::MotionMode;
     let mut host = Host::new(snapshot("running", 211));
-    assert!(host.panel.animate_cables(), "animation defaults on");
-    assert!(host.click("Animate cables").is_none());
-    assert!(!host.panel.animate_cables());
-
+    assert_eq!(host.panel.motion_mode(), MotionMode::Full);
+    for (label, mode) in [("Reduced", MotionMode::Reduced), ("Off", MotionMode::Off)] {
+        assert!(host.click(label).is_none());
+        assert_eq!(host.panel.motion_mode(), mode);
+    }
     host.panel.observe(snapshot("paused", 211));
-    assert!(!host.panel.animate_cables());
-    assert!(host.frame(vec![]).0.is_none());
-
+    assert_eq!(host.panel.motion_mode(), MotionMode::Off);
     host.panel.observe(snapshot("completed", 211));
     assert!(host.click("Dismiss").is_none());
-    assert!(!host.panel.animate_cables());
-    host.panel.observe(snapshot("completed", 211));
-    let (action, dismissed) = host.frame(vec![]);
-    assert!(action.is_none());
-    assert!(text_rect(&dismissed, "Animate cables").is_none());
-    assert!(!host.panel.animate_cables());
-
+    assert!(host.frame(vec![]).1.shapes.is_empty());
     host.panel.observe(snapshot("running", 212));
-    assert!(
-        !host.panel.animate_cables(),
-        "a new plan keeps the window preference"
-    );
-    assert!(host.click("Animate cables").is_none());
-    assert!(host.panel.animate_cables());
-    host.panel.observe(snapshot("paused", 212));
-    assert!(host.panel.animate_cables());
-    assert!(host.frame(vec![]).0.is_none());
+    assert_eq!(host.panel.motion_mode(), MotionMode::Off);
+    assert!(host.click("Full").is_none());
+    assert_eq!(host.panel.motion_mode(), MotionMode::Full);
 }

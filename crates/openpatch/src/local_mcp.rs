@@ -10,6 +10,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -131,6 +132,7 @@ struct Connections {
 pub struct LocalServer {
     id: String,
     connections: Arc<Mutex<Connections>>,
+    authorization: Arc<AtomicBool>,
     _files: InstanceFiles,
 }
 
@@ -192,6 +194,8 @@ impl LocalServer {
 
         let connections = Arc::new(Mutex::new(Connections::default()));
         let state = connections.clone();
+        let authorization = Arc::new(AtomicBool::new(true));
+        let listener_authorization = authorization.clone();
         thread::Builder::new()
             .name("openpatch-mcp-listener".into())
             .spawn(move || {
@@ -221,6 +225,7 @@ impl LocalServer {
                             };
                             let worker_state = state.clone();
                             let worker_session = session.clone();
+                            let worker_authorization = listener_authorization.clone();
                             if thread::Builder::new()
                                 .name("openpatch-mcp-client".into())
                                 .spawn(move || {
@@ -236,7 +241,11 @@ impl LocalServer {
                                         }
                                     }
                                     let _guard = ClientGuard(worker_state, client_id);
-                                    let _ = crate::mcp::run_socket(stream, worker_session);
+                                    let _ = crate::mcp::run_socket_authorized(
+                                        stream,
+                                        worker_session,
+                                        Some(worker_authorization),
+                                    );
                                 })
                                 .is_err()
                             {
@@ -272,6 +281,7 @@ impl LocalServer {
         Ok(Self {
             id,
             connections,
+            authorization,
             _files: files,
         })
     }
@@ -291,6 +301,9 @@ impl LocalServer {
 
 impl Drop for LocalServer {
     fn drop(&mut self) {
+        // Desktop Stop holds the session lock here: queued dispatch and final
+        // construction registration must recheck this token under that lock.
+        self.authorization.store(false, Ordering::Release);
         let mut clients = self.connections.lock().unwrap_or_else(|e| e.into_inner());
         clients.stopping = true;
         for stream in clients.streams.values() {
@@ -690,6 +703,85 @@ mod tests {
         assert!(private_dir(&link, true).is_err());
         fs::remove_file(link).unwrap();
         fs::remove_dir(path).unwrap();
+    }
+
+    #[test]
+    fn stopped_bridge_rejects_parsed_edits_and_inflight_construction_preflight() {
+        use crate::control::execute_shared;
+        use crate::control::transport_authorization_tests::{
+            construction_request, Boundary, Pause,
+        };
+        let _serial = REGISTRY_TEST.lock().unwrap();
+        let _jobs = crate::mcp::SOCKET_JOB_TEST_LOCK.lock().unwrap();
+        for boundary in [Boundary::Dispatch, Boundary::ConstructionRegistration] {
+            let workspace = temporary();
+            let session = Application::new(&workspace).unwrap().into_shared();
+            let server = LocalServer::start(session.clone(), &workspace).unwrap();
+            let authorization = server.authorization.clone();
+            let mut stream = connect(Some(server.session_id()), None).unwrap();
+            initialize(&mut stream);
+            writeln!(
+                stream,
+                "{}",
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+            )
+            .unwrap();
+            let mut pause = Pause::install(&session, boundary);
+            let (name, arguments) = if boundary == Boundary::Dispatch {
+                ("add_module", json!({"id":"late","kind":"constant"}))
+            } else {
+                ("start_construction", construction_request(0))
+            };
+            writeln!(stream, "{}", json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();
+            pause.wait();
+            // This is the native Stop boundary: serialize with edits, pause
+            // any registered plan, then drop the real server under that lock.
+            let live = session.lock().unwrap();
+            assert_eq!(live.construction_snapshot()["status"], "idle");
+            let before = live.snapshot();
+            drop(server);
+            assert!(!authorization.load(Ordering::Acquire));
+            pause.release();
+            drop(live);
+            // Both listener and parsed-request worker must finish before the
+            // assertion; checking only the immediate graph could miss a late edit.
+            eventually(|| Arc::strong_count(&authorization) == 1);
+            assert_disconnected(&mut stream);
+            let live = session.lock().unwrap();
+            assert_eq!(live.snapshot(), before);
+            assert_eq!(live.construction_snapshot()["status"], "idle");
+            drop(live);
+            // A fresh local generation and independent stdio remain usable.
+            let restarted = LocalServer::start(session.clone(), &workspace).unwrap();
+            assert!(restarted.authorization.load(Ordering::Acquire));
+            let mut fresh = connect(Some(restarted.session_id()), None).unwrap();
+            initialize(&mut fresh);
+            writeln!(
+                fresh,
+                "{}",
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+            )
+            .unwrap();
+            writeln!(fresh, "{}", json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_module","arguments":{"id":"fresh","kind":"constant"}}})).unwrap();
+            let mut response = String::new();
+            std::io::BufRead::read_line(
+                &mut io::BufReader::new(fresh.try_clone().unwrap()),
+                &mut response,
+            )
+            .unwrap();
+            let response: Value = serde_json::from_str(&response).unwrap();
+            assert_eq!(response["result"]["isError"], false);
+            assert_eq!(session.lock().unwrap().revision(), 1);
+            execute_shared(
+                &session,
+                "add_module",
+                json!({"id":"stdio","kind":"constant"}),
+            )
+            .unwrap();
+            assert_eq!(session.lock().unwrap().revision(), 2);
+            drop(restarted);
+            fs::remove_dir(workspace).unwrap();
+        }
     }
 
     #[test]

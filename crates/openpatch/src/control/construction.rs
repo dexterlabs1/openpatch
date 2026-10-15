@@ -6,6 +6,187 @@ use std::time::Duration;
 
 const MAX_STEPS: usize = 64;
 const MAX_STEP_EDITS: usize = 8;
+const MAX_RECEIPT_TARGETS: usize = 128;
+
+/// Presentation evidence for one actual committed transaction, never a plan's
+/// predicted edits. Values remain typed until the additive JSON snapshot edge.
+#[derive(Clone, Debug)]
+struct CommitReceipt {
+    plan_id: u64,
+    step_index: usize,
+    before_revision: u64,
+    revision: u64,
+    committed_at: Instant,
+    invalidate_existing_cables: bool,
+    label: String,
+    new_modules: Vec<ModuleArrival>,
+    new_cables: Vec<CableArrival>,
+    parameter_changes: Vec<ParameterChange>,
+}
+
+#[derive(Clone, Debug)]
+struct ModuleArrival {
+    id: String,
+    kind: String,
+}
+
+#[derive(Clone, Debug)]
+struct CableArrival {
+    id: String,
+    from: String,
+    output: String,
+    to: String,
+    input: String,
+}
+
+#[derive(Clone, Debug)]
+struct ParameterChange {
+    id: String,
+    kind: String,
+    parameter: String,
+    old_effective: f32,
+    new_effective: f32,
+}
+
+impl CommitReceipt {
+    fn from_commit(
+        plan: &Plan,
+        revision: u64,
+        before: &Patch,
+        after: &Patch,
+        history: &HistoryEntry,
+    ) -> Self {
+        let mut receipt = Self {
+            plan_id: plan.id,
+            step_index: plan.completed,
+            before_revision: plan.expected_revision,
+            revision,
+            committed_at: Instant::now(),
+            // Endpoint moves also retire cable state. Clearing old decorative
+            // cues conservatively avoids transferring them to a new lifecycle.
+            invalidate_existing_cables: !history.retired_cables.is_empty(),
+            label: plan.steps[plan.completed].label.clone(),
+            new_modules: Vec::new(),
+            new_cables: Vec::new(),
+            parameter_changes: Vec::new(),
+        };
+        let before_nodes: BTreeMap<_, _> =
+            before.nodes.iter().map(|node| (&node.id, node)).collect();
+        let retired: BTreeSet<_> = history.retired_modules.iter().collect();
+        // Count all arrivals, including those outside the presentation budget,
+        // so an overflow arrival can never become a continuous parameter cue.
+        let arrivals: BTreeSet<_> = after
+            .nodes
+            .iter()
+            .filter(|node| {
+                retired.contains(&node.id)
+                    || before_nodes
+                        .get(&node.id)
+                        .is_none_or(|old| old.kind != node.kind)
+            })
+            .map(|node| &node.id)
+            .collect();
+        let mut remaining = MAX_RECEIPT_TARGETS;
+        for node in &after.nodes {
+            if remaining == 0 {
+                break;
+            }
+            if arrivals.contains(&node.id) {
+                receipt.new_modules.push(ModuleArrival {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                });
+                remaining -= 1;
+            }
+        }
+        let before_cables: BTreeSet<_> = before
+            .cables
+            .iter()
+            .filter_map(|cable| cable.id.as_ref())
+            .collect();
+        for cable in &after.cables {
+            if remaining == 0 {
+                break;
+            }
+            let Some(id) = &cable.id else { continue };
+            // Retirement also includes endpoint moves. Keep cable arrivals to
+            // IDs absent before the step; reused/rerouted IDs display normally.
+            if !before_cables.contains(id) {
+                receipt.new_cables.push(CableArrival {
+                    id: id.clone(),
+                    from: cable.from.clone(),
+                    output: cable.output.clone(),
+                    to: cable.to.clone(),
+                    input: cable.input.clone(),
+                });
+                remaining -= 1;
+            }
+        }
+        if remaining == 0 {
+            return receipt;
+        }
+        let catalog = catalog();
+        let descriptors: BTreeMap<_, _> = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|module| Some((module["kind"].as_str()?, module["params"].as_object()?)))
+            .collect();
+        // Module ID then catalog parameter key order is deterministic regardless
+        // of the order, number or spelling of individual edits in the step.
+        let nodes: BTreeMap<_, _> = after.nodes.iter().map(|node| (&node.id, node)).collect();
+        for (id, node) in nodes {
+            if arrivals.contains(id) {
+                continue;
+            }
+            let Some(old) = before_nodes.get(id) else {
+                continue;
+            };
+            let Some(params) = descriptors.get(node.kind.as_str()) else {
+                continue;
+            };
+            for (parameter, descriptor) in *params {
+                if remaining == 0 {
+                    return receipt;
+                }
+                if descriptor["hidden"] == true {
+                    continue;
+                }
+                let Some(default) = descriptor["default"].as_f64().map(|value| value as f32) else {
+                    continue;
+                };
+                let old_effective = old.params.get(parameter).copied().unwrap_or(default);
+                let new_effective = node.params.get(parameter).copied().unwrap_or(default);
+                if old_effective != new_effective {
+                    receipt.parameter_changes.push(ParameterChange {
+                        id: id.clone(),
+                        kind: node.kind.clone(),
+                        parameter: parameter.clone(),
+                        old_effective,
+                        new_effective,
+                    });
+                    remaining -= 1;
+                }
+            }
+        }
+        receipt
+    }
+
+    fn to_json(&self) -> Value {
+        self.to_json_at(Instant::now())
+    }
+
+    fn to_json_at(&self, now: Instant) -> Value {
+        let age_ms = u64::try_from(now.saturating_duration_since(self.committed_at).as_millis())
+            .unwrap_or(u64::MAX);
+        json!({"plan_id":self.plan_id,"step_index":self.step_index,
+            "before_revision":self.before_revision,"revision":self.revision,"label":self.label,
+            "age_ms":age_ms,"invalidate_existing_cables":self.invalidate_existing_cables,
+            "new_modules":self.new_modules.iter().map(|module| json!({"id":module.id,"kind":module.kind})).collect::<Vec<_>>(),
+            "new_cables":self.new_cables.iter().map(|cable| json!({"id":cable.id,"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input})).collect::<Vec<_>>(),
+            "parameter_changes":self.parameter_changes.iter().map(|change| json!({"id":change.id,"kind":change.kind,"parameter":change.parameter,"old_effective":change.old_effective,"new_effective":change.new_effective})).collect::<Vec<_>>()})
+    }
+}
 
 #[derive(Default)]
 pub(super) struct Construction {
@@ -54,6 +235,7 @@ struct Plan {
     expected_revision: u64,
     last_revision: Option<u64>,
     last_label: Option<String>,
+    last_commit: Option<CommitReceipt>,
     error: Option<String>,
     interval_ms: u64,
     next_due: Instant,
@@ -122,7 +304,7 @@ impl Session {
     /// Cheap progress metadata only; never serialize the patch or consult audio.
     pub fn construction_snapshot(&self) -> Value {
         let Some(plan) = &self.construction.plan else {
-            return json!({"status":"idle","current_revision":self.revision});
+            return json!({"status":"idle","current_revision":self.revision,"last_commit":null});
         };
         // Report a conflict immediately, even before the woken worker has been
         // scheduled to record that terminal transition.
@@ -138,7 +320,8 @@ impl Session {
             "completed_steps":plan.completed,"total_steps":plan.steps.len(),
             "expected_revision":plan.expected_revision,"base_revision":plan.base_revision,
             "current_revision":self.revision,"last_revision":plan.last_revision,
-            "last_label":plan.last_label,"next_label":plan.steps.get(plan.completed).map(|step| &step.label),
+            "last_label":plan.last_label,"last_commit":plan.last_commit.as_ref().map(CommitReceipt::to_json),
+            "next_label":plan.steps.get(plan.completed).map(|step| &step.label),
             "error":error,"interval_ms":plan.interval_ms})
     }
 
@@ -229,7 +412,11 @@ impl Session {
     }
 }
 
-pub(super) fn start(session: &SharedSession, args: Value) -> Result<Value, String> {
+pub(super) fn start(
+    session: &SharedSession,
+    args: Value,
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Value, String> {
     validate_arguments(&tools(), "start_construction", &args)?;
     let base_revision =
         expected_revision(&args)?.ok_or("expected_revision is required to start construction")?;
@@ -281,6 +468,7 @@ pub(super) fn start(session: &SharedSession, args: Value) -> Result<Value, Strin
     }
     let mut detached = {
         let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+        check_transport_authorization(authorization)?;
         live.check_open()?;
         live.check_revision(Some(base_revision))?;
         let (revision, closing) = (live.revision, live.closing);
@@ -301,7 +489,13 @@ pub(super) fn start(session: &SharedSession, args: Value) -> Result<Value, Strin
                 format!("construction step {} ({}): {error}", index + 1, step.label)
             })?;
     }
+    #[cfg(test)]
+    transport_authorization_tests::pause_if_requested(
+        session,
+        transport_authorization_tests::Boundary::ConstructionRegistration,
+    );
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+    check_transport_authorization(authorization)?;
     live.check_open()?;
     live.check_revision(Some(base_revision))?;
     let (revision, closing) = (live.revision, live.closing);
@@ -333,6 +527,7 @@ pub(super) fn start(session: &SharedSession, args: Value) -> Result<Value, Strin
         expected_revision: base_revision,
         last_revision: None,
         last_label: None,
+        last_commit: None,
         error: None,
         interval_ms,
         next_due: Instant::now() + Duration::from_millis(interval_ms),
@@ -369,11 +564,26 @@ fn worker(session: Weak<Mutex<Session>>, id: u64, wake: Arc<Wake>) {
                 let edits = plan.steps[plan.completed].edits.clone();
                 let label = plan.steps[plan.completed].label.clone();
                 let expected = plan.expected_revision;
+                let before = live.patch.clone();
                 let result = live.execute(
                     "apply_edits",
                     json!({"edits":edits,"expected_revision":expected}),
                 );
                 let revision = live.revision;
+                // apply_edits always commits one ordinary, ungrouped history
+                // entry. Its retirement metadata describes actual edit effects,
+                // including same-ID module replacement within this step.
+                let receipt = result.as_ref().ok().map(|_| {
+                    CommitReceipt::from_commit(
+                        live.construction.plan.as_ref().unwrap(),
+                        revision,
+                        &before,
+                        &live.patch,
+                        live.undo
+                            .back()
+                            .expect("successful construction has history"),
+                    )
+                });
                 let plan = live.construction.plan.as_mut().unwrap();
                 match result {
                     Ok(_) => {
@@ -381,6 +591,7 @@ fn worker(session: Weak<Mutex<Session>>, id: u64, wake: Arc<Wake>) {
                         plan.expected_revision = revision;
                         plan.last_revision = Some(revision);
                         plan.last_label = Some(label);
+                        plan.last_commit = receipt;
                         if plan.completed == plan.steps.len() {
                             plan.status = Status::Completed;
                         } else {
@@ -424,12 +635,16 @@ fn worker(session: Weak<Mutex<Session>>, id: u64, wake: Arc<Wake>) {
 }
 
 #[cfg(test)]
+#[path = "construction_receipt_tests.rs"]
+mod receipt_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Barrier;
 
-    fn shared() -> SharedSession {
+    pub(super) fn shared() -> SharedSession {
         Session::new(&std::env::temp_dir()).unwrap().into_shared()
     }
 
@@ -451,11 +666,11 @@ mod tests {
             "title":"Reviewed test patch","steps":[initial_step(),parameter_step(1),parameter_step(2)]})
     }
 
-    fn snapshot(session: &SharedSession) -> Value {
+    pub(super) fn snapshot(session: &SharedSession) -> Value {
         session.lock().unwrap().construction_snapshot()
     }
 
-    fn until(session: &SharedSession, check: impl Fn(&Value) -> bool) -> Value {
+    pub(super) fn until(session: &SharedSession, check: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let value = snapshot(session);
@@ -477,13 +692,21 @@ mod tests {
 
     fn controlled_worker() -> SharedSession {
         let session = shared();
+        controlled_steps(
+            session,
+            vec![initial_step(), parameter_step(1), parameter_step(2)],
+        )
+    }
+
+    pub(super) fn controlled_steps(session: SharedSession, steps: Vec<Value>) -> SharedSession {
         let mut live = session.lock().unwrap();
+        let base_revision = live.revision;
         let wake = Arc::new(Wake::default());
         live.construction.next_id = 1;
         live.construction.plan = Some(Plan {
             id: 1,
             title: "Controlled worker".into(),
-            steps: [initial_step(), parameter_step(1), parameter_step(2)]
+            steps: steps
                 .into_iter()
                 .map(|step| Step {
                     label: step["label"].as_str().unwrap().to_owned(),
@@ -492,10 +715,11 @@ mod tests {
                 .collect(),
             status: Status::Running,
             completed: 0,
-            base_revision: 0,
-            expected_revision: 0,
+            base_revision,
+            expected_revision: base_revision,
             last_revision: None,
             last_label: None,
+            last_commit: None,
             error: None,
             interval_ms: CONTROLLED_INTERVAL_MS,
             next_due: Instant::now() + Duration::from_millis(CONTROLLED_INTERVAL_MS),
@@ -507,7 +731,7 @@ mod tests {
         session
     }
 
-    fn advance_one(session: &SharedSession) -> Value {
+    pub(super) fn advance_one(session: &SharedSession) -> Value {
         let completed = {
             let mut live = session.lock().unwrap();
             let plan = live.construction.plan.as_mut().unwrap();

@@ -66,6 +66,7 @@ fn mcp_construction_survives_transport_eof_and_every_visible_step_is_undoable() 
         ]),
     );
     assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(result["structuredContent"]["last_commit"], Value::Null);
     let id = result["structuredContent"]["plan_id"].as_u64().unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -74,6 +75,22 @@ fn mcp_construction_survives_transport_eof_and_every_visible_step_is_undoable() 
         if state["status"] == "completed" {
             assert_eq!(state["completed_steps"], 4);
             assert_eq!(state["last_revision"], 4);
+            let mut receipt = state["last_commit"].clone();
+            assert!(receipt
+                .as_object_mut()
+                .unwrap()
+                .remove("age_ms")
+                .unwrap()
+                .as_u64()
+                .is_some());
+            assert_eq!(
+                receipt,
+                json!({
+                    "plan_id":id,"step_index":3,"before_revision":3,"revision":4,
+                    "label":"Select output","new_modules":[],"new_cables":[],"parameter_changes":[],
+                    "invalidate_existing_cables":false
+                })
+            );
             break;
         }
         assert_eq!(state["status"], "running", "{state}");
@@ -126,4 +143,5 @@ fn mcp_rejects_an_invalid_intermediate_graph_before_registering_or_editing() {
     assert_eq!(session.lock().unwrap().snapshot(), before);
     let state = execute_shared(&session, "inspect_construction", json!({})).unwrap();
     assert_eq!(state["status"], "idle");
+    assert_eq!(state["last_commit"], Value::Null);
 }
