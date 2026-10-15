@@ -129,7 +129,7 @@ Assignment epochs are per parameter and survive coalesced graph publications:
 an A→B→A edit sequence must retain its final explicit assignment even when the
 callback never observes B. Unrelated edits to another control cannot replace
 that assignment fence or reset the whole module's performance values.
-Effective values also survive Clear, ownership displacement, mapper removal and
+Ordinary parameter values also survive Clear, ownership displacement, mapper removal and
 mapping Undo. Stopping a controller must not restore a stale authored value.
 Keep effective state and assignment epochs for previously controlled parameters
 until an explicit value assignment or destination retirement, or materialize the
@@ -151,7 +151,8 @@ switches in the current catalog must be covered. Text/content fields and
 cable/patch identities are not ordinary numeric controls.
 
 Use a broader `ControlTarget` inventory for source-mappable buttons. Source
-`configButton` quantities are bounded and snapped, even when randomization is
+[`configButton` quantities](https://github.com/VCVRack/Rack/blob/8ea470f343058ade6f75f16d503a1eb330e1700c/include/engine/Module.hpp#L149)
+are bounded and snapped, even when randomization is
 disabled. ADSR PUSH, ten PULSES buttons and SEQ3 Clock/Run/Reset are examples
 that a `Node.params`-only inventory would miss. Require audited adapters for
 these controls, with stable mapping identity, normalized/snap semantics and
@@ -161,6 +162,12 @@ not dispatch a fresh Run/Clock action on every Map tick. Include interactions
 with physical/MCP press and release, clear/remap, bypass and graph adoption;
 declare each control's capture/load policy after source probes. A scalar-setter
 foundation alone does not fulfill the full Map control target.
+The unbind-retains-value rule for ordinary parameters does not silently decide
+transient held-button cleanup. Explicitly probe and choose clear/disconnect
+behavior, shared GUI/MIDI control ownership and stale release fencing; record
+any host release policy that differs from the source. Preserve source smoothing
+and snapping before adapting a button into a level or edge, rather than treating
+every nonzero CC as pressed.
 
 Do not infer mapping eligibility from randomization policy or from the presence
 of numeric bounds alone. The DSP setter must update the actual control and all
