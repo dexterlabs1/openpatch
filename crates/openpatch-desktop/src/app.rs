@@ -5966,6 +5966,7 @@ mod project_workflow_tests {
         assert!(engine.resolve_module_lights("filter").is_err());
         app.rack.set_room_brightness(0.0);
         let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
         let output = ctx.run(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -5979,6 +5980,24 @@ mod project_workflow_tests {
         preset_text(&output, "VCF");
         preset_text(&output, "CUTOFF");
         preset_text(&output, "SCOPE");
+        fn notes_bounds(shape: &egui::Shape) -> Option<egui::Rect> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with("FILTER VOICE") => {
+                    Some(text.galley.rect.translate(text.pos.to_vec2()))
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(notes_bounds),
+                _ => None,
+            }
+        }
+        let (clip, bounds) = output
+            .shapes
+            .iter()
+            .find_map(|shape| notes_bounds(&shape.shape).map(|bounds| (shape.clip_rect, bounds)))
+            .expect("actual Notes text must be painted");
+        assert!(
+            clip.expand(0.5).contains_rect(bounds),
+            "example Notes text is clipped: {bounds:?} outside {clip:?}"
+        );
     }
 
     #[test]
