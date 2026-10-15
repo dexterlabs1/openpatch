@@ -1,14 +1,16 @@
 # Studio Rack panels and module previews
 
-The browser shows the actual module panel at its default settings, fitted
-proportionally into each card. Rack panels and thumbnails share one drawing
+The browser shows the actual module panel at its default settings, using a
+shared preview zoom. Rack panels and thumbnails share one drawing
 path for every built-in kind: the same controls, port positions, labels,
 passive lights, typography, and panel materials. Wide sequencers retain
 their real proportions rather than being rearranged into a generic miniature.
 The card's title, Inspect control, favorite star, and availability overlay belong to
 the browser and sit outside the module artwork.
-Wide modules (over 18 HP) use a full-width card; narrower panels share two
-columns. Cards preserve the panel proportions and reserve height for the panel. Hover a card to inspect an enlarged
+Choose **Library → Preview** from 25% to 200%; the default is 50%. Cards wrap to
+the visible dock width, preserving the same scale and proportions for narrow
+and wide modules. Panels wider than the dock scroll horizontally. See
+[preview zoom and persistence](LIBRARY_ZOOM.md). Hover a card to inspect an enlarged
 default panel alongside its description; the inspection view uses the same
 renderer and fits the available screen without stretching the module.
 
@@ -35,6 +37,12 @@ hit targets are preserved. Fader targets stay above the separate numeric wells;
 clicking the number opens precise entry with a pencil affordance. Fader position
 shows the configured value, independently of live signal/gain telemetry, and
 dims with the panel in a dark room.
+
+Saved mode buttons, including VCO LFM/Soft, LFO range/Invert and Mix 6
+Average/Invert, scale their text, padding and button dimensions with the panel.
+Their labels stay on one line when zoomed out instead of wrapping into tall
+boxes over the ports. They retain the same saved parameter actions in the rack;
+browser previews use the same drawing without accepting edits.
 
 Five categorical parameters have horizontal segments driven by explicit catalog
 `values` and `labels`: Analog VCO waveform (Saw/Pulse), Crossfade law

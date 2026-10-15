@@ -63,6 +63,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Open the library | **Enter**, the library toolbar icon, **Edit → Add module**, or right-click empty rack space |
 | Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
 | Inspect a library panel | Click **Inspect**, or **Cmd/Ctrl-I** while the library has focus; **Esc** closes inspection first |
+| Enlarge library previews | **Library → Preview** selects 25–200%; wide panels scroll horizontally and keep their real proportions. [Details →](docs/LIBRARY_ZOOM.md) |
 | Patch / unplug | Drag or click between jacks; an occupied output picks its top plug for moving to another output; right-click an input to unplug |
 | Add / clone a cable | **Cmd-drag** either jack adds a cable; **Cmd-Shift-drag** clones its top cable |
 | Stack / remove cables | Drop onto a version-2 input to add a signal; **Shift-click** a jack deletes its top cable |

@@ -637,6 +637,14 @@ impl OpenPatch {
         }
     }
     fn apply_host_preferences(&mut self, preferences: &Value) {
+        // Clamp JSON's finite f64 before narrowing; huge valid numbers must
+        // clamp to the zoom bound rather than overflow and select the fallback.
+        self.library.set_preview_zoom(
+            preferences["library_zoom"]
+                .as_f64()
+                .filter(|value| value.is_finite())
+                .map_or(0.5, |value| value.clamp(0.25, 2.0) as f32),
+        );
         self.set_cable_presentation(CablePresentation::from_settings(preferences));
         if let Some(audio) = &self.audio {
             audio.set_port_lights_enabled(self.rack.cable_presentation().plug_brightness > 0.0);
@@ -676,6 +684,7 @@ impl OpenPatch {
             let data = serde_json::to_vec_pretty(&json!({
                 "output_device": self.output_device, "midi_device": self.midi_device,
                 "module_favorites": self.library.favorites(),
+                "library_zoom": self.library.preview_zoom(),
                 "lock_module_positions": self.rack.positions_locked(),
                 "room_brightness": self.rack.room_brightness(),
                 "cable_opacity": self.rack.cable_presentation().opacity,
@@ -2378,6 +2387,7 @@ impl OpenPatch {
             || ctx.wants_keyboard_input()
             || self.rack.annotation_keyboard_active()
             || self.cable_palette_ui.keyboard_active()
+            || (self.browser_open && self.library.keyboard_active())
             || egui::Popup::is_any_open(ctx)
             || egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
         {
@@ -3183,6 +3193,7 @@ impl OpenPatch {
                 && !self.shader_open
                 && !self.mcp_session.is_open()
                 && !self.cable_palette_ui.keyboard_active()
+                && !(self.browser_open && self.library.keyboard_active())
                 && self.preset_dialog.is_none()
                 && self.template_save.is_none(),
         );
@@ -3351,7 +3362,11 @@ impl OpenPatch {
             self.patch.version,
             enabled,
         );
-        if self.library.take_favorites_changed() {
+        // Drain both independent flags even when the first is true, then
+        // persist one coherent host preference snapshot for this UI pass.
+        let favorites_changed = self.library.take_favorites_changed();
+        let zoom_changed = self.library.take_preview_zoom_changed();
+        if favorites_changed || zoom_changed {
             self.save_host_settings();
         }
         action
@@ -5505,6 +5520,58 @@ impl OpenPatch {
             self.title = "Loose cables · fixed plugs".into();
             self.status = "Cable bodies 100% · tension 0% · short and reversed routes keep their real signal endpoints · no live audio".into();
         }
+        if matches!(frame, 1972 | 1988 | 2004 | 2020) {
+            egui::Popup::close_all(ctx);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(match frame {
+                2004 => 0.25,
+                2020 => 2.0,
+                _ => 1.0,
+            });
+            self.browse();
+            self.select_analysis(None);
+            self.rack.set_room_brightness(1.0);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(if frame == 2004 {
+                Vec2::new(940.0, 680.0)
+            } else {
+                Vec2::new(1440.0, 960.0)
+            }));
+            self.title = match frame {
+                1972 => "Library · natural-size controls",
+                1988 => "Library · wide panels at 100%",
+                2004 => "Library · compact 25% previews",
+                _ => "Library · wide panels at 200%",
+            }
+            .into();
+            self.status = "Actual catalog panels · preview size is independent of rack zoom and saved patch values".into();
+        }
+        if frame == 2036 {
+            egui::Popup::close_all(ctx);
+            let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+                {"id":"vco","kind":"multi_vco","params":{"linear_fm":1,"soft_sync":1}},
+                {"id":"lfo","kind":"multi_lfo","params":{"unipolar":1,"invert":1}},
+                {"id":"mix","kind":"mix6","params":{"average":1,"invert":1}},
+                {"id":"out","kind":"audio_stereo"}
+            ],"cables":[
+                {"from":"lfo","output":"sine","to":"vco","input":"fm"},
+                {"from":"vco","output":"sine","to":"mix","input":"in1"},
+                {"from":"mix","to":"out","input":"left"}
+            ],"output":"out"}))
+            .expect("Small-label rack fixture");
+            assert!(self.command("replace_patch", json!({"patch":patch})));
+            self.replace_rack(Rack::default());
+            self.rack
+                .restore_layout(&json!({"version":1,"zoom":0.5,"pan":[24,12],
+                    "positions":{"vco":[0,0],"lfo":[330,0],"mix":[660,0],"out":[930,0]}
+                }))
+                .expect("Small-label rack layout");
+            self.rack.set_room_brightness(1.0);
+            self.browser_open = false;
+            self.select_analysis(None);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1440.0, 960.0)));
+            self.title = "Compact rack · readable mode labels".into();
+            self.status = "Actual shared panels at 50% rack zoom · linear FM, soft sync and mixer modes stay inside their controls".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5599,6 +5666,11 @@ impl OpenPatch {
                 | 1940
                 | 1952
                 | 1964
+                | 1980
+                | 1996
+                | 2012
+                | 2028
+                | 2044
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5697,7 +5769,12 @@ impl OpenPatch {
                 77 => path.with_file_name("rack-port-lights-lights-out.png"),
                 78 => path.with_file_name("view-cable-controls.png"),
                 79 => path.with_file_name("cable-presentation-clear-panel.png"),
-                _ => path.with_file_name("cable-presentation-loose.png"),
+                80 => path.with_file_name("cable-presentation-loose.png"),
+                81 => path.with_file_name("library-zoom-100.png"),
+                82 => path.with_file_name("library-zoom-wide.png"),
+                83 => path.with_file_name("library-zoom-compact.png"),
+                84 => path.with_file_name("library-zoom-200.png"),
+                _ => path.with_file_name("rack-small-labels.png"),
             };
             image::save_buffer(
                 &target,
@@ -5708,18 +5785,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/81 at frame {frame}: {}",
+                "Native smoke: capture {}/86 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 81 {
+            if captures == 86 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1978, "Native screenshot timeout");
+        assert!(frame < 2058, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5745,6 +5822,11 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
+            if matches!(*frame, 1972 | 1988 | 2020) {
+                input.events.push(egui::Event::Text(
+                    if *frame == 1972 { "analog_vco" } else { "seq3" }.into(),
+                ));
+            }
             if matches!(*frame, 1184 | 1240) {
                 input.events.push(egui::Event::Key {
                     key: egui::Key::Escape,
@@ -5993,6 +6075,9 @@ mod project_workflow_tests {
     }
     mod cable_presentation_host_tests {
         include!("cable_presentation_host_tests.rs");
+    }
+    mod library_zoom_host_tests {
+        include!("library_zoom_host_tests.rs");
     }
 
     mod midi_gate_app_tests {

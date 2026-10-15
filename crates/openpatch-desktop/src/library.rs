@@ -1,6 +1,6 @@
 //! Docked, keyboard-accessible module library. The catalog remains the source
 //! of truth for module names, controls, ports, and engine requirements.
-use crate::rack::ModulePreview;
+use crate::rack::{ModulePreview, PANEL_HEIGHT};
 use eframe::egui::{self, pos2, vec2, Align2, Color32, FontId, Rect, Sense, Stroke, Vec2};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -109,7 +109,6 @@ impl Category {
     }
 }
 
-#[derive(Default)]
 pub struct ModuleLibrary {
     search: String,
     category: Category,
@@ -121,9 +120,68 @@ pub struct ModuleLibrary {
     scroll_to_kind: Option<String>,
     previews: BTreeMap<String, ModulePreview>,
     inspected: Option<String>,
+    preview_zoom: f32,
+    preview_zoom_changed: bool,
 }
 
+impl Default for ModuleLibrary {
+    fn default() -> Self {
+        Self {
+            search: String::new(),
+            category: Category::default(),
+            favorites: BTreeSet::new(),
+            favorites_changed: false,
+            focus_search: false,
+            highlighted: None,
+            focused_last_frame: None,
+            scroll_to_kind: None,
+            previews: BTreeMap::new(),
+            inspected: None,
+            preview_zoom: 0.5,
+            preview_zoom_changed: false,
+        }
+    }
+}
+
+const PREVIEW_ZOOMS: [(f32, &str); 7] = [
+    (0.25, "25%"),
+    (std::f32::consts::FRAC_1_SQRT_2 * 0.5, "35%"),
+    (0.5, "50%"),
+    (std::f32::consts::FRAC_1_SQRT_2, "71%"),
+    (1.0, "100%"),
+    (std::f32::consts::SQRT_2, "141%"),
+    (2.0, "200%"),
+];
+
 impl ModuleLibrary {
+    pub fn preview_zoom(&self) -> f32 {
+        self.preview_zoom
+    }
+
+    /// Restore/programmatic assignment has no UI edit notification.
+    pub fn set_preview_zoom(&mut self, zoom: f32) {
+        let zoom = if zoom.is_finite() {
+            zoom.clamp(0.25, 2.0)
+        } else {
+            0.5
+        };
+        if self.preview_zoom != zoom {
+            self.preview_zoom = zoom;
+            self.scroll_to_kind = self.highlighted.clone();
+        }
+    }
+
+    pub fn take_preview_zoom_changed(&mut self) -> bool {
+        std::mem::take(&mut self.preview_zoom_changed)
+    }
+
+    fn choose_preview_zoom(&mut self, zoom: f32) {
+        if self.preview_zoom != zoom {
+            self.set_preview_zoom(zoom);
+            self.preview_zoom_changed = true;
+        }
+    }
+
     /// Pin a catalog module for inspection without inserting it or changing selection.
     /// Used by explicit Inspect controls; unknown/removed kinds are ignored.
     pub fn inspect(&mut self, kind: &str, catalog: &Value) -> bool {
@@ -269,6 +327,9 @@ impl ModuleLibrary {
         let mut other_ids = Vec::new();
         let mut tile_ids = Vec::new();
         let mut visible_kinds = Vec::new();
+        let mut zoom_popup_was_open = false;
+        let mut zoom_popup_active = false;
+        let mut zoom_id = None;
         let panel = egui::SidePanel::right("module-library")
             .default_width(310.0)
             .width_range(260.0..=440.0)
@@ -359,20 +420,108 @@ impl ModuleLibrary {
                             .first()
                             .and_then(|module| module["kind"].as_str())
                             .map(str::to_owned);
+                        // A filter can invalidate a pending reveal from an
+                        // earlier zoom/navigation frame. Reveal its new highlight.
+                        self.scroll_to_kind = self.highlighted.clone();
                     }
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} module{}",
-                            visible.len(),
-                            if visible.len() == 1 { "" } else { "s" }
-                        ))
-                        .size(10.0)
-                        .color(PANEL_MUTED),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} module{}",
+                                visible.len(),
+                                if visible.len() == 1 { "" } else { "s" }
+                            ))
+                            .size(10.0)
+                            .color(PANEL_MUTED),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // ComboBox stores Id::new(salt), then scopes that Id.
+                            let id =
+                                ui.make_persistent_id(egui::Id::new("module-library-preview-zoom"));
+                            zoom_id = Some(id);
+                            if !enabled {
+                                egui::Popup::close_id(ctx, id.with("popup"));
+                            }
+                            zoom_popup_was_open = egui::ComboBox::is_open(ctx, id);
+                            let mut chosen = None;
+                            let mut selected_option = None;
+                            let response =
+                                egui::ComboBox::from_id_salt("module-library-preview-zoom")
+                                    .selected_text(format!(
+                                        "{}%",
+                                        (self.preview_zoom * 100.0).round() as u32
+                                    ))
+                                    .width(64.0)
+                                    .height(220.0)
+                                    .show_ui(ui, |ui| {
+                                        if !enabled {
+                                            ui.disable();
+                                        }
+                                        for (zoom, label) in PREVIEW_ZOOMS {
+                                            let option = ui.selectable_label(
+                                                (self.preview_zoom - zoom).abs() < 0.00001,
+                                                label,
+                                            );
+                                            other_ids.push(option.id);
+                                            if (self.preview_zoom - zoom).abs() < 0.00001 {
+                                                selected_option = Some(option.id);
+                                            }
+                                            if enabled && option.clicked() {
+                                                chosen = Some(zoom);
+                                            }
+                                        }
+                                    })
+                                    .response;
+                            debug_assert_eq!(
+                                id, response.id,
+                                "zoom popup ownership must use the actual ComboBox response ID"
+                            );
+                            other_ids.push(response.id);
+                            zoom_popup_active = egui::ComboBox::is_open(ctx, response.id);
+                            if response.clicked() {
+                                // Keyboard opening starts at the configured
+                                // preset so arrows/Tab can enter the menu.
+                                if zoom_popup_active && (keys.0 || keys.1) {
+                                    if let Some(id) = selected_option {
+                                        ctx.memory_mut(|m| m.request_focus(id));
+                                    }
+                                } else {
+                                    response.request_focus();
+                                }
+                            }
+                            if let Some(zoom) = chosen {
+                                self.choose_preview_zoom(zoom);
+                                // Popup's default CloseOnClick observes pointer
+                                // clicks, so keyboard preset activation closes
+                                // this owned menu explicitly as well.
+                                egui::Popup::close_id(ctx, response.id.with("popup"));
+                                zoom_popup_active = false;
+                                response.request_focus();
+                            }
+                            if response.has_focus() {
+                                ctx.memory_mut(|m| {
+                                    m.set_focus_lock_filter(
+                                        response.id,
+                                        egui::EventFilter {
+                                            horizontal_arrows: !zoom_popup_active,
+                                            vertical_arrows: !zoom_popup_active,
+                                            ..Default::default()
+                                        },
+                                    )
+                                });
+                            }
+                            ui.label(egui::RichText::new("Preview").size(10.0).color(PANEL_MUTED));
+                        });
+                    });
                     ui.separator();
-                    egui::ScrollArea::vertical()
+                    // Floating scroll bars never alter the wrapping width as
+                    // they appear, avoiding content-width/scrollbar feedback.
+                    ui.spacing_mut().scroll.floating = true;
+                    ui.spacing_mut().scroll.floating_allocated_width = 0.0;
+                    egui::ScrollArea::both()
+                        .id_salt("module-library-tiles")
                         .auto_shrink([false, false])
-                        .show(ui, |ui| {
+                        .show_viewport(ui, |ui, viewport| {
                             if visible.is_empty() {
                                 ui.add_space(22.0);
                                 ui.label(
@@ -389,48 +538,27 @@ impl ModuleLibrary {
                                 );
                                 return;
                             }
-                            let gap = 8.0;
-                            let full_width = ui.available_width();
-                            let tile_width = ((full_width - gap) * 0.5).max(108.0);
-                            let wide = |module: &Value| {
-                                crate::rack::panel_width(module["kind"].as_str().unwrap_or(""))
-                                    > 280.0
-                            };
-                            let mut index = 0;
-                            while index < visible.len() {
-                                // Wide hardware keeps its real aspect ratio and gets the
-                                // full shelf, instead of shrinking to an illegible sliver.
-                                let spanning = wide(visible[index]);
-                                let count = if !spanning
-                                    && index + 1 < visible.len()
-                                    && !wide(visible[index + 1])
-                                {
-                                    2
-                                } else {
-                                    1
-                                };
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = gap;
-                                    for module in &visible[index..index + count] {
-                                        if let Some(kind) = module["kind"].as_str() {
-                                            visible_kinds.push(kind);
-                                            let (tile_action, id, star_id, inspect_id) = self.tile(
-                                                ui,
-                                                module,
-                                                catalog,
-                                                if spanning { full_width } else { tile_width },
-                                                patch_version,
-                                            );
-                                            tile_ids.push((kind, id));
-                                            other_ids.extend([star_id, inspect_id]);
-                                            if tile_action.is_some() {
-                                                action = tile_action;
-                                            }
-                                        }
+                            // Plan from metadata alone: no offscreen renderer
+                            // cache is constructed to discover panel dimensions.
+                            let (cards, size) =
+                                preview_flow(&visible, self.preview_zoom, viewport.width());
+                            let (content, _) = ui.allocate_exact_size(size, Sense::hover());
+                            for (module, card) in visible.iter().zip(cards) {
+                                if let Some(kind) = module["kind"].as_str() {
+                                    visible_kinds.push(kind);
+                                    let (tile_action, id, star_id, inspect_id) = self.tile(
+                                        ui,
+                                        module,
+                                        catalog,
+                                        card.translate(content.min.to_vec2()),
+                                        patch_version,
+                                    );
+                                    tile_ids.push((kind, id));
+                                    other_ids.extend([star_id, inspect_id]);
+                                    if tile_action.is_some() {
+                                        action = tile_action;
                                     }
-                                });
-                                index += count;
-                                ui.add_space(gap);
+                                }
                             }
                         });
                 });
@@ -467,8 +595,14 @@ impl ModuleLibrary {
         } else {
             previous_focus
         };
-        let owns_keys =
-            window_focused && !outside_press && (previous_focus.is_some() || focus.is_some());
+        // egui clears keyboard focus on Escape before widgets draw. Our own
+        // open menu still owns that Escape, including its invisible sizing pass.
+        let owns_keys = window_focused
+            && !outside_press
+            && (previous_focus.is_some()
+                || focus.is_some()
+                || zoom_popup_was_open
+                || zoom_popup_active);
         if owns_keys {
             for (pressed, key) in [
                 (keys.0, egui::Key::Enter),
@@ -494,6 +628,14 @@ impl ModuleLibrary {
             };
             return action;
         }
+        if keys.2 && zoom_popup_was_open {
+            if let Some(id) = zoom_id {
+                egui::Popup::close_id(ctx, id.with("popup"));
+                ctx.memory_mut(|memory| memory.request_focus(id));
+            }
+            self.focused_last_frame = Some(FocusKind::Other);
+            return None;
+        }
         if keys.2 && self.inspected.take().is_some() {
             self.request_focus();
             return None;
@@ -512,7 +654,23 @@ impl ModuleLibrary {
             focus == Some(FocusKind::Inspection) || previous_focus == Some(FocusKind::Inspection);
         let tile_has_focus =
             focus == Some(FocusKind::Tile) || previous_focus == Some(FocusKind::Tile);
-        let step = if inspection_has_focus {
+        let other_has_focus = focus == Some(FocusKind::Other)
+            || previous_focus == Some(FocusKind::Other)
+            || zoom_popup_active
+            || zoom_popup_was_open;
+        if other_has_focus {
+            for (pressed, key) in [
+                (keys.3, egui::Key::ArrowLeft),
+                (keys.4, egui::Key::ArrowRight),
+                (keys.5, egui::Key::ArrowUp),
+                (keys.6, egui::Key::ArrowDown),
+            ] {
+                if pressed {
+                    consume_key(ctx, key);
+                }
+            }
+        }
+        let step = if inspection_has_focus || other_has_focus {
             0
         } else if keys.5 || (tile_has_focus && keys.3) {
             -1
@@ -559,6 +717,7 @@ impl ModuleLibrary {
         if keys.0
             && action.is_none()
             && !inspection_has_focus
+            && !other_has_focus
             && focus != Some(FocusKind::Other)
             && previous_focus != Some(FocusKind::Other)
         {
@@ -746,7 +905,7 @@ impl ModuleLibrary {
         ui: &mut egui::Ui,
         module: &Value,
         catalog: &Value,
-        width: f32,
+        rect: Rect,
         patch_version: u32,
     ) -> (Option<LibraryAction>, egui::Id, egui::Id, egui::Id) {
         let kind = module["kind"].as_str().unwrap_or("");
@@ -754,14 +913,13 @@ impl ModuleLibrary {
             .as_str()
             .unwrap_or_else(|| crate::rack::title(kind));
         let supported = available(module, patch_version);
-        let (_, rect) = ui.allocate_space(vec2(width, 261.0));
         let id = ui.make_persistent_id(("module-library-tile", kind));
         // Only the hardware/title region adds or drags. Footer controls have
         // disjoint hit rectangles and can never accidentally insert a module.
-        let add_rect = Rect::from_min_max(rect.min, rect.max - vec2(0.0, 30.0));
+        let add_rect = Rect::from_min_max(rect.min, rect.max - vec2(0.0, 32.0));
         let response = ui.interact(add_rect, id, Sense::click_and_drag());
         if self.scroll_to_kind.as_deref() == Some(kind) {
-            response.scroll_to_me(None);
+            response.scroll_to_me(Some(egui::Align::Min));
             self.scroll_to_kind = None;
         }
         let enabled = ui.is_enabled();
@@ -785,8 +943,11 @@ impl ModuleLibrary {
                 response.hovered(),
                 supported,
             );
-            let preview_bounds =
-                Rect::from_min_max(rect.min + vec2(8.0, 30.0), rect.max - vec2(8.0, 32.0));
+            let natural = vec2(crate::rack::panel_width(kind), PANEL_HEIGHT) * self.preview_zoom;
+            let preview_bounds = Rect::from_min_size(
+                pos2(rect.center().x - natural.x * 0.5, rect.top() + 30.0),
+                natural,
+            );
             let preview = self
                 .previews
                 .entry(kind.to_owned())
@@ -810,6 +971,9 @@ impl ModuleLibrary {
         let star_rect =
             Rect::from_center_size(rect.right_bottom() + vec2(-16.0, -15.0), Vec2::splat(25.0));
         let star = ui.interact(star_rect, id.with("favorite"), Sense::click());
+        if star.has_focus() && !ui.clip_rect().contains_rect(star.rect) {
+            star.scroll_to_me_animation(None, egui::style::ScrollAnimation::none());
+        }
         let favorite = self.favorites.contains(kind);
         star.widget_info(|| {
             egui::WidgetInfo::labeled(
@@ -837,6 +1001,9 @@ impl ModuleLibrary {
         let inspect_rect =
             Rect::from_min_size(rect.left_bottom() + vec2(6.0, -28.0), vec2(62.0, 25.0));
         let inspect = ui.interact(inspect_rect, id.with("inspect"), Sense::click());
+        if inspect.has_focus() && !ui.clip_rect().contains_rect(inspect.rect) {
+            inspect.scroll_to_me_animation(None, egui::style::ScrollAnimation::none());
+        }
         inspect.widget_info(|| {
             egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
@@ -918,6 +1085,38 @@ impl ModuleLibrary {
         });
         (action, id, star.id, inspect.id)
     }
+}
+
+/// Flow uses the visible viewport width, never a wide prior content extent.
+fn preview_flow(modules: &[&Value], zoom: f32, viewport_width: f32) -> (Vec<Rect>, Vec2) {
+    let height = PANEL_HEIGHT * zoom + 62.0;
+    let gap = 8.0;
+    let mut cursor = Vec2::ZERO;
+    let mut width = 0.0_f32;
+    let mut cards = Vec::with_capacity(modules.len());
+    for module in modules {
+        let kind = module["kind"].as_str().unwrap_or("");
+        let card_width = (crate::rack::panel_width(kind) * zoom + 16.0).max(108.0);
+        if cursor.x > 0.0 && cursor.x + card_width > viewport_width {
+            cursor.x = 0.0;
+            cursor.y += height + gap;
+        }
+        let rect = Rect::from_min_size(cursor.to_pos2(), vec2(card_width, height));
+        width = width.max(rect.right());
+        cards.push(rect);
+        cursor.x += card_width + gap;
+    }
+    (
+        cards,
+        vec2(
+            width,
+            if modules.is_empty() {
+                0.0
+            } else {
+                cursor.y + height
+            },
+        ),
+    )
 }
 
 /// Catalog presentation fields only; runtime/hidden parameters never enter details.
@@ -1492,20 +1691,14 @@ mod tests {
                     _ => None,
                 })
                 .fold(0.0_f32, f32::max);
-            if matches!(kind, "seq3" | "poly_constant" | "sh_asr") {
-                assert!(
-                    card_width > 250.0,
-                    "wide {kind} needs the full browser shelf"
-                );
-            } else {
-                assert!(
-                    (108.0..160.0).contains(&card_width),
-                    "narrow {kind} stays in two columns"
-                );
-            }
+            assert_eq!(
+                card_width,
+                (crate::rack::panel_width(kind) * 0.5 + 16.0).max(108.0),
+                "{kind} retains natural default panel scale"
+            );
             let start = target(&output.shapes, kind);
             // Native compact fields and performance buttons are painted inside
-            // the card at its fitted scale, but the card owns every gesture.
+            // the card at its chosen scale, but the card owns every gesture.
             frame(
                 &ctx,
                 &mut library,
@@ -1686,6 +1879,7 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.style_mut(|style| style.interaction.tooltip_delay = 0.0);
         let mut library = ModuleLibrary::default();
+        library.set_preview_zoom(0.25);
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(940.0, 680.0));
         let mut render = |time: f64, hover: bool| {
             ctx.run(
@@ -1702,7 +1896,11 @@ mod tests {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        let (action, _, _, _) = library.tile(ui, module, &catalog, 150.0, 2);
+                        let (cards, size) =
+                            preview_flow(&[module], library.preview_zoom(), ui.available_width());
+                        let (bounds, _) = ui.allocate_exact_size(size, Sense::hover());
+                        let card = cards[0].translate(bounds.min.to_vec2());
+                        let (action, _, _, _) = library.tile(ui, module, &catalog, card, 2);
                         assert!(action.is_none());
                     });
                 },
@@ -2076,4 +2274,10 @@ mod tests {
             "outside clicks keep the optional pin open"
         );
     }
+}
+
+#[cfg(test)]
+mod library_zoom_tests {
+    use super::*;
+    include!("library_zoom_tests.rs");
 }
