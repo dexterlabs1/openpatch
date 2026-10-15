@@ -70,6 +70,7 @@ static ALLOCATOR: CallbackAllocator = CallbackAllocator;
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        content: None,
         score: None,
         bypassed: false,
         id: id.into(),
@@ -1472,4 +1473,49 @@ fn mixed_cc_gate_first_callback_adoption_learn_lights_and_panic_use_no_heap() {
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
     assert!(samples[0].iter().all(|sample| sample.active));
     assert_eq!(replacement.module_lights(new_gh).unwrap().count, 16);
+}
+
+#[test]
+fn annotation_content_edits_preserve_synthesis_and_callbacks_never_allocate_or_free() {
+    use openpatch_core::ModuleContent;
+    let mut p = patch(
+        vec![
+            node("notes", "notes", &[]),
+            node("blank", "blank", &[]),
+            node("osc", "oscillator", &[("frequency", 237.0)]),
+            node("filter", "lowpass", &[("cutoff", 1900.0)]),
+        ],
+        vec![cable("osc", "out", "filter", "signal")],
+        "filter",
+    );
+    p.nodes[0].content = Some(ModuleContent::Notes {
+        text: "First\n🎛\tphase".into(),
+    });
+    p.nodes[1].content = Some(ModuleContent::Blank { width_hp: 10 });
+    let mut uninterrupted = p.compile().unwrap();
+    let mut old = p.compile().unwrap();
+    p.nodes[0].content = Some(ModuleContent::Notes {
+        text: "更新\n🎚".repeat(500),
+    });
+    p.nodes[1].content = Some(ModuleContent::Blank { width_hp: 96 });
+    // Reordering ensures state and delayed cable history follow stable IDs.
+    p.nodes.rotate_left(2);
+    let mut edited = p.compile().unwrap();
+    let mut before = [PortFrame::default(); 137];
+    let mut baseline_before = [PortFrame::default(); 137];
+    let mut after = [PortFrame::default(); 257];
+    let mut baseline_after = [PortFrame::default(); 257];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    // Include the first execution of each graph and state adoption in the audit.
+    old.process_poly_block(&mut before);
+    uninterrupted.process_poly_block(&mut baseline_before);
+    edited.adopt_state_from(&old);
+    edited.process_poly_block(&mut after);
+    uninterrupted.process_poly_block(&mut baseline_after);
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(before, baseline_before);
+    assert_eq!(after, baseline_after);
+    assert!(after.iter().any(|f| f.values[0].abs() > 0.001));
 }

@@ -10,6 +10,7 @@ fn source(id: &str, values: &[f32]) -> Node {
         params.insert(format!("v{}", index + 1), *value);
     }
     Node {
+        content: None,
         score: None,
         id: id.into(),
         kind: "poly_constant".into(),
@@ -33,6 +34,7 @@ fn target(kind: &str, bypassed: bool, edited: bool) -> Node {
         _ => panic!("unsupported circuit kind {kind}"),
     };
     Node {
+        content: None,
         score: None,
         id: "circuit".into(),
         kind: kind.into(),

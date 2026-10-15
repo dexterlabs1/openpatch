@@ -246,6 +246,7 @@ mod tests {
                     .map(|(k, v)| (k.to_string(), *v))
                     .collect::<BTreeMap<_, _>>(),
                 bypassed: false,
+                content: None,
                 score: None,
             },
             rate,

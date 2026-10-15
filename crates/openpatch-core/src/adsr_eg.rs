@@ -274,6 +274,7 @@ mod tests {
     fn model(rate: u32, params: &[(&str, f32)]) -> AdsrEg {
         AdsrEg::build(
             &Node {
+                content: None,
                 score: None,
                 id: "e".into(),
                 kind: "adsr_eg".into(),

@@ -5,6 +5,7 @@ fn node(params: &[(&str, f32)]) -> Node {
         id: "gate".into(),
         kind: "midi_gate".into(),
         params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
+        content: None,
         score: None,
         bypassed: false,
     }

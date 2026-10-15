@@ -283,6 +283,7 @@ mod tests {
     fn model(kind: &str, params: &[(&str, f32)]) -> Mixing {
         Mixing::build(
             &Node {
+                content: None,
                 score: None,
                 id: "s".into(),
                 kind: kind.into(),

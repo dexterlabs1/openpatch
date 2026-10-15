@@ -229,6 +229,7 @@ mod tests {
     fn model(rate: u32, holding: bool) -> Push {
         Push::build(
             &Node {
+                content: None,
                 score: None,
                 id: "p".into(),
                 kind: "push".into(),

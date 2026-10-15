@@ -40,6 +40,10 @@ pub(crate) fn annotate(module: &mut Value) {
         module["bypass"]["state_policy"] = json!("ignores MIDI and freezes DSP; transitions clear cell gates/timers and armed Learn, retaining owned completion and velocity");
         module["bypass"]["module_actions"] = json!("midi_panic remains available while bypassed and clears cell gates/timers and armed Learn immediately");
     }
+    if crate::content::is_annotation(&kind) {
+        module["bypass"]["output_policy"] = json!("no outputs or bypass routes");
+        module["bypass"]["state_policy"] = json!("no DSP state");
+    }
     if kind == "poly_viz" {
         module["bypass"]["output_policy"] =
             json!("input-only module has no outputs or bypass routes");

@@ -68,7 +68,8 @@ impl PortFrame {
 }
 
 pub(crate) fn is_poly_kind(kind: &str) -> bool {
-    kind == "colored_noise"
+    crate::content::is_annotation(kind)
+        || kind == "colored_noise"
         || kind == "score_sequencer"
         || kind == "modal_resonator"
         || studio_fx::input_names(kind).is_some()
@@ -159,7 +160,7 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if kind == "colored_noise" {
         return colored_noise::OUTPUTS.iter().position(|p| *p == name);
     }
-    if kind == "poly_viz" {
+    if kind == "poly_viz" || crate::content::is_annotation(kind) {
         return None;
     }
     if kind == "modal_resonator" {
@@ -352,7 +353,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
-    } else if kind == "poly_viz" {
+    } else if kind == "poly_viz" || crate::content::is_annotation(&kind) {
         Vec::new()
     } else if kind == "midi_gate" {
         midi_gate::OUTPUTS
@@ -380,6 +381,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             "auto highest occupied input or explicit count; channel zero of each input; holes zero"
         }
         "poly_viz" => "input-only visualization of 0–16 independent channels",
+        "notes" | "blank" => "no signal ports or DSP state",
         "poly_sum" => "mono sum of active channels with master level",
         _ => match voice_policy(&kind) {
             VoicePolicy::Generator => "one generated voice",
@@ -401,6 +403,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         },
     };
     module["polyphony"]["primary_input"] = primary;
+    if crate::content::is_annotation(&kind) {
+        module["polyphony"] = json!({"version_1":"unsupported","version_2":"no signal ports or DSP state","maximum_channels":0,"primary_input":null});
+    }
     module["input_metadata"] = json!(module["inputs"].as_array().unwrap().iter().map(|name| {
         let name = name.as_str().unwrap();
         let normal = match (kind.as_str(), name) { ("gain", "cv") => 1.0, ("analog_vca", "cv") | ("attenuverter", "signal") => 10.0, _ => 0.0 };
@@ -525,6 +530,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 
 #[derive(Debug)]
 enum Model {
+    Annotation,
     ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
     StudioFx(Box<StudioFx>),
@@ -563,6 +569,12 @@ enum Model {
 }
 impl Model {
     fn build(node: &Node, rate: u32) -> Result<Self, String> {
+        if crate::content::is_annotation(&node.kind) {
+            if let Some(key) = node.params.keys().next() {
+                return Err(format!("node '{}': unknown parameter '{key}'", node.id));
+            }
+            return Ok(Self::Annotation);
+        }
         if node.kind == "colored_noise" {
             return ColoredNoise::build(node, rate).map(|s| Self::ColoredNoise(Box::new(s)));
         }
@@ -1288,7 +1300,7 @@ impl PolyEngine {
                 ports.len()
             } else {
                 match node.kind.as_str() {
-                    "poly_viz" => 0,
+                    "poly_viz" | "notes" | "blank" => 0,
                     "poly_split" | "midi_cc" | "midi_gate" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
@@ -1529,6 +1541,7 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
+                Model::Annotation => {}
                 Model::Score(_)
                 | Model::StudioFx(_)
                 | Model::VoiceTools(_)
@@ -2204,6 +2217,7 @@ mod tests {
         let mut patch = Patch {
             nodes: vec![
                 Node {
+                    content: None,
                     score: None,
                     id: "a".into(),
                     kind: "constant".into(),
@@ -2211,6 +2225,7 @@ mod tests {
                     params: BTreeMap::new(),
                 },
                 Node {
+                    content: None,
                     score: None,
                     id: "b".into(),
                     kind: "constant".into(),
@@ -2218,6 +2233,7 @@ mod tests {
                     params: BTreeMap::new(),
                 },
                 Node {
+                    content: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -2263,6 +2279,7 @@ mod tests {
         let mut patch = Patch {
             nodes: vec![
                 Node {
+                    content: None,
                     score: None,
                     id: "source".into(),
                     kind: "constant".into(),
@@ -2270,6 +2287,7 @@ mod tests {
                     params: BTreeMap::new(),
                 },
                 Node {
+                    content: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -2339,6 +2357,7 @@ mod tests {
         Patch {
             nodes: vec![
                 Node {
+                    content: None,
                     score: None,
                     bypassed: false,
                     id: "source".into(),
@@ -2352,6 +2371,7 @@ mod tests {
                     ]),
                 },
                 Node {
+                    content: None,
                     score: None,
                     bypassed: false,
                     id: "voice".into(),

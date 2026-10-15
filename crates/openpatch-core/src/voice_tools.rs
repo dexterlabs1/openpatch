@@ -349,6 +349,7 @@ mod tests {
     use super::*;
     fn node(kind: &str, params: &[(&str, f32)]) -> Node {
         Node {
+            content: None,
             score: None,
             id: "test".into(),
             kind: kind.into(),

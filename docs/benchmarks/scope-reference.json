@@ -9,7 +9,7 @@
       "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2"
     }
   },
-  "production_sha256": "57660080495e0df0ba73d359cda2d0e0d0a61dc7dab8d80d25f5f52d591b9a45",
+  "production_sha256": "b928a2ff92f9f03c8f148c43e2bba2d3ae662a128c02b61f5361c870eb094d22",
   "method": "Independent C++ bin driver with genuine SDK Input and SchmittTrigger versus production scope.rs with minimal Rust Node/parameter/PortFrame host. Exact bin widths use binary-exact literal seconds at 65536 Hz. Per-frame comparison includes indices, output widths, X/Y/external-trigger input channel metadata and FNV-1a-style u32-word hash of every min/max bin plus all passthrough voltages.",
   "limitations": [
     "Does not execute upstream Scope module or GUI; no upstream source vendored",

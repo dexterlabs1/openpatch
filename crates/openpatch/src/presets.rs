@@ -33,11 +33,12 @@ pub fn validate(preset: &Value) -> Result<(), String> {
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "format" | "version" | "kind" | "params" | "bypassed" | "score"
+            "format" | "version" | "kind" | "params" | "bypassed" | "score" | "content"
         )
     }) {
         return Err(
-            "preset accepts only format, version, kind, params, bypassed, and score".into(),
+            "preset accepts only format, version, kind, params, bypassed, score, and content"
+                .into(),
         );
     }
     if preset["format"] != "openpatch-module-preset" || preset["version"].as_u64() != Some(1) {
@@ -47,6 +48,14 @@ pub fn validate(preset: &Value) -> Result<(), String> {
         .as_str()
         .ok_or("preset kind must be a string")?;
     let module = descriptor(kind)?;
+    if let Some(content) = preset.get("content") {
+        let content: openpatch_core::ModuleContent =
+            serde_json::from_value(content.clone()).map_err(|error| error.to_string())?;
+        let node: Node =
+            serde_json::from_value(json!({"id":"preset", "kind":kind, "content":content}))
+                .map_err(|error| error.to_string())?;
+        openpatch_core::validate_content(&node)?;
+    }
     let params = preset["params"]
         .as_object()
         .ok_or("preset params must be an object")?;
@@ -159,6 +168,13 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
         preset["score"] = serde_json::to_value(node.score.clone().unwrap_or_default())
             .map_err(|error| error.to_string())?;
     }
+    if let Some(content) = &node.content {
+        preset["content"] = serde_json::to_value(content).map_err(|error| error.to_string())?;
+    } else if let Some(text) = node.effective_notes_text() {
+        preset["content"] = json!({"type":"notes","text":text});
+    } else if let Some(width_hp) = node.effective_blank_width_hp() {
+        preset["content"] = json!({"type":"blank","width_hp":width_hp});
+    }
     validate(&preset)?;
     Ok(preset)
 }
@@ -167,6 +183,10 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
     validate(preset)?;
     if preset["kind"] != node.kind {
         return Err("module preset kind does not match target module".into());
+    }
+    if let Some(content) = preset.get("content") {
+        node.content =
+            Some(serde_json::from_value(content.clone()).map_err(|error| error.to_string())?);
     }
     if let Some(score) = preset.get("score") {
         node.score =
@@ -337,6 +357,7 @@ mod tests {
         for module in catalog()["modules"].as_array().unwrap() {
             let kind = module["kind"].as_str().unwrap();
             let base = Node {
+                content: None,
                 score: None,
                 id: "test".into(),
                 kind: kind.into(),

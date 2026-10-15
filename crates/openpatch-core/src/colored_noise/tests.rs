@@ -3,6 +3,7 @@ use super::*;
 fn noise(rate: u32, seed: u32, level: f32) -> ColoredNoise {
     ColoredNoise::build(
         &Node {
+            content: None,
             score: None,
             bypassed: false,
             id: "noise".into(),

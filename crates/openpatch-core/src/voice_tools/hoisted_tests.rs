@@ -5,6 +5,7 @@ const DRIVES: [f32; 5] = [0.0, 1.0e-12, f32::EPSILON, 0.1, 1.0];
 
 fn node(drive: f32, revision: usize) -> Node {
     Node {
+        content: None,
         score: None,
         id: "hoisted-test".into(),
         kind: "svf_filter".into(),

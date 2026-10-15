@@ -36,6 +36,8 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
 /// Permanent faceplate print: independent of instance IDs and live values.
 pub(crate) fn model_caption(kind: &str) -> &str {
     match kind {
+        "notes" => "PATCH NOTES",
+        "blank" => "RACK SPACE",
         "score_sequencer" => "PATTERNS & AUTOMATION",
         "stereo_delay" => "MODULATED ECHO",
         "stereo_reverb" => "STEREO REVERBERATOR",

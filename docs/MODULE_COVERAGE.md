@@ -33,7 +33,7 @@ DSP evidence; native window/input/audio-device and physical MIDI qualification
 remain separate gates.
 [MIDI → Gate](MIDI_GATE.md) adds sixteen note-gate outputs, velocity, MPE,
 minimum-duration pulses, Learn and Panic, bringing the current catalog to
-60 kinds. Its source contract deliberately preserves output-cell state across
+60 kinds at that milestone. Its source contract deliberately preserves output-cell state across
 remapping; clearing a remapped held gate requires its new note-off or Panic.
 The [actual-class report](benchmarks/midi-gate-reference.json) records 63 passing
 cases (21 fixtures × 44.1/48/96 kHz), 258,048 frames and 56,513,088 active lane
@@ -41,6 +41,15 @@ samples, with bit-identical binary traces, zero voltage error and no metadata
 mismatches. This covers the pinned DSP, SDK queue and source JSON with the
 explicit driver channel rule; all outputs were probed. Native host, hardware,
 durable transport/Session behavior and complete Core parity have separate gates.
+
+[Notes and Blank](ANNOTATIONS.md) add two zero-port annotation kinds, bringing the
+current catalog to 62. Notes stores bounded Unicode text; Blank stores a single
+HP width with a 3 HP minimum. Both share revision-checked UI/MCP transactions,
+presets, duplication, Initialize and history. GUI width/position resizing is one
+undo step, and browser thumbnails use the actual panels. These functional
+contracts do not qualify native text/IME/clipboard interactions or complete Rack
+layout parity; direct graph-only MCP/preset width edits cannot enforce collisions
+against the separately owned host layout.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -150,8 +159,8 @@ Names follow the Core library; parenthesized aliases match the manual. The Audio
 | CV to MIDI (CV-MIDI) | MIDI output | Planned | Pitch conversion, balanced note-on/off, panic |
 | CV to MIDI CC (CV-CC) | MIDI output | Planned | Quantization, rate control, endpoint round trip |
 | Gate to MIDI (CV-Gate) | MIDI output | Planned | Threshold crossings and stuck-note prevention |
-| Blank | Layout | Planned | Resize, placement, save/load |
-| Notes | Documentation | Planned | Unicode text and patch persistence |
+| Blank | Layout | Functional: `blank`, single saved 3–96 HP width, left/right edge preview, direct entry, collision-aware GUI resize, one-step width/position history, presets and duplication | Native gesture qualification; graph-only MCP/preset width edits lack layout collision validation; [contract](ANNOTATIONS.md). |
+| Notes | Documentation | Functional: `notes`, multiline Unicode, draft Apply/Cancel/conflict handling, shared UI/MCP content transactions, presets and project/recovery persistence | Native IME/clipboard/input qualification; explicit 8192 UTF-8 byte bound; [contract](ANNOTATIONS.md). |
 
 ## VCV Free inventory
 

@@ -86,6 +86,8 @@ pub(crate) enum RackAction {
         select_copies: bool,
     },
     MoveModules(ModuleMove),
+    ResizeBlank(BlankResizeProposal),
+    ApplyAnnotation(Value),
     Inspect {
         lane: usize,
         id: String,
@@ -274,6 +276,7 @@ impl ModulePreview {
     pub(crate) fn new(module: &Value) -> Self {
         let kind = module["kind"].as_str().unwrap_or("").to_owned();
         let node = Node {
+            content: None,
             score: None,
             id: String::new(),
             kind,
@@ -310,7 +313,7 @@ impl ModulePreview {
     }
 
     pub(crate) fn size(&self) -> Vec2 {
-        vec2(panel_width(&self.patch.nodes[0].kind), PANEL_HEIGHT)
+        vec2(module_width(&self.patch.nodes[0]), PANEL_HEIGHT)
     }
 
     pub(crate) fn show(&mut self, ui: &mut egui::Ui, bounds: Rect, catalog: &Value) {
@@ -356,6 +359,9 @@ pub struct Rack {
     pub selected: Option<String>,
     selection: BTreeSet<String>,
     group_drag: Option<GroupDrag>,
+    blank_resize: Option<BlankResize>,
+    annotation_edit: Option<AnnotationEdit>,
+    annotation_input_guard: bool,
     reveal_group_once: bool,
     reveal_module_once: Option<String>,
     positions: BTreeMap<String, Pos2>,
@@ -408,6 +414,9 @@ impl Default for Rack {
             selected: None,
             selection: BTreeSet::new(),
             group_drag: None,
+            blank_resize: None,
+            annotation_edit: None,
+            annotation_input_guard: false,
             reveal_group_once: false,
             reveal_module_once: None,
             positions: BTreeMap::new(),
@@ -641,14 +650,8 @@ impl Rack {
             canvas.min
                 + self.pan
                 + (self.positions.get(id)?.to_vec2()
-                    + port_position(
-                        &node.kind,
-                        input,
-                        index,
-                        ports.len(),
-                        panel_width(&node.kind),
-                    )
-                    .to_vec2())
+                    + port_position(&node.kind, input, index, ports.len(), module_width(node))
+                        .to_vec2())
                     * self.zoom,
         )
     }
@@ -737,7 +740,7 @@ impl Rack {
             self.positions.get(&node.id).is_some_and(|position| {
                 Rect::from_min_size(
                     canvas.min + self.pan + position.to_vec2() * self.zoom,
-                    vec2(panel_width(&node.kind), PANEL_HEIGHT) * self.zoom,
+                    vec2(module_width(node), PANEL_HEIGHT) * self.zoom,
                 )
                 .contains(pointer)
             })
@@ -798,7 +801,7 @@ impl Rack {
                         positions
                             .get(&other.id)
                             .filter(|p| p.y.abs() < 1.0)
-                            .map(|p| p.x + panel_width(&other.kind))
+                            .map(|p| p.x + module_width(other))
                     })
                     .fold(0.0, f32::max);
                 positions.insert(node.id.clone(), pos2(x, 0.0));
@@ -821,7 +824,7 @@ impl Rack {
                 .iter()
                 .find(|node| &node.id == id)
                 .ok_or("Selected module no longer exists")?;
-            source.push((new_id.clone(), positions[id], panel_width(&node.kind)));
+            source.push((new_id.clone(), positions[id], module_width(node)));
         }
         if source.is_empty() {
             return Err("Select a module to duplicate".into());
@@ -847,7 +850,7 @@ impl Rack {
         let others: Vec<_> = patch
             .nodes
             .iter()
-            .map(|n| (positions[&n.id], panel_width(&n.kind)))
+            .map(|n| (positions[&n.id], module_width(n)))
             .collect();
         let origin = settle_group(pos2(right, min.y), &members, &others)
             .ok_or("No free rack position within project bounds")?;
@@ -899,7 +902,7 @@ impl Rack {
         let others: Vec<_> = patch
             .nodes
             .iter()
-            .map(|node| (positions[&node.id], panel_width(&node.kind)))
+            .map(|node| (positions[&node.id], module_width(node)))
             .collect();
         settle_group(
             pos2(world.x - width * 0.5, world.y),
@@ -1044,6 +1047,8 @@ impl Rack {
             && self.shortcuts_enabled
             && self.performance_available
             && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && self.blank_resize.is_none()
             && ui.input(|i| {
                 i.focused
                     && i.pointer.primary_down()
@@ -1168,6 +1173,8 @@ impl Rack {
             && self.group_drag.is_none()
             && self.held_manual.is_none()
             && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && self.blank_resize.is_none()
     }
 
     pub fn layout(&self) -> Value {
@@ -1187,6 +1194,7 @@ impl Rack {
     }
 
     pub(crate) fn cancel_module_drag(&mut self) {
+        self.blank_resize = None;
         if let Some(drag) = self.group_drag.take() {
             for (id, origin) in drag.origins {
                 if let Some(position) = self.positions.get_mut(&id) {
@@ -1262,6 +1270,7 @@ impl Rack {
         self.reveal_group_once = false;
         self.reveal_module_once = None;
         self.group_drag = None;
+        self.blank_resize = None;
         Ok(())
     }
 
@@ -1273,6 +1282,7 @@ impl Rack {
         device_rate: u32,
         revision: u64,
     ) -> Option<RackAction> {
+        self.annotation_input_guard = self.annotation_edit.is_some();
         let animation_now = self.construction_now();
         if self.construction_animation.tick(animation_now) {
             ui.ctx()
@@ -1330,6 +1340,7 @@ impl Rack {
                     }))
         });
         let drag_interactive = interactive
+            && self.annotation_edit.is_none()
             && self.shortcuts_enabled
             && !gesture_interrupted
             && ui.input(|i| i.focused)
@@ -1480,6 +1491,8 @@ impl Rack {
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
             && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && self.blank_resize.is_none()
             && self.pending.is_none()
             && self.group_drag.is_none()
             && !ui.input(|i| i.pointer.primary_down())
@@ -2007,6 +2020,9 @@ impl Rack {
             self.editing = None;
         }
         self.parameter_editor(ui.ctx(), &mut action);
+        if interactive && self.shortcuts_enabled {
+            self.annotation_editor(ui.ctx(), patch, revision, &mut action);
+        }
         released_manual.or(if interactive { action } else { None })
     }
 
@@ -2086,8 +2102,7 @@ impl Rack {
             group.push(cable);
         }
         for node in &patch.nodes {
-            let position = self.positions[&node.id];
-            let width = panel_width(&node.kind);
+            let (position, width) = self.annotation_geometry(node);
             let rect = Rect::from_min_size(
                 canvas.min + self.pan + position.to_vec2() * self.zoom,
                 vec2(width, PANEL_HEIGHT) * self.zoom,
@@ -2137,7 +2152,13 @@ impl Rack {
             }
             pointer_on_module |=
                 ui.input(|i| i.pointer.hover_pos().is_some_and(|p| rect.contains(p)));
-            if !rect.intersects(canvas) {
+            // An active resize must receive release even when its last preview
+            // shrank entirely beyond the viewport into another app panel.
+            let resizing = self
+                .blank_resize
+                .as_ref()
+                .is_some_and(|d| d.proposal.id == node.id);
+            if !rect.intersects(canvas) && !resizing {
                 continue;
             }
             let description = module
@@ -2185,6 +2206,18 @@ impl Rack {
                     ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                     ui.separator();
                     monitor_menu(ui, node, &output_ports, patch, &mut action);
+                    if matches!(node.kind.as_str(), "notes" | "blank")
+                        && ui
+                            .button(if node.kind == "notes" {
+                                "Edit notes…"
+                            } else {
+                                "Set width…"
+                            })
+                            .clicked()
+                    {
+                        self.open_annotation_editor(node, revision);
+                        ui.close();
+                    }
                     utility_menu(ui, node, &mut action);
                     if node.kind == "seq3" {
                         for (direction, label) in [
@@ -2310,9 +2343,7 @@ impl Rack {
                             .map(|(id, p)| {
                                 (
                                     pos2(p.x - min.x, p.y - min.y),
-                                    panel_width(
-                                        &patch.nodes.iter().find(|n| &n.id == id).unwrap().kind,
-                                    ),
+                                    module_width(patch.nodes.iter().find(|n| &n.id == id).unwrap()),
                                 )
                             })
                             .collect();
@@ -2320,7 +2351,7 @@ impl Rack {
                             .nodes
                             .iter()
                             .filter(|n| !drag.origins.contains_key(&n.id))
-                            .map(|n| (self.positions[&n.id], panel_width(&n.kind)))
+                            .map(|n| (self.positions[&n.id], module_width(n)))
                             .collect();
                         let settled = (drag.delta != Vec2::ZERO)
                             .then(|| settle_group(min + drag.delta, &members, &others))
@@ -2582,6 +2613,13 @@ impl Rack {
                     patch.sample_rate.min(device_rate),
                     revision,
                 ) {
+                    action = Some(edit);
+                }
+            }
+            if matches!(node.kind.as_str(), "notes" | "blank") {
+                if let Some(edit) =
+                    self.annotation_panel(ui, node, patch, rect, revision, drag_interactive)
+                {
                     action = Some(edit);
                 }
             }
@@ -3710,7 +3748,7 @@ impl Rack {
             };
             let rect = Rect::from_min_size(
                 canvas.min + self.pan + position.to_vec2() * self.zoom,
-                vec2(panel_width(&node.kind), PANEL_HEIGHT) * self.zoom,
+                vec2(module_width(node), PANEL_HEIGHT) * self.zoom,
             );
             if !painter.clip_rect().intersects(rect) {
                 continue;
@@ -4151,6 +4189,8 @@ impl Rack {
                 && allow_press
                 && self.held_manual.is_none()
                 && self.editing.is_none()
+                && self.annotation_edit.is_none()
+                && self.blank_resize.is_none()
                 && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
             {
                 if response.clicked_by(PointerButton::Primary) {
@@ -4453,6 +4493,8 @@ impl Rack {
             && allow_press
             && self.held_manual.is_none()
             && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && self.blank_resize.is_none()
             && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
         {
             if response.clicked_by(PointerButton::Primary) {
@@ -6987,7 +7029,7 @@ impl Rack {
                                 input,
                                 index,
                                 ports.len(),
-                                panel_width(&node.kind),
+                                module_width(node),
                             )
                             .to_vec2())
                             * self.zoom;
@@ -7157,7 +7199,7 @@ impl Rack {
             for other in &patch.nodes {
                 if let Some(position) = self.positions.get(&other.id) {
                     if position.y.abs() < 1.0 {
-                        x = x.max(position.x + panel_width(&other.kind));
+                        x = x.max(position.x + module_width(other));
                     }
                 }
             }
@@ -7188,7 +7230,7 @@ impl Rack {
         let max = pos2(
             nodes
                 .iter()
-                .map(|n| self.positions[&n.id].x + panel_width(&n.kind))
+                .map(|n| self.positions[&n.id].x + module_width(n))
                 .fold(f32::NEG_INFINITY, f32::max),
             nodes
                 .iter()
@@ -7219,7 +7261,7 @@ impl Rack {
         let min = canvas.min + self.pan + self.positions[&node.id].to_vec2() * self.zoom;
         // When zoom makes the panel taller than the viewport, prioritize its
         // header instead of changing the user's zoom or hiding its top edge.
-        let size = (vec2(panel_width(&node.kind), PANEL_HEIGHT) * self.zoom).min(viewport.size());
+        let size = (vec2(module_width(node), PANEL_HEIGHT) * self.zoom).min(viewport.size());
         let rect = Rect::from_min_size(min, size);
         self.pan.x += if rect.left() < viewport.left() {
             viewport.left() - rect.left()
@@ -7238,6 +7280,7 @@ impl Rack {
     }
 }
 
+include!("annotation_panel.rs");
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
 include!("midi_cc_panel.rs");
@@ -9033,8 +9076,15 @@ fn panel_button(
     clicked
 }
 
+pub(crate) fn module_width(node: &Node) -> f32 {
+    node.effective_blank_width_hp()
+        .map_or_else(|| panel_width(&node.kind), |hp| f32::from(hp) * HP)
+}
+
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
+        "notes" => HP * 16.0,
+        "blank" => HP * 10.0,
         "random_values" => HP * 20.0,
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
@@ -9076,6 +9126,8 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
 }
 pub(crate) fn title(kind: &str) -> &str {
     match kind {
+        "notes" => "NOTES",
+        "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "scope" => "SCOPE",
         "score_sequencer" => "SCORE",
@@ -10074,6 +10126,9 @@ fn paint_panel(
             );
         }
     }
+    if node.kind == "blank" && width < 120.0 {
+        return;
+    }
     let label = title(&node.kind);
     let mut font = crate::panel_skin::heading_font(
         painter.ctx(),
@@ -10862,7 +10917,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            60,
+            62,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -11462,14 +11517,8 @@ mod tests {
         let index = ports.iter().position(|p| p == port).unwrap();
         (rack.pan
             + (rack.positions[id].to_vec2()
-                + port_position(
-                    &node.kind,
-                    input,
-                    index,
-                    ports.len(),
-                    panel_width(&node.kind),
-                )
-                .to_vec2())
+                + port_position(&node.kind, input, index, ports.len(), module_width(node))
+                    .to_vec2())
                 * rack.zoom)
             .to_pos2()
     }
@@ -12617,7 +12666,7 @@ mod tests {
                 assert!(
                     (p.y - q.y).abs() >= PANEL_HEIGHT
                         || p.x + width <= q.x
-                        || p.x >= q.x + panel_width(&node.kind)
+                        || p.x >= q.x + module_width(node)
                 );
             }
         }
@@ -12625,6 +12674,7 @@ mod tests {
         assert_eq!(rack.selected_ids(), vec!["small-copy", "wide-copy"]);
         let mut updated = patch;
         updated.nodes.push(Node {
+            content: None,
             score: None,
             id: "wide-copy".into(),
             kind: "vca_mix".into(),
@@ -14840,6 +14890,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: "q".into(),
@@ -14888,6 +14939,7 @@ mod tests {
             nodes: [("split", "poly_split"), ("a", "gain"), ("b", "gain")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    content: None,
                     score: None,
                     bypassed: false,
                     id: id.into(),
@@ -14950,6 +15002,7 @@ mod tests {
             nodes: [("midi", "midi_cv"), ("audio", "audio_stereo")]
                 .into_iter()
                 .map(|(id, kind)| Node {
+                    content: None,
                     score: None,
                     bypassed: false,
                     id: id.into(),
@@ -14996,6 +15049,7 @@ mod tests {
             ]
             .into_iter()
             .map(|(id, kind)| Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: id.into(),
@@ -15156,6 +15210,7 @@ mod tests {
             let patch = Patch {
                 version,
                 nodes: vec![Node {
+                    content: None,
                     score: None,
                     bypassed: false,
                     id: "loop".into(),
@@ -15211,6 +15266,7 @@ mod tests {
         let patch = Patch {
             version: 2,
             nodes: vec![Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: "voltages".into(),
@@ -15370,6 +15426,7 @@ mod tests {
         let catalog = openpatch_core::catalog();
         for module in catalog["modules"].as_array().unwrap() {
             let node = Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: "test".into(),
@@ -15395,6 +15452,7 @@ mod tests {
             .find(|module| module["kind"] == "adsr")
             .unwrap();
         let node = Node {
+            content: None,
             score: None,
             bypassed: false,
             id: "env".into(),
@@ -15487,6 +15545,7 @@ mod tests {
         let mut rack = Rack::default();
         let mut patch = Patch {
             nodes: vec![Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: "vco".into(),
@@ -15667,7 +15726,7 @@ mod tests {
             for node in &patch.nodes {
                 let other = Rect::from_min_size(
                     rack.positions[&node.id],
-                    vec2(panel_width(&node.kind), PANEL_HEIGHT),
+                    vec2(module_width(node), PANEL_HEIGHT),
                 );
                 assert!(!proposed.intersect(other).is_positive());
             }
@@ -17466,6 +17525,9 @@ mod tests {
     }
     mod cable_guidance_tests {
         include!("cable_guidance_tests.rs");
+    }
+    mod annotation_ui_tests {
+        include!("annotation_ui_tests.rs");
     }
     mod midi_gate_ui_tests {
         include!("midi_gate_ui_tests.rs");

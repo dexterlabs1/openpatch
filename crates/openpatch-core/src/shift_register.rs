@@ -323,6 +323,7 @@ mod tests {
     use super::*;
     fn node() -> Node {
         Node {
+            content: None,
             score: None,
             id: "s".into(),
             kind: "sh_asr".into(),

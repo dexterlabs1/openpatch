@@ -214,6 +214,7 @@ mod tests {
     fn model(kind: &str, declick: bool) -> SequentialSwitch {
         SequentialSwitch::build(
             &Node {
+                content: None,
                 score: None,
                 bypassed: false,
                 id: "s".into(),

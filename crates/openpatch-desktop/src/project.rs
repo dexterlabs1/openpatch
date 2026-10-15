@@ -490,6 +490,7 @@ mod tests {
     fn document(value: f32) -> Document {
         let mut patch = Patch::new_v2();
         patch.nodes.push(openpatch_core::Node {
+            content: None,
             score: None,
             bypassed: false,
             id: "source".into(),

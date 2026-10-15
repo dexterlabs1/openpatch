@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 60 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 62 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Next product design priority
 
@@ -26,7 +26,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 60 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 60 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 62 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 62 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -299,7 +299,7 @@ excluded.
 The version-2 `midi_gate` kind adds sixteen note assignments, minimum-duration
 note gates, velocity voltage, MPE, channel filtering, Learn/Cancel and an explicit
 module Panic. CC and Gate share one original 4×4 panel/precision-entry renderer
-and the kind-tagged durable Learn transport. The catalog now contains 60 kinds;
+and the kind-tagged durable Learn transport. MIDI Gate brought the catalog to 60 kinds;
 this does not complete the Core inventory.
 
 The source's state belongs to output cells. A mapping edit, Learn, or mapping
@@ -324,3 +324,23 @@ The selected hardware input is global rather than per module. The connected
 [MIDI drum pads](../examples/midi-gate-drums.json) example and
 [two-second note trace](../examples/midi-gate-phrase.events.json) exercise the
 existing global keyboard and offline MCP path without replacing the CC module.
+
+
+## Notes and Blank: readable, portable instruments
+
+The catalog now includes 62 kinds. Original `notes` and `blank` close two missing
+Core roles with typed module content, revision-checked `set_module_content`,
+atomic mixed edits, preset/duplicate/project/recovery persistence and shared
+history. Notes has a multiline draft editor with explicit Apply/Cancel and a
+retained conflict draft. Blank has left/right HP-snapped preview and direct width
+entry; geometry-aware GUI resize blocks collisions and commits width plus left
+position as one Undo boundary. Width belongs to module content, so unseen MCP
+width revisions restore from graph history rather than a renderer cache.
+
+[The annotation contract](ANNOTATIONS.md) specifies limits and remaining gates.
+Direct MCP/preset width changes retain the left position; the Session does not
+own rack positions and cannot enforce layout collision constraints. Existing
+observed-state position-history limitations and native macOS IME/clipboard/
+interaction qualification remain open. Notes' screen is emissive in lights-out;
+Blank and faceplates are passive. Next synthesis milestone: the stock VCF
+interface and actual-class DSP qualification; MIDI Map follows host editing work.

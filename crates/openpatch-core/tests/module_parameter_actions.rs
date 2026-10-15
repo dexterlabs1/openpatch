@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 fn node(kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        content: None,
         score: None,
         id: "target".into(),
         kind: kind.into(),
@@ -266,6 +267,10 @@ fn rate_bounds_errors_and_every_kind_remain_compilable() {
                 .unwrap_or_else(|error| panic!("{kind} initialize at {rate}: {error}"));
             for seed in 0..24 {
                 let mut target = node(kind, &[]);
+                if module["randomize"] == false {
+                    assert!(actions.randomize(&mut target, seed).is_err());
+                    continue;
+                }
                 actions.randomize(&mut target, seed).unwrap();
                 patch.nodes.clear();
                 patch.nodes.push(target);
@@ -283,6 +288,7 @@ fn initialize_runtime_handle_accepts_valid_bypassed_and_rejects_foreign() {
     patch.nodes = vec![
         node("multi_vco", &[]),
         Node {
+            content: None,
             score: None,
             id: "bypassed".into(),
             kind: "constant".into(),

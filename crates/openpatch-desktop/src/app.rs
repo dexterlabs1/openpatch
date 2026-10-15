@@ -737,6 +737,7 @@ impl OpenPatch {
             && !egui::Popup::is_any_open(ctx)
             && playing
             && !ctx.wants_keyboard_input()
+            && !self.rack.annotation_keyboard_active()
             && !self.cable_palette_ui.keyboard_active()
             && ctx.input(|i| i.focused)
             && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
@@ -1607,6 +1608,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::shift_register_layout())
                 .expect("bundled shift register layout");
+        } else if title == "Annotated drum rack" {
+            self.rack
+                .restore_layout(&Self::annotated_drums_layout())
+                .expect("bundled annotated drum rack layout");
         } else if title == "MIDI drum pads" {
             self.rack
                 .restore_layout(&Self::midi_gate_drums_layout())
@@ -1627,6 +1632,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn annotated_drums_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "guide":[0,0],"pads":[270,0],"spacer":[750,0],"mix":[825,0],"out":[1095,0],
+            "kick":[0,420],"clap":[390,420],"hat":[780,420]
+        }})
     }
     fn midi_gate_drums_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -2057,6 +2068,50 @@ impl OpenPatch {
         Ok(())
     }
 
+    fn resize_blank(&mut self, proposal: crate::rack::BlankResizeProposal) -> bool {
+        self.rack.cancel_module_drag();
+        if proposal.movement.revision != self.revision {
+            self.status = "Rack changed; retry the resize".into();
+            self.sync();
+            return false;
+        }
+        if let Err(error) = self.rack.validate_blank_resize(&self.patch, &proposal) {
+            self.status = error;
+            return false;
+        }
+        if proposal.before_hp == proposal.width_hp
+            && proposal.movement.before == proposal.movement.after
+        {
+            return true;
+        }
+        let base_state_id = self.state_id;
+        let base_layout = self.rack.layout();
+        let result = execute_shared(
+            &self.shared,
+            "set_module_content",
+            json!({
+                "id":proposal.id,"content":{"type":"blank","width_hp":proposal.width_hp},
+                "expected_revision":proposal.movement.revision
+            }),
+        );
+        let receipt = match result {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.status = error;
+                self.sync();
+                return false;
+            }
+        };
+        // This exact receipt owns both content and its local position. A newer
+        // MCP revision may already exist; never label geometry with that revision.
+        self.install_move_receipt(&receipt, &proposal.movement, base_state_id, base_layout)
+            .expect("validated resize returns an exact committed graph receipt");
+        self.sync();
+        self.observe_document();
+        self.status = format!("Blank resized to {} HP", proposal.width_hp);
+        true
+    }
+
     fn move_modules(&mut self, movement: ModuleMove) -> bool {
         self.rack.cancel_module_drag();
         if movement.revision != self.revision {
@@ -2280,6 +2335,7 @@ impl OpenPatch {
         if !self.library_enabled()
             || !ctx.input(|i| i.focused)
             || ctx.wants_keyboard_input()
+            || self.rack.annotation_keyboard_active()
             || self.cable_palette_ui.keyboard_active()
             || egui::Popup::is_any_open(ctx)
             || egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ctx)
@@ -2526,6 +2582,10 @@ impl OpenPatch {
                                 .expect("valid bundled gate shaping voice");
                                 self.replace_from_menu(patch, "Gate shaping voice");
                                 ui.close();
+                            }
+                            if ui.button("Annotated drum rack").clicked() {
+                                let patch=serde_json::from_str(include_str!("../../../examples/annotated-drum-rack.json")).expect("valid annotated drum rack");
+                                self.replace_from_menu(patch,"Annotated drum rack"); ui.close();
                             }
                             if ui.button("MIDI drum pads").clicked() {
                                 let patch=serde_json::from_str(include_str!("../../../examples/midi-gate-drums.json")).expect("valid MIDI drum pads");
@@ -3128,6 +3188,14 @@ impl OpenPatch {
             Some(RackAction::Inspect { lane, id, port }) => {
                 self.scope.inspect(lane, id, port);
                 self.select_analysis(Some(AnalysisTab::Scope));
+            }
+            Some(RackAction::ApplyAnnotation(arguments)) => {
+                let accepted = self.command("set_module_content", arguments);
+                self.rack.finish_annotation_edit(accepted);
+            }
+            Some(RackAction::ResizeBlank(proposal)) => {
+                let accepted = self.resize_blank(proposal);
+                self.rack.finish_annotation_edit(accepted);
             }
             Some(RackAction::MoveModules(movement)) => {
                 self.move_modules(movement);
@@ -4041,6 +4109,24 @@ impl OpenPatch {
         self.select_analysis(None);
         self.title = "MIDI Gate · notes into rhythm".into();
         self.status="Actual offline DSP snapshot · velocity gates, sixteen MPE lanes · eight held pads · Learn armed on output16 · no live MIDI device".into();
+    }
+
+    fn prepare_annotations_fixture(&mut self) {
+        let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"guide","kind":"notes","content":{"type":"notes","text":"PATCH LAB\n\nMIDI → Gate → rhythm\n\nZ / X / C play the drum pads.\nLearn assigns your controller.\nPanic releases held gates.\n\nNotes travel with your patch,\npresets and duplicated modules.\n\nSpaces have a purpose, too.\nDrag either Blank edge to resize."}},
+            {"id":"thin","kind":"blank","content":{"type":"blank","width_hp":3}},
+            {"id":"space","kind":"blank"},
+            {"id":"wide","kind":"blank","content":{"type":"blank","width_hp":24}}
+        ]})).unwrap();
+        assert!(self.command("replace_patch", json!({"patch":patch})));
+        self.rack.restore_layout(&json!({"version":1,"zoom":1,"pan":[24,12],"positions":{"guide":[0,0],"thin":[270,0],"space":[345,0],"wide":[525,0]}})).unwrap();
+        self.rack.set_room_brightness(1.0);
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "Notes & Blank · a readable instrument".into();
+        self.status =
+            "Saved Unicode notes · 3, 10 and 24 HP spacers · original shared rack/browser panels"
+                .into();
     }
 
     fn smoke(&mut self, ctx: &egui::Context) {
@@ -4997,6 +5083,31 @@ impl OpenPatch {
         if frame == 1550 {
             self.prepare_midi_gate_fixture();
         }
+        if frame == 1650 {
+            self.prepare_annotations_fixture();
+        }
+        if frame == 1700 {
+            self.rack.set_room_brightness(0.0);
+            self.status =
+                "Notes screen emits light; passive Blank panels disappear with room lighting"
+                    .into();
+        }
+        if frame == 1750 {
+            self.rack.set_room_brightness(1.0);
+            let node = self
+                .patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "guide")
+                .unwrap()
+                .clone();
+            self.rack.open_annotation_editor(&node, self.revision);
+            self.status = "Actual multiline Notes editor · draft is separate until Apply".into();
+        }
+        if frame == 1800 {
+            assert!(self.command("set_module_content",json!({"id":"guide","content":{"type":"notes","text":"A newer MCP edit is now authoritative. The open editor keeps its previous draft."}})));
+            self.status="Actual concurrent Session edit · stale draft retained; Apply blocked until explicit reload".into();
+        }
         if frame == 1600 {
             self.rack.set_room_brightness(0.0);
             self.status="MIDI Gate · lights out · eight actual pad lamps and sixteen captured gate lanes · no live audio or MIDI device".into();
@@ -5080,6 +5191,10 @@ impl OpenPatch {
                 | 1522
                 | 1572
                 | 1622
+                | 1672
+                | 1722
+                | 1772
+                | 1822
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5163,7 +5278,11 @@ impl OpenPatch {
                 62 => path.with_file_name("rack-midi-cc.png"),
                 63 => path.with_file_name("rack-midi-cc-lights-out.png"),
                 64 => path.with_file_name("rack-midi-gate.png"),
-                _ => path.with_file_name("rack-midi-gate-lights-out.png"),
+                65 => path.with_file_name("rack-midi-gate-lights-out.png"),
+                66 => path.with_file_name("rack-annotations.png"),
+                67 => path.with_file_name("rack-annotations-lights-out.png"),
+                68 => path.with_file_name("notes-editor.png"),
+                _ => path.with_file_name("notes-editor-conflict.png"),
             };
             image::save_buffer(
                 &target,
@@ -5174,18 +5293,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/66 at frame {frame}: {}",
+                "Native smoke: capture {}/70 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 66 {
+            if captures == 70 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1656, "Native screenshot timeout");
+        assert!(frame < 1856, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5439,6 +5558,9 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod annotation_app_tests {
+        include!("annotation_app_tests.rs");
+    }
     use super::*;
     use openpatch::control::Session;
     use std::path::Path;
@@ -6604,6 +6726,7 @@ mod project_workflow_tests {
         let full = Patch {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
+                    content: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -8178,6 +8301,7 @@ mod project_workflow_tests {
         let full = Patch {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
+                    content: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -8221,6 +8345,7 @@ mod project_workflow_tests {
             nodes: original
                 .iter()
                 .map(|id| openpatch_core::Node {
+                    content: None,
                     score: None,
                     id: id.clone(),
                     kind: "constant".into(),
@@ -8312,6 +8437,11 @@ mod project_workflow_tests {
     fn held_voltage_examples_apply_nonoverlapping_layout_only_after_replacement() {
         for (title, source, layout) in [
             (
+                "Annotated drum rack",
+                include_str!("../../../examples/annotated-drum-rack.json"),
+                OpenPatch::annotated_drums_layout(),
+            ),
+            (
                 "MIDI drum pads",
                 include_str!("../../../examples/midi-gate-drums.json"),
                 OpenPatch::midi_gate_drums_layout(),
@@ -8357,8 +8487,8 @@ mod project_workflow_tests {
                     let bx = b_pos[0].as_f64().unwrap();
                     let by = b_pos[1].as_f64().unwrap();
                     assert!(
-                        ax + f64::from(crate::rack::panel_width(&a.kind)) <= bx
-                            || bx + f64::from(crate::rack::panel_width(&b.kind)) <= ax
+                        ax + f64::from(crate::rack::module_width(a)) <= bx
+                            || bx + f64::from(crate::rack::module_width(b)) <= ax
                             || ay + 396.0 <= by
                             || by + 396.0 <= ay,
                         "{} overlaps {}",

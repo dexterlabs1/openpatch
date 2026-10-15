@@ -38,7 +38,7 @@
     "values_absolute": 0.0,
     "comparison": "decimal outputs decoded to float32; exact numeric equality for all eight outputs"
   },
-  "production_source_sha256": "9d89bef9ee4376fbf02befc9c1348381691e697dee66a6544f8379f314278ca4",
+  "production_source_sha256": "0ed1ba414b3ce0f855eb4a572f9b58c35650a09684accf06942733ea3904984c",
   "driver_sha256": {
     "sdk_probe.cpp": "23517f48b7db84c091970a5ba1aafbd8e5c5a7de62a259da0eb0bb86e91c3a2e",
     "rust_probe.rs": "3dfe489ae4efaa5eba94ebe1d6fa7ffdf8bd9dfcaa70e89c10bde33fbd77e639",

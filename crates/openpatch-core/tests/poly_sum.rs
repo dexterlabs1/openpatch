@@ -5,6 +5,7 @@ fn patch(level: Option<f32>, rate: u32) -> Patch {
         kind: "poly_constant".into(),
         params: [("channels".into(), 1.0), ("v1".into(), 10.0)].into(),
         bypassed: false,
+        content: None,
         score: None,
     };
     let sum = Node {
@@ -14,6 +15,7 @@ fn patch(level: Option<f32>, rate: u32) -> Patch {
             .map(|v| [("level".into(), v)].into())
             .unwrap_or_default(),
         bypassed: false,
+        content: None,
         score: None,
     };
     Patch {

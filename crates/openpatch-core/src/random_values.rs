@@ -315,6 +315,7 @@ mod tests {
     use super::*;
     fn node() -> Node {
         Node {
+            content: None,
             score: None,
             id: "r".into(),
             kind: "random_values".into(),

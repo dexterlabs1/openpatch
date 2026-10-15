@@ -506,6 +506,7 @@ mod tests {
     fn vco(params: &[(&str, f32)]) -> MultiVco {
         MultiVco::build(
             &Node {
+                content: None,
                 score: None,
                 id: "vco".into(),
                 kind: "multi_vco".into(),
@@ -780,6 +781,7 @@ mod tests {
         assert!((8000..=192_000).contains(&case.rate));
         let mut params = BTreeMap::<String, f32>::new();
         let make_node = |params: BTreeMap<String, f32>| Node {
+            content: None,
             score: None,
             id: "vco".into(),
             kind: "multi_vco".into(),

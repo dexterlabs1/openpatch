@@ -7,6 +7,40 @@ fn step(label: &str, edits: Value) -> Value {
     json!({"label":label,"edits":edits})
 }
 
+#[test]
+fn annotation_construction_content_commits_with_mixed_edits_and_history() {
+    let session = shared();
+    setup(
+        &session,
+        json!([
+            {"tool":"add_module","arguments":{"id":"notes","kind":"notes"}},
+            {"tool":"add_module","arguments":{"id":"blank","kind":"blank"}}
+        ]),
+    );
+    let before = session.lock().unwrap().snapshot()["patch"].clone();
+    let session = controlled_steps(
+        session,
+        vec![step(
+            "Annotate",
+            json!([
+                {"tool":"set_module_content","arguments":{"id":"notes","content":{"type":"notes","text":"built\n日本語"}}},
+                {"tool":"set_module_content","arguments":{"id":"blank","content":{"type":"blank","width_hp":24}}},
+                {"tool":"add_module","arguments":{"id":"tone","kind":"constant","params":{"value":2}}}
+            ]),
+        )],
+    );
+    assert_eq!(advance_one(&session)["status"], "completed");
+    let mut live = session.lock().unwrap();
+    assert_eq!(
+        live.patch.nodes[0].effective_notes_text(),
+        Some("built\n日本語")
+    );
+    assert_eq!(live.patch.nodes[1].effective_blank_width_hp(), Some(24));
+    assert_eq!(live.revision, 2);
+    live.execute("undo", json!({})).unwrap();
+    assert_eq!(live.snapshot()["patch"], before);
+}
+
 fn without_age(mut receipt: Value) -> Value {
     if let Some(receipt) = receipt.as_object_mut() {
         assert!(receipt.remove("age_ms").unwrap().as_u64().is_some());

@@ -31,7 +31,12 @@ mod studio_fx;
 pub use stream_render::{render_wav_stream, RenderStats};
 mod bypass;
 mod colored_noise;
+mod content;
 pub use colored_noise::colored_noise_response_db;
+pub use content::{
+    validate_content, ModuleContent, DEFAULT_BLANK_WIDTH_HP, MAX_BLANK_WIDTH_HP, MAX_NOTES_BYTES,
+    MIN_BLANK_WIDTH_HP, NOTES_WIDTH_HP,
+};
 mod gates;
 pub mod ladder;
 pub mod midi;
@@ -136,6 +141,9 @@ impl Default for Patch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Node {
+    /// Persisted annotation content; absent Notes/Blank content uses defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<ModuleContent>,
     /// Structured patterns and automation for score_sequencer only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<ScoreData>,
@@ -338,6 +346,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(colored_noise::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(content::catalog());
     for module in result["modules"].as_array_mut().unwrap() {
         if module.get("model").is_none() {
             module["model"] = json!("legacy");
@@ -668,6 +680,13 @@ impl Patch {
     pub fn compile(&self) -> Result<Engine, String> {
         validate_cable_ids(&self.cables)?;
         for node in &self.nodes {
+            validate_content(node)?;
+            if self.version != 2 && (node.content.is_some() || content::is_annotation(&node.kind)) {
+                return Err(format!(
+                    "node {}: content and annotation modules require patch version 2",
+                    node.id
+                ));
+            }
             if node.score.is_some() && (node.kind != "score_sequencer" || self.version != 2) {
                 return Err(format!(
                     "node {}: score data requires version-2 score_sequencer",
@@ -1598,6 +1617,7 @@ impl Engine {
 /// A 220 Hz tone with a smooth 2 Hz tremolo, routed through a low-pass filter.
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        content: None,
         score: None,
         bypassed: false,
         id: id.into(),
@@ -1647,6 +1667,7 @@ pub fn demo_patch() -> Patch {
 /// A reference voice in volts, with a clock-gated RC envelope and OTA VCA.
 pub fn analog_demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
+        content: None,
         score: None,
         bypassed: false,
         id: id.into(),

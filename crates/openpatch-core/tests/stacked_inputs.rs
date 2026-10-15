@@ -2,6 +2,7 @@ use openpatch_core::{Cable, Engine, Node, Patch, PortFrame};
 
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        content: None,
         score: None,
         id: id.into(),
         kind: kind.into(),

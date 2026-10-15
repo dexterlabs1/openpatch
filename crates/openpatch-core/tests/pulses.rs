@@ -8,6 +8,7 @@ fn patch(rate: u32, port: &str) -> Patch {
     Patch {
         sample_rate: rate,
         nodes: vec![Node {
+            content: None,
             score: None,
             id: "p".into(),
             kind: "pulses".into(),

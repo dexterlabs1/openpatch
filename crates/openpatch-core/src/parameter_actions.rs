@@ -184,6 +184,9 @@ impl ModuleParameterActions {
     pub fn initialize(&self, node: &mut Node) -> Result<(), String> {
         let descriptor = self.descriptors(node)?;
         let params = descriptor["params"].as_object().unwrap();
+        if crate::content::is_annotation(&node.kind) {
+            node.content = None;
+        }
         for (name, spec) in params {
             if spec["initialize"].as_bool() == Some(false) {
                 continue;
@@ -195,6 +198,12 @@ impl ModuleParameterActions {
     }
 
     pub fn randomize(&self, node: &mut Node, seed: u32) -> Result<(), String> {
+        if crate::content::is_annotation(&node.kind) {
+            return Err(format!(
+                "node '{}': Randomize is unsupported for {}",
+                node.id, node.kind
+            ));
+        }
         let descriptor = self.descriptors(node)?;
         let params = descriptor["params"].as_object().unwrap();
         let mut names = params.keys().collect::<Vec<_>>();

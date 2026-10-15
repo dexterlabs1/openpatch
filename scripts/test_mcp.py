@@ -1174,9 +1174,69 @@ class OpenPatchMCPTests(unittest.TestCase):
             samples = struct.unpack("<96h", wav.readframes(48))
         self.assertEqual(samples[::2], samples[1::2])
 
+    def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        self.assertEqual(len(catalog["modules"]), 62)
+        for kind in ("notes", "blank"):
+            module = next(m for m in catalog["modules"] if m["kind"] == kind)
+            self.assertEqual(module["inputs"], [])
+            self.assertEqual(module["outputs"], [])
+            self.assertEqual(module["min_patch_version"], 2)
+            self.assertIn("content_schema", module)
+        text = "DRUM LAB\n\t日本語 · café · 🎛️\nMIDI → gates → drums"
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "notes", "kind": "notes"}, {"id": "blank", "kind": "blank"},
+            {"id": "source", "kind": "constant", "params": {"value": 0.25}},
+            {"id": "sink", "kind": "gain"}], "output": "source"}})
+        before = self.patch_snapshot()
+        arguments = {"expected_revision": before["revision"], "edits": [
+            {"tool": "set_module_content", "arguments": {"id": "notes", "content": {"type": "notes", "text": text}}},
+            {"tool": "set_module_content", "arguments": {"id": "blank", "content": {"type": "blank", "width_hp": 24}}},
+            {"tool": "set_parameter", "arguments": {"id": "source", "parameter": "value", "value": 0.5}}]}
+        preview = self.payload(self.require_tool_success("preview_edits", arguments))
+        self.assertEqual(self.patch_snapshot(), before)
+        committed = self.payload(self.require_tool_success("apply_edits", arguments))
+        self.assertEqual(committed["patch"], preview["patch"])
+        self.assertEqual(committed["revision"], before["revision"] + 1)
+        self.assertEqual(committed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        self.require_tool_error("apply_edits", arguments)
+        for content in ({"type": "notes", "text": "é" * 4097}, {"type": "blank", "width_hp": 10},
+                        {"type": "notes", "text": text, "unknown": True}):
+            self.require_tool_error("set_module_content", {"id": "notes", "content": content})
+            self.assertEqual(self.patch_snapshot(), committed)
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "source", "parameter": "value", "value": 2}},
+            {"tool": "set_module_content", "arguments": {"id": "blank", "content": {"type": "blank", "width_hp": 2}}}]})
+        self.assertEqual(self.patch_snapshot(), committed)
+        for kind in ("notes", "blank"):
+            self.require_tool_error("set_output", {"id": kind})
+            self.require_tool_error("analyze_signal", {"id": kind, "seconds": 0.001})
+            self.require_tool_error("connect", {"from": kind, "to": "sink", "input": "signal"})
+            self.require_tool_error("connect", {"from": "source", "to": kind, "input": "signal"})
+        self.assertEqual(self.patch_snapshot(), committed)
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "source", "seconds": 0.001}))
+        self.assertEqual(measured["channels"][0]["peak"], 0.5)
+        for kind in ("notes", "blank"):
+            preset = self.payload(self.require_tool_success("capture_module_preset", {"id": kind}))["preset"]
+            self.require_tool_success("save_module_preset", {"filename": kind + ".opreset", "preset": preset})
+            loaded = self.payload(self.require_tool_success("read_module_preset", {"filename": kind + ".opreset"}))["preset"]
+            self.assertEqual(loaded, preset)
+        self.require_tool_success("save_patch", {"filename": "annotations.json"})
+        self.require_tool_success("undo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo", {})
+        self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+        self.require_tool_success("duplicate_modules", {"modules": [{"id": "notes", "new_id": "notes_copy"},
+            {"id": "blank", "new_id": "blank_copy"}], "cable_mode": "none"})
+        nodes = {n["id"]: n for n in self.patch_snapshot()["patch"]["nodes"]}
+        self.assertEqual(nodes["notes_copy"]["content"], {"type": "notes", "text": text})
+        self.assertEqual(nodes["blank_copy"]["content"], {"type": "blank", "width_hp": 24})
+        self.require_tool_success("load_patch", {"filename": "annotations.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], committed["patch"])
+
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 60)
+        self.assertEqual(len(catalog["modules"]), 62)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1269,7 +1329,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 60)
+        self.assertEqual(len(catalog["modules"]), 62)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])

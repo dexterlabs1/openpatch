@@ -31,7 +31,7 @@
     "Only this reported SDK/compiler/platform combination is numerically qualified; cross-platform workspace tests do not independently execute this oracle",
     "SDK inactive input lanes are explicitly zeroed, matching connected-port engine bookkeeping; nonexposed output padding is checked on Rust only"
   ],
-  "production_source_sha256": "102c58fe5858aa0dd61cd9dede1a16ca43e3f827cab64e1e7d508b3a77f39237",
+  "production_source_sha256": "6002672b9b3c23aaa98ea642f2198c0b91918208bd8805b73b86cf6647d9e3e0",
   "driver_sha256": {
     "sdk_probe.cpp": "4b304150c04f8c6b16df3fe2146ab0d3b2a50e6d676bf98d9ac9d1e52b612e2e",
     "rust_probe.rs": "c7d2d50561d2ad95c76ddb8d9df369338ae7ae6f7c7f89eb5bb074b10f9602d1",

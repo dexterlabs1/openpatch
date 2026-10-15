@@ -78,6 +78,21 @@ pub(super) fn schema() -> Value {
         "format":{"const":"openpatch-module-preset"},
         "version":{"type":"integer","const":1},"kind":{"type":"string"},
         "params":{"type":"object","additionalProperties":{"type":"number"}},
-        "bypassed":{"type":"boolean"}
+        "bypassed":{"type":"boolean"},
+        "score":{"type":"object"},
+        "content":content_schema()
     },"required":["format","version","kind","params"],"additionalProperties":false})
+}
+
+pub(super) fn content_schema() -> Value {
+    json!({"oneOf":[
+        {"type":"object","properties":{
+            "type":{"const":"notes"},
+            "text":{"type":"string","maxLength":8192,"description":"Multiline Unicode text; at most 8192 UTF-8 bytes."}
+        },"required":["type","text"],"additionalProperties":false},
+        {"type":"object","properties":{
+            "type":{"const":"blank"},
+            "width_hp":{"type":"integer","minimum":3,"maximum":96}
+        },"required":["type","width_hp"],"additionalProperties":false}
+    ]})
 }

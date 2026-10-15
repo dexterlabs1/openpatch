@@ -33,7 +33,7 @@
     "brightness_absolute": 3e-06,
     "channel_count": "exact"
   },
-  "production_source_sha256": "073863b84ce94971a4c48b13033d8ba42b565fbaf48957da853ca0f988a23335",
+  "production_source_sha256": "b3cc87529b96e84ee86be1225c25e8c10da507f823442aa5333c9b20fd0b5890",
   "toolchain": {
     "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
     "rust": "rustc 1.99.0 (b940084d7 2026-09-28)"

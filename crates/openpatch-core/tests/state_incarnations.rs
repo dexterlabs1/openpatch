@@ -1,6 +1,7 @@
 use openpatch_core::*;
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
+        content: None,
         score: None,
         id: id.into(),
         kind: kind.into(),

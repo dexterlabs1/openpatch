@@ -232,6 +232,7 @@ mod tests {
 
     fn utility(kind: &str, params: &[(&str, f32)]) -> Utility {
         Utility::build(&Node {
+            content: None,
             score: None,
             bypassed: false,
             id: "test".into(),

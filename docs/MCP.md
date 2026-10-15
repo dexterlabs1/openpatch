@@ -1,801 +1,256 @@
-# MCP integration
+# Rust module coverage
 
-OpenPatch exposes tools over newline-delimited JSON-RPC on stdio, with protocol
-versions `2025-11-25`, `2025-06-18`, and `2025-03-26`. The server negotiates the
-version during initialization. Stdout contains protocol messages only; errors
-from startup go to stderr. It does not open a network port or call a model API.
+Inventory verified **2026-10-12** against the official [VCV Core manual](https://vcvrack.com/manual/Core), [Core library listing](https://library.vcvrack.com/Core), and [VCV Free module manuals](https://vcvrack.com/Free).
 
-Build `cargo build --release --workspace` first. The examples below launch
-`target/release/openpatch-desktop --mcp --workspace DIRECTORY`. Replace paths
-with absolute paths on your machine. On Windows use `openpatch-desktop.exe`.
+The first bounded compatibility target is the **12 Core modules plus 37 VCV Free modules** listed below. Core is built into Rack; Free is its included synthesis collection. This is an inventory and implementation plan, not a claim that OpenPatch implements 49 equivalents. The wider third-party plugin ecosystem is open-ended and is not covered by this inventory. Additional plugins need individually specified behavior, implementation scope, and validation.
 
-The MCP client launches a native window and controls that window's live patch.
-GUI controls and MCP tools share the same session and revision counter. Playback
-starts paused: press **Play** in the window (or Space when a text field is not
-focused) to hear the patch. MCP can edit a playing patch, but has no tool to start
-or stop speaker playback. `render_audio` exports a WAV independently of playback.
+OpenPatch uses original Rust DSP. Functional coverage, fidelity to a specified circuit, and compatibility with VCV behavior are separate acceptance criteria. It does not currently load VCV plugin binaries or import complete VCV patches. A matching module name, panel, or musical role does not establish equivalence.
 
-Each desktop launch owns a separate session. On macOS and Linux, clients can also
-attach to an already-open window, including one launched manually. Sharing a
-workspace alone only shares saved files; attaching to the same session shares
-the live patch, revisions and undo history.
+## Current implementation baseline
 
-## Connect to an open rack (macOS / Linux)
+Six additional native reconstruction tools—SCORE, DRUM, SVF, stereo delay, reverb and sidechain compression—extend the catalog; they are original algorithms, not new claims of completed Rack plugin equivalence. See [score and studio contract](SCORE_AND_STUDIO.md).
 
-Open the native application, then list its available sessions:
+VIZ adds a dedicated input-only 16-channel polarity display, bringing the total
+to 52 kinds; [signal and validation contract](POLYPHONIC_VIZ.md). Rack Scope adds
+independent polyphonic X/Y acquisition and passthrough, bringing the catalog to
+53 kinds; [Scope contract and bounded reference](RACK_SCOPE.md).
+The original [physical modal resonator](MODAL_RESONATOR.md) brings the catalog to
+54 kinds. It is an additional acoustic model, not completion of a stock VCV target.
+[Seven-color Noise](COLORED_NOISE.md) brings the catalog to 55 kinds,
+with original filters and explicitly bounded spectral qualification.
+[Random Values](RANDOM_VALUES.md) adds seven polyphonic held-voltage outputs and
+coherent saved state, bringing the catalog to 56 kinds.
+[Sample & Hold / Analog Shift Register](SHIFT_REGISTER.md) adds eight mono holds,
+normalized clock and old-value signal chains, bringing the catalog to 57 kinds.
+[ADSR EG](ADSR_EG.md) adds a separate stock-style polyphonic envelope, bringing
+the catalog to 58 kinds while preserving the original RC envelope.
+[MIDI CC](MIDI_CC.md) adds sixteen controller outputs, ordinary 7-bit input,
+14-bit pairs, smoothing, MPE and durable Learn, bringing the catalog to
+59 kinds. Its original Rust DSP passed 45 comparisons of the actual pinned Rack
+class (15 fixtures × 44.1/48/96 kHz), with zero measured voltage error and exact
+metadata in the [recorded run](benchmarks/midi-cc-reference.json). This is bounded
+DSP evidence; native window/input/audio-device and physical MIDI qualification
+remain separate gates.
+[MIDI → Gate](MIDI_GATE.md) adds sixteen note-gate outputs, velocity, MPE,
+minimum-duration pulses, Learn and Panic, bringing the current catalog to
+60 kinds at that milestone. Its source contract deliberately preserves output-cell state across
+remapping; clearing a remapped held gate requires its new note-off or Panic.
+The [actual-class report](benchmarks/midi-gate-reference.json) records 63 passing
+cases (21 fixtures × 44.1/48/96 kHz), 258,048 frames and 56,513,088 active lane
+samples, with bit-identical binary traces, zero voltage error and no metadata
+mismatches. This covers the pinned DSP, SDK queue and source JSON with the
+explicit driver channel rule; all outputs were probed. Native host, hardware,
+durable transport/Session behavior and complete Core parity have separate gates.
 
-```sh
-/absolute/path/openpatch/target/release/openpatch sessions
-```
+[Notes and Blank](ANNOTATIONS.md) add two zero-port annotation kinds, bringing the
+current catalog to 62. Notes stores bounded Unicode text; Blank stores a single
+HP width with a 3 HP minimum. Both share revision-checked UI/MCP transactions,
+presets, duplication, Initialize and history. GUI width/position resizing is one
+undo step, and browser thumbnails use the actual panels. These functional
+contracts do not qualify native text/IME/clipboard interactions or complete Rack
+layout parity; direct graph-only MCP/preset width edits cannot enforce collisions
+against the separately owned host layout.
 
-The output includes each session's `id`, workspace and process ID. Click the
-window's **MCP ready** indicator to copy its attachment command. Configure each
-MCP client to launch the CLI executable with these arguments:
+The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
+kinds, five functional utilities, four version-2 polyphonic routing/source
+utilities, MIDI → CV, stereo audio, four stereo/pitch/routing processors, a four-output clocked LFO, a three-row eight-step sequencer, two sequential switches, three voltage/mute banks, four gate/voltage processors, two CV-controlled audio mixers, a four-output audio oscillator, a ten-row manual trigger/gate source, a manual/CV gate source with a persistent HOLD latch, and a six-output gate/trigger processor. This count is not a count of completed VCV equivalents.
 
-```sh
-/absolute/path/openpatch/target/release/openpatch attach --session SESSION_ID
-```
+The seven existing kinds remain legacy utilities with their original patch semantics: `oscillator` (sine/additive-Hz FM), `lfo` (sine/offset), `constant`, `gain` (direct CV multiplication), `mixer` (two-input sum), `lowpass` (one pole), and `output` (selected mono signal). They are not accurate hardware models or complete VCV equivalents. Native playback, a master-signal visualizer, and a calibrated two-source signal scope exist; these do not yet supply the complete Audio or Scope feature set.
 
-The macOS app bundle includes the CLI at
-`OpenPatch.app/Contents/MacOS/openpatch`; a packaged window copies that absolute
-path. Use it as the executable when configuring a client without a source checkout.
+The selected first target is a **generic VCO → VCF → VCA voice with ADSR**, using explicitly specified reference circuits and voltage interfaces. The ramp VCO, OTA VCA, RC ADSR, gate/audio interfaces, and nonlinear four-pole ladder are implemented with numerical and integration tests. The ladder has bounded numerical solving, oversampling, and independent ODE-reference comparisons. These remain reference models rather than complete VCV equivalents or calibrated hardware clones; see [model validation](ANALOG_MODELS.md).
 
-For a configuration that survives application restarts, select the workspace:
+Version 1 retains mono, same-sample DAG evaluation. Version 2 implements named
+source outputs, 0–16 channels, explicit voice policies and one sample of delay
+per cable, including feedback cycles. Independent engine contract tests cover routing, state migration and MIDI; polyphonic hardware I/O and full module parity remain separate work.
+See [ENGINE_V2.md](ENGINE_V2.md) for exact routing, normalization and state rules.
 
-```sh
-/absolute/path/openpatch/target/release/openpatch attach --workspace /absolute/path/patches
-```
+## Implemented functional utility contracts
 
-Workspace selection succeeds only when exactly one live window matches. With no
-selector, attachment requires exactly one live session overall. Ambiguous or
-missing sessions produce an error; attachment never opens another window or
-creates a replacement patch. Session IDs last for the lifetime of a window.
-Restart the client's MCP connection after reopening the application.
+Five additional original models use at most two inputs and one output. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They retain mono version-1 behavior; version 2 adds the declared voice policies below. They extend the usable toolkit; they do not establish full VCV module parity.
 
-Use the `openpatch` CLI as the client **command** and `attach` plus the selector
-as its **args**, in place of the desktop command/arguments in the examples below.
-Two clients attached to the same session have independent protocol handshakes
-but operate on the same rack. Use `expected_revision` on edits: a concurrent
-change must be inspected before retrying. Disconnecting a client leaves the
-window open. Closing the window disconnects its clients. The CLI exits on socket closure
-while its client continues reading stdout; a client that stops reading stdout
-may also need to terminate its bridge process. Attachment does not start or stop
-speaker playback.
+| Kind | Implemented behavior | Explicit gaps against related VCV modules |
+|---|---|---|
+| `quantizer` | Nearest enabled 12-tone note at 1 V/oct; integer `scale_mask` bits C through B; `offset` and `offset_cv` add volts before quantization. Exact ties choose the higher pitch, including below zero. Empty mask passes the adjusted pitch through. In v2, pitch sets voice count and offset CV follows auxiliary broadcast rules. | Native piano-key scale editing is implemented; no factory-scale preset browser. The tie and empty-scale policies are OpenPatch contracts, not claimed VCV equivalence. |
+| `sample_hold` | One held voltage per voice; captures the simultaneously received signal when trigger rises to 1 V, rearms at 0.1 V or below; starts at `initial`. Ideal hold without droop. In v2, trigger sets voice count; mono signal broadcasts. | No eight-row shift register, normalization chain, clear/random controls, or saved runtime voltage in patch JSON. |
+| `white_noise` | Single Gaussian white-noise output with `level` in RMS volts and an integer 24-bit `seed`. Reproducible sequence within an execution environment; no peak clipping. | No colored-noise outputs, VCV-specific level calibration, or identical VCV random sequence. |
+| `attenuverter` | Computes `gain * signal + offset`; gain −1…1, offset −10…10 V; unpatched signal is 10 V. In v2, signal sets voice count. | No eight-section control bank or input propagation; no Rescale range limiter or slew behavior. |
+| `crossfade` | Two inputs, one output; `mix` selects a at 0 and b at 1. Linear gains or square-root gains for constant power with uncorrelated inputs. In v2, maximum input count sets voices with mono broadcast. | No CV control input, complementary output, dedicated stereo interface, or automatic signal-correlation compensation. |
 
-The local transport uses Unix-domain sockets in a private per-user directory,
-with peer-user verification at both ends. It opens no TCP/HTTP port and calls no
-model API. This is a same-user boundary, not isolation from other software running
-as your user. Up to eight socket clients can connect to a window. Socket requests
-are bounded to 1 MiB, with deadlines for initialization, incomplete messages and
-stalled responses; initialized idle clients can remain connected. At most two
-expensive socket-request jobs execute concurrently across the process; excess
-jobs return a busy error rather than queuing. A disconnected operation that has
-already started may finish; never automatically replay a mutation after losing
-its response.
+Nonfinite utility inputs map to zero. Arithmetic safety bounds are ±1,000,000 V and can override quantizer membership at that extreme. Quantization and sample-and-hold deliberately introduce discontinuities without antialias filtering. These models add no internal processing delay; cable propagation is immediate in version 1 and one sample per cable in version 2. Zero-channel inputs use unpatched normalization; missing channels of a short polyphonic auxiliary input use zero instead.
 
-Windows attachment is not implemented yet. The desktop `--mcp` stdio mode below
-continues to work on all three platforms. It launches a new window per client.
-When stdin reaches EOF, its MCP thread exits and the window remains open; a
-client that terminates its child process can still close that application.
+Compatible live graph replacement preserves held voltage and trigger hysteresis by matching node ID and kind. It also preserves noise PRNG state and the pending Gaussian sample when the seed is unchanged, including after a level edit; changing the seed explicitly restarts the sequence. Patch JSON stores parameters, not running DSP state: fresh compilation starts from `initial`/`seed`, while the host can separately adopt compatible live state. In version 2, retired voices reset before reactivation. Stateless utility parameter edits take effect immediately.
 
-## Codex
+Validation includes an independent nearest-note search over all 4,095 nonempty masks at signed octave boundaries, empty-scale and tie tests, exact trigger/hold event sequences, crossfade endpoint and center gains, noise distribution/RMS and lag correlations, JSON parameter round trips, invalid-parameter rejection, graph-state adoption, callback-size/order independence, and allocation tracking on the first callback and graph replacement. These are contract tests; direct VCV differential testing and full spectral/parity acceptance remain future work. Functional roles were checked against the official [Free manuals](https://vcvrack.com/Free) and [voltage/trigger standards](https://vcvrack.com/manual/VoltageStandards).
 
-```sh
-codex mcp add openpatch -- /absolute/path/openpatch/target/release/openpatch-desktop --mcp --workspace /absolute/path/patches
-```
+## Implemented version-2 routing/source utilities
 
-Or add a table to your Codex configuration:
+| Kind | Implemented behavior | Remaining scope |
+|---|---|---|
+| `poly_constant` | 0–16 configured constant-voltage channels, `v1`…`v16`, with explicit zero-channel output; default count 3. | Original source/testing utility; not a claimed stock VCV equivalent. |
+| `poly_split` | `signal` to 16 independently named mono outputs `out1`…`out16`; missing input channels emit mono 0 V. | Native channel-count indicators and direct VCV behavior/UI comparison remain open. |
+| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; 1–16 forces count. Empty automatic input gives zero channels. | The zero setting selects automatic mode, not forced zero; native channel indicators and full VCV configuration parity remain open. |
+| `poly_sum` | Active-channel sum with 0–1 level, mono output, six post-level meter bands and actual input-channel count; empty input gives mono zero. | Native device qualification and Rack import remain open; [SUM contract](POLYPHONIC_SUM.md). |
 
-```toml
-[mcp_servers.openpatch]
-command = "/absolute/path/openpatch/target/release/openpatch-desktop"
-args = ["--mcp", "--workspace", "/absolute/path/patches"]
-```
+Independent tests exercise sparse Merge/Split routing, all 16 channels, zero
+channels, explicit source-port selection, mono-adapter versus summed output,
+feedback timing, retirement and edge-history continuity. These establish the
+specified functional subsets. They do not mark the related VCV inventory rows
+complete or qualify multichannel audio hardware.
 
-On Windows, TOML literal strings avoid backslash escapes:
+## Stereo, mixing and pitch utilities
 
-```toml
-[mcp_servers.openpatch]
-command = 'C:\OpenPatch\target\release\openpatch-desktop.exe'
-args = ['--mcp', '--workspace', 'C:\OpenPatch\patches']
-```
+`mid_side`, `mix6`, `octave`, and `mult` implement their documented signal roles
+with explicit OpenPatch policies for unspecified boundaries. See
+[ROUTING_MODULES.md](ROUTING_MODULES.md) for equations, voltage scaling, native
+controls, voice counts, safety behavior, and the stereo study. `midi_cv` and
+`audio_stereo` contracts are in [MIDI_AUDIO.md](MIDI_AUDIO.md). None of these
+additions imply complete stock-module or host parity.
 
-See [official Codex MCP configuration](https://developers.openai.com/codex/mcp/).
+## Clocked modulation
 
-## Claude Code
+`multi_lfo` adds four phase-coherent CV outputs, exponential FM, PWM, independent
+clock/reset detectors, voltage-range switching, inversion, and up to 16 voices.
+See [MODULATION.md](MODULATION.md) for its exact timing and state contracts,
+native controls, example voice, validation and remaining parity work. The legacy
+`lfo` is unchanged. This is a functional digital oscillator, not a circuit model.
 
-```sh
-claude mcp add --transport stdio openpatch -- /absolute/path/openpatch/target/release/openpatch-desktop --mcp --workspace /absolute/path/patches
-```
+## Audio-rate modulation
 
-See [official Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
+`multi_vco` adds four audio outputs, exponential/linear FM, a latched PWM
+square, and fractional hard/soft sync. Its behavior is compared with an actual
+Fundamental 2.6.4 reference; reconstruction and voice-retirement differences
+remain. See [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). It is functional DSP,
+separate from the idealized capacitor/comparator `analog_vco` model.
 
-## Claude Desktop
+## Voltage banks and bypass
 
-Merge this server into `claude_desktop_config.json`; preserve any existing servers:
+`attenuverter8`, `mutes10`, and `cv_mix` add the specified row and mixing
+contracts. Both engine versions support saved module bypass with declared
+routes, silent fallbacks, preserved DSP state, and bounded action cancellation.
+See [VOLTAGE_UTILITIES.md](VOLTAGE_UTILITIES.md) for normaling, polyphony, MIDI
+behavior, MCP operations, examples, and remaining compatibility work.
 
-```json
-{
-  "mcpServers": {
-    "openpatch": {
-      "command": "/absolute/path/openpatch/target/release/openpatch-desktop",
-      "args": ["--mcp", "--workspace", "/absolute/path/patches"]
-    }
-  }
-}
-```
+## Gate and voltage processing
 
-Use escaped backslashes in Windows JSON paths, e.g.
-`C:\\OpenPatch\\target\\release\\openpatch-desktop.exe`.
-Client support and setup locations may vary by version. These examples configure
-the same local stdio server, not a remote HTTP connector. No existing user client
-configuration is changed by this repository.
+`logic`, `compare`, `process`, and `rescale` implement their documented complete
+signal interfaces, including momentary controls, dedicated native panels, and
+actual engine indicator telemetry. Live MCP inspection exposes coherent
+per-module states and controls; offline actions support repeatable manual gates.
+See [SIGNAL_PROCESSING.md](SIGNAL_PROCESSING.md) for numerical differences, state
+policies, and the connected gate-shaping example.
 
-## Building a patch
+`pulses` adds ten independent manual trigger/gate pairs, indexed runtime actions,
+row-specific panel controls, and coherent held-button telemetry. See
+[PULSES.md](PULSES.md) for pulse timing, safety, state and the manual voice example.
 
-1. Call `catalog` to discover modules, port names, parameters, and limits.
-2. Call `inspect_patch` for the patch and current revision.
-3. Use `preview_edits` to validate a proposed group of edits, then `apply_edits` to commit it atomically. `replace_patch` replaces the entire graph; individual edit tools remain available.
-4. Select the audible node with `set_output`. Without an output the patch is silent.
-5. Press Play locally to audition the live patch, or use `render_audio` with a new
-   `.wav` filename and `seconds` between 0.001 and 30 to export it.
-6. Save the graph with `save_patch` and a new `.json` filename.
+## Core inventory
 
-Include `expected_revision` on edits when coordinating multiple operations. A
-stale revision or invalid edit leaves both the patch and revision unchanged.
-Tool failures return `isError: true`; malformed protocol calls use JSON-RPC errors.
+Names follow the Core library; parenthesized aliases match the manual. The Audio family contains three distinct modules. [Official Core inventory](https://library.vcvrack.com/Core)
 
-The desktop starts with the demo patch. Call `inspect_patch` before editing;
-include `expected_revision` to detect edits made in the window since your read.
-Exchange saved JSON patches to move between separate client processes. These
-graph-only MCP commands retain their existing new-name-only behavior. Native
-File → Save uses `.openpatch` projects containing graph and layout; MCP does not
-yet read or write those envelopes. See [Projects and recovery](PROJECTS.md).
-A window that has committed its final close decision rejects subsequent graph
-mutations and live module actions with `session is closing`; inspection and exports remain available.
+| Module | Group | Rust status | Next acceptance test or prerequisite |
+|---|---|---|---|
+| Audio 2 | Device I/O | Partial: selectable output device, stereo sink and voltage conversion | Hardware input, configurable rate/buffer, actual device reconnect and loopback qualification |
+| Audio 8 | Device I/O | Planned | Eight-channel routing and device round trip |
+| Audio 16 | Device I/O | Planned | Sixteen-channel routing and channel isolation |
+| MIDI to CV (MIDI-CV) | MIDI input | Partial: `midi_cv`, 12 outputs, 1–16 voices, hardware ingress and 32-pitch QWERTY/mouse performance | Actual MIDI hardware timing/reconnect qualification, complete Rack behavior comparison and remaining configuration parity |
+| MIDI CC to CV (MIDI-CC) | MIDI input | Partial: `midi_cc`, sixteen assignments/outputs, 7-bit and paired 14-bit CC, smoothing, MPE, channel filter, saved channel-zero values and audio-authoritative Learn | Global endpoint selection differs from per-module Rack routing; nonstandard signed gamepad input is excluded. Complete native/device and hardware timing/reconnect qualification; [contract](MIDI_CC.md), [45-case pinned DSP report](benchmarks/midi-cc-reference.json). |
+| MIDI to Gate (MIDI-Gate) | MIDI input | Partial: `midi_gate`, sixteen normalized note assignments/outputs, exact f32 minimum pulses, fixed/velocity voltages, mono/MPE, channel filter, durable Learn and Panic | Source-style held-cell remapping is deliberate; hardware input selection is global. The [63-case actual-class report](benchmarks/midi-gate-reference.json) has bit-identical probed DSP traces; native Mac/audio/input and physical MIDI timing/reconnect qualification remain open. Host transport/Session behavior requires its separate tests; [contract](MIDI_GATE.md). |
+| MIDI Map (MIDI-Map) | Parameter control | Planned | Learn/persist mappings; concurrent GUI/MCP edits |
+| CV to MIDI (CV-MIDI) | MIDI output | Planned | Pitch conversion, balanced note-on/off, panic |
+| CV to MIDI CC (CV-CC) | MIDI output | Planned | Quantization, rate control, endpoint round trip |
+| Gate to MIDI (CV-Gate) | MIDI output | Planned | Threshold crossings and stuck-note prevention |
+| Blank | Layout | Functional: `blank`, single saved 3–96 HP width, left/right edge preview, direct entry, collision-aware GUI resize, one-step width/position history, presets and duplication | Native gesture qualification; graph-only MCP/preset width edits lack layout collision validation; [contract](ANNOTATIONS.md). |
+| Notes | Documentation | Functional: `notes`, multiline Unicode, draft Apply/Cancel/conflict handling, shared UI/MCP content transactions, presets and project/recovery persistence | Native IME/clipboard/input qualification; explicit 8192 UTF-8 byte bound; [contract](ANNOTATIONS.md). |
 
-## Capture current project persistent state
+## VCV Free inventory
 
-`capture_project_patch` accepts optional `expected_revision` and returns
-`patch`, `revision`, `state_id`, `running` and `holding` (module ID → boolean),
-`random_values` (module ID → `values[7][16]` and `rng_state`),
-`shift_registers` (module ID → eight `values` and `rng_state`), `state_source`,
-and `frame`. It projects current persistent state into a cloned graph without modifying
-history, queuing controls, resetting DSP state, or writing a file. Native Save
-and recovery use this same capture path; the MCP result does not include layout.
+All names below are from the [official Free manual index](https://vcvrack.com/Free). “Related legacy” means a narrower utility exists, not a passing equivalence test. The proposed tests are OpenPatch work items, not reported test results.
 
-MIDI CC assignments and all 128 committed channel-zero controller values are
-included in the returned patch as `cc1`…`cc16` and hidden
-`cc_value0`…`cc_value127` parameters. Pending MSBs, other-channel values, filters
-and Learn tickets are transient.
+| Module | Group | Rust status | Next acceptance test or prerequisite |
+|---|---|---|---|
+| VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
+| Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
+| VCF | Filter | Partial: reference ladder implemented; legacy one-pole is separate | Analytic small-signal response, drive/IMD, resonance and numerical convergence; inventory missing ports/features |
+| VCA | Amplifier | Partial: reference OTA VCA implemented; related legacy gain | Voltage gain law, saturation and CV response; distinguish circuit model from VCV behavior |
+| LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
+| Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
+| Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
+| ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |
+| Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity and VCV differential acceptance remain open |
+| VCA Mix | Mixing | Implemented signal role: `vca_mix`, four squared-gain strips, independent outputs, master VCA, linear/quartic CV and live meters | Direct reference traces, Rack import/state mapping, native qualification; [contract](VOLTAGE_MIXING.md) |
+| 8vert | Voltage utility | Implemented signal role: `attenuverter8`, eight gains, downward input/polyphony propagation, voltage/percent presentation | Direct reference traces and Rack import/UI parity; [contract](VOLTAGE_UTILITIES.md) |
+| Mutes | Routing | Implemented signal role: `mutes10`, ten flags, atomic invert, pinned mono inheritance and direct bypass | Direct reference traces, legacy state polarity migration and native qualification; [contract](VOLTAGE_UTILITIES.md) |
+| Pulses | Gate utility | Implemented signal role: `pulses`, ten independent 1 ms triggers and held gates, native buttons and indexed MCP actions | Explicit integer timing/event policies; direct VCV comparison and native qualification remain open; [contract](PULSES.md) |
+| Scope | Measurement | Partial: rack instances with independent 16-lane X/Y min/max bins, external trigger, raw passthrough, saved parameters, calibrated range controls, extrema/trigger readouts and live MCP inspection; separate calibrated two-source dock | Full display/measurement parity, persisted captures and hardware qualification; [rack contract and bounded reference](RACK_SCOPE.md), [dock contract](SCOPE.md) |
+| SEQ 3 | Sequencing | Partial: 3×8 voltage editor, five inputs/sixteen outputs, gates, length/tempo CV, passthrough, atomic rotation and bounded live/offline actions | Direct pinned-reference traces, timing/mapping differences, runtime state persistence and native qualification; [contract](SEQUENCER.md) |
+| Sequential Switch 1 to 4 | Routing | Implemented documented signal role: `switch_1to4`, 2–4 routes, clock/reset, de-click and live indicators | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
+| Sequential Switch 4 to 1 | Routing | Implemented documented signal role: `switch_4to1`, polyphonic selection, mode-specific mono behavior and de-click | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
+| Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison and full host workflow acceptance remain open |
+| Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
+| Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
+| Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
+| Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
+| Viz | Measurement | Implemented signal/display role: `poly_viz`, input-only, 16 paired indicators, channel activity and sampled signed smoothing | Full upstream host comparison, Rack import and native device qualification remain; [contract](POLYPHONIC_VIZ.md) |
+| Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
+| Noise | Source | Seven-output `colored_noise`: white, pink, red, violet, blue, inverse-A gray and uniform black; deterministic seed and level; [contract](COLORED_NOISE.md) | Original filters with declared spectral and voltage budgets; source waveform/filter equivalence and native device qualification remain open. Legacy `white_noise` retained. |
+| Random | Modulation | Planned | Trigger timing, distribution and repeatability |
+| CV Mix | Mixing | Implemented signal role: `cv_mix`, three bipolar gains and independent 10 V normals | Direct reference traces, Rack import and native qualification; [contract](VOLTAGE_UTILITIES.md) |
+| Fade | Mixing | Implemented signal role: `fade`, bipolar CV depth, complementary outputs, linear/square-root laws and independent bypass routes; legacy `crossfade` remains unchanged | Direct reference traces, Rack state mapping and native qualification; [contract](VOLTAGE_MIXING.md) |
+| Logic | Gate processing | Implemented signal role: `logic`, eight Boolean outputs, 1 V threshold, manual B and mono/poly indicators | Direct reference traces, native qualification; no hysteresis in this reference role; [contract](SIGNAL_PROCESSING.md) |
+| Compare | Voltage processing | Implemented signal role: `compare`, eight outputs, B offset, raw mono zero-padding and strict comparisons | Direct reference traces and native qualification; [contract](SIGNAL_PROCESSING.md) |
+| Gates | Gate processing | Implemented signal role: `gates`, six polyphonic edge/flip-flop/timed/delayed outputs, bounded transition history, native RESET and MCP events | Direct reference traces, native qualification, explicit numerical/connection policies; [contract](GATES.md) |
+| Process | Voltage processing | Implemented signal role: `process`, two held samples, track/hold pairs, slew, glide and manual gate | Reference exponential/timing differences, direct traces, runtime state import and native qualification; [contract](SIGNAL_PROCESSING.md) |
+| Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
+| Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
+| Random Values | Source | `random_values`: seven outputs × sixteen held voices, per-voice TRIG and manual PUSH, six ranges, coherent saved voltages and generator state; [contract](RANDOM_VALUES.md) | Original seeded generator and explicit edge ordering; VCV random-sequence equivalence, Rack import and native device qualification remain open. |
+| Push | Gate utility | Implemented signal role: `push`, manual/CV push and HOLD, XOR gate, rising-gate trigger, coherent saved latch and native controls | Direct reference traces, saved-state import, smoothed reference lights and native qualification; [contract](PUSH.md) |
+| Sample & Hold Analog Shift Register | Sampling | Implemented `sh_asr`: eight mono rows, old-value shift normaling, independent clocks, PUSH/CLEAR, RND and coherent held-state persistence | Complete reference qualification, native device interaction and Rack import remain open; [contract](SHIFT_REGISTER.md) |
 
-MIDI Gate contributes normalized `note1`…`note16` mappings; its current gates,
-velocities, timers and Learn tickets are never saved.
+## Hidden legacy modules and existing patches
 
-With live audio, every SEQ-3, Push, Random Values, S&H/ASR, MIDI CC and MIDI Gate module must be available at the requested revision
-and one completed callback frame. Stale, missing, or incoherent telemetry
-rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
-configured initial state when no backend is attached, or `parameters` when there
-are no persistent-state modules. The latter two return a null frame. This is a point-in-time
-capture, not an acknowledgment of controls awaiting audio processing.
+The 49-module baseline above counts the 12 Core and 37 visible Free modules.
+The [pinned Free manifest](https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/plugin.json)
+also retains two hidden legacy models. They remain part of existing-patch
+compatibility even though the public manual's index omits them. Track them in
+addition to the visible inventory; do not silently substitute a different model
+when importing an old patch.
 
-## MIDI controller voltages and Learn
+| Model slug | Module | Rust status | Acceptance gate |
+|---|---|---|---|
+| `VCA` | VCA-2 | Planned | Both amplifier channels, linear/exponential control inputs, gain law, polyphony and saved parameter mapping |
+| `Unity` | Unity | Planned | Both mixing sections, sum/average behavior, normaling, polarity and saved state |
 
-The version-2 `midi_cc` module has no inputs and sixteen outputs `out1`…`out16`.
-`cc1`…`cc16` accept integer controller numbers −1…127; −1 unmaps a cell and
-0 is ordinary CC0. Defaults are CC1…CC16. Assigning an occupied controller moves
-it to the chosen cell and unmaps its old cell atomically. Collision arrays in
-loaded patches/presets resolve in cell order, with the last cell winning.
-`channel=0` means Omni; 1…16 select human MIDI channels. `smooth=1` is the
-default; `mpe` and `high_resolution` default to zero. MPE emits sixteen wire
-channel lanes per connected output. MIDI events themselves use wire channels
-0…15.
+## Delivery order and acceptance rules
 
-A live desktop session supports transient, revision-checked requests:
+1. **Validate the reference voice.** Publish circuit equations, component values, voltage scaling, assumptions, and unsupported physical effects. Test the ramp source, ladder, OTA VCA, and RC envelope independently and together. Compare circuit solvers against an independent high-accuracy reference; compare physical hardware only when a specific measured target exists. Preserve old patches and continuous oscillator/capacitor state during edits.
+2. **Qualify the implemented engine foundation.** Version 2 now supplies named input/output ports (including Pulses’ 20 outputs), 0–16-channel frames, per-module voice policies and one-sample cable feedback. Preserve version-1 render fixtures; expand state/event cases and measure one/16-voice callback performance on target hardware. Keep audio callbacks bounded and allocation-free; document oversampling latency and parallel-path alignment. See [ENGINE_V2.md](ENGINE_V2.md).
+3. **Implement the remaining inventory by functional group.** Utilities and measurement first, then modulation/sequencing, expanded oscillators/effects, polyphony, and hardware/MIDI interfaces. Promote each row only with a documented port/parameter contract, persistence tests, DSP/event tests, and native integration checks. Record partial coverage explicitly rather than counting a generic substitute as complete.
 
-```json
-{"id":"controller","cell":1,"expected_revision":12}
-```
+For voltage-oriented modules, use the [VCV voltage conventions](https://vcvrack.com/manual/VoltageStandards) as an interoperability reference: pitch in V/oct, explicit audio/CV levels, hysteretic gate detection, and documented conversion at device boundaries. Legacy normalized signals require explicit conversion. VCV also specifies cable timing and polyphonic behavior; adopting voltage units alone does not reproduce those semantics.
 
-Send that object to `learn_midi_cc`; `cell` is 1…16. Cancel with
-`cancel_midi_cc_learn` and `{"id":"controller","expected_revision":12}`.
-A successful request is not proof that a controller has completed Learn. The
-first accepted CC whose incoming value differs from its committed value completes
-Learn on audio, then becomes one undoable assignment operation in Session.
-Repeated equal CCs and rejected channels do not complete it. Learn requires a
-live backend; the headless server returns an error rather than inventing a
-learning state. Controller movement does not itself create history entries.
-Hardware endpoint selection is **Global MIDI input** in desktop Audio / MIDI.
+Completion of this inventory would establish a bounded set of Rust functional equivalents only after the specified tests pass. It would not establish compatibility with every third-party module, identical VCV DSP, or measured fidelity to unspecified analog hardware.
 
-Offline `capture_signal`, `analyze_signal` and `render_audio` accept ordinary
-sample-timed CCs, independently of live Learn. For example, probe a CC7 mapping
-on `out1` with smoothing disabled:
 
-```json
-{
-  "id":"controller","port":"out1","seconds":0.001,
-  "midi_events":[
-    {"frame":0,"event":{"type":"control_change","channel":0,"controller":7,"value":127}},
-    {"frame":24,"event":{"type":"control_change","channel":0,"controller":7,"value":0}}
-  ]
-}
-```
+### Notes and Blank content
 
-For paired 14-bit input, enable `high_resolution`, send CC0…31 as the MSB and
-CC32…63 as its LSB. An MSB alone updates pending storage; its paired LSB commits
-both values. The target is `(MSB × 128 + LSB) / 16256 × 10 V`, clamped at 10 V.
-Controllers 32…127 remain independently assignable; only mappings below 32 use
-an LSB. Output consumers include cables, the selected graph output and explicit
-analysis/capture taps. Unconsumed outputs freeze smoothing filters while MIDI
-reception continues.
-
-[The connected controller voice](../examples/midi-controller-voice.json) maps CC7
-to level and CC74 to cutoff. Its saved controller values provide an audible
-starting point without hardware. Load it with `replace_patch`, then render or
-probe it with the [two-second CC trace](../examples/midi-controller-phrase.events.json).
-A coherent live save captures actual committed controller values; mapping edits
-and their Undo/Redo preserve ongoing controller movement. Full load/preset
-restoration restores the saved channel-zero values. See the
-[complete state, lifecycle and qualification contract](MIDI_CC.md).
-
-## MIDI note gates and Panic
-
-The version-2 `midi_gate` module has no inputs and sixteen outputs `gate1`…`gate16`.
-Integer `note1`…`note16` accept −1 (unmapped) through 127; middle C is MIDI 60 / C4.
-Defaults in panel row order are `48,49,50,51,44,45,46,47,40,41,42,43,36,37,38,39`.
-Loaded assignment collisions resolve in cell order, last cell wins. A direct
-assignment or Learn instead makes the chosen cell win and unmaps the old owner
-in one operation. `velocity=0` emits 10 V; `velocity=1` emits velocity/127 × 10 V.
-`mpe=0` merges accepted channels into a mono gate with last-event semantics;
-`mpe=1` exposes all sixteen wire-channel lanes. `channel=0` is Omni and 1…16
-select human channels. Event wire channels are still 0…15.
-
-A positive NoteOn starts/restarts the cell's minimum one-millisecond timer;
-NoteOff and zero-velocity NoteOn clear its held flag without restarting the timer.
-Even a same-sample NoteOn/Off emits the remaining pulse. Exact f32 subtraction
-produces 45, 48 and 97 active samples at 44.1, 48 and 96 kHz. For example:
+`notes` and `blank` are version-2 modules with no signal ports. They cannot be
+audible/capture outputs. `add_module` accepts optional typed `content`, and
+`set_module_content` replaces it through the same revision-checked history as UI:
 
 ```json
-{
-  "id":"pads","port":"gate1","seconds":0.003,"points":2048,
-  "midi_events":[
-    {"frame":0,"event":{"type":"note_on","channel":0,"note":60,"velocity":127}},
-    {"frame":0,"event":{"type":"note_off","channel":0,"note":60,"velocity":0}}
-  ]
-}
+{"id":"guide","content":{"type":"notes","text":"DRUM LAB\nZ / X / C play the pads"},"expected_revision":12}
 ```
 
-Arm `learn_midi_gate` with `{"id":"pads","cell":1,"expected_revision":12}`;
-cancel with `cancel_midi_gate_learn` and `{"id":"pads","expected_revision":12}`.
-Cells are human 1…16. A successful request is not confirmation of completed Learn.
-The first channel-accepted positive NoteOn learns and starts the chosen cell on
-that event's audio sample. NoteOff, zero velocity, rejected channels and unrelated
-messages do not complete it. Completion records one mapping-only history operation.
-Headless servers return a truthful live-backend error for these commands.
-
-State belongs to the **cell**, so editing or learning a new note while held
-preserves its gate/timer/velocity. Its old note-off no longer matches that cell.
-Use `trigger_module` with `{"id":"pads","action":"midi_panic"}` to clear
-this module's gates/timers and cancel armed Learn. Panic is a one-shot performance
-action, available while bypassed, without parameter/history edits. It also works
-as an offline `module_events` action:
-
-```json
-{"frame":12,"id":"pads","action":"midi_panic"}
-```
-
-Mappings/options save and restore; held gates, timers, velocities and Learn are
-transient. Mapping Undo/Redo never replays note events. Host transport stop,
-disconnect, overflow and bypass safety clear gates and cancel armed Learn without
-discarding a completed durable decision. See the [fixed source and host contract](MIDI_GATE.md).
-
-[The MIDI drum pads example](../examples/midi-gate-drums.json) routes notes
-60/62/64 to kick/clap/hat. At the keyboard's default octave, play **Z/X/C** or
-on-screen **C4/D4/E4**. **Global MIDI input** chooses hardware once for the host.
-Velocity is off in this example so a soft note still crosses the drum's Schmitt
-trigger threshold. Render its [two-second phrase](../examples/midi-gate-phrase.events.json)
-with `render_audio` and `midi_events`; this runs offline without starting speaker playback.
-The [63-case actual-class comparison](benchmarks/midi-gate-reference.json) records
-bit-identical probed DSP traces at three sample rates; native hardware and host
-lifecycle qualification remain separate from that numerical result.
-
-## Initialize and Randomize
-
-`initialize_modules` accepts `ids` and optional `expected_revision`.
-`randomize_modules` also requires `seed` (unsigned 32-bit integer). Both work
-inside `preview_edits` / `apply_edits`, validate the whole selection atomically,
-and preserve cables, bypass and module identities. A preview has no live-state
-side effects. The catalog describes per-parameter eligibility and distributions.
-
-Initialize restores default controls and applies a module-specific runtime
-hook once; history restores saved controls without replaying that hook.
-Randomize produces reproducible saved values; redo does not reroll them.
-See the [full editing and live-state contract](RACK_EDITING.md#initialize-and-randomize).
-
-## Module preset library
-
-Capture a module with `capture_module_preset`, review the returned `preset`, then
-save those exact contents with `save_module_preset`. Use `list_module_presets`
-and `read_module_preset` to browse saved `.opreset` files. Apply reviewed inline
-contents with `apply_module_preset`, including the observed `expected_revision`.
-Application supports preview and atomic batches; file reads are not repeated at
-commit time. Complete live SEQ-3 and Push captures use actual Run/HOLD state from a coherent
-callback snapshot, never an unavailable-state guess. See the
-[preset format, history and storage contract](MODULE_PRESETS.md).
-
-## Named outputs, polyphony, and feedback
-
-New sessions and the desktop factory patch use patch version 2. Desktop user
-templates preserve their saved engine version. Each cable has a source
-`output` (default `out`) and destination `input`. `set_output` accepts `port`
-(default `out`); patch JSON stores it as `output_port`. Discover valid names,
-minimum patch versions, and polyphony rules in `catalog`.
-
-Version 2 supports 0–16 channels per cable and feedback, with exactly one sample
-of delay per cable. Version-1 files retain their mono, same-sample DAG timing;
-loading does not convert them. The desktop's **Enable polyphony and feedback**
-action explicitly converts a legacy patch and can be undone. An MCP client can
-make the same explicit conversion by replacing a patch with `version: 2`.
-Conversion changes timing. See [engine contracts](ENGINE_V2.md).
-
-Version-2 inputs also support stacked cables. `connect` defaults to rejecting
-occupied inputs; set `mode: "stack"` to add another signal and optionally
-`cable_id` to name the new cable. Every live cable has a persistent `id` in
-`inspect_patch`. `disconnect` accepts either `cable_id` for one route or
-`to` plus `input` for all routes on that input. Use `move_cables` for an atomic endpoint move, `disconnect_cables` for a
-selected group, or `set_cable_color` for a metadata-only colour change. `clear_cables` removes every route in one atomic
-operation, including patches with 1,024 cables. It preserves modules, parameters,
-output selection and live module state. Removed route delay histories are
-retired; undo restores exact cable IDs/order with fresh route delays. See
-[stacked cable examples and timing](STACKED_CABLES.md).
-
-Select `audio_stereo.out` for explicit L/R playback and stereo WAV export. Each
-input sums its voices and converts 10 V to digital full scale; unpatched Right
-follows Left. All other selected outputs retain channel-0 mono monitoring.
-`poly_sum` explicitly mixes voices to mono, and `poly_split` / `poly_merge`
-provide individual channel routing. `poly_viz` observes a polyphonic input and has
-no outputs: it cannot be selected for monitoring or used as a source/tap. See
-[MIDI and audio](MIDI_AUDIO.md) and [VIZ](POLYPHONIC_VIZ.md).
-
-`render_audio`, `analyze_signal`, and `capture_signal` accept optional sample-timed
-`midi_events` and `module_events`, allowing reproducible performances from reset
-without changing live notes, sequencer state, or patch history. The trace contract and CLI example are
-in the [performance guide](MIDI_AUDIO.md#reproducible-agent-performances).
-
-`analyze_signal` measures any named output offline from reset. It returns the
-snapshot revision, channel-count range, and per-channel active-frame count,
-minimum, maximum, peak, mean, and RMS. Statistics exclude frames where the
-channel is inactive. It does not select a new live output, change history, or
-start playback. For example:
-
-```json
-{"id": "chord", "port": "out", "seconds": 0.25}
-```
-
-With the bundled polyphonic voice this reports three constant pitch channels.
-Analyze `vco` or `vca` to measure the three processed voices; analyze `sum` to
-inspect their mono sum. Values retain each output's catalog units; they are not
-automatically normalized, calibrated hardware measurements, or a live probe.
-
-## Sequencer actions and rotation
-
-`seq3` has three eight-step voltage rows (`row1_1` through `row3_8`), eight
-`gate1` through `gate8` flags, and named outputs `cv1`, `cv2`, `cv3`, `trigger`,
-`step1` through `step8`, `steps`, `clock`, `run`, and `reset`. Discover defaults,
-CV controls, voltage units, and timing in `catalog`. `tempo` is BPM (15–960,
-default 120); `steps` selects 1–8 columns. `running` sets the initial run state
-for a fresh engine. Live run toggles belong to performance state and do not
-rewrite that parameter. An explicit `set_parameter` assignment of `running`
-also assigns the live state, even when its saved value already matches.
-Loading or fully replacing a patch starts sequencers and sequential switches
-from fresh runtime state and invalidates their old queued actions, even when
-module IDs match. Ordinary parameter/routing edits preserve compatible state.
-
-`rotate_sequence` takes `id`, `direction` (`left` or `right`), and optional
-`expected_revision`. It moves all eight columns, including all three voltage
-rows and gate flags, together. Omitted cells use their catalog defaults (0 V;
-gates enabled). The rotation commits one revision and one undo step through the
-same validation boundary as ordinary parameter edits.
-
-```json
-{"id":"seq","direction":"left","expected_revision":7}
-```
-
-In desktop mode with a live audio backend attached, `trigger_module` queues a
-`clock`, `run`, or `reset` action for a `seq3` module. `run` toggles running;
-`clock` advances only while running. `reset` selects the first column and
-suppresses clocks for one millisecond, including its own sample. Use optional
-`expected_revision` to reject a request against an edited graph.
-
-```json
-{"id":"seq","action":"clock","expected_revision":7}
-```
-
-The result contains the observed `revision` and a backend `receipt`. A queued
-receipt confirms queue acceptance; the audio callback may apply or drop the
-action later. `inspect_performance` returns `supported` and a backend
-`performance` snapshot with queue/application/drop/backpressure counters. These
-counters distinguish accepted requests from actions that reached the engine.
-It accepts optional `expected_revision`. Live actions do not create undo entries
-or change patch revisions. Headless sessions and desktop sessions without an
-audio backend report `supported: false`, `performance: null`, and reject
-`trigger_module` as unsupported.
-
-Native backends also publish `performance.audio_timing`. This is an independently
-coherent completed-callback snapshot, not an atomic extension of the module
-meters. Check `available` and `coherent` before interpreting measurements;
-`closed` marks a stopped stream. A fresh stream starts new counters.
-
-- `callback_sequence`, `revision`, `sample_rate`, `frames`, `channels`, and
-  `duration_ns` identify the measured callback. Its graph revision can differ
-  from the control session's latest revision while an edit is waiting.
-- `utilization` is duration divided by the actual buffer budget; `1.0` means
-  100%. `peak_utilization`, `max_duration_ns`, `callbacks`, `overruns`,
-  `total_duration_ns`, and `total_frames` describe the current interval.
-  Frame-weighted mean use is `total_duration_ns * sample_rate /
-  (total_frames * 1e9)` when total frames is nonzero. Counters saturate.
-- `adopted_graph` and `crossfade` describe this callback;
-  `transition_callbacks` counts valid callbacks with either flag.
-- `epoch`, `requested_epoch`, and `reset_pending` distinguish applied native
-  statistics resets from requests waiting for the next callback. Callback
-  sequence does not reset. MCP inspection is read-only.
-- Empty/invalid-budget callbacks increment `invalid_callbacks`, expose null
-  `utilization`, and do not affect valid counts, totals or peaks.
-
-Reported elapsed wall time covers graph adoption, crossfade, processing, output conversion
-and existing module telemetry, excluding the timing accumulator/publication
-itself. Preemption during rendering is included, but pre-entry scheduling
-lateness is not. `overruns` counts processing-budget overruns, **not hardware
-xruns**. Headless servers still report unsupported rather than
-inventing live measurements. See [performance measurement](PERFORMANCE.md).
-
-For reproducible offline actions, supply `module_events` to `render_audio`,
-`analyze_signal`, or `capture_signal`:
-
-```json
-{
-  "id":"seq","port":"cv1","seconds":0.25,
-  "module_events":[
-    {"frame":1200,"id":"seq","action":"clock"},
-    {"frame":2400,"id":"seq","action":"reset"}
-  ]
-}
-```
-
-Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
-module for sequence actions, or a matching manual/performance module, including `midi_gate` for Panic), and `action`
-(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`, plus Push’s `push_press`, `push_release`, `hold_press`, and `hold_release`, plus MIDI Gate’s `midi_panic`).
-Each action must match its module kind. Frames index the stored patch
-sample rate, must be less than the rounded render frame count, and must be
-nondecreasing. The list is capped at 65,536 events and at 64 actions for one
-module at one frame. Equal-frame actions preserve array order. MIDI events run
-before module actions at a tie; module actions run before that sample's CV
-run/reset/clock inputs. Both traces are fully validated, including target IDs,
-before processing or creating a WAV. Results include `module_event_count` and
-`midi_event_count`.
-
-Offline operations start a separate engine from reset and never change live
-performance state or graph history. `analyze_signal` and `capture_signal` accept
-optional `expected_revision` to guard their coherent snapshot. Analysis and
-capture retain raw signal units; WAV export applies the usual selected-output
-channel and clipping policy.
-
-The `switch_1to4` and `switch_4to1` modules route clocked signals with 2–4
-positions and a saved `declick` parameter. They are controlled through their
-clock/reset inputs; they do not accept sequencer `module_events` or
-`trigger_module` actions. Their native route indicators use read-only engine
-telemetry. See [clocked routing](SWITCHING.md) for mode-specific polyphony,
-timing and the stereo example.
-
-## Momentary controls and live module observations
-
-Logic accepts `b_press` and `b_release`; Process accepts `gate_press` and
-`gate_release`. Pulses accepts `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`. Use these with `trigger_module` for live controls, or as
-sample-timed `module_events` for offline render/analysis/capture. Sequence
-clock/run/reset actions still require `seq3`. A manual press remains held until
-release; it is not a one-sample pulse and is not saved as a parameter or undo
-entry. For Logic and Process, the last ordered button state wins before CV evaluation. Pulses preserves same-sample press/release edges as triggers; a click can emit a trigger without leaving a gate held.
-
-```json
-{"id":"logic","action":"b_press","expected_revision":7}
-```
-
-Send the matching release to end a hold. Releases remain valid during bypass.
-A full live queue can return `queued: false`, `emergency_release: true`, and
-`safety_pending: true` in the receipt: a separate bounded path clears the hold
-and invalidates older queued presses. For Pulses this releases every held row, while ordinary row releases are independent. It does not reset held voltages or DSP
-histories. `emergency_release_requests` and `emergency_release_applied` are
-separate from ordinary queued/applied/dropped counters. A receipt is acceptance,
-not proof that audio has processed it. No live backend means these requests are
-unsupported; offline event traces remain available.
-
-`inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, the four signal processors, VCA Mix, SUM, VIZ, Pulses, Push, Gates, MIDI CC and MIDI Gate. Each entry has
-`kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
-`state`, `controls`, and `lights`. Sequence state retains step/running/length. Push state reports `holding`.
-MIDI CC state exposes sixteen `assignments`, 128 committed channel-zero `values`
-and actual `learning`; MIDI Gate state exposes `assignments` and `learning`
-without saved gate/velocity state. `learning` is null or `{serial,cell}`, with a
-human cell 1…16. Gate's sixteen light entries report the maximum current output
-voltage across lanes divided by 10; no pending request creates an activity lamp.
-Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9; Push uses bit 0 for PUSH and bit 1 for HOLD); indicator `lights` provides `count`, sixteen
-fixed-capacity brightness pairs, and a `manual` flag. SUM and VIZ also supply
-`input_channels`, latched with their light state; other kinds omit that field. Signal processors use
-mono/poly pairs; VCA Mix uses the first value for each channel meter and leaves
-the second value zero. Pulses uses one entry per row; Push exposes final gate and HOLD. Only the first
-`count` pairs are meaningful; names and interpretation come from the catalog's
-`light_names` and `light_policy`. VIZ uses all sixteen pairs for signed green/red
-brightness; retain raw signed values and clamp only for display. Unsupported
-fields are null.
-
-The desktop snapshot reports global `coherent` and a common `frame`. It uses a
-bounded read retry around callback publication; contention returns unavailable
-module telemetry rather than mixing callbacks. Each available module snapshot
-must meet the current requested revision and that common frame.
-An unavailable snapshot is not a zero voltage or a released button. Availability
-also does not mean playback is running. Values observe the live backend; they
-do not provide arbitrary raw waveforms. Use the native scope for live waveforms,
-or `capture_signal` for an offline trace from reset.
-
-`inspect_scope` reads a rack `scope` instance from the actual active desktop
-engine. Arguments are `id`, optional `channel` (integer 1–16, default 1), and
-optional `expected_revision`. It is read-only and does not enter undo history.
-Without a live backend, `supported` is false and `scope` is null; an attached
-backend awaiting a current capture returns `scope.available: false`.
-
-Available captures contain instance identity, applied revision, callback frame,
-publication sequence, sample rate, X/Y channel counts and selected-voice active
-flags. `x` and `y` each contain 256 raw-volt `{min,max}` bins; unobserved or invalid
-bins are null, never fabricated zero. Acquisition metadata includes write index,
-samples per bin, partial-bin sample count, trigger waiting state, display
-settings, requested seconds and actual rounded window seconds. Parameters are
-saved; captured buffers are runtime observations.
-
-`display.x_volts_per_screen` and `display.y_volts_per_screen` report the
-calibrated ranges. `trigger_input_channels` is the actual external input count;
-`trigger_source` is `external` when positive and `x` otherwise. Trigger enable
-and XY settings remain separate, so a configured source need not be triggering.
-
-`measurements.basis` is `completed_display_bins`. `selected_voice` and
-`all_active_voices` each contain nullable `x`/`y` objects with raw-volt `min`,
-`max`, `peak_to_peak`, and `observations`. Observations count valid lane-bin
-points, not samples. Inactive voices and empty axes are null; a measured DC
-signal has zero peak-to-peak. Extrema exclude display gain/offset and private
-partial bins. Stored bins may mix successive sweeps, so these statistics do
-not imply RMS, frequency, or exact acquisition start/end timestamps. The
-publication frame and nominal full-screen duration describe different facts.
-
-These captures are separate from `inspect_performance`'s common-frame light
-snapshot. Publication is limited to 30 Hz per Scope instance and one roughly
-64 KiB copy per device callback across all Scopes, selected round-robin. Busy
-racks may refresh less often. Each capture is coherent but not guaranteed to
-be from the newest callback. Identity/revision changes invalidate previous
-captures; readers can see unavailable until the next publication. There is no
-offline fallback. See [Rack Scope](RACK_SCOPE.md) for acquisition and bypass.
-
-[Signal processor equations and state policies →](SIGNAL_PROCESSING.md)
-
-## Saved bypass and mute inversion
-
-`set_bypass` accepts `id`, the required JSON boolean `bypassed`, and optional
-`expected_revision`. `invert_mutes` accepts a `mutes10` ID and optional revision,
-and flips all ten flags as one edit. Both support preview/batch edits and shared
-undo/redo. Parameters remain editable during bypass; sequencer performance
-actions are rejected and earlier queued actions are invalidated on entry.
-See [utility and bypass contracts](VOLTAGE_UTILITIES.md) for routing, frozen state,
-and the MIDI exception.
-
-## Offline waveform capture
-
-`capture_signal` returns a bounded waveform trace for one named output and one
-**1-based channel**, from 1 through 16. For example, with the bundled polyphonic
-voice, capture the second VCO voice (replace revision `7` with the value from
-`inspect_patch`, or omit the optional revision guard):
-
-```json
-{"id":"vco","port":"out","channel":2,"seconds":0.25,"points":512,"expected_revision":7}
-```
-
-`port` defaults to `out`, and `channel` defaults to 1. `seconds` must be
-0.001–2; `points` must be an integer from 64 through 2048, default 512. The result
-includes the captured `revision`, `id`, `port`, `channel`, exact `sample_rate` and
-rounded sample `frames`, `requested_points`, and actual `points`. If the render
-has fewer frames than requested points, each frame gets one bin.
-
-Each entry in `bins` contains `start_frame`, exclusive `end_frame`,
-`active_frames`, `min`, `max`, and `mean`. Nonempty bins cover every rendered frame
-without gaps or overlap. Every active sample contributes, so a one-sample pulse
-survives in the extrema even when it falls between display points. `active_frames`
-counts frames in which the selected channel exists, including zero-valued gates
-or audio. When a channel is absent, its samples are excluded; a bin with no active
-samples has null `min`, `max`, and `mean` rather than fabricated zeros.
-
-`summary` reports active-sample `min`, `max`, `dc` (mean), `rms` (including DC),
-and `peak` (maximum absolute amplitude), plus total `active_frames`. All five
-amplitude statistics are null when the selected channel never exists.
-`units` comes directly from the selected port's catalog `output_metadata`:
-
-| `units` | `amplitude_domain` | `digital_full_scale` |
-| --- | --- | --- |
-| `V` | `voltage` | null |
-| `normalized digital amplitude` | `normalized_audio` | 1.0 |
-| `legacy normalized` | `legacy_normalized` | null |
-
-Capture returns raw values without clipping, channel summing, or automatic
-normalization. For example, a voltage peak of 5 remains 5 V; a normalized digital
-audio peak above 1 remains above 1. These are software signal units, not calibrated
-measurements of external hardware.
-
-This tool always starts a separate engine **offline from reset**. Optional
-`midi_events` and `module_events` reproduce a performance using the same
-sample-frame rules as `render_audio`; the response includes `midi_event_count`
-and `module_event_count`. It never selects a new
-live output, changes history, or changes running notes. The native Scope's live
-tap observes the running engine instead; `capture_signal` does not fetch that
-live tap. A concurrent edit may advance the session while capture runs, but the
-returned revision identifies the coherent snapshot that produced the trace.
-
-## Atomic edits and shared history
-
-`apply_edits` accepts 1–256 graph edits and validates the **final** graph. The
-whole transaction commits one revision and one undo step. Temporary disconnected
-or unresolved connections inside the transaction are allowed; the final graph
-must compile. Any failure leaves the live graph, revision, and history unchanged.
-Supported operations include `add_module`, `duplicate_modules`, `remove_module`,
-`connect`, `disconnect`, `disconnect_cables`, `move_cables`, `promote_cables`, `set_cable_color`,
-`clear_cables`, `set_parameter`, `set_output`,
-`set_bypass`, `invert_mutes`, `initialize_modules`, `randomize_modules`, and
-`apply_module_preset`. Consult `tools/list` for their argument schemas. File I/O,
-nested transactions, and history commands are excluded.
-
-`move_cables` changes a selected input or output endpoint for up to 1024 exact
-cable IDs; its default rejects duplicate routes, while explicit `discard` and
-version-2 `stack` modes support bundle gestures. `disconnect_cables` deletes a
-selected group atomically, and `set_cable_color` changes one persisted RGB colour
-without retiring its signal state. `promote_cables` raises selected plugs at one
-end without changing DSP routing; `move_cables` can commit routing and plug order
-together. All support `expected_revision`, previews,
-and transactions. See [cable editing examples and guarantees](STACKED_CABLES.md).
-
-`clear_cables` accepts only optional `expected_revision`. A direct call on an
-empty patch validates that revision and returns the unchanged snapshot; it
-preserves undo/redo, state ID and active parameter history grouping. Invalid
-arguments, closed sessions and stale revisions still fail. An empty
-`clear_cables` subedit in `apply_edits` follows the ordinary transaction commit
-rules. `preview_edits` never publishes route retirement or changes runtime state.
-
-For example, pass this argument object to `preview_edits`, using the revision
-from `inspect_patch` (replace `7` below):
-
-```json
-{
-  "expected_revision": 7,
-  "edits": [
-    {"tool": "add_module", "arguments": {"id": "pitch", "kind": "constant", "params": {"value": 1}}},
-    {"tool": "connect", "arguments": {"from": "pitch", "to": "vco", "input": "pitch"}}
-  ]
-}
-```
-
-This assumes an existing `vco` with an unoccupied `pitch` input. Preview returns
-`committed: false`, the validated candidate patch, the base revision, and a
-`changes` summary of added/removed/modified modules, cables, and output; it does
-not mutate the live patch. Submit the same arguments to `apply_edits` to commit.
-If a GUI or MCP edit happened meanwhile, the revision check rejects the request;
-inspect again and revise the proposal. Preview does not reserve the session.
-
-`undo`, `redo`, and `inspect_history` share the desktop's history, bounded to 128
-graph edits and committed module moves. Cmd-Z and Shift-Cmd-Z invoke the same
-commands. One completed single/group drag is one checkpoint in this ordered
-history; its graph is unchanged, but revision and state identity advance. Moves
-and their undo/redo preserve compatible live DSP state. A new move breaks a
-parameter gesture group and clears redo like other edits. Revisions always
-increase, including undo/redo. History is in memory only; file writes and
-playback state are not included. Pan/zoom remain saved view settings without
-separate undo entries. The desktop retains layouts for states it has displayed,
-so undoing a module deletion
-restores its placement. States created and undone entirely between GUI polls may
-not have a recorded layout. `state_id` identifies a retained history state; use
-`revision`, not `state_id`, for concurrency checks.
-Consecutive `set_parameter` calls may use the same `history_group` string to
-form a single undo step for one parameter gesture, while each edit still advances
-the revision. Use a unique group per gesture; unrelated edits and undo/redo
-break the group. Omit this field inside transactions.
-
-## Visible construction
-
-For paced, visible construction, use `start_construction` with a required base
-revision and labelled graph-edit steps. Each step commits a real revision and
-one Undo entry. `inspect_construction`, `pause_construction`,
-`resume_construction`, and `cancel_construction` expose the same controls as the
-native progress panel. External revisions stop the plan; cancellation retains
-completed work. See [construction examples, limits and lifetime](CONSTRUCTION.md).
-
-## Duplicating module groups
-
-`duplicate_modules` atomically copies a module group using explicit
-`modules: [{id, new_id}]` mappings. `cable_mode` is `none` (default), `internal`,
-`inputs` (internal plus external incoming cables), or `all` (every incident cable,
-including outgoing connections to existing destinations). Selected endpoints
-are remapped; external endpoints stay attached. Each cable is copied once with
-a fresh ID, preserving repeated routes and order. Saved parameters, bypass and
-current SEQ-3 Run and Push HOLD are copied; other runtime state starts fresh. The selected
-patch output remains unchanged. Version-1 stacking restrictions still apply to
-the final graph. The tool supports
-`expected_revision`, transaction previews, batches, and one-step undo/redo.
-See [duplication arguments and native workflows](RACK_EDITING.md).
-
-## Headless offline mode
-
-The original CLI remains available without a display or audio device:
-
-```sh
-/absolute/path/openpatch/target/release/openpatch mcp --workspace /absolute/path/patches
-```
-
-For a headless client configuration, use `openpatch` as the command and
-`["mcp", "--workspace", "/absolute/path/patches"]` as its arguments. It starts
-with an empty patch, renders offline, and has no native window or speaker
-playback. It does not share state with desktop processes.
-
-## Execution boundaries
-
-Compilation, JSON parsing, file access, MCP dispatch, and rendering orchestration
-run on control threads. The native GUI observes committed revisions, compiles a
-device-rate engine, and transfers it to the audio callback through bounded
-queues. The callback never locks the session or dispatches MCP commands. Edits
-transfer compatible oscillator, capacitor, filter, and resampler state by stable
-module ID before crossfading. New or changed module kinds start from reset.
-
-Offline rendering and benchmarks use a coherent patch snapshot and release the
-session mutex before processing. MCP requests on that connection remain
-sequential while the operation runs, but GUI edits and live audio can continue.
-Every offline render starts oscillator/filter state from reset and does not
-change the live patch or revision. The device sample rate can differ from the
-stored patch sample rate used for WAV export.
-
-Requests and patch files are capped at 1 MiB. Patches are bounded to 256 nodes
-and 1,024 cables. File arguments accept simple filenames, not paths; symlinks
-are rejected and writes use exclusive creation. Use a workspace owned by you,
-not a directory concurrently modified by untrusted users. This is a local tool,
-not an OS sandbox or a hardened multi-user file service.
-
-[Ten-row Pulses timing and state contract →](PULSES.md)
-
-[Push HOLD persistence, timing and runtime controls →](PUSH.md)
-
-## Gates timing controls
-
-The `gates` module exposes `length`, `in`, and `reset` inputs with `rise`, `fall`,
-`flip`, `flop`, `gate`, and `delay` outputs. Saved `length` is in seconds. Use
-`reset_press` / `reset_release` for its physical RESET button; SEQ-3's `reset`
-action is a different module action. Live queue receipts and offline event
-validation follow the existing manual-control rules. Six light pairs report
-mono/poly output activity; `controls.pressed_mask` bit 0 reports the button.
-See [Gates timing, history, and numerical policies](GATES.md).
-
-## Structured scores and long rendering
-
-`add_module` accepts optional typed `score` data for `score_sequencer`; `set_score` replaces it atomically with revision guards, undo/redo and batch support. `catalog` supplies its score schema. `render_arrangement` streams a reset-origin autonomous performance of up to 300 seconds to a new WAV, with bounded memory and preclip statistics. See [scores and studio modules](SCORE_AND_STUDIO.md).
-
-`save_patch` uses this coherent capture before writing JSON, including current
-Random Values voltages and generator state. It may now serialize implicit saved
-defaults, while leaving the live graph/history unchanged. Random Values
-`randomize_modules` derives a fresh generator from `max(1, FNV-1a32(id) XOR seed)`
-and refreshes all 112 voltages; PUSH/TRIG continue the current random stream.
-
-S&H/Analog Shift Register (`sh_asr`) supports PUSH and CLEAR via ordered runtime
-actions, coherent saved holds/RNG, presets, duplication and history.
-`capture_project_patch` includes a `shift_registers` map of eight actual voltages
-and `rng_state` per module. Host Randomize is a no-op for this kind;
-[full contract](SHIFT_REGISTER.md).
-
-The native toolbar's **MCP** button starts or reuses the local bridge, shows live
-attachment status, and provides copyable Claude/Codex connection details.
-[Session controls](MCP_SESSIONS.md) describes Start/Stop and transport boundaries.
-Progressive plans also publish authoritative `last_commit` receipts for native
-module, cable and parameter cues; [motion contract](CONSTRUCTION_MOTION.md).
-
-### ADSR EG
-
-`adsr_eg` exposes A/D/S/R normalized controls and four bipolar `*_amount` CV depths through the catalog and normal parameter tools. A/D/R are time constants: `10000^raw` milliseconds, so raw `0.5` means 100 ms. `push_press` and `push_release` are transient held controls accepted by `trigger_module` and timed offline events; final same-sample state wins. `inspect_performance` publishes actual A/D/S/R/any-gate lamps, not a guessed stage. Use `capture_signal` on `out` for voltage traces. The old `adsr` retains its original units and behavior. See [ADSR EG](ADSR_EG.md) for modulation, lifecycle, channel and numerical acceptance details.
+Blank content is `{"type":"blank","width_hp":24}`. Notes defaults to empty and
+accepts at most 8192 UTF-8 bytes; Blank defaults to 10 HP, bounded to whole 3–96 HP.
+Content is also valid in `apply_edits`, `preview_edits` and construction plans,
+including mixed edits with audio parameters. Presets and duplicates preserve it;
+Initialize clears Notes/restores Blank's default. Omitted preset content retains
+the target's current content. `inspect_patch` exposes saved content directly.
+
+Width is stored in the module rather than a second layout cache. Direct MCP or
+preset width edits keep the current left position and can overlap other panels:
+Session owns graph/content, while the desktop owns layout. GUI edge/direct-width
+resizes validate geometry and block collisions. An open Notes draft becomes stale
+after any external revision; it stays available to copy or edit, with Apply
+blocked until explicit reload. [Full contract](ANNOTATIONS.md).

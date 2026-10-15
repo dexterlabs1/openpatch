@@ -89,6 +89,7 @@ mod tests {
                 kind: "poly_sum".into(),
                 params: [("level".into(), level)].into(),
                 bypassed: false,
+                content: None,
                 score: None,
             },
             rate,
