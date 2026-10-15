@@ -12,6 +12,9 @@ parameter foundation or a small target allowlist is an intermediate step only.
 It must remain explicitly incomplete until every eligible current control and
 the authority/capture path meet this contract. Existing `midi_cc` and `midi_gate`
 keep their contracts.
+The inventory must also cover bounded controls in the source that OpenPatch
+currently represents as runtime actions. Representation as an action does not
+remove a source-mappable button from the completion target.
 
 ## Pinned reference and observed source behavior
 
@@ -144,8 +147,20 @@ inverse, finite bounds, step/enum snapping, setter opcode and coefficient/state
 side effects. Exclusions require a semantic reason such as hidden persistent
 state or absence of a parameter; lack of an implemented setter is unfinished
 work, not an eligibility rule. All bounded ordinary knobs, sliders and parameter
-switches in the current catalog must be covered. Runtime-only module actions,
-text/content fields and cable/patch identities are not ordinary parameters.
+switches in the current catalog must be covered. Text/content fields and
+cable/patch identities are not ordinary numeric controls.
+
+Use a broader `ControlTarget` inventory for source-mappable buttons. Source
+`configButton` quantities are bounded and snapped, even when randomization is
+disabled. ADSR PUSH, ten PULSES buttons and SEQ3 Clock/Run/Reset are examples
+that a `Node.params`-only inventory would miss. Require audited adapters for
+these controls, with stable mapping identity, normalized/snap semantics and
+their source level/edge behavior. Separate a button's raw control level from
+the resulting Run latch, Clock event or envelope state. A latched high CC must
+not dispatch a fresh Run/Clock action on every Map tick. Include interactions
+with physical/MCP press and release, clear/remap, bypass and graph adoption;
+declare each control's capture/load policy after source probes. A scalar-setter
+foundation alone does not fulfill the full Map control target.
 
 Do not infer mapping eligibility from randomization policy or from the presence
 of numeric bounds alone. The DSP setter must update the actual control and all
