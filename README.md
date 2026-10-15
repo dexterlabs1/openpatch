@@ -86,6 +86,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Remove | **Delete / Backspace** the selection, or the hovered module when nothing is selected |
 | Clear patching | **Edit → Clear cables** removes all cables in one undoable action |
 | Pan / zoom | Scroll, middle-drag, or arrow keys; pinch or **Cmd-scroll** to zoom **25–400%**; **Cmd −/+** steps zoom; **Cmd-0** restores 100% |
+| Dim the room | **View → Room brightness**, with **Darkroom** (10%) and **Lights on** (100%); live module lamps and Scope screens keep emitting |
 | Lock placement | **View → Lock module positions** prevents accidental module moves while keeping knobs and cables editable |
 | Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
 | Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |

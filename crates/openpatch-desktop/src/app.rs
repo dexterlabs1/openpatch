@@ -544,6 +544,11 @@ impl OpenPatch {
         }
     }
     fn apply_host_preferences(&mut self, preferences: &Value) {
+        self.rack.set_room_brightness(
+            preferences["room_brightness"]
+                .as_f64()
+                .map_or(1.0, |value| value.clamp(0.0, 1.0) as f32),
+        );
         self.rack.set_positions_locked(
             preferences["lock_module_positions"]
                 .as_bool()
@@ -572,7 +577,8 @@ impl OpenPatch {
             let data = serde_json::to_vec_pretty(&json!({
                 "output_device": self.output_device, "midi_device": self.midi_device,
                 "module_favorites": self.library.favorites(),
-                "lock_module_positions": self.rack.positions_locked()
+                "lock_module_positions": self.rack.positions_locked(),
+                "room_brightness": self.rack.room_brightness()
             }))
             .map_err(|e| e.to_string())?;
             let mut file = std::fs::OpenOptions::new()
@@ -1273,9 +1279,11 @@ impl OpenPatch {
         match result {
             Ok(applied) => {
                 let locked = self.rack.positions_locked();
+                let room_brightness = self.rack.room_brightness();
                 self.patch = applied.patch;
                 self.rack = applied.rack;
                 self.rack.set_positions_locked(locked);
+                self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
                 self.state_id = applied.state_id;
                 self.history_layouts.clear();
@@ -1409,8 +1417,10 @@ impl OpenPatch {
         self.active_file = None;
         self.active_token = None;
         let positions_locked = self.rack.positions_locked();
+        let room_brightness = self.rack.room_brightness();
         self.rack = Rack::default();
         self.rack.set_positions_locked(positions_locked);
+        self.rack.set_room_brightness(room_brightness);
         if title == "Sequenced analog voice" {
             self.sequence_layout();
         } else if title == "Delayed gate voice" {
@@ -1692,8 +1702,10 @@ impl OpenPatch {
                     .insert(self.state_id, self.rack.layout());
                 self.patch = applied.patch;
                 let positions_locked = self.rack.positions_locked();
+                let room_brightness = self.rack.room_brightness();
                 self.rack = applied.rack;
                 self.rack.set_positions_locked(positions_locked);
+                self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
                 self.state_id = applied.state_id;
                 self.history_layouts
@@ -2439,6 +2451,32 @@ impl OpenPatch {
                                 self.audio_performance_open = true;
                                 ui.close();
                             }
+                            ui.separator();
+                            ui.label("Room brightness");
+                            let mut percent = self.rack.room_brightness() * 100.0;
+                            let illumination = ui.add(egui::Slider::new(&mut percent, 0.0..=100.0)
+                                .suffix("%")
+                                .text("Room")
+                                .step_by(0.1))
+                                .on_hover_text("Dims the rack's reflective surfaces. Live module lights and Scope displays keep emitting light.");
+                            if illumination.changed() {
+                                self.rack.set_room_brightness(percent / 100.0);
+                            }
+                            // Show every drag frame live, but publish the host
+                            // preference once at release. Keys/direct entry save
+                            // immediately because they have no drag lifecycle.
+                            if illumination.drag_stopped()
+                                || (illumination.changed() && !illumination.dragged()) {
+                                self.save_host_settings();
+                            }
+                            ui.horizontal(|ui| {
+                                for (label, amount) in [("Darkroom", 0.1), ("Lights on", 1.0)] {
+                                    if ui.button(label).clicked() {
+                                        self.rack.set_room_brightness(amount);
+                                        self.save_host_settings();
+                                    }
+                                }
+                            });
                             ui.separator();
                             let mut locked = self.rack.positions_locked();
                             if ui.checkbox(&mut locked, "Lock module positions").changed() {
@@ -3474,6 +3512,96 @@ impl OpenPatch {
         vec![state["last_commit"].clone()]
     }
 
+    /// Freeze actual offline DSP telemetry for matched room-lighting captures.
+    /// There is no audio device or UI blink timer in this fixture.
+    fn prepare_room_lighting_fixture(&mut self) {
+        self.smoke_motion_origin = None;
+        self.mcp_session = crate::mcp_session_ui::Panel::new(false);
+        self.select_analysis(None);
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.library = ModuleLibrary::default();
+        self.browser_open = true;
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"wave","kind":"multi_vco","params":{"frequency":50}},
+                {"id":"sequence","kind":"seq3"},
+                {"id":"push","kind":"push"},
+                {"id":"pulses","kind":"pulses"},
+                {"id":"scope","kind":"scope","params":{"time":0.08,"trigger_enabled":0}},
+                {"id":"viz","kind":"poly_viz"},
+                {"id":"sum","kind":"poly_sum"},
+                {"id":"volts","kind":"poly_constant","params":{"channels":4,"v1":5,"v2":-2,"v3":3,"v4":1}}
+            ],
+            "cables":[
+                {"from":"wave","output":"sine","to":"scope","input":"x"},
+                {"from":"wave","output":"triangle","to":"scope","input":"y"},
+                {"from":"volts","to":"viz","input":"signal"},
+                {"from":"volts","to":"sum","input":"signal"}
+            ]
+        })).expect("Room lighting fixture patch");
+        let mut engine = patch.compile().expect("Room lighting offline engine");
+        let pulses = engine.resolve_module_event("pulses").unwrap();
+        for row in [1, 7] {
+            assert!(
+                engine.handle_module_event(pulses, openpatch_core::ModuleAction::PulsePress(row))
+            );
+        }
+        let push = engine.resolve_module_event("push").unwrap();
+        assert!(engine.handle_module_event(push, openpatch_core::ModuleAction::HoldPress));
+        assert!(engine.handle_module_event(push, openpatch_core::ModuleAction::HoldRelease));
+        let sequence = engine.resolve_module_event("sequence").unwrap();
+        for _ in 0..3 {
+            assert!(engine.handle_module_event(sequence, openpatch_core::ModuleAction::Clock));
+        }
+        engine.process_block(&mut vec![0.0; 8192]);
+        let mut lights = BTreeMap::new();
+        let mut controls = BTreeMap::new();
+        for node in &patch.nodes {
+            if let Ok(handle) = engine.resolve_module_lights(&node.id) {
+                if let Some(state) = engine.module_lights(handle) {
+                    lights.insert(node.id.clone(), state);
+                }
+            }
+            if let Ok(handle) = engine.resolve_module_control(&node.id) {
+                if let Some(state) = engine.module_control_state(handle) {
+                    controls.insert(node.id.clone(), state);
+                }
+            }
+        }
+        let scope = engine.resolve_module_scope("scope").unwrap();
+        let scope = engine.module_scope(scope).unwrap().clone();
+        let sequence = engine.module_telemetry(sequence).unwrap();
+        for id in ["pulses", "push", "viz", "sum"] {
+            assert!(
+                lights[id]
+                    .brightness
+                    .iter()
+                    .flatten()
+                    .any(|value| *value > 0.0),
+                "Room fixture needs actual lit telemetry for {id}"
+            );
+        }
+        assert!(scope.x_channels > 0 && scope.y_channels > 0);
+        assert!(self.command("replace_patch", json!({"patch":patch})));
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.72,"pan":[24,12],"positions":{
+                "wave":[0,0],"sequence":[300,0],"push":[1080,0],"pulses":[1260,0],
+                "scope":[0,420],"viz":[630,420],"sum":[810,420],"volts":[990,420]
+            }}))
+            .unwrap();
+        self.rack.set_module_states(lights, controls);
+        self.rack
+            .set_sequence_states(BTreeMap::from([("sequence".into(), sequence)]), false);
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.title = "Room lighting · actual offline DSP snapshot".into();
+        self.status = "Lights on · 100% room · held gates, four CV lanes and captured Scope · no live audio stream".into();
+    }
+
     fn smoke(&mut self, ctx: &egui::Context) {
         let Some((path, frame, captures)) = &mut self.smoke_test else {
             return;
@@ -4320,6 +4448,20 @@ impl OpenPatch {
                 "Parameter screenshot must contain the open editor"
             );
         }
+        if frame == 1030 {
+            egui::Popup::close_all(ctx);
+            self.prepare_room_lighting_fixture();
+        }
+        if frame == 1060 {
+            self.rack.set_room_brightness(0.1);
+            self.status = "Darkroom · 10% room · real module lamps and Scope emission · same offline snapshot".into();
+        }
+        if frame == 1090 {
+            self.rack.set_room_brightness(0.0);
+            self.status =
+                "Lights out · 0% room · actual lamps and Scope remain · browser stays readable"
+                    .into();
+        }
         if matches!(
             frame,
             12 | 24
@@ -4372,6 +4514,9 @@ impl OpenPatch {
                 | 972
                 | 994
                 | 1022
+                | 1052
+                | 1082
+                | 1112
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4440,7 +4585,10 @@ impl OpenPatch {
                 47 => path.with_file_name("construction-motion-180.png"),
                 48 => path.with_file_name("construction-motion-340.png"),
                 49 => path.with_file_name("construction-motion-settled.png"),
-                _ => path.with_file_name("mcp-session.png"),
+                50 => path.with_file_name("mcp-session.png"),
+                51 => path.with_file_name("room-lights-on.png"),
+                52 => path.with_file_name("room-dark.png"),
+                _ => path.with_file_name("room-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -4451,18 +4599,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/51 at frame {frame}: {}",
+                "Native smoke: capture {}/54 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 51 {
+            if captures == 54 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1056, "Native screenshot timeout");
+        assert!(frame < 1146, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6429,7 +6577,7 @@ mod project_workflow_tests {
     }
 
     #[test]
-    fn position_lock_survives_new_open_import_and_recovery() {
+    fn host_view_preferences_survive_new_example_open_import_and_recovery() {
         let dir = tempfile::tempdir().unwrap();
         let expected =
             Document::new(openpatch_core::demo_patch(), Rack::default().layout()).unwrap();
@@ -6446,19 +6594,66 @@ mod project_workflow_tests {
         let mut app = host(dir.path());
         let recovery = app.recovery_names[0].clone();
         app.rack.set_positions_locked(true);
+        app.rack.set_room_brightness(0.1);
         app.load_document(&recovery, true);
         assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         assert_eq!(app.title, "Recovered project");
+        app.new_from_template(false);
+        assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         app.replace_now(Patch::new_v2(), "Untitled");
         assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         assert!(app.patch.nodes.is_empty());
+        app.replace_now(openpatch_core::demo_patch(), "Factory example");
+        assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         app.load_document("locked.openpatch", false);
         assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         assert_eq!(app.active_file.as_deref(), Some("locked.openpatch"));
         app.load_document("legacy.json", false);
         assert!(app.rack.positions_locked());
+        assert_eq!(app.rack.room_brightness(), 0.1);
         assert!(app.active_file.is_none());
         assert_eq!(app.patch.nodes.len(), expected.patch.nodes.len());
+    }
+
+    #[test]
+    fn room_brightness_persists_without_patch_history_or_dirty_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let before = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        let layout_revision = app.rack.layout_revision();
+        let document = app.capture_document();
+        let dirty = app.dirty();
+        assert_eq!(app.rack.room_brightness(), 1.0);
+        app.rack.set_room_brightness(0.1);
+        app.save_host_settings();
+        let preferences: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(".host-settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(preferences["room_brightness"].as_f64().unwrap() as f32, 0.1);
+        app.rack.set_room_brightness(1.0);
+        app.apply_host_preferences(&preferences);
+        assert_eq!(app.rack.room_brightness(), 0.1);
+        assert_eq!(app.rack.layout(), layout);
+        assert_eq!(app.rack.layout_revision(), layout_revision);
+        assert!(app.capture_document().equivalent(&document));
+        assert_eq!(app.dirty(), dirty);
+        assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+        for value in [json!({}), json!({"room_brightness":"dark"}), Value::Null] {
+            app.apply_host_preferences(&value);
+            assert_eq!(app.rack.room_brightness(), 1.0);
+        }
+        for (value, expected) in [(json!(-0.5), 0.0), (json!(2.0), 1.0), (json!(0.0), 0.0)] {
+            app.apply_host_preferences(&json!({"room_brightness":value}));
+            assert_eq!(app.rack.room_brightness(), expected);
+        }
+        app.rack.set_room_brightness(f32::NAN);
+        assert_eq!(app.rack.room_brightness(), 1.0);
     }
 
     #[test]
@@ -8190,6 +8385,24 @@ mod project_workflow_tests {
             json!({"plan_id": plan["plan_id"]}),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn room_capture_uses_real_offline_dsp_and_keeps_the_same_patch_across_lighting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_room_lighting_fixture();
+        assert_eq!(app.patch.nodes.len(), 8);
+        assert_eq!(app.patch.cables.len(), 4);
+        assert!(app.browser_open);
+        let state = app.shared.lock().unwrap().snapshot();
+        let layout = app.rack.layout();
+        for amount in [1.0, 0.1, 0.0] {
+            app.rack.set_room_brightness(amount);
+            assert_eq!(app.rack.room_brightness(), amount);
+            assert_eq!(app.shared.lock().unwrap().snapshot(), state);
+            assert_eq!(app.rack.layout(), layout);
+        }
     }
 
     #[test]

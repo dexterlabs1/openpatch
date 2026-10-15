@@ -354,6 +354,7 @@ pub struct Rack {
     // resized rack. Correct that pivot once the new canvas is available.
     pending_center_zoom_ratio: f32,
     positions_locked: bool,
+    lighting: crate::lighting::RoomLighting,
     pending: Option<PendingCable>,
     cable_press: Option<PendingCable>,
     cable_menu: Option<CableMenu>,
@@ -393,6 +394,7 @@ impl Default for Rack {
             viewport: None,
             pending_center_zoom_ratio: 1.0,
             positions_locked: false,
+            lighting: crate::lighting::RoomLighting::default(),
             pending: None,
             cable_press: None,
             cable_menu: None,
@@ -1009,6 +1011,15 @@ impl Rack {
         self.set_zoom(2.0_f32.powf(exponent * 0.5));
     }
 
+    /// Host preference, deliberately absent from patch/layout history.
+    pub(crate) fn room_brightness(&self) -> f32 {
+        self.lighting.amount()
+    }
+
+    pub(crate) fn set_room_brightness(&mut self, amount: f32) {
+        self.lighting.set(amount);
+    }
+
     pub fn positions_locked(&self) -> bool {
         self.positions_locked
     }
@@ -1444,7 +1455,9 @@ impl Rack {
                 }
             }
         }
+        let background_start = self.lighting.begin(&painter);
         paint_background(&painter, canvas, self.pan, self.zoom);
+        self.lighting.finish(&painter, background_start);
 
         let RenderedModules {
             outputs,
@@ -1543,6 +1556,7 @@ impl Rack {
             }
             self.dragging_cable = false;
         }
+        let cable_start = self.lighting.begin(&painter);
         // Connected plugs remain visible until an atomic edit succeeds. The
         // picked-up cable becomes a ghost so cancellation never loses a route.
         for (cable_index, cable) in patch.cables.iter().enumerate() {
@@ -1609,6 +1623,7 @@ impl Rack {
                     configured_bus(patch, catalog, &cable.from),
                     fan,
                     phase,
+                    &self.lighting,
                 );
             }
         }
@@ -1672,11 +1687,14 @@ impl Rack {
                         } => !output && target_node == node && target_port == port,
                     });
                     if ordinal + 1 == order.len() && traced && !picked_up {
+                        let guide_start = crate::lighting::next(&painter);
                         paint_jack_light(&painter, point, self.zoom, cable_instance_color(cable));
+                        self.lighting.preserve(&painter, guide_start);
                     }
                 }
             }
         }
+        self.lighting.finish(&painter, cable_start);
         for (center, count) in stack_badges {
             painter.circle_filled(center, 8.0 * self.zoom, INK);
             painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
@@ -1906,6 +1924,7 @@ impl Rack {
         let painter = ui
             .painter()
             .with_clip_rect(ui.clip_rect().intersect(canvas));
+        let lighting_start = self.lighting.begin(&painter);
         let press = ui.input(|i| {
             i.events.iter().rev().find_map(|event| match event {
                 egui::Event::PointerButton {
@@ -2010,6 +2029,7 @@ impl Rack {
                     self.selection.contains(&node.id),
                     patch.output.as_ref() == Some(&node.id),
                     self.zoom,
+                    &self.lighting,
                 );
             }
             if mode.is_interactive() {
@@ -2081,6 +2101,7 @@ impl Rack {
                     self.selection.contains(&node.id),
                     patch.output.as_ref() == Some(&node.id),
                     self.zoom,
+                    &self.lighting,
                 );
                 let header = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
                 let header_response = ui.interact(
@@ -3424,6 +3445,7 @@ impl Rack {
             }
         }
 
+        self.lighting.finish(&painter, lighting_start);
         RenderedModules {
             outputs,
             inputs,
@@ -3460,6 +3482,7 @@ impl Rack {
                 output_point + vec2(0.0, 17.0) * self.zoom,
                 brightness,
                 self.zoom,
+                &self.lighting,
             );
         }
     }
@@ -4982,7 +5005,8 @@ impl Rack {
                 // Retired voices can retain a fading light after their number dims.
                 let value = state.map_or(0.0, |s| s.brightness[channel][polarity].clamp(0.0, 1.0));
                 painter.circle_filled(center, 4.0 * zoom, Color32::from_gray(70));
-                painter.circle_filled(
+                self.lighting.circle(
+                    painter,
                     center,
                     3.0 * zoom,
                     if state.is_none() {
@@ -4990,6 +5014,8 @@ impl Rack {
                     } else {
                         color.gamma_multiply(0.15 + value * 0.85)
                     },
+                    value,
+                    0.15,
                 );
             }
         }
@@ -5046,10 +5072,13 @@ impl Rack {
             } else {
                 Color32::from_rgb(76, 163, 112)
             };
-            painter.rect_filled(
+            self.lighting.rect(
+                painter,
                 Rect::from_min_size(point(41.0, y - 4.0), vec2(55.0, 8.0) * zoom),
                 1.0,
                 color.gamma_multiply(0.14 + brightness * 0.86),
+                brightness,
+                0.14,
             );
             painter.text(
                 point(105.0, y),
@@ -5102,13 +5131,16 @@ impl Rack {
                     } else {
                         Color32::from_rgb(76, 163, 112)
                     };
-                    painter.rect_filled(
+                    self.lighting.rect(
+                        painter,
                         Rect::from_min_size(
                             center + vec2(-25.0 + segment as f32 * 4.2, -3.0) * zoom,
                             vec2(3.1, 6.0) * zoom,
                         ),
                         0.5,
                         color.gamma_multiply(if lit { 1.0 } else { 0.16 }),
+                        if lit { 1.0 } else { 0.0 },
+                        0.16,
                     );
                 }
                 ui.interact(Rect::from_center_size(center,vec2(54.0,13.0)*zoom),ui.id().with((&node.id,"strip-vu",channel)),Sense::hover()).on_hover_text("DSP strip VU: signed channel sum / 5 V, peak smoothing, -24 to 0 dB brightness. Polyphonic lanes can cancel. This is the signal meter, not the knob gain.");
@@ -5272,6 +5304,7 @@ impl Rack {
                 button_rect.right_center() - vec2(10.0, 0.0) * zoom,
                 [if actual { 1.0 } else { 0.0 }, 0.0],
                 zoom,
+                &self.lighting,
             );
             if enabled
                 && allow_press
@@ -5313,7 +5346,7 @@ impl Rack {
                     .filter(|s| index < usize::from(s.count))
                     .map_or([0.0; 2], |s| s.brightness[index]);
                 let center = point(x, 294.0);
-                paint_signal_light(&painter, center, brightness, zoom);
+                paint_signal_light(&painter, center, brightness, zoom, &self.lighting);
                 ui.interact(Rect::from_center_size(center,vec2(30.0,14.0)*zoom),ui.id().with((&node.id,"bound-light",index)),Sense::hover()).on_hover_text(format!("Pre-bound {name} crossing: yellow mono, blue poly. Brightness follows DSP, before clipping or reflection."));
                 let reflect = node
                     .params
@@ -5439,10 +5472,13 @@ impl Rack {
                 .map_or(0.0, |lights| lights.brightness[row][0])
                 .clamp(0.0, 1.0);
             painter.circle_filled(point(132.0, y), 4.0 * zoom, Color32::from_rgb(71, 66, 58));
-            painter.circle_filled(
+            self.lighting.circle(
+                &painter,
                 point(132.0, y),
                 2.8 * zoom,
                 Color32::from_rgb(238, 177, 65).gamma_multiply(0.12 + 0.88 * brightness),
+                brightness,
+                0.12,
             );
             if row < 9 {
                 painter.line_segment(
@@ -5591,10 +5627,13 @@ impl Rack {
                 .map_or(0.0, |state| state.brightness[index][0])
                 .clamp(0.0, 1.0);
             painter.circle_filled(point(x, 265.0), 6.0 * zoom, Color32::from_rgb(71, 66, 58));
-            painter.circle_filled(
+            self.lighting.circle(
+                &painter,
                 point(x, 265.0),
                 4.4 * zoom,
                 led_color.gamma_multiply(0.12 + 0.88 * brightness),
+                brightness,
+                0.12,
             );
             painter.text(
                 point(x, 283.0),
@@ -6050,7 +6089,17 @@ impl Rack {
                     color.gamma_multiply(if active { 0.9 } else { 0.35 }),
                 ),
             );
+            // These route indicators already have two soft rings. Preserve
+            // only the engine-selected route; static disabled markers dim.
+            let lamp_start = if self.lighting.amount() < 1.0 {
+                crate::lighting::next(&painter)
+            } else {
+                0
+            };
             paint_jack_light(&painter, point(many_x - 22.0, y), zoom * 0.65, color);
+            if active {
+                self.lighting.preserve(&painter, lamp_start);
+            }
         }
         action
     }
@@ -6212,10 +6261,13 @@ impl Rack {
                 ));
             }
             if current {
-                painter.circle_filled(
+                self.lighting.circle(
+                    &painter,
                     point(x + 23.0, 85.0),
                     3.0 * zoom,
                     Color32::from_rgb(51, 137, 80),
+                    1.0,
+                    0.0,
                 );
             }
         }
@@ -6293,6 +6345,7 @@ impl Rack {
         let point = |x, y| rect.min + vec2(x, y) * zoom;
         let display = Rect::from_min_max(point(30.0, 70.0), point(600.0, 250.0));
         painter.rect_filled(display.expand(3.0 * zoom), 3.0 * zoom, INK);
+        let screen_start = crate::lighting::next(&painter);
         painter.rect_filled(display, 1.0, Color32::from_rgb(14, 24, 27));
         let plot = Rect::from_min_max(point(40.0, 101.0), point(590.0, 213.0));
         for i in 1..10 {
@@ -6510,6 +6563,9 @@ impl Rack {
                 Color32::from_gray(155),
             );
         }
+        if self.scope_states.contains_key(&node.id) {
+            self.lighting.preserve(&painter, screen_start);
+        }
         let mut action = None;
         for (index, (name, label, suffix)) in SCOPE_CONTROLS.iter().enumerate() {
             let local = scope_control_rect(index);
@@ -6577,6 +6633,11 @@ impl Rack {
             .clamp(min, max);
         value *= scale;
         let id = ui.id().with((&node.id, parameter, "compact"));
+        let editor_start = if self.lighting.amount() < 1.0 {
+            crate::lighting::next(ui.painter())
+        } else {
+            0
+        };
         let response = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
                 // Retain the established active gold cue while matching the
@@ -6608,6 +6669,12 @@ impl Rack {
                 )
             })
             .inner;
+        // DragValue becomes an inline TextEdit while focused, on the same
+        // rack layer. Preserve that active editor, including its release frame,
+        // while ordinary ink-on-metal readouts still receive ambient lighting.
+        if response.has_focus() || response.lost_focus() {
+            self.lighting.preserve(ui.painter(), editor_start);
+        }
         response.widget_info(|| {
             egui::WidgetInfo::slider(true, value as f64, format!("{} {}", node.id, parameter))
         });
@@ -7423,7 +7490,13 @@ fn monitor_menu(
     }
 }
 
-fn paint_signal_light(painter: &egui::Painter, center: Pos2, brightness: [f32; 2], zoom: f32) {
+fn paint_signal_light(
+    painter: &egui::Painter,
+    center: Pos2,
+    brightness: [f32; 2],
+    zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
+) {
     for (index, base) in [
         Color32::from_rgb(242, 199, 59),
         Color32::from_rgb(62, 155, 238),
@@ -7434,10 +7507,13 @@ fn paint_signal_light(painter: &egui::Painter, center: Pos2, brightness: [f32; 2
         let strength = brightness[index].clamp(0.0, 1.0);
         let point = center + vec2(if index == 0 { -3.5 } else { 3.5 }, 0.0) * zoom;
         painter.circle_filled(point, 3.0 * zoom, Color32::from_gray(78));
-        painter.circle_filled(
+        lighting.circle(
+            painter,
             point,
             2.2 * zoom,
             base.gamma_multiply(0.12 + strength * 0.88),
+            strength,
+            0.12,
         );
     }
 }
@@ -9414,6 +9490,7 @@ fn paint_panel(
     selected: bool,
     master: bool,
     zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
 ) {
     crate::panel_skin::metal(painter, rect, zoom);
     if node.bypassed {
@@ -9425,6 +9502,7 @@ fn paint_panel(
         );
     }
     if selected {
+        let selection_start = crate::lighting::next(painter);
         painter.rect_stroke(
             rect.expand(1.0 * zoom),
             1.0 * zoom,
@@ -9440,6 +9518,7 @@ fn paint_panel(
             Stroke::new(1.5 * zoom, Color32::from_rgb(201, 137, 54)),
             egui::StrokeKind::Inside,
         );
+        lighting.preserve(painter, selection_start);
     }
     let point = |x, y| rect.min + vec2(x, y) * zoom;
     let width = rect.width() / zoom;
@@ -9838,6 +9917,7 @@ fn paint_motion_cable_curves(
     bus: bool,
     fan: f32,
     phase: Option<crate::cable_animation::Phase>,
+    lighting: &crate::lighting::RoomLighting,
 ) {
     let Some(phase) = phase else {
         paint_cable_curves(painter, from, to, color, zoom, bus, fan);
@@ -9845,14 +9925,16 @@ fn paint_motion_cable_curves(
     };
     if phase.reduced {
         paint_cable_curves(painter, from, to, color, zoom, bus, fan);
+        let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(
             to,
             11.5 * zoom,
             Stroke::new(1.4 * zoom, color.gamma_multiply(phase.fade)),
         );
+        lighting.preserve(painter, accent_start);
         return;
     }
-    paint_committed_cable_curves(
+    let prefix_accent = paint_committed_cable_curves(
         painter,
         from,
         to,
@@ -9862,6 +9944,7 @@ fn paint_motion_cable_curves(
         fan,
         Some(phase.progress),
     );
+    lighting.preserve(painter, prefix_accent);
     let points = cable_curve_points(from, to, zoom, fan);
     let tip = cable_curve_prefix(points, phase.progress)[3];
     let ring = if phase.progress >= 1.0 {
@@ -9869,6 +9952,7 @@ fn paint_motion_cable_curves(
     } else {
         4.0
     };
+    let accent_start = crate::lighting::next(painter);
     painter.circle_stroke(
         tip,
         ring * zoom,
@@ -9877,6 +9961,7 @@ fn paint_motion_cable_curves(
     if phase.progress < 1.0 {
         painter.circle_filled(tip, 1.8 * zoom, Color32::from_rgb(247, 233, 202));
     }
+    lighting.preserve(painter, accent_start);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -9889,10 +9974,10 @@ fn paint_committed_cable_curves(
     bus: bool,
     fan: f32,
     progress: Option<f32>,
-) {
+) -> usize {
     let Some(progress) = progress else {
         paint_cable_curves(painter, from, to, color, zoom, bus, fan);
-        return;
+        return crate::lighting::next(painter);
     };
     let points = cable_curve_points(from, to, zoom, fan);
     // The entire committed route remains visible; this flourish never represents
@@ -9901,7 +9986,11 @@ fn paint_committed_cable_curves(
     if progress > 0.0 {
         let prefix = cable_curve_prefix(points, progress);
         paint_cable_segment(painter, prefix, color, zoom, bus, 112);
+        let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(prefix[3], 4.2 * zoom, Stroke::new(1.2 * zoom, color));
+        accent_start
+    } else {
+        crate::lighting::next(painter)
     }
 }
 
@@ -10090,6 +10179,9 @@ mod tests {
     }
     mod noise_ui_tests {
         include!("noise_ui_tests.rs");
+    }
+    mod lighting_ui_tests {
+        include!("lighting_ui_tests.rs");
     }
     use super::*;
 

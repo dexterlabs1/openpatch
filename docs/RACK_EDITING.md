@@ -84,6 +84,21 @@ to ±1,000,000 logical pixels, keeping every allowed module position reachable
 at 400% and preventing navigation from producing an unsavable project.
 At that outer bound, zoom anchoring yields to the view limit.
 
+**View → Room brightness** adjusts rack illumination from 0 to 100%. **Darkroom**
+sets 10%; **Lights on** restores 100%, the default. Panels, printed labels, controls,
+cables, and rack rails dim together. Actual module lamps, meters, step indicators,
+and Scope screens keep emitting from the latest engine telemetry. A missing engine
+publication stays unavailable; no display blink timer substitutes for a signal.
+Small lamp halos increase as the room darkens. Cables still pass in front of lamps
+and scope traces. Selection, menus, numeric editors, patching guidance, construction
+cues, and host chrome keep their normal contrast. Browser previews use neutral 100%
+lighting to help identify modules.
+
+Room illumination is a host preference, saved as `room_brightness` in
+`.host-settings.json` (a finite number from 0 to 1). It does not change a project,
+its dirty state, recovery data, undo history, audio, or MCP graph state. Invalid or
+missing values restore 100%; finite values are clamped to the supported range.
+
 These interactions follow the [Rack key commands](https://vcvrack.com/manual/KeyCommands)
 and [View menu](https://vcvrack.com/manual/MenuBar). Zoom stepping and modifier
 ratios were checked against the pinned
