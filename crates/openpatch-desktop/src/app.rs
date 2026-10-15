@@ -4506,7 +4506,7 @@ impl OpenPatch {
             self.library = ModuleLibrary::default();
             let patch: Patch = serde_json::from_value(json!({"version":2,
                 "nodes":[{"id":"voice","kind":"multi_vco","params":{"frequency":220,"pulse_width":0.35}},
-                    {"id":"filter","kind":"analog_vcf"},{"id":"amp","kind":"analog_vca"},
+                    {"id":"filter","kind":"ladder_vcf"},{"id":"amp","kind":"analog_vca"},
                     {"id":"out","kind":"audio_out"}],
                 "cables":[{"from":"voice","output":"sine","to":"filter","input":"signal"},
                     {"from":"filter","to":"amp","input":"signal"},{"from":"amp","to":"out","input":"signal"}],
@@ -5084,6 +5084,58 @@ mod project_workflow_tests {
             }
             assert_ne!(snapshot.x[0], snapshot.x[15]);
         }
+    }
+
+    #[test]
+    fn precision_and_cable_smoke_scenes_use_real_descriptors_and_pointer_gestures() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.mcp_session = crate::mcp_session_ui::Panel::new(false);
+        app.smoke_test = Some((dir.path().join("unused.png"), 1152, 55));
+        let ctx = egui::Context::default();
+        // Run the same logical scene progression and raw-input hook as native
+        // smoke, without a graphics context, screenshot events or audio devices.
+        while app.smoke_test.as_ref().unwrap().1 < 1236 {
+            let logical = app.smoke_test.as_ref().unwrap().1;
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                time: Some(logical as f64 / 60.0),
+                focused: false,
+                ..Default::default()
+            };
+            eframe::App::raw_input_hook(&mut app, &ctx, &mut input);
+            let output = ctx.run(input, |ctx| {
+                app.sync();
+                app.toolbar(ctx);
+                app.footer(ctx);
+                let action = app.browser(ctx);
+                app.global_shortcuts(ctx);
+                app.rack_workspace(ctx, action);
+                app.smoke(ctx);
+            });
+            if logical == 1176 {
+                preset_text(&output, "voice / pulse_width");
+                preset_text(&output, "Apply & Next");
+            }
+            if matches!(logical, 1206 | 1234) {
+                assert!(app.rack.cable_is_dragging_for_smoke());
+                assert_eq!(
+                    app.patch.cables.len(),
+                    3,
+                    "the pointer gesture remains a draft"
+                );
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Text(text) if text.galley.text().contains("Release: Create · stack"))),
+                    "actual drop guidance must remain painted with room lights on or off");
+            }
+        }
+        assert!(app.rack.cable_is_dragging_for_smoke());
+        assert_eq!(app.rack.room_brightness(), 0.0);
+        assert_eq!(app.patch.cables.len(), 3);
+        assert!(app.audio.is_none());
     }
 
     #[test]
