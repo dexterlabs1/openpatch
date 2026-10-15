@@ -3606,7 +3606,11 @@ impl OpenPatch {
         let Some((path, frame, captures)) = &mut self.smoke_test else {
             return;
         };
-        *frame += 1;
+        // After initialization, all smoke scene changes and capture requests
+        // use even logical frames. Skip the idle odd frames so software GL
+        // keeps ample room inside CI's fixed native-window time budget.
+        // Production repaint and construction clocks are unchanged.
+        *frame += if *frame < 2 { 1 } else { 2 };
         let (path, frame, captures) = (path.clone(), *frame, *captures);
         if frame == 1 {
             let v = self
