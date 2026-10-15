@@ -83,7 +83,7 @@ impl Category {
             "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
             | "modal_resonator" | "colored_noise" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" => Self::Filters,
-            "adsr" => Self::Envelopes,
+            "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "gate" | "random_values" | "sh_asr" => Self::Modulation,
             "gain"

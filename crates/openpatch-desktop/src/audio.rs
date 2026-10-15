@@ -10,6 +10,7 @@ mod audio_diagnostics;
 pub use audio_diagnostics::Snapshot as AudioTimingSnapshot;
 #[path = "performance.rs"]
 mod performance;
+pub(crate) use performance::ManualReleaseTicket;
 use performance::{EventReader, ModulePlan, Performance, EVENT_CAPACITY};
 #[path = "scope_stream.rs"]
 mod scope_stream;
@@ -545,6 +546,9 @@ impl Audio {
 
     pub fn module_event_sender(&self) -> Arc<dyn LiveModuleEvents> {
         self.performance.clone()
+    }
+    pub(super) fn press_gate_with_ticket(&self, id: &str) -> Result<ManualReleaseTicket, String> {
+        self.performance.press_gate_with_ticket(id)
     }
     /// Actual DSP telemetry; step is ONE-based and length is the active count.
     /// Read-only sequencer or sequential-switch state from the current graph.
@@ -1166,6 +1170,21 @@ fn build_stream<T: OutputSample>(
         },
         None,
     )
+}
+
+#[cfg(test)]
+pub(crate) fn test_manual_release_ticket() -> (ManualReleaseTicket, impl Fn() -> serde_json::Value)
+{
+    let (performance, reader, _timing) = Performance::new(48_000);
+    let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+        "nodes":[{"id":"envelope","kind":"adsr_eg"}]}))
+    .unwrap();
+    performance.sync_patch(&patch, 1);
+    let ticket = performance.press_gate_with_ticket("envelope").unwrap();
+    (ticket, move || {
+        let _keep_reader_alive = &reader;
+        performance.snapshot()
+    })
 }
 
 #[cfg(test)]
@@ -5362,6 +5381,7 @@ mod tests {
     }
     include!("random_values_host_tests.rs");
     include!("shift_register_host_tests.rs");
+    include!("adsr_eg_host_tests.rs");
 }
 
 #[cfg(test)]

@@ -44,6 +44,7 @@ enum ModuleKind {
     Gates,
     RandomValues,
     ShiftRegister,
+    AdsrEg,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -63,6 +64,7 @@ impl ModuleKind {
             "gates" => Some(Self::Gates),
             "random_values" => Some(Self::RandomValues),
             "sh_asr" => Some(Self::ShiftRegister),
+            "adsr_eg" => Some(Self::AdsrEg),
             _ => None,
         }
     }
@@ -83,6 +85,7 @@ impl ModuleKind {
             Self::Gates => "gates",
             Self::RandomValues => "random_values",
             Self::ShiftRegister => "sh_asr",
+            Self::AdsrEg => "adsr_eg",
         }
     }
     fn manual(self) -> bool {
@@ -95,6 +98,7 @@ impl ModuleKind {
                 | Self::Gates
                 | Self::RandomValues
                 | Self::ShiftRegister
+                | Self::AdsrEg
         )
     }
     fn sequential(self) -> bool {
@@ -113,7 +117,7 @@ impl ModuleKind {
                 action,
                 ModuleAction::ResetPress | ModuleAction::ResetRelease
             ),
-            Self::RandomValues => {
+            Self::RandomValues | Self::AdsrEg => {
                 matches!(action, ModuleAction::PushPress | ModuleAction::PushRelease)
             }
             Self::ShiftRegister => matches!(
@@ -1150,65 +1154,8 @@ impl LiveModuleEvents for Performance {
         control.revision = revision;
     }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
-        let mut control = self
-            .control
-            .lock()
-            .map_err(|_| "Module event registry poisoned")?;
-        if self.shared.closed.load(Ordering::Acquire) {
-            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
-            return Err("Audio device closed; module action was not queued".into());
-        }
-        let Some(entry) = control.entries.get(id).copied() else {
-            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
-            return Err(format!("Module '{id}' has no live sequencer instance"));
-        };
-        if !entry.kind.accepts(action) {
-            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
-            return Err(format!(
-                "Module '{id}' ({}) has read-only telemetry or does not support this module action",
-                entry.kind.name()
-            ));
-        }
-        if entry.bypassed && !is_release(action) {
-            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
-            return Err(format!(
-                "Module '{id}' is bypassed; module action was not queued"
-            ));
-        }
-        let sequence = control.next_sequence;
-        control.next_sequence = control.next_sequence.wrapping_add(1).max(1);
-        let revision = control.revision;
-        let event = Event {
-            slot: entry.slot,
-            token: entry.token,
-            action_epoch: entry.action_epoch,
-            action,
-            sequence,
-            revision,
-            deadline: self
-                .shared
-                .frame
-                .load(Ordering::Acquire)
-                .saturating_add(u64::from(self.rate) * FUTURE_SECONDS),
-        };
-        // Count acceptance before publishing so the consumer cannot report an
-        // applied event before its queued counter. A rejected push rolls back.
-        self.shared.queued.fetch_add(1, Ordering::Release);
-        if control.queue.push(event).is_err() {
-            self.shared.queued.fetch_sub(1, Ordering::Release);
-            self.shared.backpressure.fetch_add(1, Ordering::Relaxed);
-            if is_release(action) {
-                self.request_release(control.entries.get_mut(id).unwrap());
-                return Ok(
-                    json!({"queued":false,"applied":false,"safety_pending":true,"emergency_release":true,"sequence":sequence,
-                    "id":id,"action":action,"minimum_revision":revision}),
-                );
-            }
-            return Err("Module action queue is full; action was not queued".into());
-        }
-        Ok(
-            json!({"queued":true,"applied":false,"sequence":sequence,"id":id,"action":action,"minimum_revision":revision,"future_timeout_seconds":FUTURE_SECONDS}),
-        )
+        self.enqueue_guarded(id, action, None)
+            .map(|(receipt, _)| receipt)
     }
     fn snapshot(&self) -> Value {
         let control = self.control.lock().unwrap_or_else(|e| e.into_inner());
@@ -1432,6 +1379,8 @@ impl EventReader {
         });
     }
 }
+
+include!("guarded_manual.rs");
 
 #[cfg(test)]
 mod tests {

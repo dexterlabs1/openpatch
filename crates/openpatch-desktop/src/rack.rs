@@ -1030,7 +1030,7 @@ impl Rack {
                     && !i.pointer.button_released(PointerButton::Primary)
                     && (!matches!(
                         held.kind.as_str(),
-                        "pulses" | "push" | "gates" | "random_values" | "sh_asr"
+                        "pulses" | "push" | "gates" | "random_values" | "sh_asr" | "adsr_eg"
                     ) || i
                         .pointer
                         .latest_pos()
@@ -1049,6 +1049,14 @@ impl Rack {
             return None;
         }
         let held = self.held_manual.take().unwrap();
+        if held.kind == "adsr_eg"
+            && !patch
+                .nodes
+                .iter()
+                .any(|n| n.id == held.id && n.kind == held.kind)
+        {
+            return None;
+        }
         Some(RackAction::Command(
             "trigger_module",
             json!({"id":held.id,"action":held.release}),
@@ -2557,6 +2565,12 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "adsr_eg" {
+                if let Some(edit) = self.adsr_eg_panel(ui, node, rect, revision, allow_manual_press)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "sh_asr" {
                 if let Some(edit) =
                     self.shift_register_panel(ui, node, module, rect, revision, allow_manual_press)
@@ -2614,6 +2628,7 @@ impl Rack {
                     || node.kind == "colored_noise"
                     || node.kind == "random_values"
                     || node.kind == "sh_asr"
+                    || node.kind == "adsr_eg"
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
@@ -3436,7 +3451,7 @@ impl Rack {
                     paint_jack(
                         &painter,
                         output_point,
-                        port,
+                        if node.kind == "adsr_eg" { "ENV" } else { port },
                         false,
                         true,
                         self.zoom,
@@ -3454,7 +3469,7 @@ impl Rack {
                     &painter,
                     output_point,
                     ui.id().with(("output", &node.id, port)),
-                    port,
+                    if node.kind == "adsr_eg" { "ENV" } else { port },
                     connected,
                     true,
                     self.zoom,
@@ -7183,6 +7198,7 @@ impl Rack {
 }
 
 include!("precision_editor.rs");
+include!("adsr_eg_panel.rs");
 
 fn bounded_pan(pan: Vec2) -> Vec2 {
     vec2(
@@ -7221,7 +7237,9 @@ fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value
 }
 
 fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
-    if let Some(power) = edit.gain_power {
+    if adsr_eg_time_edit(edit) {
+        parsed.log10() / 4.0
+    } else if let Some(power) = edit.gain_power {
         if parsed == f32::NEG_INFINITY {
             0.0
         } else {
@@ -7280,6 +7298,13 @@ fn parameter_editor_contents_with_navigation(
     }
     ui.weak("Numbers, expressions, or notes · e.g. 440*2, A4, C4v")
         .on_hover_text("Notes yield Hz; notes ending in v yield volts (C4v = 0).\nThe result uses this control's displayed units.");
+    if adsr_eg_time_edit(edit) {
+        ui.label("Enter a time constant in milliseconds (1–10,000 ms). Attack time to peak is longer than its time constant.");
+    } else if edit.kind == "adsr_eg" && edit.parameter == "sustain" {
+        ui.label("Enter sustain from 0% to 100% of the nominal 10 V peak.");
+    } else if edit.kind == "adsr_eg" {
+        ui.label("Enter CV depth from −100% to +100%. Negative depth inverts the CV contribution.");
+    }
     if edit.gain_power.is_some() {
         ui.label("Enter dB. -inf sets the gain to zero.");
     }
@@ -7302,10 +7327,12 @@ fn parameter_editor_contents_with_navigation(
         )
     {
         ui.label("Enter a percentage.");
-    } else if matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain") {
+    } else if edit.kind != "adsr_eg"
+        && matches!(edit.parameter.as_str(), "pulse_width" | "duty" | "sustain")
+    {
         ui.label("Enter a ratio from 0 to 1.");
     }
-    if matches!(edit.parameter.as_str(), "attack" | "decay" | "release") {
+    if edit.kind != "adsr_eg" && matches!(edit.parameter.as_str(), "attack" | "decay" | "release") {
         ui.label("Enter time in seconds.");
     }
     if edit.stale {
@@ -7714,6 +7741,15 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     {
         text = text[..text.len() - 2].trim_end();
     }
+    if edit.kind == "adsr_eg" {
+        let suffix = if adsr_eg_time_edit(edit) { "ms" } else { "%" };
+        if text
+            .get(text.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     let evaluated = crate::expression::evaluate(text).map_err(|error| error.to_string())?;
     let gain_zero = edit.gain_power.is_some() && evaluated == f64::NEG_INFINITY;
     let value = evaluated as f32;
@@ -7877,6 +7913,17 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "adsr_eg" => {
+            return if input {
+                if index < 4 {
+                    pos2(58.0 + index as f32 * 80.0, 314.0)
+                } else {
+                    pos2(46.0 + (index - 4) as f32 * 82.0, 374.0)
+                }
+            } else {
+                pos2(314.0, 374.0)
+            };
+        }
         "sh_asr" => {
             return if input {
                 pos2(
@@ -8969,6 +9016,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "white_noise" | "attenuverter" | "crossfade" => HP * 12.0,
         "sample_hold" => HP * 10.0,
         "adsr" => HP * 16.0,
+        "adsr_eg" => HP * 24.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
         "audio_out" => HP * 8.0,
@@ -9026,6 +9074,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "ladder_vcf" => "LADDER",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
+        "adsr_eg" => "ADSR EG",
         "gate" => "GATE",
         "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
@@ -9131,6 +9180,10 @@ fn port_label(name: &str) -> &str {
         "slew_cv" => "SLEW CV",
         "pitch" | "cutoff_cv" => "V/OCT",
         "retrigger" => "RETRIG",
+        "attack_cv" => "A CV",
+        "decay_cv" => "D CV",
+        "sustain_cv" => "S CV",
+        "release_cv" => "R CV",
         "offset_cv" => "OFFSET",
         "trigger" => "TRIG",
         "signal" => "IN",
@@ -9223,6 +9276,16 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
         "adsr" => &["attack", "decay", "sustain", "release"],
+        "adsr_eg" => &[
+            "attack",
+            "decay",
+            "sustain",
+            "release",
+            "attack_amount",
+            "decay_amount",
+            "sustain_amount",
+            "release_amount",
+        ],
         "gate" => &["frequency", "duty"],
         "lfo" => &["frequency", "amplitude", "offset"],
         "multi_vco" => &[
@@ -10723,7 +10786,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            57,
+            58,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -17327,6 +17390,9 @@ mod tests {
     }
     mod cable_guidance_tests {
         include!("cable_guidance_tests.rs");
+    }
+    mod adsr_eg_ui_tests {
+        include!("adsr_eg_ui_tests.rs");
     }
     mod precision_editor_tests {
         include!("precision_editor_tests.rs");

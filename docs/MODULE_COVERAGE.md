@@ -21,7 +21,9 @@ with original filters and explicitly bounded spectral qualification.
 [Random Values](RANDOM_VALUES.md) adds seven polyphonic held-voltage outputs and
 coherent saved state, bringing the catalog to 56 kinds.
 [Sample & Hold / Analog Shift Register](SHIFT_REGISTER.md) adds eight mono holds,
-normalized clock and old-value signal chains, bringing the current catalog to 57 kinds.
+normalized clock and old-value signal chains, bringing the catalog to 57 kinds.
+[ADSR EG](ADSR_EG.md) adds a separate stock-style polyphonic envelope, bringing
+the current catalog to 58 kinds while preserving the original RC envelope.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -147,7 +149,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |
-| ADSR EG | Envelope | Partial: reference RC ADSR implemented | Capacitor trajectories, timing convention, sustain, release and retrigger from every stage |
+| ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |
 | Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity and VCV differential acceptance remain open |
 | VCA Mix | Mixing | Implemented signal role: `vca_mix`, four squared-gain strips, independent outputs, master VCA, linear/quartic CV and live meters | Direct reference traces, Rack import/state mapping, native qualification; [contract](VOLTAGE_MIXING.md) |
 | 8vert | Voltage utility | Implemented signal role: `attenuverter8`, eight gains, downward input/polyphony propagation, voltage/percent presentation | Direct reference traces and Rack import/UI parity; [contract](VOLTAGE_UTILITIES.md) |

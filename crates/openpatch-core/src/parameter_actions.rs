@@ -45,6 +45,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
     use Randomization::{Disabled, Enum, InclusiveInteger, Linear, Log2};
     match (kind, name) {
         ("random_values" | "sh_asr", _) => Disabled,
+        ("adsr_eg", "attack" | "decay" | "sustain" | "release") => Linear,
+        ("adsr_eg", _) => Disabled,
         ("seq3", name) if seq_row(name) => Linear,
         ("seq3", name) if numbered(name, "gate", 8) => Enum,
         ("seq3", _) => Disabled,

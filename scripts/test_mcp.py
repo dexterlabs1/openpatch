@@ -2116,6 +2116,36 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.require_tool_success("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
                 "module_events": [{"frame": 0, "id": "button", "action": action}]})
 
+    def test_adsr_eg_cv_envelope_and_sampled_manual_events(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["adsr_eg"]
+        self.assertEqual(descriptor["inputs"], ["attack_cv", "decay_cv", "sustain_cv", "release_cv", "gate", "retrigger"])
+        self.assertEqual(descriptor["runtime_actions"], ["push_press", "push_release"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "env", "kind": "adsr_eg", "params": {"attack": 0, "decay": 0, "sustain": .25, "release": 0}}]}})
+        before = self.patch_snapshot()
+        args = {"id": "env", "port": "out", "seconds": .004, "points": 192, "module_events": [
+            {"frame": 0, "id": "env", "action": "push_press"},
+            {"frame": 160, "id": "env", "action": "push_release"}]}
+        capture = self.payload(self.require_tool_success("capture_signal", args))
+        values = [point["mean"] for point in capture["bins"]]
+        self.assertEqual(values[:15], [0] * 15)
+        self.assertGreater(values[15], 0)
+        self.assertGreater(max(values), 10)
+        self.assertLess(max(values), 10.1)
+        self.assertLess(values[160], values[159])
+        self.assertGreater(values[-1], 0)
+        self.assertEqual(capture, self.payload(self.require_tool_success("capture_signal", args)))
+        args["module_events"][-1]["frame"] = 0
+        silent = self.payload(self.require_tool_success("capture_signal", args))
+        self.assertTrue(all(point["mean"] == 0 for point in silent["bins"]))
+        self.assertEqual(self.patch_snapshot(), before)
+        for action in ["hold_press", "reset_press", "clock"]:
+            self.require_tool_error("capture_signal", {"id": "env", "seconds": .004,
+                "module_events": [{"frame": 0, "id": "env", "action": action}]})
+        self.require_tool_error("set_parameter", {"id": "env", "parameter": "attack", "value": -1})
+        self.require_tool_error("set_parameter", {"id": "env", "parameter": "sustain_amount", "value": 2})
+
     def test_shift_register_normaling_mono_actions_and_persistent_state(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["sh_asr"]

@@ -325,6 +325,7 @@ pub struct OpenPatch {
     active_token: Option<FileToken>,
     after_save: Option<PendingAction>,
     deferred_action: Option<PendingAction>,
+    deferred_manual_release: Option<(u64, crate::audio::ManualReleaseTicket)>,
     autosave_needed: bool,
     recovery_names: Vec<String>,
     recovery_details: BTreeMap<String, String>,
@@ -484,6 +485,7 @@ impl OpenPatch {
             active_token: startup.active_token,
             after_save: None,
             deferred_action: None,
+            deferred_manual_release: None,
             autosave_needed: false,
             recovery_names,
             recovery_details: BTreeMap::new(),
@@ -1029,6 +1031,52 @@ impl OpenPatch {
         };
         self.sync();
         succeeded
+    }
+    fn manual_gate_click(&mut self, ctx: &egui::Context, id: &str) {
+        // Resolve the old ticket before accepting another press. The ticket
+        // retains its backend and incarnation; it never retargets a reused ID.
+        self.deferred_manual_release.take();
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_owned())
+            .and_then(|session| {
+                if session.revision() != self.revision
+                    || !session
+                        .patch()
+                        .nodes
+                        .iter()
+                        .any(|n| n.id == id && n.kind == "adsr_eg" && !n.bypassed)
+                {
+                    return Err("Module changed before PUSH could be queued".into());
+                }
+                self.audio
+                    .as_ref()
+                    .ok_or_else(|| "Audio is unavailable".to_owned())?
+                    .press_gate_with_ticket(id)
+            });
+        match result {
+            Ok(ticket) => {
+                self.deferred_manual_release = Some((ctx.cumulative_frame_nr(), ticket));
+                self.status = "PUSH queued · release on the next display frame".into();
+                ctx.request_repaint();
+            }
+            Err(error) => self.status = error,
+        }
+    }
+    fn service_manual_release(&mut self, ctx: &egui::Context) {
+        if self
+            .deferred_manual_release
+            .as_ref()
+            .is_some_and(|(frame, _)| {
+                *frame != ctx.cumulative_frame_nr()
+                    || !ctx.input(|input| input.focused)
+                    || !self.library_enabled()
+            })
+        {
+            // Drop sends a guarded release, or discards an obsolete ticket.
+            self.deferred_manual_release.take();
+        }
     }
     fn sync(&mut self) {
         if let Ok(s) = self.shared.try_lock() {
@@ -2395,6 +2443,13 @@ impl OpenPatch {
                                 self.replace_from_menu(patch, "Gate shaping voice");
                                 ui.close();
                             }
+                            if ui.button("Polyphonic ADSR voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/polyphonic-adsr-voice.json"
+                                )).expect("valid polyphonic ADSR voice");
+                                self.replace_from_menu(patch, "Polyphonic ADSR voice");
+                                ui.close();
+                            }
                             if ui.button("Voltage utilities").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/voltage-utilities.json"
@@ -2933,6 +2988,9 @@ impl OpenPatch {
             });
         match action {
             Some(RackAction::Command(name, args)) => {
+                if name == "trigger_module" && args["action"] == "push_press" {
+                    self.deferred_manual_release.take();
+                }
                 self.command(name, args);
             }
             Some(RackAction::PaletteConnect {
@@ -2945,7 +3003,16 @@ impl OpenPatch {
                 self.edit_parameter_and_navigate(arguments, forward);
             }
             Some(RackAction::ManualClick { id, press, release }) => {
-                self.manual_click(&id, press, release);
+                if self
+                    .patch
+                    .nodes
+                    .iter()
+                    .any(|n| n.id == id && n.kind == "adsr_eg")
+                {
+                    self.manual_gate_click(ctx, &id);
+                } else {
+                    self.manual_click(&id, press, release);
+                }
             }
             Some(RackAction::Duplicate {
                 ids,
@@ -3688,6 +3755,56 @@ impl OpenPatch {
         )]));
         self.title = "Room lighting · actual offline DSP snapshot".into();
         self.status = "Lights on · 100% room · held gates, four CV lanes and captured Scope · no live audio stream".into();
+    }
+
+    fn prepare_adsr_eg_fixture(&mut self) {
+        let mut patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"gates","kind":"poly_constant","params":{"channels":4,"v1":10,"v2":10,"v3":10,"v4":10}},
+                {"id":"attack-cv","kind":"poly_constant","params":{"channels":4,"v1":2.5,"v2":-1.5,"v3":-3,"v4":-1}},
+                {"id":"decay-cv","kind":"poly_constant","params":{"channels":4,"v1":0,"v2":3,"v3":-2.5,"v4":3}},
+                {"id":"envelope","kind":"adsr_eg","params":{"attack":0.4,"decay":0.3,"sustain":0.4,"release":0.6,"attack_amount":1,"decay_amount":1}},
+                {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0,"x_offset":-5}}],
+            "cables":[{"from":"gates","to":"envelope","input":"gate"},
+                {"from":"attack-cv","to":"envelope","input":"attack_cv"},
+                {"from":"decay-cv","to":"envelope","input":"decay_cv"},
+                {"from":"envelope","to":"scope","input":"x"}] })).unwrap();
+        let mut engine = patch.compile().unwrap();
+        engine.process_block(&mut [0.0; 2048]);
+        patch.nodes[0].params.insert("v4".into(), 0.0);
+        let mut next = patch.compile().unwrap();
+        next.adopt_state_from(&engine);
+        next.process_block(&mut [0.0; 6144]);
+        let lights = next
+            .module_lights(next.resolve_module_lights("envelope").unwrap())
+            .unwrap();
+        assert_eq!(lights.count, 5);
+        assert_eq!(lights.input_channels, Some(4));
+        assert!(lights.brightness[..5].iter().all(|pair| pair[0] == 1.0));
+        let scope = next
+            .module_scope(next.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!(scope.x_channels, 4);
+        assert!(scope.x[..4]
+            .iter()
+            .all(|voice| voice.iter().any(|p| p.max > 0.0)));
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack.restore_layout(&json!({"version":1,"zoom":0.95,"pan":[24,12],"positions":{
+            "envelope":[0,0],"scope":[390,0],"gates":[0,420],"attack-cv":[270,420],"decay-cv":[540,420]}})).unwrap();
+        self.rack.set_module_states(
+            BTreeMap::from([("envelope".into(), lights)]),
+            BTreeMap::new(),
+        );
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "ADSR EG · four voices, four stages".into();
+        self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
     fn smoke(&mut self, ctx: &egui::Context) {
@@ -4626,6 +4743,14 @@ impl OpenPatch {
             assert_eq!(self.cable_palette.next_index(), 1);
             self.status = "One new cable, explicit RGB · next colour advanced only after its successful commit".into();
         }
+        if frame == 1350 {
+            self.prepare_adsr_eg_fixture();
+        }
+        if frame == 1400 {
+            self.rack.set_room_brightness(0.0);
+            self.status =
+                "ADSR EG · lights out · four real stage lamps and a four-voice ENV capture".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -4699,6 +4824,8 @@ impl OpenPatch {
                 | 1236
                 | 1272
                 | 1328
+                | 1372
+                | 1422
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4776,7 +4903,9 @@ impl OpenPatch {
                 56 => path.with_file_name("cable-gesture-guidance.png"),
                 57 => path.with_file_name("cable-gesture-lights-out.png"),
                 58 => path.with_file_name("cable-palette-editor.png"),
-                _ => path.with_file_name("cable-palette-created.png"),
+                59 => path.with_file_name("cable-palette-created.png"),
+                60 => path.with_file_name("rack-adsr-eg.png"),
+                _ => path.with_file_name("rack-adsr-eg-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -4787,18 +4916,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/60 at frame {frame}: {}",
+                "Native smoke: capture {}/62 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 60 {
+            if captures == 62 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1362, "Native screenshot timeout");
+        assert!(frame < 1456, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4896,6 +5025,7 @@ impl eframe::App for OpenPatch {
             });
         }
         self.sync();
+        self.service_manual_release(ctx);
         self.observe_document();
         self.toolbar(ctx);
         if let Some(action) = self.construction.show(ctx) {
@@ -5130,6 +5260,7 @@ mod project_workflow_tests {
             active_token: None,
             after_save: None,
             deferred_action: None,
+            deferred_manual_release: None,
             autosave_needed: false,
             recovery_open: !recovery_names.is_empty(),
             recovery_names,
@@ -5210,6 +5341,113 @@ mod project_workflow_tests {
             }
             assert_ne!(snapshot.x[0], snapshot.x[15]);
         }
+    }
+
+    #[test]
+    fn adsr_eg_fast_click_ticket_waits_for_a_distinct_ui_frame_or_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let ctx = egui::Context::default();
+        let (ticket, snapshot) = crate::audio::test_manual_release_ticket();
+        let mut ticket = Some(ticket);
+        let _ = ctx.run(
+            egui::RawInput {
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| {
+                if let Some(ticket) = ticket.take() {
+                    app.deferred_manual_release = Some((ctx.cumulative_frame_nr(), ticket));
+                }
+                app.service_manual_release(ctx);
+                app.service_manual_release(ctx);
+                assert!(app.deferred_manual_release.is_some());
+                assert_eq!(snapshot()["queued"], 1);
+                if ctx.current_pass_index() == 0 {
+                    ctx.request_discard("verify repeated layout pass");
+                }
+            },
+        );
+        assert!(app.deferred_manual_release.is_some());
+        let _ = ctx.run(
+            egui::RawInput {
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| {
+                app.service_manual_release(ctx);
+            },
+        );
+        assert!(app.deferred_manual_release.is_none());
+        assert_eq!(snapshot()["queued"], 2);
+        for focused in [true, false] {
+            let (ticket, snapshot) = crate::audio::test_manual_release_ticket();
+            let mut ticket = Some(ticket);
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused,
+                    ..Default::default()
+                },
+                |ctx| {
+                    if let Some(ticket) = ticket.take() {
+                        app.deferred_manual_release = Some((ctx.cumulative_frame_nr(), ticket));
+                    }
+                    app.file_mode = focused.then_some(FileMode::Open);
+                    app.service_manual_release(ctx);
+                },
+            );
+            assert!(app.deferred_manual_release.is_none());
+            assert_eq!(snapshot()["queued"], 2);
+            app.file_mode = None;
+        }
+    }
+
+    #[test]
+    fn adsr_eg_offline_fixture_has_four_stages_and_polyphonic_capture() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_adsr_eg_fixture();
+        assert!(app.audio.is_none());
+        assert_eq!(
+            app.patch
+                .nodes
+                .iter()
+                .find(|n| n.id == "gates")
+                .unwrap()
+                .params["v4"],
+            0.0
+        );
+        assert_eq!(app.rack.room_brightness(), 1.0);
+        app.rack.set_room_brightness(0.0);
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        preset_text(&output, "NOMINAL SHAPE");
+        preset_text(&output, "ADSR EG");
+    }
+
+    #[test]
+    fn adsr_eg_example_renders_an_audible_velocity_shaped_chord() {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/polyphonic-adsr-voice.json"))
+                .unwrap();
+        let mut engine = patch.compile().unwrap();
+        let mut audio = vec![0.0; 48000];
+        engine.process_block(&mut audio);
+        assert!(audio.iter().all(|v| v.is_finite() && v.abs() < 1.0));
+        assert!(audio.iter().any(|v| v.abs() > 0.001));
+        let env = engine
+            .module_lights(engine.resolve_module_lights("envelope").unwrap())
+            .unwrap();
+        assert_eq!(env.input_channels, Some(4));
     }
 
     #[test]
@@ -8781,7 +9019,18 @@ mod project_workflow_tests {
         let revision = app.revision;
         let plan = execute_shared(&app.shared, "start_construction", json!({"expected_revision":revision,"interval_ms":2000,
             "steps":[{"label":"A new plan","edits":[{"tool":"set_parameter","arguments":{"id":"voice","parameter":"frequency","value":330}}]}]})).unwrap();
-        app.sync();
+        // The construction worker can briefly own Session after returning its
+        // receipt. Production sync intentionally uses try_lock and retries on
+        // the next UI frame; the test must allow that same publication retry.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while app.rack.construction_effect_counts_at(origin) != (0, 0, 0) {
+            assert!(
+                Instant::now() < deadline,
+                "New plan presentation was not observed"
+            );
+            app.sync();
+            std::thread::yield_now();
+        }
         assert_eq!(app.revision, revision);
         assert_eq!(app.rack.construction_effect_counts_at(origin), (0, 0, 0));
         execute_shared(

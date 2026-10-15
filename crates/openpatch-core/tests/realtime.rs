@@ -221,3 +221,28 @@ fn shift_register_first_callback_actions_snapshot_initialize_and_adoption_alloca
         .iter()
         .all(|f| f.values.iter().all(|v| v.is_finite())));
 }
+
+#[test]
+fn adsr_eg_first_callback_actions_lamps_initialize_reset_and_adoption_allocate_nothing() {
+    use openpatch_core::{ModuleAction, Patch, PortFrame};
+    let p: Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"g","kind":"poly_constant","params":{"channels":16}},{"id":"e","kind":"adsr_eg"}],"cables":[{"from":"g","to":"e","input":"gate"}],"output":"e"})).unwrap();
+    let mut old = p.compile().unwrap();
+    let mut receiving = p.compile().unwrap();
+    let h = old.resolve_module_control("e").unwrap();
+    let hr = receiving.resolve_module_control("e").unwrap();
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    assert!(old.handle_module_event(h, ModuleAction::PushPress));
+    old.process_poly_block(&mut frames);
+    std::hint::black_box(old.module_lights(h));
+    std::hint::black_box(old.module_control_state(h));
+    receiving.adopt_state_from(&old);
+    receiving.process_poly_block(&mut frames);
+    assert!(receiving.release_module_controls(hr));
+    receiving.process_poly_block(&mut frames);
+    assert!(receiving.initialize_module_state(hr));
+    assert!(receiving.reset_module_state(hr));
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+}

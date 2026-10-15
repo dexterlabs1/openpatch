@@ -1,0 +1,239 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "score",
+      "kind": "score_sequencer",
+      "params": {
+        "tempo": 112
+      },
+      "score": {
+        "version": 1,
+        "seed": 1,
+        "length": 8,
+        "steps_per_beat": 2,
+        "tracks": [
+          {
+            "voices": 4,
+            "steps": [
+              {
+                "step": 0,
+                "notes": [
+                  0,
+                  4,
+                  7,
+                  12
+                ],
+                "velocity": 0.85,
+                "gate": 0.6
+              },
+              {
+                "step": 1,
+                "notes": [
+                  0,
+                  4,
+                  7,
+                  12
+                ],
+                "velocity": 0.5,
+                "gate": 0.35
+              },
+              {
+                "step": 2,
+                "notes": [
+                  -5,
+                  0,
+                  4,
+                  7
+                ],
+                "velocity": 0.75,
+                "gate": 0.7
+              },
+              {
+                "step": 3,
+                "notes": [
+                  -5,
+                  0,
+                  4,
+                  7
+                ],
+                "velocity": 0.4,
+                "gate": 0.4
+              },
+              {
+                "step": 4,
+                "notes": [
+                  -3,
+                  0,
+                  4,
+                  7
+                ],
+                "velocity": 0.9,
+                "gate": 0.6
+              },
+              {
+                "step": 5,
+                "notes": [
+                  -3,
+                  0,
+                  4,
+                  7
+                ],
+                "velocity": 0.55,
+                "gate": 0.35
+              },
+              {
+                "step": 6,
+                "notes": [
+                  -5,
+                  -1,
+                  2,
+                  7
+                ],
+                "velocity": 0.8,
+                "gate": 0.7
+              },
+              {
+                "step": 7,
+                "notes": [
+                  -5,
+                  -1,
+                  2,
+                  7
+                ],
+                "velocity": 0.45,
+                "gate": 0.35
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "attack-shape",
+      "kind": "poly_constant",
+      "params": {
+        "channels": 4,
+        "v1": -1.2,
+        "v2": -0.5,
+        "v3": 0.2,
+        "v4": 0.8
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr_eg",
+      "params": {
+        "attack": 0.32,
+        "decay": 0.5,
+        "sustain": 0.25,
+        "release": 0.55,
+        "attack_amount": 1,
+        "sustain_amount": 0.25
+      }
+    },
+    {
+      "id": "voice",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 130.8128
+      }
+    },
+    {
+      "id": "amplifier",
+      "kind": "vca_mix",
+      "params": {
+        "level1": 0.7,
+        "level2": 0,
+        "level3": 0,
+        "level4": 0,
+        "mix_level": 0.7
+      }
+    },
+    {
+      "id": "sum",
+      "kind": "poly_sum"
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.35,
+        "trigger_enabled": 0,
+        "x_offset": -5,
+        "x_scale": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.15
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "score",
+      "output": "pitch1",
+      "to": "voice",
+      "input": "pitch"
+    },
+    {
+      "from": "score",
+      "output": "gate1",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "score",
+      "output": "velocity1",
+      "to": "envelope",
+      "input": "sustain_cv"
+    },
+    {
+      "from": "attack-shape",
+      "output": "out",
+      "to": "envelope",
+      "input": "attack_cv"
+    },
+    {
+      "from": "voice",
+      "output": "triangle",
+      "to": "amplifier",
+      "input": "in1"
+    },
+    {
+      "from": "envelope",
+      "output": "out",
+      "to": "amplifier",
+      "input": "cv1"
+    },
+    {
+      "from": "score",
+      "output": "velocity1",
+      "to": "amplifier",
+      "input": "mix_cv"
+    },
+    {
+      "from": "amplifier",
+      "output": "mix",
+      "to": "sum",
+      "input": "signal"
+    },
+    {
+      "from": "sum",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "envelope",
+      "output": "out",
+      "to": "scope",
+      "input": "x"
+    }
+  ],
+  "output": "out"
+}

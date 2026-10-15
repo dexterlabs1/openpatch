@@ -662,3 +662,7 @@ attachment status, and provides copyable Claude/Codex connection details.
 [Session controls](MCP_SESSIONS.md) describes Start/Stop and transport boundaries.
 Progressive plans also publish authoritative `last_commit` receipts for native
 module, cable and parameter cues; [motion contract](CONSTRUCTION_MOTION.md).
+
+### ADSR EG
+
+`adsr_eg` exposes A/D/S/R normalized controls and four bipolar `*_amount` CV depths through the catalog and normal parameter tools. A/D/R are time constants: `10000^raw` milliseconds, so raw `0.5` means 100 ms. `push_press` and `push_release` are transient held controls accepted by `trigger_module` and timed offline events; final same-sample state wins. `inspect_performance` publishes actual A/D/S/R/any-gate lamps, not a guessed stage. Use `capture_signal` on `out` for voltage traces. The old `adsr` retains its original units and behavior. See [ADSR EG](ADSR_EG.md) for modulation, lifecycle, channel and numerical acceptance details.

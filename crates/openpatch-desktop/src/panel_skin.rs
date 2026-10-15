@@ -12,8 +12,8 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         }
         "modal_resonator" | "colored_noise" => Color32::from_rgb(151, 93, 57),
         "lowpass" | "ladder_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
-        "adsr" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer" | "random_values"
-        | "sh_asr" => Color32::from_rgb(116, 96, 136),
+        "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer"
+        | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
         "gain"
         | "analog_vca"
         | "mixer"
@@ -48,6 +48,7 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "analog_vca" => "TRANSCONDUCTANCE VCA",
         "gain" => "AMPLIFIER",
         "adsr" => "ENVELOPE GENERATOR",
+        "adsr_eg" => "POLYPHONIC DIGITAL ENVELOPE",
         "lfo" | "multi_lfo" => "LOW FREQUENCY",
         "gate" => "PULSE GENERATOR",
         "seq3" => "THREE-ROW SEQUENCER",

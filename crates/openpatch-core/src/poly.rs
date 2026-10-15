@@ -1,6 +1,7 @@
 //! Version-2 reference scheduler: all modules read last sample's cable frames,
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
+use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
@@ -89,6 +90,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "seq3"
                 | "pulses"
                 | "push"
+                | "adsr_eg"
                 | "random_values"
                 | "sh_asr"
                 | "scope"
@@ -133,6 +135,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
+        "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
@@ -189,6 +192,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if kind == "random_values" {
         random_values::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "adsr_eg" {
+        adsr_eg::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
         push::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "gates" {
@@ -299,6 +304,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "random_values" {
         random_values::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "adsr_eg" {
+        adsr_eg::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -471,6 +481,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "adsr_eg" {
+        adsr_eg::annotate(module);
+    }
     if kind == "sh_asr" {
         shift_register::annotate(module);
     }
@@ -508,6 +521,7 @@ enum Model {
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
+    AdsrEg(Box<AdsrEg>),
     ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
     Scope(Box<Scope>),
@@ -557,6 +571,9 @@ impl Model {
         }
         if node.kind == "random_values" {
             return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
+        }
+        if node.kind == "adsr_eg" {
+            return Ok(Self::AdsrEg(Box::new(AdsrEg::build(node, rate)?)));
         }
         if node.kind == "push" {
             return Ok(Self::Push(Box::new(Push::build(node, rate)?)));
@@ -745,6 +762,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.controls(),
             Some(Model::Pulses(p)) => Some(p.controls()),
             Some(Model::Push(p)) => Some(p.controls()),
+            Some(Model::AdsrEg(p)) => Some(p.controls()),
             Some(Model::ShiftRegister(p)) => Some(p.controls()),
             Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
@@ -756,6 +774,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
+            Some(Model::AdsrEg(p)) => Some(p.lights()),
             Some(Model::ShiftRegister(p)) => Some(p.lights()),
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
@@ -780,6 +799,10 @@ impl PolyEngine {
                 p.release();
                 true
             }
+            Some(Model::AdsrEg(p)) => {
+                p.release();
+                true
+            }
             Some(Model::Push(p)) => {
                 p.release();
                 true
@@ -800,6 +823,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.supports(action),
             Some(Model::Pulses(_)) => action.pulse_button().is_some(),
             Some(Model::Push(_)) => Push::supports(action),
+            Some(Model::AdsrEg(_)) => AdsrEg::supports(action),
             Some(Model::ShiftRegister(_)) => ShiftRegister::supports(action),
             Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
@@ -865,6 +889,10 @@ impl PolyEngine {
                 }
             }
             if action == ModuleAction::PushRelease {
+                if let Model::AdsrEg(p) = &mut self.nodes[node].model {
+                    p.release();
+                    return true;
+                }
                 if let Model::RandomValues(p) = &mut self.nodes[node].model {
                     p.release();
                     return true;
@@ -905,6 +933,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
             Some(Model::Push(p)) => p.enqueue(action),
+            Some(Model::AdsrEg(p)) => p.enqueue(action),
             Some(Model::ShiftRegister(p)) => p.enqueue(action),
             Some(Model::RandomValues(p)) => p.enqueue(action),
             Some(Model::Gates(g)) => g.enqueue(action),
@@ -963,6 +992,10 @@ impl PolyEngine {
                 p.reset_state();
                 random_values::OUTPUTS.len()
             }
+            Model::AdsrEg(p) => {
+                p.reset_state();
+                adsr_eg::OUTPUTS.len()
+            }
             Model::Push(p) => {
                 p.reset_state();
                 push::OUTPUTS.len()
@@ -1007,6 +1040,7 @@ impl PolyEngine {
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
+            Model::AdsrEg(p) => p.initialize_state(),
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
@@ -1139,6 +1173,7 @@ impl PolyEngine {
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
+                    "adsr_eg" => adsr_eg::OUTPUTS.len(),
                     "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
@@ -1429,6 +1464,18 @@ impl PolyEngine {
                     a,
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                 ),
+                Model::AdsrEg(p) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    p.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
                 Model::Push(p) => p.process(
                     &[a, b],
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
@@ -1855,6 +1902,13 @@ impl PolyEngine {
             }
             if let (Model::RandomValues(p), Model::RandomValues(previous)) =
                 (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
+                if bypass_changed {
+                    p.release();
+                }
+            }
+            if let (Model::AdsrEg(p), Model::AdsrEg(previous)) = (&mut node.model, &previous.model)
             {
                 p.adopt(previous);
                 if bypass_changed {

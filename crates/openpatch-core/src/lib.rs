@@ -21,6 +21,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod adsr_eg;
 mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
@@ -275,6 +276,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(push::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(adsr_eg::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
