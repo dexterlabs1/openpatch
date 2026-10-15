@@ -1,5 +1,5 @@
-// Actual shared module paint and egui response geometry. This intentionally
-// includes rectangular controls missed by the older text/circle-only checks.
+// Actual shared module paint and egui response geometry. Rectangular controls,
+// their internal choice labels and their separate numeric entry targets matter.
 use super::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -9,16 +9,36 @@ enum Position {
     Maximum,
 }
 #[derive(Debug)]
+enum Presentation {
+    Fader,
+    Choices {
+        labels: Vec<String>,
+        selected: usize,
+    },
+}
+#[derive(Debug)]
 struct ControlGeometry {
     name: String,
-    fader: Rect,
+    presentation: Presentation,
+    painted_area: Rect,
+    hit: Rect,
     value: Rect,
+    senses_drag: bool,
+}
+#[derive(Debug)]
+struct PaintedText {
+    text: String,
+    bounds: Rect,
+    color: Color32,
 }
 struct PaintedSurface {
     bounds: Rect,
+    scale: f32,
     thumbs: Vec<Rect>,
+    choices: Vec<Rect>,
     readouts: Vec<Rect>,
-    texts: Vec<(String, Rect)>,
+    fills: Vec<(Rect, Color32)>,
+    texts: Vec<PaintedText>,
     controls: Vec<ControlGeometry>,
 }
 
@@ -29,18 +49,33 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
                 collect(shape, surface);
             }
         }
-        // Select the filled thumb and readout well, excluding their separate
-        // transparent strokes and the thumb's displaced physical shadow.
-        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(235, 231, 216) => {
-            surface.thumbs.push(rect.rect);
+        egui::Shape::Rect(rect) => {
+            surface.fills.push((rect.rect, rect.fill));
+            // Thumb fill excludes its transparent stroke and displaced shadow.
+            if rect.fill == Color32::from_rgb(235, 231, 216) {
+                surface.thumbs.push(rect.rect);
+            }
+            if rect.fill == Color32::from_rgb(237, 233, 222) {
+                // Choice backgrounds share the numeric well material. Their
+                // actual painted heights distinguish them, rather than treating
+                // every rectangle of that color as a numeric input.
+                let height = rect.rect.height() / surface.scale;
+                if (height - 17.0).abs() < 0.001 {
+                    surface.readouts.push(rect.rect);
+                } else if (height - 24.0).abs() < 0.001 {
+                    surface.choices.push(rect.rect);
+                } else {
+                    panic!("unclassified shared entry material at height {height}");
+                }
+            }
         }
-        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(237, 233, 222) => {
-            surface.readouts.push(rect.rect);
+        egui::Shape::Text(text) if !text.galley.text().is_empty() => {
+            surface.texts.push(PaintedText {
+                text: text.galley.text().to_owned(),
+                bounds: text.galley.rect.translate(text.pos.to_vec2()),
+                color: text.override_text_color.unwrap_or(text.fallback_color),
+            });
         }
-        egui::Shape::Text(text) if !text.galley.text().is_empty() => surface.texts.push((
-            text.galley.text().to_owned(),
-            text.galley.rect.translate(text.pos.to_vec2()),
-        )),
         _ => {}
     }
 }
@@ -70,8 +105,8 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
     let patch = preview.patch.clone();
     let size = vec2(module_width(&patch.nodes[0]), PANEL_HEIGHT);
     let bounds = Rect::from_min_size(pos2(24.0, 12.0), size * scale);
-    // Use preview.show's own fitting law so fractional coordinates cannot
-    // introduce a false rack/preview difference.
+    // Use preview.show's fitting law; fractional fitting must not create a
+    // false difference between the actual rack and browser paint.
     let fitted_scale = (bounds.width() / size.x).min(bounds.height() / size.y);
     let fitted = Rect::from_center_size(bounds.center(), size * fitted_scale);
     let mut rack = Rack {
@@ -82,8 +117,11 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
     rack.positions.insert(id, Pos2::ZERO);
     let mut surface = PaintedSurface {
         bounds: fitted,
+        scale: fitted_scale,
         thumbs: vec![],
+        choices: vec![],
         readouts: vec![],
+        fills: vec![],
         texts: vec![],
         controls: vec![],
     };
@@ -120,20 +158,35 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
                                 },
                             );
                             assert!(rendered.action.is_none());
-                            // Read the hit targets registered by the actual
-                            // renderer, not reconstructed radius/offset formulas.
                             let node = &patch.nodes[0];
-                            for (name, _) in ordered_parameters(node, Some(module)) {
-                                let fader_id = child.id().with(("knob", &node.id, name));
-                                if let Some(fader) = ctx.read_response(fader_id) {
+                            for (name, spec) in ordered_parameters(node, Some(module)) {
+                                // Both presentations intentionally use the same
+                                // canonical response identity; inspect the actual
+                                // response and explicit choice metadata together.
+                                let id = child.id().with(("knob", &node.id, name));
+                                if let Some(control) = ctx.read_response(id) {
                                     let value_id = child.id().with(("value", &node.id, name));
                                     let value = ctx.read_response(value_id).unwrap_or_else(|| {
                                         panic!("{}: missing numeric target for {name}", node.kind)
                                     });
+                                    let presentation = ParameterChoices::from_spec(spec).map_or(
+                                        Presentation::Fader,
+                                        |choices| Presentation::Choices {
+                                            labels: choices
+                                                .labels
+                                                .iter()
+                                                .map(|s| s.as_str().unwrap().to_owned())
+                                                .collect(),
+                                            selected: choices.index(node.params[name]),
+                                        },
+                                    );
                                     surface.controls.push(ControlGeometry {
                                         name: name.to_owned(),
-                                        fader: fader.interact_rect,
+                                        presentation,
+                                        painted_area: control.rect,
+                                        hit: control.interact_rect,
                                         value: value.interact_rect,
+                                        senses_drag: control.sense.senses_drag(),
                                     });
                                 }
                             }
@@ -142,7 +195,9 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
             },
         );
         surface.thumbs.clear();
+        surface.choices.clear();
         surface.readouts.clear();
+        surface.fills.clear();
         surface.texts.clear();
         for shape in output.shapes {
             collect(&shape.shape, &mut surface);
@@ -151,64 +206,117 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
     surface
 }
 
+fn rect_near(a: Rect, b: Rect) -> bool {
+    a.min.distance(b.min) < 0.001 && a.max.distance(b.max) < 0.001
+}
 fn assert_rects_near(a: &[Rect], b: &[Rect], context: &str) {
     assert_eq!(a.len(), b.len(), "{context}: primitive count");
     for (a, b) in a.iter().zip(b) {
         assert!(
-            a.min.distance(b.min) < 0.001 && a.max.distance(b.max) < 0.001,
+            rect_near(*a, *b),
             "{context}: rack {a:?} versus browser {b:?}"
         );
+    }
+}
+fn own_choice_label(control: &ControlGeometry, text: &PaintedText) -> bool {
+    match &control.presentation {
+        Presentation::Choices { labels, .. } => {
+            labels.contains(&text.text) && control.painted_area.contains_rect(text.bounds)
+        }
+        Presentation::Fader => false,
     }
 }
 
 #[test]
 fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_separate() {
     let catalog = openpatch_core::catalog();
-    // These counts require the genuinely dense paths: 24 SEQ3 cells and the
-    // 17-point delay cells, analog secondary controls, and VCA MIX's 11-point
-    // readout gap. Missing paint or missing response registration cannot pass.
-    for (kind, count) in [
-        ("seq3", 24),
-        ("stereo_delay", 10),
-        ("analog_vco", 3),
-        ("ladder_vcf", 3),
-        ("vca_mix", 5),
+    // Exact continuous/choice counts prevent missing paint, accidental fallback
+    // to a thumb, or missing actual response registration from passing.
+    for (kind, faders, choices) in [
+        ("seq3", 24, &[][..]),
+        ("stereo_delay", 10, &[][..]),
+        ("analog_vco", 2, &["waveform"][..]),
+        ("ladder_vcf", 3, &[][..]),
+        ("vca_mix", 5, &[][..]),
+        ("crossfade", 1, &["law"][..]),
+        ("audio_stereo", 1, &["dc_block"][..]),
+        ("score_sequencer", 2, &["running"][..]),
+        ("drum_voice", 5, &["mode"][..]),
     ] {
         let module = catalog["modules"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|module| module["kind"] == kind)
+            .find(|m| m["kind"] == kind)
             .unwrap();
         for scale in [0.42, 0.85, 1.0, 2.0] {
             for position in [Position::Minimum, Position::Default, Position::Maximum] {
                 let rack = paint(module, position, scale, false);
                 let browser = paint(module, position, scale, true);
                 let context = format!("{kind} scale={scale} position={position:?}");
-                assert_eq!(rack.thumbs.len(), count, "{context}: rack painted thumbs");
+                let count = faders + choices.len();
                 assert_eq!(
-                    browser.thumbs.len(),
+                    rack.controls.len(),
                     count,
-                    "{context}: browser painted thumbs"
+                    "{context}: actual parameter targets"
                 );
-                assert_eq!(rack.controls.len(), count, "{context}: real fader targets");
-                assert!(
-                    rack.readouts.len() >= count,
-                    "{context}: numeric wells missing"
+                let actual_choices: Vec<_> = rack
+                    .controls
+                    .iter()
+                    .filter(|control| matches!(control.presentation, Presentation::Choices { .. }))
+                    .map(|control| control.name.as_str())
+                    .collect();
+                assert_eq!(
+                    actual_choices, choices,
+                    "{context}: categorical target identity"
                 );
+                for (name, surface) in [("rack", &rack), ("browser", &browser)] {
+                    assert_eq!(
+                        surface.thumbs.len(),
+                        faders,
+                        "{context}: {name} continuous thumbs"
+                    );
+                    assert_eq!(
+                        surface.choices.len(),
+                        choices.len(),
+                        "{context}: {name} categorical backgrounds"
+                    );
+                    assert!(
+                        surface.readouts.len() >= count,
+                        "{context}: {name} numeric wells missing"
+                    );
+                }
                 assert_rects_near(&rack.thumbs, &browser.thumbs, &context);
+                assert_rects_near(&rack.choices, &browser.choices, &context);
                 assert_rects_near(&rack.readouts, &browser.readouts, &context);
+                assert_eq!(
+                    rack.texts.len(),
+                    browser.texts.len(),
+                    "{context}: text count"
+                );
+                for (a, b) in rack.texts.iter().zip(&browser.texts) {
+                    assert_eq!(
+                        (&a.text, a.color),
+                        (&b.text, b.color),
+                        "{context}: rack/browser text or selection color"
+                    );
+                    assert!(
+                        rect_near(a.bounds, b.bounds),
+                        "{context}: rack/browser text bounds for {}",
+                        a.text
+                    );
+                }
                 for (surface_name, surface) in [("rack", &rack), ("browser", &browser)] {
                     for (index, thumb) in surface.thumbs.iter().enumerate() {
                         assert!(
                             surface.bounds.contains_rect(*thumb),
                             "{context} {surface_name}: thumb {index} escapes panel"
                         );
-                        for readout in &surface.readouts {
-                            assert!(!thumb.intersects(*readout), "{context} {surface_name}: rectangular thumb {index} {thumb:?} overlaps numeric well {readout:?}");
+                        for well in surface.readouts.iter().chain(&surface.choices) {
+                            assert!(!thumb.intersects(*well), "{context} {surface_name}: thumb {index} {thumb:?} overlaps entry/choice paint {well:?}");
                         }
-                        for (text, bounds) in &surface.texts {
-                            assert!(!thumb.intersects(*bounds), "{context} {surface_name}: rectangular thumb {index} {thumb:?} overlaps label/readout {text:?} {bounds:?}");
+                        for text in &surface.texts {
+                            assert!(!thumb.intersects(text.bounds), "{context} {surface_name}: thumb {index} overlaps label/readout {:?}",text);
                         }
                         for other in &surface.thumbs[index + 1..] {
                             assert!(
@@ -217,50 +325,165 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                             );
                         }
                     }
+                    for (index, choice) in surface.choices.iter().enumerate() {
+                        assert!(
+                            surface.bounds.contains_rect(*choice),
+                            "{context} {surface_name}: choice escapes panel"
+                        );
+                        let control = rack
+                            .controls
+                            .iter()
+                            .find(|control| {
+                                matches!(control.presentation, Presentation::Choices { .. })
+                                    && rect_near(control.painted_area, *choice)
+                            })
+                            .expect("choice paint must match an actual categorical response");
+                        for well in &surface.readouts {
+                            assert!(
+                                !choice.intersects(*well),
+                                "{context} {surface_name}: {} choice paint overlaps numeric well",
+                                control.name
+                            );
+                        }
+                        for other in &surface.choices[index + 1..] {
+                            assert!(
+                                !choice.intersects(*other),
+                                "{context} {surface_name}: neighboring choice paints overlap"
+                            );
+                        }
+                        for text in &surface.texts {
+                            if !own_choice_label(control, text) {
+                                assert!(!choice.intersects(text.bounds),"{context} {surface_name}: {} choice paint overlaps external label/readout {:?}",control.name,text);
+                            }
+                        }
+                        let Presentation::Choices { labels, selected } = &control.presentation
+                        else {
+                            unreachable!()
+                        };
+                        for (index, label) in labels.iter().enumerate() {
+                            let matches: Vec<_> = surface
+                                .texts
+                                .iter()
+                                .filter(|text| {
+                                    text.text == *label && choice.contains_rect(text.bounds)
+                                })
+                                .collect();
+                            assert_eq!(matches.len(),1,"{context} {surface_name}: {} choice label {label:?} missing, clipped or duplicated",control.name);
+                            assert_eq!(
+                                matches[0].color,
+                                if index == *selected {
+                                    Color32::from_rgb(249, 246, 235)
+                                } else {
+                                    INK
+                                },
+                                "{context} {surface_name}: selected label color"
+                            );
+                        }
+                        let selected_fills: Vec<_> = surface
+                            .fills
+                            .iter()
+                            .filter(|(rect, color)| {
+                                *color == crate::panel_skin::family_accent(kind)
+                                    && choice.contains_rect(*rect)
+                            })
+                            .collect();
+                        assert_eq!(
+                            selected_fills.len(),
+                            1,
+                            "{context} {surface_name}: one actual selected-segment fill required"
+                        );
+                    }
                 }
                 for (index, control) in rack.controls.iter().enumerate() {
                     assert!(
-                        rack.bounds.contains_rect(control.fader),
-                        "{context}: {} fader target escapes panel",
+                        rack.bounds.contains_rect(control.hit),
+                        "{context}: {} control target escapes panel",
                         control.name
                     );
-                    assert!(
-                        rack.thumbs
-                            .iter()
-                            .any(|thumb| thumb.intersects(control.fader)),
-                        "{context}: {} target has no actual rectangular thumb",
-                        control.name
-                    );
+                    match &control.presentation {
+                        Presentation::Fader => {
+                            assert!(
+                                control.senses_drag,
+                                "{context}: {} continuous target lost drag sense",
+                                control.name
+                            );
+                            assert_eq!(
+                                rack.thumbs
+                                    .iter()
+                                    .filter(|thumb| thumb.intersects(control.hit))
+                                    .count(),
+                                1,
+                                "{context}: {} target must have one actual thumb",
+                                control.name
+                            );
+                        }
+                        Presentation::Choices { .. } => {
+                            assert!(
+                                !control.senses_drag,
+                                "{context}: {} categorical target must not drag",
+                                control.name
+                            );
+                            assert!(
+                                rect_near(control.hit, control.painted_area),
+                                "{context}: {} categorical hit area differs from paint",
+                                control.name
+                            );
+                            assert_eq!(
+                                rack.choices
+                                    .iter()
+                                    .filter(|rect| rect_near(**rect, control.painted_area))
+                                    .count(),
+                                1,
+                                "{context}: {} missing categorical paint",
+                                control.name
+                            );
+                            assert!(
+                                !rack
+                                    .thumbs
+                                    .iter()
+                                    .any(|thumb| thumb.intersects(control.hit)),
+                                "{context}: {} categorical control retains an unexpected thumb",
+                                control.name
+                            );
+                        }
+                    }
                     for other in &rack.controls {
                         assert!(
-                            !control.fader.intersects(other.value),
-                            "{context}: {} fader target {:?} overlaps {} numeric entry target {:?}",
+                            !control.hit.intersects(other.value),
+                            "{context}: {} control target {:?} overlaps {} numeric target {:?}",
                             control.name,
-                            control.fader,
+                            control.hit,
                             other.name,
                             other.value
                         );
                     }
-                    for readout in &rack.readouts {
+                    for well in &rack.readouts {
                         assert!(
-                            !control.fader.intersects(*readout),
-                            "{context}: {} fader target overlaps painted numeric well",
+                            !control.hit.intersects(*well),
+                            "{context}: {} control target overlaps numeric paint",
                             control.name
                         );
                     }
-                    for (text, bounds) in &rack.texts {
-                        assert!(!control.fader.intersects(*bounds), "{context}: {} fader target {:?} overlaps label/readout {text:?} {bounds:?}", control.name, control.fader);
+                    for text in &rack.texts {
+                        if !own_choice_label(control, text) {
+                            assert!(
+                                !control.hit.intersects(text.bounds),
+                                "{context}: {} target overlaps external label/readout {:?}",
+                                control.name,
+                                text
+                            );
+                        }
                     }
                     for other in &rack.controls[index + 1..] {
                         assert!(
-                            !control.fader.intersects(other.fader),
-                            "{context}: {} and {} fader targets overlap",
+                            !control.hit.intersects(other.hit),
+                            "{context}: {} and {} parameter targets overlap",
                             control.name,
                             other.name
                         );
                         assert!(
                             !control.value.intersects(other.value),
-                            "{context}: {} and {} numeric entry targets overlap",
+                            "{context}: {} and {} numeric targets overlap",
                             control.name,
                             other.name
                         );

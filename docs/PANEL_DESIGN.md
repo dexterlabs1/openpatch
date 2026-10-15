@@ -17,8 +17,8 @@ renderer and fits the available screen without stretching the module.
 *Native Linux CI capture; macOS is the primary design target.*
 
 The Studio Rack skin uses matte warm metal, semibold model headings and restrained
-signal-family accents. Shared generic controls use direct vertical faders;
-specialized module panels retain their dedicated editors. Panels, numeric wells
+signal-family accents. Shared continuous and stepped numeric controls use direct
+vertical faders; specialized module panels retain their dedicated editors. Panels, numeric wells
 and jack reflections use quieter shared materials, keeping the rack and browser
 consistent. Fader handles and hover/focus outlines identify editable values. Outputs retain
 charcoal labels and dark socket surrounds; inputs use dark print on the panel.
@@ -27,7 +27,18 @@ in header tooltips and context menus. Parameter ranges, port positions and cable
 hit targets are preserved. Fader targets stay above the separate numeric wells;
 clicking the number opens precise entry with a pencil affordance. Fader position
 shows the configured value, independently of live signal/gain telemetry, and
-dims with the panel in a dark room. See [control gestures](RACK_EDITING.md#parameter-faders).
+dims with the panel in a dark room.
+
+Five categorical parameters have horizontal segments driven by explicit catalog
+`values` and `labels`: Analog VCO waveform (Saw/Pulse), Crossfade law
+(Linear/Power), Stereo Audio DC block and Score running (Off/On), and Drum Voice
+mode (Kick/Clap/Hi-hat). Selecting a different segment creates one undo action;
+clicking or double-clicking the selected segment leaves it selected without an
+edit. Arrow keys and Home/End select states; Space/Enter reaffirms the current
+state. Right-click and the separate value field retain exact entry. Other
+numeric faders retain their fine dragging and double-click default reset.
+Selected segments are passive configured state, dimming with room illumination;
+they are not telemetry lights. See [control gestures and saved values](RACK_EDITING.md#parameter-faders).
 
 Persistent **Inspect** uses the same cached renderer at natural size, with
 scrolling for wide panels and small windows. It shows catalog defaults under
@@ -51,7 +62,9 @@ assets or separately maintained miniature control layouts are used.
 The shared-renderer regressions compare primitive geometry and drawing for all
 64 built-in kinds at default settings at 42%, 85%, and 100% scale, including
 real rack instance IDs. Interaction tests cover full-width and narrow cards, preview input
-isolation and card click/drag behavior over specialized controls. Native Linux
+isolation and card click/drag behavior over specialized controls. Categorical
+segments use that same passive preview path and cannot edit the live patch.
+Native Linux
 CI captures qualify the appearance; macOS device playback is not part of these
 visual checks.
 

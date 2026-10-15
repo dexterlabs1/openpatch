@@ -21,7 +21,7 @@ pub(crate) fn catalog() -> [Value; 5] {
             "offset":{"default":0.0,"min":-10.0,"max":10.0,"unit":"V"}}}),
         json!({"kind":"crossfade","title":"CROSSFADE","model":"functional","description":"Two-input, one-output crossfade. mix 0 selects a; mix 1 selects b. law 0 is linear, 1 uses square-root gains (constant power for uncorrelated inputs). No CV port or second output; ±1,000,000 V safety bound.","inputs":["a","b"],"params":{
             "mix":{"default":0.5,"min":0.0,"max":1.0,"unit":"ratio"},
-            "law":{"default":0.0,"min":0.0,"max":1.0,"step":1.0}}}),
+            "law":{"default":0.0,"min":0.0,"max":1.0,"step":1.0,"values":[0,1],"labels":["Linear","Power"]}}}),
     ]
 }
 

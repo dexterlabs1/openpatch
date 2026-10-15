@@ -3983,6 +3983,37 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · attack, decay, sustain and release on separate lanes · no live audio".into();
     }
 
+    fn prepare_parameter_choices_fixture(&mut self) {
+        // Configured settings only: no invented signal activity or device IO.
+        let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
+            {"id":"waveform","kind":"analog_vco","params":{"waveform":1}},
+            {"id":"law","kind":"crossfade","params":{"law":1}},
+            {"id":"out","kind":"audio_stereo","params":{"dc_block":1}},
+            {"id":"score","kind":"score_sequencer","params":{"running":0}},
+            {"id":"drum","kind":"drum_voice","params":{"mode":2}}
+        ],"output":"out"}))
+        .unwrap();
+        patch
+            .compile()
+            .expect("categorical setting fixture compiles");
+        let mut positions = serde_json::Map::new();
+        let mut x = 0.0;
+        for node in &patch.nodes {
+            positions.insert(node.id.clone(), json!([x, 0]));
+            x += crate::rack::panel_width(&node.kind);
+        }
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.9,"pan":[24,12],"positions":positions}))
+            .unwrap();
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "Waveforms, modes and switches".into();
+        self.status = "Five configured categorical controls · exact values and shared panel rendering · audio off".into();
+    }
+
     fn prepare_stock_vca_fixture(&mut self) {
         let mut patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-vca-voice.json")).unwrap();
@@ -5251,6 +5282,15 @@ impl OpenPatch {
             self.rack.set_room_brightness(0.0);
             self.status = "VCA · lights out · actual gain columns emit, including the silent full-gain lane · no live audio".into();
         }
+        if frame == 1876 {
+            self.prepare_parameter_choices_fixture();
+        }
+        if frame == 1890 {
+            self.rack.set_room_brightness(0.0);
+            self.status =
+                "Lights out · categorical choices are passive panel settings, not signal lamps"
+                    .into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5338,6 +5378,8 @@ impl OpenPatch {
                 | 1844
                 | 1854
                 | 1868
+                | 1882
+                | 1896
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5429,7 +5471,9 @@ impl OpenPatch {
                 70 => path.with_file_name("rack-stock-vcf.png"),
                 71 => path.with_file_name("rack-stock-vcf-lights-out.png"),
                 72 => path.with_file_name("rack-stock-vca.png"),
-                _ => path.with_file_name("rack-stock-vca-lights-out.png"),
+                73 => path.with_file_name("rack-stock-vca-lights-out.png"),
+                74 => path.with_file_name("rack-parameter-choices.png"),
+                _ => path.with_file_name("rack-parameter-choices-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -5440,18 +5484,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/74 at frame {frame}: {}",
+                "Native smoke: capture {}/76 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 74 {
+            if captures == 76 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1880, "Native screenshot timeout");
+        assert!(frame < 1910, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {

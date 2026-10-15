@@ -30,8 +30,10 @@ Keep familiar rack patching and a single shared
 module/browser renderer, while improving controls for a computer: ordinary
 click and keyboard value entry, direct sliders or other appropriate editors,
 clear signal flow, readable typography and fewer decorative hardware cues.
-Shared generic controls now use direct vertical faders with numeric entry;
-specialized panels keep their dedicated editors. Held cable drags pan at visible
+Shared generic controls now use direct vertical faders with numeric entry,
+plus catalog-defined labeled choices for waveform, law, DC filtering, Score run
+state and drum type.
+Specialized panels keep their dedicated editors. Held cable drags pan at visible
 rack edges. The broader module layout and material review remains open.
 Any changes must preserve cable targets, explicit values, undo and MCP edits.
 

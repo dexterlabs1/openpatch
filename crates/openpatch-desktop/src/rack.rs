@@ -16,6 +16,7 @@ mod cable_menu;
 use cable_menu::CableMenu;
 
 include!("parameter_fader_input.rs");
+include!("parameter_choice.rs");
 include!("cable_autopan.rs");
 
 const HP: f32 = 15.0;
@@ -3124,6 +3125,40 @@ impl Rack {
                     raw_max: max,
                     focus: true,
                 };
+                let value_offset = if node.kind == "vca_mix" {
+                    11.0
+                } else if node.kind == "fade" {
+                    10.0
+                } else if count >= 3 {
+                    9.0
+                } else {
+                    15.0
+                };
+                let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
+                let readout_width = if node.kind == "score_sequencer" {
+                    96.0
+                } else if node.kind == "stereo_delay" {
+                    width / 4.0 - 12.0
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+                ) {
+                    width / 3.0 - 12.0
+                } else if node.kind == "vca_mix" {
+                    70.0
+                } else if node.kind == "seq3" {
+                    54.0
+                } else if node.kind == "gates" {
+                    110.0
+                } else if count >= 4
+                    || node.kind == "mid_side"
+                    || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
+                {
+                    width * 0.5 - 12.0
+                } else {
+                    width - 20.0
+                };
+                let choices = ParameterChoices::from_spec(spec);
                 let normalized = if geometric {
                     normalize_geometric(value, min, max)
                 } else {
@@ -3132,26 +3167,48 @@ impl Rack {
                 let fader_track =
                     crate::panel_skin::parameter_fader_track(center, radius, self.zoom);
                 // Keep the fader target inside its own cell and above the value well.
-                let knob_rect = Rect::from_center_size(
-                    center,
-                    vec2(
-                        (radius * 1.4).clamp(32.0, 50.0) * self.zoom,
-                        fader_track.height() + 7.0 * self.zoom,
-                    ),
-                );
+                let knob_rect = if choices.is_some() {
+                    Rect::from_center_size(center, vec2(readout_width, 24.0) * self.zoom)
+                } else {
+                    Rect::from_center_size(
+                        center,
+                        vec2(
+                            (radius * 1.4).clamp(32.0, 50.0) * self.zoom,
+                            fader_track.height() + 7.0 * self.zoom,
+                        ),
+                    )
+                };
                 let mut knob_highlighted = false;
                 if mode.is_interactive() {
                     let knob = ui.interact(
                         knob_rect,
                         ui.id().with(("knob", &node.id, name)),
-                        Sense::click_and_drag(),
+                        if choices.is_some() {
+                            Sense::click()
+                        } else {
+                            Sense::click_and_drag()
+                        },
                     );
                     knob.widget_info(|| {
-                        egui::WidgetInfo::slider(
-                            true,
-                            value as f64,
-                            format!("{} {}", node.id, name),
-                        )
+                        if let Some(choices) = choices {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::RadioButton,
+                                ui.is_enabled(),
+                                true,
+                                format!(
+                                    "{} {}: {}",
+                                    node.id,
+                                    name,
+                                    choices.label(choices.index(value))
+                                ),
+                            )
+                        } else {
+                            egui::WidgetInfo::slider(
+                                true,
+                                value as f64,
+                                format!("{} {}", node.id, name),
+                            )
+                        }
                     });
                     if self
                         .requested_parameter_menu
@@ -3199,18 +3256,20 @@ impl Rack {
                             }
                         }
                     });
-                    let input = self.parameter_fader_input(
-                        ui,
-                        &knob,
-                        fader_track,
-                        normalized,
-                        interactive
-                            && self.shortcuts_enabled
-                            && self.editing.is_none()
-                            && self.annotation_edit.is_none()
-                            && !popup_open_at_frame_start
-                            && !egui::Popup::is_any_open(ui.ctx()),
-                    );
+                    let enabled = interactive
+                        && self.shortcuts_enabled
+                        && self.editing.is_none()
+                        && self.annotation_edit.is_none()
+                        && !popup_open_at_frame_start
+                        && !egui::Popup::is_any_open(ui.ctx());
+                    let choice_value = choices.and_then(|choices| {
+                        self.parameter_choice_input(ui, &knob, choices, value, enabled)
+                    });
+                    let input = if choices.is_some() {
+                        FaderInput::default()
+                    } else {
+                        self.parameter_fader_input(ui, &knob, fader_track, normalized, enabled)
+                    };
                     if interactive
                         && self.shortcuts_enabled
                         && self.editing.is_none()
@@ -3242,7 +3301,9 @@ impl Rack {
                             denormalize(n.clamp(0.0, 1.0), min, max, logarithmic)
                         }
                     };
-                    let new_value = if input.reset {
+                    let new_value = if choices.is_some() {
+                        choice_value
+                    } else if input.reset {
                         Some(default)
                     } else if let Some(high) = input.boundary {
                         Some(if high { max } else { min })
@@ -3271,20 +3332,39 @@ impl Rack {
                         action = Some(RackAction::Command("set_parameter", args));
                     }
                     knob_highlighted = knob.hovered() || knob.dragged() || knob.has_focus();
-                    knob.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(format!(
+                    if choices.is_some() {
+                        knob.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(format!(
+                            "{}: {}\n{}\nClick a labeled choice. Arrow keys choose a neighboring value; Home/End choose the first/last. Clicking the selected choice leaves it unchanged. Click the value or right-click for exact entry.",
+                            name, display_value, description
+                        ));
+                    } else {
+                        knob.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(format!(
                         "{}: {}\n{}\nClick or drag the fader to set its position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
                         name, display_value,
                         if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
                     ));
+                    }
                 }
-                crate::panel_skin::parameter_fader(
-                    &painter,
-                    fader_track,
-                    normalized,
-                    knob_highlighted,
-                    crate::panel_skin::family_accent(&node.kind),
-                    self.zoom,
-                );
+                if let Some(choices) = choices {
+                    paint_parameter_choices(
+                        &painter,
+                        knob_rect,
+                        choices,
+                        value,
+                        knob_highlighted,
+                        crate::panel_skin::family_accent(&node.kind),
+                        self.zoom,
+                    );
+                } else {
+                    crate::panel_skin::parameter_fader(
+                        &painter,
+                        fader_track,
+                        normalized,
+                        knob_highlighted,
+                        crate::panel_skin::family_accent(&node.kind),
+                        self.zoom,
+                    );
+                }
                 painter.text(
                     center - vec2(0.0, (radius + 13.0) * self.zoom),
                     Align2::CENTER_BOTTOM,
@@ -3306,39 +3386,6 @@ impl Rack {
                     crate::panel_skin::heading_font(painter.ctx(), 11.0 * self.zoom),
                     INK,
                 );
-                let value_offset = if node.kind == "vca_mix" {
-                    11.0
-                } else if node.kind == "fade" {
-                    10.0
-                } else if count >= 3 {
-                    9.0
-                } else {
-                    15.0
-                };
-                let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                let readout_width = if node.kind == "score_sequencer" {
-                    96.0
-                } else if node.kind == "stereo_delay" {
-                    width / 4.0 - 12.0
-                } else if matches!(
-                    node.kind.as_str(),
-                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
-                ) {
-                    width / 3.0 - 12.0
-                } else if node.kind == "vca_mix" {
-                    70.0
-                } else if node.kind == "seq3" {
-                    54.0
-                } else if node.kind == "gates" {
-                    110.0
-                } else if count >= 4
-                    || node.kind == "mid_side"
-                    || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
-                {
-                    width * 0.5 - 12.0
-                } else {
-                    width - 20.0
-                };
                 crate::panel_skin::readout(
                     &painter,
                     value_center,
@@ -15659,55 +15706,49 @@ mod tests {
     }
 
     #[test]
-    fn waveform_drag_accumulates_small_movements_and_emits_only_valid_steps() {
+    fn legacy_vco_waveform_uses_exact_idempotent_choices() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
-        let mut patch = Patch {
-            nodes: vec![Node {
-                content: None,
-                score: None,
-                bypassed: false,
-                id: "vco".into(),
-                kind: "analog_vco".into(),
-                params: Default::default(),
-            }],
-            ..Patch::default()
-        };
+        // Version-one patches retain the same raw Saw/Pulse domain.
+        let mut patch: Patch = serde_json::from_value(json!({"version":1,
+            "nodes":[{"id":"vco","kind":"analog_vco"}]}))
+        .unwrap();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let knob = pos2(76.5, 264.0);
+        let pulse = pos2(99.75, 264.0);
         frame(
             &ctx,
             &mut rack,
             &patch,
             1.0,
-            vec![egui::Event::PointerMoved(knob), button(knob, true)],
+            vec![egui::Event::PointerMoved(pulse), button(pulse, true)],
         );
-        let mut changed = false;
-        for step in 1..=10 {
-            let pointer = knob - vec2(0.0, step as f32 * 20.0);
-            if let Some(RackAction::Command("set_parameter", args)) = frame(
-                &ctx,
-                &mut rack,
-                &patch,
-                1.0 + step as f64 * 0.1,
-                vec![egui::Event::PointerMoved(pointer)],
-            ) {
-                assert_eq!(args["parameter"], "waveform");
-                assert_eq!(args["value"], 1.0);
-                patch.nodes[0].params.insert("waveform".into(), 1.0);
-                changed = true;
-            }
-        }
+        let edit = frame(&ctx, &mut rack, &patch, 1.05, vec![button(pulse, false)]);
         assert!(
-            changed,
-            "rounding each frame would prevent a stepped control from moving"
+            matches!(edit, Some(RackAction::Command("set_parameter", ref args))
+            if args["id"] == "vco" && args["parameter"] == "waveform" && args["value"] == 1.0)
         );
-        frame(
+        patch.nodes[0].params.insert("waveform".into(), 1.0);
+        frame(&ctx, &mut rack, &patch, 1.1, vec![button(pulse, true)]);
+        assert!(
+            frame(&ctx, &mut rack, &patch, 1.15, vec![button(pulse, false)]).is_none(),
+            "a second click must keep Pulse rather than resetting to Saw"
+        );
+        let edit = frame(
             &ctx,
             &mut rack,
             &patch,
-            2.1,
-            vec![button(knob - vec2(0.0, 200.0), false)],
+            1.2,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowLeft,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(
+            matches!(edit, Some(RackAction::Command("set_parameter", ref args))
+            if args["parameter"] == "waveform" && args["value"] == 0.0)
         );
     }
     #[test]
@@ -17659,6 +17700,9 @@ mod tests {
     }
     mod cable_autopan_tests {
         include!("cable_autopan_tests.rs");
+    }
+    mod generic_choice_ui_tests {
+        include!("generic_choice_ui_tests.rs");
     }
     mod generic_fader_ui_tests {
         include!("generic_fader_ui_tests.rs");

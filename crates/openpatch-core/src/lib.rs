@@ -241,7 +241,7 @@ pub fn catalog() -> Value {
             {"kind":"output", "inputs":["signal"], "params":{}},
             {"kind":"analog_vco", "title":"VCO", "model":"idealized", "description":"Ideal capacitor-ramp VCO; ±5 V saw/pulse, polynomial BLEP. Pitch 1 V/oct; FM 1 Hz/V. Not a transistor-level oscillator.", "inputs":["pitch","fm"], "params":{
                 "frequency":{"default":261.6256,"min":0.1,"max":18000.0,"unit":"Hz","sample_rate_max_ratio":0.4},
-                "waveform":{"default":0.0,"min":0.0,"max":1.0,"step":1.0},
+                "waveform":{"default":0.0,"min":0.0,"max":1.0,"step":1.0,"values":[0,1],"labels":["Saw","Pulse"]},
                 "pulse_width":{"default":0.5,"min":0.05,"max":0.95,"unit":"ratio"}}},
             {"kind":"ladder_vcf", "title":"LADDER", "model":"circuit-derived", "description":"Matched-transistor ladder, four 10 nF stages at 25°C; nonlinear coupled feedback. Pole frequency is -12 dB at zero resonance. CV 1 V/oct.", "inputs":["signal","cutoff_cv"], "params":{
                 "cutoff":{"default":1200.0,"min":20.0,"max":18000.0,"unit":"Hz","sample_rate_max_ratio":0.4},

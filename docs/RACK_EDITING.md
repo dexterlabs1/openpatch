@@ -257,8 +257,8 @@ behaviors; use Cmd/Ctrl to start an additional cable.
 
 ## Parameter faders
 
-Shared generic parameter controls use **vertical faders**. Click a position or
-drag vertically to set the value. Hold **Ctrl/Cmd** while dragging for ten times
+Shared continuous and stepped numeric parameter controls use **vertical
+faders**. Click a position or drag vertically to set the value. Hold **Ctrl/Cmd** while dragging for ten times
 finer movement; add **Shift** for one hundred times finer movement. Module
 panels with their own specialized controls keep their own presentation.
 
@@ -272,9 +272,36 @@ These keys adjust the focused control; they do not pan the rack.
 Changes during one drag coalesce into one shared undo step. Click the displayed
 number or right-click the control for exact entry in its displayed units.
 
+Five shared categorical controls use horizontal segments, with explicit
+catalog `values` and `labels`:
+
+| Module / parameter | Choices and saved values |
+|---|---|
+| Analog VCO / `waveform` | Saw = 0, Pulse = 1 |
+| Crossfade / `law` | Linear = 0, Power = 1 |
+| Stereo Audio / `dc_block` | Off = 0, On = 1 |
+| Score / `running` | Off = 0, On = 1 |
+| Drum Voice / `mode` | Kick = 0, Clap = 1, Hi-hat = 2 |
+
+Click a segment to select that exact state. Clicking or double-clicking the
+selected segment reaffirms it, without an edit or undo entry; dragging across
+segments does not select a state. A changed selection is one shared undo action.
+With the choice focused, **Left/Down** selects the previous state and
+**Right/Up** the next, stopping at the ends. **Home/End** selects the first/last
+state. **Space/Enter** reaffirms the current state without cycling or editing it.
+These keys keep focus on the choice and do not pan the rack.
+
+Right-clicking a choice opens its existing precise parameter menu without
+selecting a state; clicking the separate value field still opens exact entry.
+Categorical double-click behavior applies to these segments; numeric faders
+retain their fine dragging, accumulated small movements and default reset.
+Fader positions and selected segments show configured values and dim with room
+lighting. They do not act as live lamps or meters. Browser panels use the same
+renderer with display-only defaults.
+
 ## Exact parameter values
 
-Right-click a fader or knob to type a value directly in its parameter menu. Click its
+Right-click a fader, categorical choice or knob to type a value directly in its parameter menu. Click its
 displayed value, or focus that value and press Space/Enter, to open an editor. **Enter** or **Apply** commits a valid
 value as one shared undo action; **Escape** or **Cancel** discards the draft.
 Clicking outside the parameter menu cancels it. Losing app focus or opening
