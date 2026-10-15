@@ -656,6 +656,7 @@ pub(super) fn start(
         next_due: Instant::now() + Duration::from_millis(interval_ms),
         wake,
     });
+    live.construction.last_move = None;
     Ok(live.construction_snapshot())
 }
 

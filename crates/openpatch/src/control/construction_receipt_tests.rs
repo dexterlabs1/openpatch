@@ -863,3 +863,78 @@ fn direct_move_presentation_bound_does_not_truncate_actual_graph_edits() {
     );
     assert_eq!(live.patch.cables.len(), 131);
 }
+
+#[test]
+fn successful_plan_admission_clears_direct_move_without_revision_but_failed_preflight_retains_it() {
+    let session = move_fixture();
+    let (before, committed_at) = {
+        let mut live = session.lock().unwrap();
+        live.execute(
+            "move_cables",
+            move_edit("input", "b", "cv")["arguments"].clone(),
+        )
+        .unwrap();
+        let receipt = live.construction.last_move.as_ref().unwrap();
+        (live.snapshot(), receipt.committed_at)
+    };
+    let revision = before["revision"].as_u64().unwrap();
+    let failed = execute_shared(
+        &session,
+        "start_construction",
+        json!({
+            "expected_revision":revision,"interval_ms":2000,
+            "steps":[step("Invalid preflight", json!([
+                {"tool":"set_parameter","arguments":{"id":"missing","parameter":"value","value":4}}
+            ]))]
+        }),
+    )
+    .unwrap_err();
+    assert!(failed.contains("construction step 1"), "{failed}");
+    {
+        let live = session.lock().unwrap();
+        assert_eq!(live.snapshot(), before);
+        assert_eq!(live.construction_snapshot()["status"], "idle");
+        assert_eq!(
+            live.construction.last_move.as_ref().unwrap().committed_at,
+            committed_at
+        );
+        assert_eq!(
+            live.construction_snapshot()["last_move"]["revision"],
+            revision
+        );
+    }
+    // Exercise actual admission/spawn, then use the established controlled
+    // deadline pattern so later assertions do not race a construction interval.
+    let admitted = execute_shared(
+        &session,
+        "start_construction",
+        json!({
+            "expected_revision":revision,"interval_ms":2000,
+            "steps":[step("Next plan", json!([
+                {"tool":"set_parameter","arguments":{"id":"s","parameter":"value","value":4}}
+            ]))]
+        }),
+    )
+    .unwrap();
+    assert_eq!(admitted["status"], "running");
+    assert_eq!(admitted["current_revision"], revision);
+    assert_eq!(admitted["completed_steps"], 0);
+    assert!(admitted["last_commit"].is_null());
+    assert!(admitted["last_move"].is_null());
+    {
+        let mut live = session.lock().unwrap();
+        let plan = live.construction.plan.as_mut().unwrap();
+        plan.interval_ms = 86_400_000;
+        plan.next_due = Instant::now() + Duration::from_millis(plan.interval_ms);
+        plan.wake.notify();
+        assert_eq!(live.snapshot(), before);
+        assert!(live.construction.last_move.is_none());
+    }
+    let completed = advance_one(&session);
+    assert_eq!(completed["status"], "completed");
+    assert_eq!(completed["current_revision"], revision + 1);
+    assert!(completed["last_move"].is_null());
+    let live = session.lock().unwrap();
+    assert_eq!(live.patch.cables[0].to, "b");
+    assert_eq!(live.patch.nodes[0].params["value"], 4.0);
+}

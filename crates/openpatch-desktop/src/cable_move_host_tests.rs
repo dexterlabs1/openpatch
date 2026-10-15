@@ -128,6 +128,47 @@ fn locally_acknowledged_move_stays_suppressed_when_sync_was_busy() {
 }
 
 #[test]
+fn a_new_plan_clears_a_direct_move_without_waiting_for_another_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = host(dir.path());
+    let origin = Instant::now();
+    app.prepare_cable_move_fixture(origin, false);
+    assert_eq!(app.rack.construction_effect_counts_at(origin), (0, 2, 0));
+    let revision = app.revision;
+    let plan = execute_shared(
+        &app.shared,
+        "start_construction",
+        json!({
+            "expected_revision":revision,"interval_ms":2000,
+            "steps":[{"label":"A new plan","edits":[{"tool":"set_parameter","arguments":{
+                "id":"voice","parameter":"frequency","value":220
+            }}]}]
+        }),
+    )
+    .unwrap();
+    assert!(plan["last_move"].is_null());
+    let deadline = Instant::now() + Duration::from_millis(500);
+    loop {
+        app.sync();
+        assert_eq!(app.revision, revision);
+        if app.rack.construction_effect_counts_at(origin) == (0, 0, 0) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "new plan did not clear prior direct motion"
+        );
+        std::thread::yield_now();
+    }
+    execute_shared(
+        &app.shared,
+        "cancel_construction",
+        json!({"plan_id":plan["plan_id"]}),
+    )
+    .unwrap();
+}
+
+#[test]
 fn native_move_capture_phases_use_real_commits_and_request_real_screenshots() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = host(dir.path());

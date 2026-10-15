@@ -2706,6 +2706,7 @@ class OpenPatchMCPTests(unittest.TestCase):
             "expected_revision": direct["revision"], "interval_ms": 100,
             "steps": [{"label": "Move the source", "edits": [{"tool": "move_cables", "arguments": {
                 "cable_ids": ["moving"], "end": "output", "node": "s2", "port": "out"}}]}]}))
+        self.assertIsNone(started["last_move"])
         deadline = time.monotonic() + 10
         while True:
             state = self.payload(self.require_tool_success("inspect_construction", {"plan_id": started["plan_id"]}))
