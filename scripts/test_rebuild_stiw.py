@@ -13,7 +13,7 @@ import random
 import tempfile
 import unittest
 
-from rebuild_stiw import Builder, native_score
+from rebuild_stiw import Builder, native_score, stock_vcf_frequency_bounds
 from test_mcp import MCPProcess, PROTOCOL_VERSION
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -38,11 +38,58 @@ def endpoint(cable):
     return cable["from"], cable["output"], cable["to"], cable["input"]
 
 
+def cutoff_endpoint_case(value):
+    source = source_fixture()
+    # One automated and one direct stock frequency exercise both paths.
+    for alias in ("bass_filter", "stab_filter"):
+        module = module_by_alias(source, alias)
+        next(param for param in module["params"] if param["id"] == 0)["value"] = value
+    for point in module_by_alias(source, "seqB")["data"]["lanes"][4]["points"]:
+        point["value"] = value
+    scores = [native_score(module_by_alias(source, alias)["data"])
+              for alias in ("seqA", "seqB")]
+    return source, scores
+
+
 class STIWConversionTests(unittest.TestCase):
     def build(self, source=None, scores=None, **options):
         builder = Builder(source if source is not None else source_fixture(), scores, **options)
         patch, translations = builder.create()
         return builder, patch, translations
+
+    def test_stock_vcf_native_f32_cutoff_endpoints_are_inclusive_for_saved_controls_and_raw_lanes(self):
+        # Independently recorded from the native stock_vcf catalog, rather than
+        # recalculating the helper's formula or using its returned bounds.
+        native_bounds = (-0.0031360150314867496, 1.1393855810165405)
+        self.assertEqual(stock_vcf_frequency_bounds(), native_bounds)
+        for bound in native_bounds:
+            source, scores = cutoff_endpoint_case(bound)
+            for override in (None, scores):
+                with self.subTest(bound=bound, explicit_override=override is not None):
+                    _, patch, _ = self.build(source, override)
+                    nodes = {node["id"]: node for node in patch["nodes"]}
+                    self.assertEqual(nodes["stab_filter"]["params"]["frequency"], bound)
+                    self.assertEqual(nodes["bass_filter"]["params"]["frequency"], 0.5)
+                    self.assertEqual(nodes["seqB"]["score"]["lanes"][4]["points"][0]["value"],
+                                     10 * bound - 5)
+        # Check each input independently so one failing validation cannot mask
+        # a missing check in the saved, source-lane or explicit-override path.
+        for outside in (native_bounds[0] - 1e-5, native_bounds[1] + 1e-5):
+            for path in ("saved_automated", "saved_direct", "raw_lane", "override_lane"):
+                source = source_fixture()
+                scores = [native_score(module_by_alias(source, alias)["data"])
+                          for alias in ("seqA", "seqB")]
+                if path.startswith("saved_"):
+                    alias = "bass_filter" if path == "saved_automated" else "stab_filter"
+                    module = module_by_alias(source, alias)
+                    next(param for param in module["params"] if param["id"] == 0)["value"] = outside
+                elif path == "raw_lane":
+                    module_by_alias(source, "seqB")["data"]["lanes"][4]["points"][0]["value"] = outside
+                else:
+                    scores[1]["lanes"][4]["points"][0]["value"] = outside
+                with self.subTest(outside=outside, path=path):
+                    with self.assertRaises(ValueError):
+                        self.build(source, scores if path == "override_lane" else None)
 
     def test_public_fixture_has_55_typed_roles_and_83_unique_routes_without_song_content(self):
         source = source_fixture()
@@ -412,6 +459,19 @@ class STIWCompilerTests(unittest.TestCase):
                 builder = Builder(source)
                 patch, translations = builder.create()
                 catalog = {module["kind"]: module for module in call("catalog")["modules"]}
+                frequency = catalog["stock_vcf"]["params"]["frequency"]
+                for bound in (frequency["min"], frequency["max"]):
+                    endpoint_source, endpoint_scores = cutoff_endpoint_case(bound)
+                    for override in (None, endpoint_scores):
+                        with self.subTest(cutoff_endpoint=bound, explicit_override=override is not None):
+                            endpoint_builder = Builder(endpoint_source, override)
+                            endpoint_patch, _ = endpoint_builder.create()
+                            call("replace_patch", {"patch": endpoint_patch})
+                            accepted = {node["id"]: node for node in call("inspect_patch")["patch"]["nodes"]}
+                            self.assertEqual(accepted["bass_filter"]["params"]["frequency"], 0.5)
+                            self.assertAlmostEqual(accepted["stab_filter"]["params"]["frequency"], bound, places=7)
+                            self.assertAlmostEqual(accepted["seqB"]["score"]["lanes"][4]["points"][0]["value"],
+                                                   10 * bound - 5, places=6)
                 nodes = {node["id"]: node for node in patch["nodes"]}
                 for cable in patch["cables"]:
                     self.assertIn(cable["input"], catalog[nodes[cable["to"]]["kind"]]["inputs"], cable)

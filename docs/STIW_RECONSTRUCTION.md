@@ -92,7 +92,7 @@ saves and reloads the synthetic rendition. This is compatibility validation, not
 comparison against recorded Rack output or a native-device audio test.
 
 The [2026-10-15 qualification report](benchmarks/stiw-stock-reconstruction.json)
-records 77 passing Python/MCP tests and a separate reconstruction of the actual
+records 78 passing Python/MCP tests and a separate reconstruction of the actual
 source: 140 native modules, 210 cables and all 55 roles / 83 source connections
 accounted for. Two 120.012-second stereo renders at 48 kHz produced identical
 PCM16 WAVs from reset, with zero clipped samples (peak 0.46294, RMS 0.09674).

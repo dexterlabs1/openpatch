@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import os
+import struct
 from pathlib import Path
 from test_mcp import MCPProcess, PROTOCOL_VERSION
 
@@ -103,13 +104,22 @@ def source_notes(module):
 
 C4 = 261.625565
 
+def stock_vcf_frequency_bounds():
+    # Match stock_vcf.rs's pinned f32 C4 and rounding after each operation.
+    # A double-precision bound would reject the native minimum cutoff.
+    def f32(value):
+        return struct.unpack('<f', struct.pack('<f', value))[0]
+    c4 = f32(261.6256)
+    return tuple(f32(f32(f32(math.log2(f32(hz / c4))) + 5) / 10)
+                 for hz in (8.0, 22000.0))
+
 def automation_domain(module, parameter_id):
     # Supported reconstruction targets, not an inference from lane order.
     pair = (module['plugin'], module['model'], parameter_id)
     if pair == ('Fundamental', 'VCA-1', 0) or pair == ('SurgeXTRack', 'SurgeXTOSCClassic', 50):
         return 0.0, 1.0
     if pair == ('Fundamental', 'VCF', 0):
-        return (math.log2(8.0 / C4) + 5) / 10, (math.log2(22000.0 / C4) + 5) / 10
+        return stock_vcf_frequency_bounds()
     if pair == ('SurgeXTRack', 'SurgeXTVCF', 0):
         # Bounded native approximation range shared with the ladder option.
         return math.log2(20.0 / C4), math.log2(18000.0 / C4)

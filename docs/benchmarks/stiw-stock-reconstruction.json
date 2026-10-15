@@ -5,15 +5,15 @@
   "runtime_source_commit": "8b5e6a471ef6f1332cf48f58807c8f2789be6b17",
   "runtime_binary_sha256": "ae2bcde5e402386efec59437794cca4687eb327930f4d89024567955bb4d47fb",
   "converter_files_sha256": {
-    "scripts/rebuild_stiw.py": "ab201556b5588c7fa9defba9e98af94a306605e708681f4a0163327652402a88",
+    "scripts/rebuild_stiw.py": "5a6a122596fd801ada01d43b79d3cb87552e1da46635fbcec026bfd7affbdaf6",
     "scripts/stiw_source_map.json": "824751a3b493070cd9bc3ad53ef5b38dd977d881f97cadf2ec0228100e90f87b",
-    "scripts/test_rebuild_stiw.py": "9b672460acf07c9be39331f43cf16b61eb3cba3e2f83ae7cb775a7113b823e6b",
+    "scripts/test_rebuild_stiw.py": "8937cf0b1046bb7a57f8eadddf148414ab39ae0ab411bf2aab529d92cf98058f",
     "scripts/fixtures/stiw-source-structure.json": "a15aac86a921ef7d40f0c786a6518fd819d2b804c3d8f674034ed3fc05a0417b"
   },
   "source_json_sha256": "65a93ca1426c7a4082577b78e095100a645c5544fdb486a810f6954d79ba04e3",
   "source_archive_sha256": "4c83b2d697cc056b4118f321cddfa3be56257ed789ecba90c47421ee28e0cbf4",
   "python_mcp_tests": {
-    "passed": 77,
+    "passed": 78,
     "skipped": 0
   },
   "stock_counts": {
@@ -51,5 +51,13 @@
     "No CPU performance comparison is claimed; rendering ran alongside other test work",
     "Physical macOS input and audio playback were not exercised",
     "Actual source score, Notes content and rendered audio remain local; the public fixture uses synthetic score/text"
-  ]
+  ],
+  "native_cutoff_endpoint_validation": {
+    "saved_controls_and_automation_inclusive": true,
+    "native_catalog_endpoints_compile": true,
+    "f32_min": -0.0031360150314867496,
+    "f32_max": 1.1393855810165405,
+    "out_of_range_paths_rejected": true
+  },
+  "actual_source_graph_unchanged_after_boundary_fix": true
 }
