@@ -6,6 +6,7 @@ use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::midi_cc::{self, MidiCc};
+use crate::midi_gate::{self, MidiGate};
 use crate::mixing::{self, Mixing};
 use crate::modal_resonator::{self, ModalResonator};
 use crate::multi_lfo::{self, MultiLfo};
@@ -84,6 +85,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "poly_merge"
                 | "poly_sum"
                 | "poly_viz"
+                | "midi_gate"
                 | "midi_cc"
                 | "midi_cv"
                 | "audio_stereo"
@@ -142,7 +144,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
-        "poly_constant" | "midi_cv" | "midi_cc" | "pulses" | "colored_noise" => None,
+        "poly_constant" | "midi_cv" | "midi_cc" | "midi_gate" | "pulses" | "colored_noise" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
             "right" => Some(1),
@@ -206,6 +208,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         multi_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_vco" {
         multi_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "midi_gate" {
+        midi_gate::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "midi_cc" {
         midi_cc::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "midi_cv" {
@@ -229,7 +233,7 @@ fn integer(node: &Node, name: &str, default: f32) -> Result<u8, String> {
     Ok(value as u8)
 }
 
-pub(crate) fn catalog() -> [Value; 8] {
+pub(crate) fn catalog() -> [Value; 9] {
     let values: serde_json::Map<String, Value> = (1..=16)
         .map(|i| {
             (
@@ -242,6 +246,7 @@ pub(crate) fn catalog() -> [Value; 8] {
     constants["params"].as_object_mut().unwrap().extend(values);
     [
         midi_cc::catalog(),
+        midi_gate::catalog(),
         json!({"kind":"midi_cv","title":"MIDI-CV","model":"functional","description":"MIDI notes to fixed polyphonic voltages; pitch 1 V/oct relative to C4; gates 10 V. Channel pressure aftertouch (poly pressure ignored), separate ±5 V pitchwheel, CC1 modwheel. Sustain CC64, all-sound-off CC120, reset controllers CC121, all-notes-off CC123. Triggers last 1 ms. Duplicate notes are counted; one note-off releases one pressed voice. Mono uses last-held-note priority. No MIDI events means silence.","inputs":[],"params":{"channels":{"default":4.0,"min":1.0,"max":16.0,"step":1.0},"channel":{"default":0.0,"min":0.0,"max":16.0,"step":1.0,"description":"0 omni; 1–16 selects wire channel 0–15"},"allocation":{"default":0.0,"min":0.0,"max":2.0,"step":1.0,"description":"0 rotate free then next steal; 1 reuse previous note/channel else lowest free then lane 1 steal; 2 lowest free then lane 1 steal, compact releases"},"clock_div":{"default":24.0,"min":1.0,"max":96.0,"step":1.0}}}),
         json!({"kind":"audio_stereo","title":"STEREO AUDIO","model":"functional","description":"Unity-sum polyphony independently on left/right, divide voltages by 10, multiply gain. Right normalizes to left only when disconnected or zero-channel. Selecting out explicitly renders stereo.","inputs":["left","right"],"params":{"gain":{"default":1.0,"min":0.0,"max":2.0},"dc_block":{"default":0.0,"min":0.0,"max":1.0,"step":1.0,"description":"Optional bilinear 10 Hz DC blocker; defaults off for older patches"}}}),
         constants,
@@ -349,6 +354,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "poly_viz" {
         Vec::new()
+    } else if kind == "midi_gate" {
+        midi_gate::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
     } else if kind == "midi_cc" {
         midi_cc::OUTPUTS
             .iter()
@@ -380,7 +390,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     };
     module["polyphony"] = json!({"version_1":"mono", "version_2":policy, "maximum_channels":16,"auxiliary_inputs":"mono broadcasts; missing short-poly channels are zero; zero-channel ports normalize as disconnected","retired_voices":"reset on retirement and activation"});
     let primary = match kind.as_str() {
-        "poly_constant" | "poly_merge" | "midi_cv" | "midi_cc" | "audio_stereo" => Value::Null,
+        "poly_constant" | "poly_merge" | "midi_cv" | "midi_cc" | "midi_gate" | "audio_stereo" => {
+            Value::Null
+        }
         _ => match voice_policy(&kind) {
             VoicePolicy::Generator | VoicePolicy::Maximum => Value::Null,
             VoicePolicy::Primary(index) => {
@@ -506,6 +518,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "gates" {
         gates::annotate(module);
     }
+    if kind == "midi_gate" {
+        midi_gate::annotate(module);
+    }
 }
 
 #[derive(Debug)]
@@ -528,6 +543,7 @@ enum Model {
     Viz(crate::viz::Viz),
     Midi(Box<MidiCv>),
     MidiCc(Box<MidiCc>),
+    MidiGate(Box<MidiGate>),
     Stereo(StereoOutput),
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
@@ -606,6 +622,9 @@ impl Model {
         }
         if let Some(model) = Routing::build(node) {
             return model.map(Self::Routing);
+        }
+        if node.kind == "midi_gate" {
+            return MidiGate::build(node, rate).map(|m| Self::MidiGate(Box::new(m)));
         }
         if node.kind == "midi_cc" {
             return MidiCc::build(node, rate).map(|m| Self::MidiCc(Box::new(m)));
@@ -731,6 +750,25 @@ pub(crate) struct PolyEngine {
     stereo: bool,
 }
 impl PolyEngine {
+    pub(crate) fn midi_gate_mut(&mut self, index: usize) -> Option<&mut MidiGate> {
+        if let Model::MidiGate(midi) = &mut self.nodes.get_mut(index)?.model {
+            Some(midi)
+        } else {
+            None
+        }
+    }
+    pub(crate) fn midi_gate(&self, index: usize) -> Option<&MidiGate> {
+        if let Model::MidiGate(midi) = &self.nodes.get(index)?.model {
+            Some(midi)
+        } else {
+            None
+        }
+    }
+    pub(crate) fn midi_gate_active(&self, index: usize) -> bool {
+        self.nodes
+            .get(index)
+            .is_some_and(|node| !node.bypassed && matches!(node.model, Model::MidiGate(_)))
+    }
     pub(crate) fn midi_cc_mut(&mut self, index: usize) -> Option<&mut MidiCc> {
         let node = self.nodes.get_mut(index)?;
         if let Model::MidiCc(midi) = &mut node.model {
@@ -836,11 +874,16 @@ impl PolyEngine {
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::Sum(s)) => Some(s.lights()),
             Some(Model::Viz(v)) => Some(v.lights()),
+            Some(Model::MidiGate(m)) => Some(m.lights()),
             _ => None,
         }
     }
     pub(crate) fn release_module_controls(&mut self, index: usize) -> bool {
         match self.nodes.get_mut(index).map(|n| &mut n.model) {
+            Some(Model::MidiGate(m)) => {
+                m.host_panic();
+                true
+            }
             Some(Model::Signal(s)) => s.release(),
             Some(Model::Pulses(p)) => {
                 p.release();
@@ -882,6 +925,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(_)) => ShiftRegister::supports(action),
             Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
+            Some(Model::MidiGate(_)) => action == ModuleAction::MidiPanic,
             _ => false,
         }
     }
@@ -901,6 +945,7 @@ impl PolyEngine {
                 | ModuleAction::PushRelease
                 | ModuleAction::HoldRelease
                 | ModuleAction::ResetRelease
+                | ModuleAction::MidiPanic
         ) || action.pulse_button().is_some_and(|(_, press)| !press);
         if !self.supports_module_action(index, action) || (self.nodes[index].bypassed && !release) {
             return Err(format!(
@@ -924,15 +969,22 @@ impl PolyEngine {
             .node_lookup
             .get(id)
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
-        if self.nodes[node].bypassed
-            || !(matches!(self.nodes[node].model, Model::Seq3(_))
-                || self.module_control_state(node).is_some())
+        if !matches!(self.nodes[node].model, Model::MidiGate(_))
+            && (self.nodes[node].bypassed
+                || !(matches!(self.nodes[node].model, Model::Seq3(_))
+                    || self.module_control_state(node).is_some()))
         {
             return Err(format!("module '{id}' does not support runtime actions"));
         }
         Ok(node)
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
+        if action == ModuleAction::MidiPanic {
+            return self.midi_gate_mut(node).is_some_and(|m| {
+                m.host_panic();
+                true
+            });
+        }
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
             if matches!(
                 action,
@@ -1007,6 +1059,10 @@ impl PolyEngine {
             return false;
         };
         let count = match &mut node.model {
+            Model::MidiGate(m) => {
+                m.reset_state();
+                16
+            }
             Model::MidiCc(m) => {
                 m.reset_state();
                 16
@@ -1095,6 +1151,7 @@ impl PolyEngine {
         };
         match &mut node.model {
             Model::MidiCc(m) => m.initialize_state(),
+            Model::MidiGate(m) => m.initialize_state(),
             Model::ColoredNoise(s) => s.reset_state(),
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
@@ -1131,6 +1188,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(p)) => Some(p.saved_state()),
             Some(Model::RandomValues(p)) => Some(p.saved_state()),
             Some(Model::MidiCc(m)) => Some(m.saved_state()),
+            Some(Model::MidiGate(m)) => Some(m.saved_state()),
             _ => None,
         }
     }
@@ -1146,6 +1204,7 @@ impl PolyEngine {
             (Some(Model::ShiftRegister(p)), state) => p.set_saved_state(state),
             (Some(Model::RandomValues(p)), state) => p.set_saved_state(state),
             (Some(Model::MidiCc(m)), state) => m.set_saved_state(state),
+            (Some(Model::MidiGate(m)), state) => m.set_saved_state(state),
             _ => false,
         }
     }
@@ -1230,7 +1289,7 @@ impl PolyEngine {
             } else {
                 match node.kind.as_str() {
                     "poly_viz" => 0,
-                    "poly_split" | "midi_cc" => 16,
+                    "poly_split" | "midi_cc" | "midi_gate" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
@@ -1391,6 +1450,7 @@ impl PolyEngine {
             match &mut node.model {
                 Model::Midi(midi) => midi.handle(event),
                 Model::MidiCc(midi) if !node.bypassed => midi.handle_midi(event),
+                Model::MidiGate(midi) if !node.bypassed => midi.handle_midi(event),
                 _ => {}
             }
         }
@@ -1790,6 +1850,9 @@ impl PolyEngine {
                         &mut self.outputs[node.output_start..node.output_start + count],
                     );
                 }
+                Model::MidiGate(midi) => midi.process(
+                    &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                ),
                 Model::MidiCc(midi) => midi.process(
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     node.connected_mask,
@@ -2039,6 +2102,14 @@ impl PolyEngine {
                 (&mut node.model, &previous.model)
             {
                 vco.adopt(previous, sync_unchanged);
+            }
+            if let (Model::MidiGate(midi), Model::MidiGate(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                midi.adopt(previous);
+                if bypass_changed {
+                    midi.host_panic();
+                }
             }
             if let (Model::MidiCc(midi), Model::MidiCc(previous)) =
                 (&mut node.model, &previous.model)

@@ -25,12 +25,22 @@ normalized clock and old-value signal chains, bringing the catalog to 57 kinds.
 [ADSR EG](ADSR_EG.md) adds a separate stock-style polyphonic envelope, bringing
 the catalog to 58 kinds while preserving the original RC envelope.
 [MIDI CC](MIDI_CC.md) adds sixteen controller outputs, ordinary 7-bit input,
-14-bit pairs, smoothing, MPE and durable Learn, bringing the current catalog to
+14-bit pairs, smoothing, MPE and durable Learn, bringing the catalog to
 59 kinds. Its original Rust DSP passed 45 comparisons of the actual pinned Rack
 class (15 fixtures × 44.1/48/96 kHz), with zero measured voltage error and exact
 metadata in the [recorded run](benchmarks/midi-cc-reference.json). This is bounded
 DSP evidence; native window/input/audio-device and physical MIDI qualification
 remain separate gates.
+[MIDI → Gate](MIDI_GATE.md) adds sixteen note-gate outputs, velocity, MPE,
+minimum-duration pulses, Learn and Panic, bringing the current catalog to
+60 kinds. Its source contract deliberately preserves output-cell state across
+remapping; clearing a remapped held gate requires its new note-off or Panic.
+The [actual-class report](benchmarks/midi-gate-reference.json) records 63 passing
+cases (21 fixtures × 44.1/48/96 kHz), 258,048 frames and 56,513,088 active lane
+samples, with bit-identical binary traces, zero voltage error and no metadata
+mismatches. This covers the pinned DSP, SDK queue and source JSON with the
+explicit driver channel rule; all outputs were probed. Native host, hardware,
+durable transport/Session behavior and complete Core parity have separate gates.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -135,7 +145,7 @@ Names follow the Core library; parenthesized aliases match the manual. The Audio
 | Audio 16 | Device I/O | Planned | Sixteen-channel routing and channel isolation |
 | MIDI to CV (MIDI-CV) | MIDI input | Partial: `midi_cv`, 12 outputs, 1–16 voices, hardware ingress and 32-pitch QWERTY/mouse performance | Actual MIDI hardware timing/reconnect qualification, complete Rack behavior comparison and remaining configuration parity |
 | MIDI CC to CV (MIDI-CC) | MIDI input | Partial: `midi_cc`, sixteen assignments/outputs, 7-bit and paired 14-bit CC, smoothing, MPE, channel filter, saved channel-zero values and audio-authoritative Learn | Global endpoint selection differs from per-module Rack routing; nonstandard signed gamepad input is excluded. Complete native/device and hardware timing/reconnect qualification; [contract](MIDI_CC.md), [45-case pinned DSP report](benchmarks/midi-cc-reference.json). |
-| MIDI to Gate (MIDI-Gate) | MIDI input | Planned | Note mapping, short notes, held gates |
+| MIDI to Gate (MIDI-Gate) | MIDI input | Partial: `midi_gate`, sixteen normalized note assignments/outputs, exact f32 minimum pulses, fixed/velocity voltages, mono/MPE, channel filter, durable Learn and Panic | Source-style held-cell remapping is deliberate; hardware input selection is global. The [63-case actual-class report](benchmarks/midi-gate-reference.json) has bit-identical probed DSP traces; native Mac/audio/input and physical MIDI timing/reconnect qualification remain open. Host transport/Session behavior requires its separate tests; [contract](MIDI_GATE.md). |
 | MIDI Map (MIDI-Map) | Parameter control | Planned | Learn/persist mappings; concurrent GUI/MCP edits |
 | CV to MIDI (CV-MIDI) | MIDI output | Planned | Pitch conversion, balanced note-on/off, panic |
 | CV to MIDI CC (CV-CC) | MIDI output | Planned | Quantization, rate control, endpoint round trip |

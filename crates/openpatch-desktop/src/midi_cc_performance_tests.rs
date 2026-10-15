@@ -24,9 +24,9 @@ fn event(
     frame: u64,
     event: MidiEvent,
 ) {
-    reader.before_midi_cc(engine, plan, revision);
+    reader.before_midi_learn(engine, plan, revision);
     engine.handle_midi(event);
-    reader.after_midi_cc(engine, plan, frame, event == MidiEvent::Panic);
+    reader.after_midi_learn(engine, plan, frame, event == MidiEvent::Panic);
 }
 fn mapping(engine: &Engine) -> [i16; 16] {
     let SavedModuleState::MidiCc { assignments, .. } = engine
@@ -68,13 +68,13 @@ fn processing_wins_cancel_close_but_nonqualifying_event_returns_armed() {
     event(&r, &mut e, &mut plan, 1, 0, cc(45, 0));
     assert!(p.midi_cc_learning_active());
     assert!(!p.midi_cc_learning_uncommitted());
-    r.before_midi_cc(&mut e, &mut plan, 1);
+    r.before_midi_learn(&mut e, &mut plan, 1);
     assert!(p.midi_cc_learning_uncommitted());
     assert!(p.prepare_midi_cc_edit(&["cc".into()]).is_err());
     assert!(p.cancel_midi_cc_learn("cc").is_err());
     p.close();
     e.handle_midi(cc(45, 1));
-    r.after_midi_cc(&mut e, &mut plan, 1, false);
+    r.after_midi_learn(&mut e, &mut plan, 1, false);
     assert_eq!(p.midi_cc_learn_ready().len(), 1);
     assert_eq!(mapping(&e)[0], 45);
 }
@@ -82,7 +82,7 @@ fn processing_wins_cancel_close_but_nonqualifying_event_returns_armed() {
 fn cancellation_between_sync_and_event_never_leaves_unreserved_core_learn() {
     let (p, r, _, mut e, mut plan) = setup();
     p.learn_midi_cc("cc", 0).unwrap();
-    r.sync_midi_cc(&mut e, &mut plan, 1);
+    r.sync_midi_learn(&mut e, &mut plan, 1);
     assert!(e
         .midi_cc_learning(e.resolve_module_state("cc").unwrap())
         .is_some());
@@ -101,11 +101,11 @@ fn armed_close_panic_and_transport_reset_cancel_without_losing_ready() {
     event(&r, &mut e, &mut plan, 1, 1, MidiEvent::Panic);
     assert!(!p.midi_cc_learning_active());
     p.learn_midi_cc("cc", 0).unwrap();
-    r.cancel_midi_cc(&mut e, &mut plan);
+    r.cancel_all_midi_learn(&mut e, &mut plan);
     assert!(!p.midi_cc_learning_active());
     p.learn_midi_cc("cc", 0).unwrap();
     event(&r, &mut e, &mut plan, 1, 2, cc(30, 2));
-    r.cancel_midi_cc(&mut e, &mut plan);
+    r.cancel_all_midi_learn(&mut e, &mut plan);
     assert_eq!(p.midi_cc_learn_ready().len(), 1);
     p.close();
     assert_eq!(p.midi_cc_learn_ready().len(), 1);
@@ -163,7 +163,7 @@ fn reconciliation_authorizes_ready_map_without_changing_epoch_and_undo_preserves
     session.reconcile_midi_cc_learn().unwrap();
     assert!(p.midi_cc_learn_ready().is_empty());
     let cc_registry = p.control.lock().unwrap();
-    assert_eq!(cc_registry.cc_learns["cc"].epoch, before.epoch);
+    assert_eq!(cc_registry.midi_learns["cc"].epoch, before.epoch);
     drop(cc_registry);
     assert_eq!(session.patch().nodes[0].params["cc1"], 45.0);
     event(&r, &mut e, &mut plan, 1, 11, cc(45, 90));
@@ -225,8 +225,40 @@ fn panic_and_transport_reset_cancel_tickets_waiting_for_future_graph_adoption() 
         if panic {
             event(&r, &mut e, &mut plan, 1, 1, MidiEvent::Panic);
         } else {
-            r.cancel_midi_cc(&mut e, &mut plan);
+            r.cancel_all_midi_learn(&mut e, &mut plan);
         }
         assert!(!p.midi_cc_learning_active());
+    }
+}
+#[test]
+fn delayed_safety_cutoff_rechecks_rearmed_serial_and_preserves_owned_decisions() {
+    for _ in 0..64 {
+        let mailbox = MidiLearnMailbox::new();
+        mailbox
+            .tag
+            .store(learn_tag(1, LEARN_ARMED), Ordering::Release);
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let cancellation = scope.spawn(|| {
+                barrier.wait();
+                mailbox.cancel_armed_through(1)
+            });
+            barrier.wait();
+            mailbox
+                .tag
+                .store(learn_tag(2, LEARN_ARMED), Ordering::Release);
+            let _ = cancellation.join().unwrap();
+        });
+        assert_eq!(
+            mailbox.tag.load(Ordering::Acquire),
+            learn_tag(2, LEARN_ARMED)
+        );
+        assert_eq!(mailbox.cancel_armed_through(1), Ok(false));
+        assert_eq!(mailbox.cancel_armed_through(2), Ok(true));
+        for phase in [LEARN_PROCESSING, LEARN_READY] {
+            mailbox.tag.store(learn_tag(2, phase), Ordering::Release);
+            assert_eq!(mailbox.cancel_armed_through(u64::MAX), Err(()));
+            assert_eq!(mailbox.tag.load(Ordering::Acquire), learn_tag(2, phase));
+        }
     }
 }

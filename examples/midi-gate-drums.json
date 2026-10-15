@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {"id": "pads", "kind": "midi_gate", "params": {"note1": 60, "note2": 62, "note3": 64, "velocity": 0, "mpe": 0, "channel": 0}},
+    {"id": "kick", "kind": "drum_voice", "params": {"mode": 0, "pitch": 54, "decay": 0.32, "level": 0.85, "tone": 0.35, "drive": 0.12}},
+    {"id": "clap", "kind": "drum_voice", "params": {"mode": 1, "pitch": 180, "decay": 0.12, "level": 0.52, "tone": 0.6, "drive": 0.05}},
+    {"id": "hat", "kind": "drum_voice", "params": {"mode": 2, "pitch": 3100, "decay": 0.045, "level": 0.36, "tone": 0.82, "drive": 0}},
+    {"id": "mix", "kind": "mix6", "params": {"level": 0.65}},
+    {"id": "out", "kind": "audio_stereo", "params": {"gain": 0.65}}
+  ],
+  "cables": [
+    {"from": "pads", "output": "gate1", "to": "kick", "input": "trigger"},
+    {"from": "pads", "output": "gate2", "to": "clap", "input": "trigger"},
+    {"from": "pads", "output": "gate3", "to": "hat", "input": "trigger"},
+    {"from": "kick", "to": "mix", "input": "in1"},
+    {"from": "clap", "to": "mix", "input": "in2"},
+    {"from": "hat", "to": "mix", "input": "in3"},
+    {"from": "mix", "to": "out", "input": "left"}
+  ],
+  "output": "out"
+}

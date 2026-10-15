@@ -318,6 +318,17 @@ The panel shows Learn and controller values only from actual audio state.
 Smoothing, human-numbered channel filtering, MPE and 14-bit CC pairs are optional.
 See the [MIDI CC contract](docs/MIDI_CC.md) and [agent examples](docs/MCP.md#midi-controller-voltages-and-learn).
 
+**File → MIDI drum pads** connects three note gates to kick, clap and hi-hat
+voices. Press **Play**, then use **Z / X / C** for C4 / D4 / E4 (MIDI 60 / 62 / 64),
+click those on-screen keys, or play the same hardware notes. Click a Gate pad's
+assignment to enter −1…127; right-click for **Learn MIDI note** / **Cancel MIDI Learn**.
+Each gate lasts at least one millisecond; **Velocity** optionally scales its voltage.
+This example keeps Velocity off so even soft notes reliably cross the drum trigger
+threshold. Remapping a held cell preserves its gate; use the module's **Panic**
+button to clear held state, including while bypassed. Gate lamps show actual DSP
+activity and remain visible with room lights off. See the [Gate contract](docs/MIDI_GATE.md)
+and [agent note traces](docs/MCP.md#midi-note-gates-and-panic).
+
 Agents can render and inspect repeatable sample-timed MIDI phrases through MCP.
 See [MIDI and audio](docs/MIDI_AUDIO.md) for routing, device behavior, and examples.
 
@@ -374,7 +385,7 @@ and Off modes. The toolbar **MCP** button starts the local bridge and provides
 Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
 and [session controls](docs/MCP_SESSIONS.md).
 
-**59 built-in kinds:** sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
+**60 built-in kinds:** sixteen-pad [MIDI → Gate](docs/MIDI_GATE.md), sixteen-output [MIDI CC](docs/MIDI_CC.md), [polyphonic ADSR EG](docs/ADSR_EG.md), [eight-row S&H / Analog Shift Register](docs/SHIFT_REGISTER.md), [polyphonic Random Values](docs/RANDOM_VALUES.md), [seven-color Noise](docs/COLORED_NOISE.md), an original [physical string / beam resonator](docs/MODAL_RESONATOR.md), a four-output audio oscillator, a reference analog voice, [four-track scores and studio effects](docs/SCORE_AND_STUDIO.md), sequencer, sequential switches, ten-row [Pulses](docs/PULSES.md), latching [Push](docs/PUSH.md), polyphonic [Gates](docs/GATES.md), rack-mounted [Scope](docs/RACK_SCOPE.md), voltage, gate-processing and polyphonic utilities, MIDI → CV, stereo audio, and legacy modules. Try the connected examples in **File**, then drag modules from the docked library. Search controls and ports, filter by musical role, and save favorites without leaving the rack. Saved module bypass and atomic mute inversion share the UI and MCP history. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; kind count is not a count of completed equivalents.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 

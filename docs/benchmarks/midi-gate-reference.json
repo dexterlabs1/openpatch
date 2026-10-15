@@ -1,0 +1,2064 @@
+{
+  "reference": {
+    "rack_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Rack/8ea470f343058ade6f75f16d503a1eb330e1700c/src/core/MIDI_Gate.cpp",
+    "source_sha256": "c83b822aaacea3902d8f9cc85eeff9346ac8e95767e3f2632b8cb0556947a347",
+    "compiled_prefix_sha256": "3aefe236b92e10f88c9da1ee161c24494f59362831b264aba4375814f413c258",
+    "midi_routing_source_sha256": "6d24f741adf5ee4c9fde116b8d726545a7a4755f21d549ebb9ca3fd8b893700a",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "midi.hpp": "2dfb1fd885006b889420e2da3bbd21e45a117e9b3026650fc396cbb6e0acb8a9",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df"
+    }
+  },
+  "method": "Actual pinned MIDI_Gate class and genuine SDK InputQueue, temporarily compiled with widget/registration omitted, rack.hpp substituted for plugin.hpp and both namespaces closed. Production midi_gate.rs compiled unchanged with minimal host data types. Raw original sample indices, all sixteen output probes and every active lane, beginning with the first process call.",
+  "predeclared_manifest": {
+    "declared_before_first_comparison": true,
+    "rates": [
+      44100,
+      48000,
+      96000
+    ],
+    "absolute_volts": 1e-05,
+    "relative": 1e-06,
+    "alignment": "raw same-index samples, starting at the first process call",
+    "metadata": "exact maps, Learn state/completion frame, output widths and zero/nonzero gate/pulse edges",
+    "cases": {
+      "startup_defaults": "No events; constructor defaults and every output remain silent without reading uninitialized source velocities.",
+      "all_cells_all_wire_channels": "Every default cell and every wire lane, endpoint velocities, independent releases and retriggers.",
+      "all_128_notes_mapping_windows": "Eight sixteen-note banks cover all ordinary MIDI notes, all sixteen cells and all wire channels.",
+      "minimum_pulse_velocity_endpoints": "Same-sample on/off and velocities 1 and 127 at all rates; every raw pulse edge is checked.",
+      "short_and_long_notes": "Immediate, one-sample, short and long held notes retain the minimum pulse and source timer arithmetic.",
+      "repeated_note_timer_velocity": "Repeated positive NoteOn restarts the cell timer and replaces velocity; one release clears a shared gate.",
+      "zero_velocity_note_on_release": "Zero-velocity NoteOn releases without restarting its timer or producing a new event.",
+      "same_sample_event_order": "Ordered on/off/on, on/zero/off and off/on/off groups in the genuine SDK queue.",
+      "mono_channel_overlap_release": "All accepted channels merge into lane zero with last-event release semantics rather than note ownership.",
+      "channel_filter_and_unrelated_messages": "Human channel selection walks all sixteen channels; rejected notes and CC messages cannot alter gates.",
+      "mpe_hidden_lane_timer_freeze": "An unheld lane-16 minimum pulse freezes while mono is active and resumes at its exact remaining timer.",
+      "velocity_mode_toggle_held_cells": "Mode changes preserve held cells and stored velocities while changing output amplitude.",
+      "unmapped_held_cell_remap": "A held cell remains active through unmapping and remapping; the old note-off no longer finds it.",
+      "collision_arrays_keep_cell_signal": "Actual JSON array loader normalizes collisions last-cell-wins while displaced active cells retain signals.",
+      "learn_positive_repeated_collision": "Rejected channels, offs, zero velocity and CC do not Learn; a repeated positive note completes before matching.",
+      "learn_same_sample_first_message": "First accepted positive NoteOn wins among multiple ordered messages on the same sample.",
+      "source_panic_preserves_learn": "The genuine source panic primitive clears gates/timers and retains an armed Learn request.",
+      "json_mapping_options_snapshot_restore": "Actual JSON snapshot and restore change mappings plus velocity/MPE options while preserving cell signal state.",
+      "parameter_adoption_preserves_cells": "Mapping, channel, velocity and MPE edits exercise Rust rebuild/adoption against source public configuration.",
+      "unmapped_notes_ignored": "All 128 notes are received across sixteen wire lanes while every assignment is unmapped.",
+      "source_panic_with_held_notes": "Source panic clears held gates and minimum pulses, followed by new positive notes and releases."
+    },
+    "frames_per_case": 4096
+  },
+  "manifest_sha256": "5cd7037e89702826d60eb0ce1774d68c451d2b61107a127ff6279dd74b3de2e0",
+  "tolerances": {
+    "absolute_volts": 1e-05,
+    "relative": 1e-06,
+    "maps_learning_completion_frame_output_width_gate_and_pulse_edges": "exact",
+    "alignment": "same sample index; no warm-up, shifts, exclusions or threshold exemptions"
+  },
+  "limitations": [
+    "No application, native window, MIDI driver/device/context, hardware endpoint or audio device is opened",
+    "Exact pinned InputDevice channel-selection rule is applied in the driver before timestamped messages enter the genuine SDK InputQueue; hardware routing is outside this comparison",
+    "All sixteen source outputs are marked connected as probes to observe every lane. SDK disconnected port channel metadata is zero, while the source gate DSP still advances; OpenPatch publishes logical width 1/16 even unconsumed, verified separately by Engine tests",
+    "Source panic() is exercised directly and deliberately preserves armed Learn; OpenPatch host Panic cancellation, bypass, initialization/reset, endpoint/transport behavior and emergency fallback are separate host tests",
+    "Reference constructor velocity bytes are not initialized by the driver and are never read before the actual DSP's valid positive NoteOn; no hidden velocity initialization or prewarming",
+    "JSON snapshots call actual dataToJson/dataFromJson; only hardware MIDI endpoint JSON is removed before restore, while note mappings and velocity/MPE options are restored by the genuine class",
+    "Configuration is applied through source public options/JSON maps and Rust build/adopt. Configuration-triggered Learn cancellation is explicit host policy, separate from the source panic primitive",
+    "Session capture/save/history, durable mailbox/backpressure/stale kind/instance/epoch/backend handling, UI, native hardware qualification and performance are separate gates",
+    "Only this SDK/compiler/platform combination is numerically qualified; another platform must execute its own actual-class comparison"
+  ],
+  "production_source_sha256": "9ee40f3f63a916101cdd62ca957ac848047a9bde1e635828a460885397efeacc",
+  "driver_sha256": {
+    "run.py": "0905e9466d26f7f6af0c947c4ea01b8d66646e9cd3f50f6d2d61b8a171747df1",
+    "sdk_probe.cpp": "c9217823558a9a2a9f250669aaedce61622a1ba243b2b9a33af3270e8167118d",
+    "rust_probe.rs": "9a36497fcc5383eb7f1772be999e5ee56d5404c08beb5a8e28058d0d58d227d3",
+    "fixtures.json": "5cd7037e89702826d60eb0ce1774d68c451d2b61107a127ff6279dd74b3de2e0"
+  },
+  "frozen_cc_unchanged": {
+    "production_source_sha256": "9d98b0f2b5c17ffddd0471488ce68c53af50ca7a8b1e7d9be5a5f8115e99957d",
+    "drivers_match_previous_report": true
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpp_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off"
+    ],
+    "rust_flags": [
+      "--edition=2021",
+      "-O",
+      "-C",
+      "target-feature=-fma"
+    ],
+    "floating_point": "C++ contraction disabled; Rust FMA target feature disabled; no fast-math or fused operations"
+  },
+  "cases": [
+    {
+      "name": "startup_defaults",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "8a84bd7be41c514d4c1a29fe799f5b8f4fa62dff84416342071d02824d61f241",
+      "input_crc32": "52a1c49f",
+      "trace_sha256": {
+        "reference": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a",
+        "production": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a"
+      },
+      "trace_crc32": {
+        "reference": "dfec9485",
+        "production": "dfec9485"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.7632300420082174,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_cells_all_wire_channels",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b06861096abc6fc232ecaaf05e8cba86b7f72e88e18b962c338a51a288a6a9c1",
+      "input_crc32": "19b5baa2",
+      "trace_sha256": {
+        "reference": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91",
+        "production": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91"
+      },
+      "trace_crc32": {
+        "reference": "5e183c6d",
+        "production": "5e183c6d"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.22031883300223853,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_notes_mapping_windows",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "acd869d8d4dda21144ee0d034958536f88f1a2561ed644a7847377bb453316ea",
+      "input_crc32": "cf4daed1",
+      "trace_sha256": {
+        "reference": "125650d5268b2de422dbe207e0a5c850092fa48a66f3c2aaa753c3281cd13ab0",
+        "production": "125650d5268b2de422dbe207e0a5c850092fa48a66f3c2aaa753c3281cd13ab0"
+      },
+      "trace_crc32": {
+        "reference": "ea2336cc",
+        "production": "ea2336cc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.23636079199786764,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "minimum_pulse_velocity_endpoints",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1dc0f677b6295c35f8944beb69680456ff5dd3646c2b3dc9828464f727b7b0ee",
+      "input_crc32": "c0000640",
+      "trace_sha256": {
+        "reference": "f08a6b628a285850ceddbff91b086928efac339649e7da53fbbd1990f19dd99a",
+        "production": "f08a6b628a285850ceddbff91b086928efac339649e7da53fbbd1990f19dd99a"
+      },
+      "trace_crc32": {
+        "reference": "e6c51073",
+        "production": "e6c51073"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.19376366700453218,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_and_long_notes",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "29139a46cd50450ed50a70082fd0fed8b31467e2200bc0739f3ea2dec655e9b4",
+      "input_crc32": "476ba5fb",
+      "trace_sha256": {
+        "reference": "19effe14fa26282f4108593c3ffa0542151927180ec242caa3cbff6a630e5a68",
+        "production": "19effe14fa26282f4108593c3ffa0542151927180ec242caa3cbff6a630e5a68"
+      },
+      "trace_crc32": {
+        "reference": "7a36b223",
+        "production": "7a36b223"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.18357933299557772,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "repeated_note_timer_velocity",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "3fe8293e0561e0c0ca56b679b6a07da2b136883a82f3abeeecb50b351bc2b5dd",
+      "input_crc32": "cc40cb4f",
+      "trace_sha256": {
+        "reference": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2",
+        "production": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2"
+      },
+      "trace_crc32": {
+        "reference": "7e42571c",
+        "production": "7e42571c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1267811249999795,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "zero_velocity_note_on_release",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "26d0eaf0cb91c26005eb3408e1ba5240e336e23ff6026784fcfb4868178820c1",
+      "input_crc32": "1c919c4c",
+      "trace_sha256": {
+        "reference": "bca29bc57e19ac031e0bbbc10813955ce170bc38a150fc5e7a4b486fbe2b578a",
+        "production": "bca29bc57e19ac031e0bbbc10813955ce170bc38a150fc5e7a4b486fbe2b578a"
+      },
+      "trace_crc32": {
+        "reference": "db252a73",
+        "production": "db252a73"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1961339170084102,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_order",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0d906ec5362093001cdaf6dfb14cb4c654ea5e2fa10a49afe83069db60dacc09",
+      "input_crc32": "20498c45",
+      "trace_sha256": {
+        "reference": "410e30d3680f594810d18298faf5274aa0779957d14f50f0604f60b7f756b467",
+        "production": "410e30d3680f594810d18298faf5274aa0779957d14f50f0604f60b7f756b467"
+      },
+      "trace_crc32": {
+        "reference": "a5c569bc",
+        "production": "a5c569bc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20330016598745715,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_overlap_release",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "501311a5683c63b6f1bdf3a8833b23dd27abea9da4cd0f86564417698ccd375c",
+      "input_crc32": "b179c7cc",
+      "trace_sha256": {
+        "reference": "ffb6eef35b3b24dc0ec9044b465f4f9194df40740cbda224c90fc98ce781c3a5",
+        "production": "ffb6eef35b3b24dc0ec9044b465f4f9194df40740cbda224c90fc98ce781c3a5"
+      },
+      "trace_crc32": {
+        "reference": "38ba0841",
+        "production": "38ba0841"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.18901516699406784,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "channel_filter_and_unrelated_messages",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1c8ab519d8a0ea0896b8b09e2c689a6614ace2f23c7936fb91c5d74b08719690",
+      "input_crc32": "8caffdd4",
+      "trace_sha256": {
+        "reference": "3db0d4367a2132eb439782fa91f728bea0caa69e4b13663cfbb65c7eefb76e54",
+        "production": "3db0d4367a2132eb439782fa91f728bea0caa69e4b13663cfbb65c7eefb76e54"
+      },
+      "trace_crc32": {
+        "reference": "bae25df1",
+        "production": "bae25df1"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20199141699413303,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_hidden_lane_timer_freeze",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 572416,
+      "input_sha256": "c4157ea9ffde247565d22117aa843cc7e35fe7d2096802d8cdc1655a7ed08a93",
+      "input_crc32": "9b7d5721",
+      "trace_sha256": {
+        "reference": "9bfbd178d1c9b9ff8bb3047c2812c6b3d6e51e1a4390ca4b1831d9d2f5897f31",
+        "production": "9bfbd178d1c9b9ff8bb3047c2812c6b3d6e51e1a4390ca4b1831d9d2f5897f31"
+      },
+      "trace_crc32": {
+        "reference": "ab6b7fc4",
+        "production": "ab6b7fc4"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20691508300660644,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "velocity_mode_toggle_held_cells",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "7033e26abf6e550033d2fe860b75a30d2b5de272ea142b619fa08315fa9eeb94",
+      "input_crc32": "b951f8e0",
+      "trace_sha256": {
+        "reference": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087",
+        "production": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087"
+      },
+      "trace_crc32": {
+        "reference": "b3c7c180",
+        "production": "b3c7c180"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.0835149999911664,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_held_cell_remap",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "27a7965e856fce294131f8f6c7322bf0d79e298467f3020c82d1da29b9eb9384",
+      "input_crc32": "85113995",
+      "trace_sha256": {
+        "reference": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606",
+        "production": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606"
+      },
+      "trace_crc32": {
+        "reference": "372254fc",
+        "production": "372254fc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.12198833399452269,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "collision_arrays_keep_cell_signal",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b5fb2273fbf3965bc6ad0f894c0f93a6dedde90e9a31f4611bd6dd57570e180b",
+      "input_crc32": "1aef8199",
+      "trace_sha256": {
+        "reference": "451c426ea7b1fa34bd97fc39b229812a653e14c51a757c02c34f652d38b5ee05",
+        "production": "451c426ea7b1fa34bd97fc39b229812a653e14c51a757c02c34f652d38b5ee05"
+      },
+      "trace_crc32": {
+        "reference": "7323f4b8",
+        "production": "7323f4b8"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.2104412089975085,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_positive_repeated_collision",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f0b36f5642dfcbad99b29e885b1aa8803358a49d5ef21ed2a487093e58fc8531",
+      "input_crc32": "82b49c25",
+      "trace_sha256": {
+        "reference": "476e46f742a5070c8271cee15577766099ddf7c0cc593ebb2fd06f6c7c601f2f",
+        "production": "476e46f742a5070c8271cee15577766099ddf7c0cc593ebb2fd06f6c7c601f2f"
+      },
+      "trace_crc32": {
+        "reference": "becb7137",
+        "production": "becb7137"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1391719590028515,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_same_sample_first_message",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "49c33c86dfc94841782686dd4d8f85ca38c136a76b122bb7f9d7b43b5fb9f40d",
+      "input_crc32": "6fa4ba5e",
+      "trace_sha256": {
+        "reference": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e",
+        "production": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e"
+      },
+      "trace_crc32": {
+        "reference": "9401bd19",
+        "production": "9401bd19"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.2245496250106953,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_preserves_learn",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "98241ee2aa76e4516f09df4543bfb9b513bfa6cff5cdc7465badb5e6f2d77163",
+      "input_crc32": "02ada209",
+      "trace_sha256": {
+        "reference": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796",
+        "production": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796"
+      },
+      "trace_crc32": {
+        "reference": "ec4c7f6e",
+        "production": "ec4c7f6e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.0968100830068579,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_mapping_options_snapshot_restore",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 802816,
+      "input_sha256": "e911b3dacded9956656a14bfd64fcf070a1e3cd7ca8c21890cff7023da6d5af4",
+      "input_crc32": "c36aa71b",
+      "trace_sha256": {
+        "reference": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3",
+        "production": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3"
+      },
+      "trace_crc32": {
+        "reference": "bba254c3",
+        "production": "bba254c3"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.14764275000197813,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption_preserves_cells",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "8cb47ef861d826abf5eed4cd64438599c350bc91b04569f118e24101a4ce8cf8",
+      "input_crc32": "94672ed1",
+      "trace_sha256": {
+        "reference": "fb396a7af97f60cc7d00389ba26f77a3e87f30e6fa0794c5ff46e3a3309e6f03",
+        "production": "fb396a7af97f60cc7d00389ba26f77a3e87f30e6fa0794c5ff46e3a3309e6f03"
+      },
+      "trace_crc32": {
+        "reference": "43ecffd3",
+        "production": "43ecffd3"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.15267404100450221,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_notes_ignored",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c425e4d7b74b44a4ab89c3d26962b5b0cae8a9ca5934465d4429e05d90ab21ad",
+      "input_crc32": "df32329f",
+      "trace_sha256": {
+        "reference": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc",
+        "production": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc"
+      },
+      "trace_crc32": {
+        "reference": "171dc756",
+        "production": "171dc756"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20937745799892582,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_with_held_notes",
+      "sample_rate": 44100,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c3aa0235806840531aeb4e17d7e39f91572476762b2bfde8e25669411f1ee61f",
+      "input_crc32": "87d6b5ef",
+      "trace_sha256": {
+        "reference": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2",
+        "production": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2"
+      },
+      "trace_crc32": {
+        "reference": "b0a0ed25",
+        "production": "b0a0ed25"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.09388595800555777,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "startup_defaults",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "8a84bd7be41c514d4c1a29fe799f5b8f4fa62dff84416342071d02824d61f241",
+      "input_crc32": "52a1c49f",
+      "trace_sha256": {
+        "reference": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a",
+        "production": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a"
+      },
+      "trace_crc32": {
+        "reference": "dfec9485",
+        "production": "dfec9485"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.09390179200272541,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_cells_all_wire_channels",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b06861096abc6fc232ecaaf05e8cba86b7f72e88e18b962c338a51a288a6a9c1",
+      "input_crc32": "19b5baa2",
+      "trace_sha256": {
+        "reference": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91",
+        "production": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91"
+      },
+      "trace_crc32": {
+        "reference": "5e183c6d",
+        "production": "5e183c6d"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.12039720799657516,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_notes_mapping_windows",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "acd869d8d4dda21144ee0d034958536f88f1a2561ed644a7847377bb453316ea",
+      "input_crc32": "cf4daed1",
+      "trace_sha256": {
+        "reference": "2f822b3f17b03b1ba4847f95f1c28807fdfebb7963c961d01348846f4ef2e9e4",
+        "production": "2f822b3f17b03b1ba4847f95f1c28807fdfebb7963c961d01348846f4ef2e9e4"
+      },
+      "trace_crc32": {
+        "reference": "994c0b4f",
+        "production": "994c0b4f"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.08797745800984558,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "minimum_pulse_velocity_endpoints",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1dc0f677b6295c35f8944beb69680456ff5dd3646c2b3dc9828464f727b7b0ee",
+      "input_crc32": "c0000640",
+      "trace_sha256": {
+        "reference": "430df088944f64d84bccdb51de755d730aef26a064a70587bb7c4e6f8df57719",
+        "production": "430df088944f64d84bccdb51de755d730aef26a064a70587bb7c4e6f8df57719"
+      },
+      "trace_crc32": {
+        "reference": "8611e23c",
+        "production": "8611e23c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.09934279099979904,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_and_long_notes",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "29139a46cd50450ed50a70082fd0fed8b31467e2200bc0739f3ea2dec655e9b4",
+      "input_crc32": "476ba5fb",
+      "trace_sha256": {
+        "reference": "876abf6d5a6f2908293e4c8941ee1ef28935027a2de5b96e343af1ef626420d4",
+        "production": "876abf6d5a6f2908293e4c8941ee1ef28935027a2de5b96e343af1ef626420d4"
+      },
+      "trace_crc32": {
+        "reference": "24d2977a",
+        "production": "24d2977a"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.08334070901037194,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "repeated_note_timer_velocity",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "3fe8293e0561e0c0ca56b679b6a07da2b136883a82f3abeeecb50b351bc2b5dd",
+      "input_crc32": "cc40cb4f",
+      "trace_sha256": {
+        "reference": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2",
+        "production": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2"
+      },
+      "trace_crc32": {
+        "reference": "7e42571c",
+        "production": "7e42571c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.14958829199895263,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "zero_velocity_note_on_release",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "26d0eaf0cb91c26005eb3408e1ba5240e336e23ff6026784fcfb4868178820c1",
+      "input_crc32": "1c919c4c",
+      "trace_sha256": {
+        "reference": "e8033d8194a8d04791f4a3ec99796df0e9ee39cab93611169d2733059c89f157",
+        "production": "e8033d8194a8d04791f4a3ec99796df0e9ee39cab93611169d2733059c89f157"
+      },
+      "trace_crc32": {
+        "reference": "3c3ec8db",
+        "production": "3c3ec8db"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.09055295899452176,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_order",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0d906ec5362093001cdaf6dfb14cb4c654ea5e2fa10a49afe83069db60dacc09",
+      "input_crc32": "20498c45",
+      "trace_sha256": {
+        "reference": "4a849f538c574c365afcc79f617ca9f36fd630e849c5f594abc3983536b21e49",
+        "production": "4a849f538c574c365afcc79f617ca9f36fd630e849c5f594abc3983536b21e49"
+      },
+      "trace_crc32": {
+        "reference": "c17cb6cb",
+        "production": "c17cb6cb"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.10582241699739825,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_overlap_release",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "501311a5683c63b6f1bdf3a8833b23dd27abea9da4cd0f86564417698ccd375c",
+      "input_crc32": "b179c7cc",
+      "trace_sha256": {
+        "reference": "f94a2232d11fe91e147135dd20e659c84fbed29609f64017dbd31d24c5ff5a9c",
+        "production": "f94a2232d11fe91e147135dd20e659c84fbed29609f64017dbd31d24c5ff5a9c"
+      },
+      "trace_crc32": {
+        "reference": "52d1ab0c",
+        "production": "52d1ab0c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.0867403329903027,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "channel_filter_and_unrelated_messages",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1c8ab519d8a0ea0896b8b09e2c689a6614ace2f23c7936fb91c5d74b08719690",
+      "input_crc32": "8caffdd4",
+      "trace_sha256": {
+        "reference": "75a2d0902ea1c49f073560eda7d4c4ea561e0d19b6acdf1ea99267418d27726b",
+        "production": "75a2d0902ea1c49f073560eda7d4c4ea561e0d19b6acdf1ea99267418d27726b"
+      },
+      "trace_crc32": {
+        "reference": "b475ffec",
+        "production": "b475ffec"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1725940839969553,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_hidden_lane_timer_freeze",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 572416,
+      "input_sha256": "c4157ea9ffde247565d22117aa843cc7e35fe7d2096802d8cdc1655a7ed08a93",
+      "input_crc32": "9b7d5721",
+      "trace_sha256": {
+        "reference": "9e0c9b5260a3131d0ee60217b2f5f84bb71381e6252baeaf3c9aecb31c1a0494",
+        "production": "9e0c9b5260a3131d0ee60217b2f5f84bb71381e6252baeaf3c9aecb31c1a0494"
+      },
+      "trace_crc32": {
+        "reference": "1f758668",
+        "production": "1f758668"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1015706250036601,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "velocity_mode_toggle_held_cells",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "7033e26abf6e550033d2fe860b75a30d2b5de272ea142b619fa08315fa9eeb94",
+      "input_crc32": "b951f8e0",
+      "trace_sha256": {
+        "reference": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087",
+        "production": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087"
+      },
+      "trace_crc32": {
+        "reference": "b3c7c180",
+        "production": "b3c7c180"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.13889070801087655,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_held_cell_remap",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "27a7965e856fce294131f8f6c7322bf0d79e298467f3020c82d1da29b9eb9384",
+      "input_crc32": "85113995",
+      "trace_sha256": {
+        "reference": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606",
+        "production": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606"
+      },
+      "trace_crc32": {
+        "reference": "372254fc",
+        "production": "372254fc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.23230874999717344,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "collision_arrays_keep_cell_signal",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b5fb2273fbf3965bc6ad0f894c0f93a6dedde90e9a31f4611bd6dd57570e180b",
+      "input_crc32": "1aef8199",
+      "trace_sha256": {
+        "reference": "c1c1c48035e8496aa21e0f6303fb7629b10ea5962b70a75b026ffa0d741eba84",
+        "production": "c1c1c48035e8496aa21e0f6303fb7629b10ea5962b70a75b026ffa0d741eba84"
+      },
+      "trace_crc32": {
+        "reference": "36730232",
+        "production": "36730232"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1234790839953348,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_positive_repeated_collision",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f0b36f5642dfcbad99b29e885b1aa8803358a49d5ef21ed2a487093e58fc8531",
+      "input_crc32": "82b49c25",
+      "trace_sha256": {
+        "reference": "ee50eb28cbaabcb1ebcbe0161fef37710118af2390935689663de1bce8365238",
+        "production": "ee50eb28cbaabcb1ebcbe0161fef37710118af2390935689663de1bce8365238"
+      },
+      "trace_crc32": {
+        "reference": "1a3feb58",
+        "production": "1a3feb58"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.10355137499573175,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_same_sample_first_message",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "49c33c86dfc94841782686dd4d8f85ca38c136a76b122bb7f9d7b43b5fb9f40d",
+      "input_crc32": "6fa4ba5e",
+      "trace_sha256": {
+        "reference": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e",
+        "production": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e"
+      },
+      "trace_crc32": {
+        "reference": "9401bd19",
+        "production": "9401bd19"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.09224404201086145,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_preserves_learn",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "98241ee2aa76e4516f09df4543bfb9b513bfa6cff5cdc7465badb5e6f2d77163",
+      "input_crc32": "02ada209",
+      "trace_sha256": {
+        "reference": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796",
+        "production": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796"
+      },
+      "trace_crc32": {
+        "reference": "ec4c7f6e",
+        "production": "ec4c7f6e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.17164245899766684,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_mapping_options_snapshot_restore",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 802816,
+      "input_sha256": "e911b3dacded9956656a14bfd64fcf070a1e3cd7ca8c21890cff7023da6d5af4",
+      "input_crc32": "c36aa71b",
+      "trace_sha256": {
+        "reference": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3",
+        "production": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3"
+      },
+      "trace_crc32": {
+        "reference": "bba254c3",
+        "production": "bba254c3"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.18593712500296533,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption_preserves_cells",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "8cb47ef861d826abf5eed4cd64438599c350bc91b04569f118e24101a4ce8cf8",
+      "input_crc32": "94672ed1",
+      "trace_sha256": {
+        "reference": "e00cafaf1bf386cfdac54f66ebb96bfca0677af4b5e5fce65633a2bc232319ec",
+        "production": "e00cafaf1bf386cfdac54f66ebb96bfca0677af4b5e5fce65633a2bc232319ec"
+      },
+      "trace_crc32": {
+        "reference": "92909e91",
+        "production": "92909e91"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.15589887500391342,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_notes_ignored",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c425e4d7b74b44a4ab89c3d26962b5b0cae8a9ca5934465d4429e05d90ab21ad",
+      "input_crc32": "df32329f",
+      "trace_sha256": {
+        "reference": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc",
+        "production": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc"
+      },
+      "trace_crc32": {
+        "reference": "171dc756",
+        "production": "171dc756"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.17437970799801406,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_with_held_notes",
+      "sample_rate": 48000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c3aa0235806840531aeb4e17d7e39f91572476762b2bfde8e25669411f1ee61f",
+      "input_crc32": "87d6b5ef",
+      "trace_sha256": {
+        "reference": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2",
+        "production": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2"
+      },
+      "trace_crc32": {
+        "reference": "b0a0ed25",
+        "production": "b0a0ed25"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.16678366599080618,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "startup_defaults",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "8a84bd7be41c514d4c1a29fe799f5b8f4fa62dff84416342071d02824d61f241",
+      "input_crc32": "52a1c49f",
+      "trace_sha256": {
+        "reference": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a",
+        "production": "30092bf274fa196b1955325e32641414ca00a0ea762c56c1f235455dfa48865a"
+      },
+      "trace_crc32": {
+        "reference": "dfec9485",
+        "production": "dfec9485"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.22016716700454708,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_cells_all_wire_channels",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b06861096abc6fc232ecaaf05e8cba86b7f72e88e18b962c338a51a288a6a9c1",
+      "input_crc32": "19b5baa2",
+      "trace_sha256": {
+        "reference": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91",
+        "production": "7e8138ec5289cbf8901d0ab51bcc565b0ab59757a33255d73519e0a2ee635a91"
+      },
+      "trace_crc32": {
+        "reference": "5e183c6d",
+        "production": "5e183c6d"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20841770799597725,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "all_128_notes_mapping_windows",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "acd869d8d4dda21144ee0d034958536f88f1a2561ed644a7847377bb453316ea",
+      "input_crc32": "cf4daed1",
+      "trace_sha256": {
+        "reference": "9d8e2c824da772e04479cddc36647c1511175c4057b9d72b22c97b062edca8bd",
+        "production": "9d8e2c824da772e04479cddc36647c1511175c4057b9d72b22c97b062edca8bd"
+      },
+      "trace_crc32": {
+        "reference": "28401644",
+        "production": "28401644"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1858067090070108,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "minimum_pulse_velocity_endpoints",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1dc0f677b6295c35f8944beb69680456ff5dd3646c2b3dc9828464f727b7b0ee",
+      "input_crc32": "c0000640",
+      "trace_sha256": {
+        "reference": "abf16390eaad43d564f1f67b4167f3e36d551ebb97e65131821c0df9dd827109",
+        "production": "abf16390eaad43d564f1f67b4167f3e36d551ebb97e65131821c0df9dd827109"
+      },
+      "trace_crc32": {
+        "reference": "dbaca6bb",
+        "production": "dbaca6bb"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20503524999367073,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "short_and_long_notes",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "29139a46cd50450ed50a70082fd0fed8b31467e2200bc0739f3ea2dec655e9b4",
+      "input_crc32": "476ba5fb",
+      "trace_sha256": {
+        "reference": "e90974e139659cbacf02baaeeb16a942896736b8b522aa688e326453a0388d0b",
+        "production": "e90974e139659cbacf02baaeeb16a942896736b8b522aa688e326453a0388d0b"
+      },
+      "trace_crc32": {
+        "reference": "3be1e48a",
+        "production": "3be1e48a"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.17992687500372995,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "repeated_note_timer_velocity",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "3fe8293e0561e0c0ca56b679b6a07da2b136883a82f3abeeecb50b351bc2b5dd",
+      "input_crc32": "cc40cb4f",
+      "trace_sha256": {
+        "reference": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2",
+        "production": "6c51f4753752be7684410d5fe807527ab00cb2b117c3fcb414d9a881c9ccb3f2"
+      },
+      "trace_crc32": {
+        "reference": "7e42571c",
+        "production": "7e42571c"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.19149066699901596,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "zero_velocity_note_on_release",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "26d0eaf0cb91c26005eb3408e1ba5240e336e23ff6026784fcfb4868178820c1",
+      "input_crc32": "1c919c4c",
+      "trace_sha256": {
+        "reference": "ab49a2293c2ed0190543a2ab75e2c0737baa81862850c620a4936230d7d95b4e",
+        "production": "ab49a2293c2ed0190543a2ab75e2c0737baa81862850c620a4936230d7d95b4e"
+      },
+      "trace_crc32": {
+        "reference": "2cae3f4f",
+        "production": "2cae3f4f"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.19916566699976102,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "same_sample_event_order",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "0d906ec5362093001cdaf6dfb14cb4c654ea5e2fa10a49afe83069db60dacc09",
+      "input_crc32": "20498c45",
+      "trace_sha256": {
+        "reference": "5adc4737c64ff7ae0ec5910ce6b01269cf85516663606cd2dcc2b8b4766f35f5",
+        "production": "5adc4737c64ff7ae0ec5910ce6b01269cf85516663606cd2dcc2b8b4766f35f5"
+      },
+      "trace_crc32": {
+        "reference": "354c281d",
+        "production": "354c281d"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.21000512500177138,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_overlap_release",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 65536,
+      "input_sha256": "501311a5683c63b6f1bdf3a8833b23dd27abea9da4cd0f86564417698ccd375c",
+      "input_crc32": "b179c7cc",
+      "trace_sha256": {
+        "reference": "dd1048fa2d240f507cc25a558ce206ada2171438cdde95854532ce3e5066b0af",
+        "production": "dd1048fa2d240f507cc25a558ce206ada2171438cdde95854532ce3e5066b0af"
+      },
+      "trace_crc32": {
+        "reference": "9f227175",
+        "production": "9f227175"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.23636529200302903,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "channel_filter_and_unrelated_messages",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "1c8ab519d8a0ea0896b8b09e2c689a6614ace2f23c7936fb91c5d74b08719690",
+      "input_crc32": "8caffdd4",
+      "trace_sha256": {
+        "reference": "af7b9385f5631bfa2cc08b25ff15365b17bf14b32922a3b313b41edf1deb85ec",
+        "production": "af7b9385f5631bfa2cc08b25ff15365b17bf14b32922a3b313b41edf1deb85ec"
+      },
+      "trace_crc32": {
+        "reference": "46de7b9e",
+        "production": "46de7b9e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.11631816599401645,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mpe_hidden_lane_timer_freeze",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 572416,
+      "input_sha256": "c4157ea9ffde247565d22117aa843cc7e35fe7d2096802d8cdc1655a7ed08a93",
+      "input_crc32": "9b7d5721",
+      "trace_sha256": {
+        "reference": "e47e4a6175e71f0fccff7dde384362fd5a447374be26381fa2da6a24428ad9f9",
+        "production": "e47e4a6175e71f0fccff7dde384362fd5a447374be26381fa2da6a24428ad9f9"
+      },
+      "trace_crc32": {
+        "reference": "b40d050a",
+        "production": "b40d050a"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1556990829994902,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "velocity_mode_toggle_held_cells",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "7033e26abf6e550033d2fe860b75a30d2b5de272ea142b619fa08315fa9eeb94",
+      "input_crc32": "b951f8e0",
+      "trace_sha256": {
+        "reference": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087",
+        "production": "2b06a404323a2128624a9b3d95895e5ff672cb012b23f56a9ab517a9f3cfa087"
+      },
+      "trace_crc32": {
+        "reference": "b3c7c180",
+        "production": "b3c7c180"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.2358631250099279,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_held_cell_remap",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "27a7965e856fce294131f8f6c7322bf0d79e298467f3020c82d1da29b9eb9384",
+      "input_crc32": "85113995",
+      "trace_sha256": {
+        "reference": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606",
+        "production": "1536e5ffb9aef9661675cd719c249ecdb447831516bfa43826f71d7f3deb2606"
+      },
+      "trace_crc32": {
+        "reference": "372254fc",
+        "production": "372254fc"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.22215666699048597,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "collision_arrays_keep_cell_signal",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "b5fb2273fbf3965bc6ad0f894c0f93a6dedde90e9a31f4611bd6dd57570e180b",
+      "input_crc32": "1aef8199",
+      "trace_sha256": {
+        "reference": "ef3c5e5569bdf1ac6b34556d83163b44932767d56b4a77e01004f4e47d3e52f9",
+        "production": "ef3c5e5569bdf1ac6b34556d83163b44932767d56b4a77e01004f4e47d3e52f9"
+      },
+      "trace_crc32": {
+        "reference": "b9d9c436",
+        "production": "b9d9c436"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.21602154200081713,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_positive_repeated_collision",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "f0b36f5642dfcbad99b29e885b1aa8803358a49d5ef21ed2a487093e58fc8531",
+      "input_crc32": "82b49c25",
+      "trace_sha256": {
+        "reference": "84a77c3b9e2b480d3d15044c2c170e4dec0602f8826f4e227d1a220f72c6e773",
+        "production": "84a77c3b9e2b480d3d15044c2c170e4dec0602f8826f4e227d1a220f72c6e773"
+      },
+      "trace_crc32": {
+        "reference": "c76776e9",
+        "production": "c76776e9"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.21919408300891519,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "learn_same_sample_first_message",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "49c33c86dfc94841782686dd4d8f85ca38c136a76b122bb7f9d7b43b5fb9f40d",
+      "input_crc32": "6fa4ba5e",
+      "trace_sha256": {
+        "reference": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e",
+        "production": "8032b76b6d47d346f42ea08a6852cbd2c999babc798e1e0c9b532d80d24ab50e"
+      },
+      "trace_crc32": {
+        "reference": "9401bd19",
+        "production": "9401bd19"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.20787158400344197,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_preserves_learn",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "98241ee2aa76e4516f09df4543bfb9b513bfa6cff5cdc7465badb5e6f2d77163",
+      "input_crc32": "02ada209",
+      "trace_sha256": {
+        "reference": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796",
+        "production": "9c548f4bf1408949c00b559d2a75410fe37f1cc4c72ea8dd9bbd41e72b442796"
+      },
+      "trace_crc32": {
+        "reference": "ec4c7f6e",
+        "production": "ec4c7f6e"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.18624904200260062,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "json_mapping_options_snapshot_restore",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 802816,
+      "input_sha256": "e911b3dacded9956656a14bfd64fcf070a1e3cd7ca8c21890cff7023da6d5af4",
+      "input_crc32": "c36aa71b",
+      "trace_sha256": {
+        "reference": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3",
+        "production": "734b6841253109cd62b918e06ccd93d194e2f5bb9a1c55b524d19d356f1b81a3"
+      },
+      "trace_crc32": {
+        "reference": "bba254c3",
+        "production": "bba254c3"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.17060808300448116,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "parameter_adoption_preserves_cells",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 554176,
+      "input_sha256": "8cb47ef861d826abf5eed4cd64438599c350bc91b04569f118e24101a4ce8cf8",
+      "input_crc32": "94672ed1",
+      "trace_sha256": {
+        "reference": "716e80d0b4cfc3f1d2bd45920554bb97290a9d856cd4170e5f0e79f6626bda99",
+        "production": "716e80d0b4cfc3f1d2bd45920554bb97290a9d856cd4170e5f0e79f6626bda99"
+      },
+      "trace_crc32": {
+        "reference": "4ad71066",
+        "production": "4ad71066"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 10.0,
+        "actual_volts": 10.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.9999999999999998e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.24676504099625163,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "unmapped_notes_ignored",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c425e4d7b74b44a4ab89c3d26962b5b0cae8a9ca5934465d4429e05d90ab21ad",
+      "input_crc32": "df32329f",
+      "trace_sha256": {
+        "reference": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc",
+        "production": "853bcd2105fb101c599b49458fb39dc5809472dee10928b54cdb54937c78fffc"
+      },
+      "trace_crc32": {
+        "reference": "171dc756",
+        "production": "171dc756"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.0,
+        "actual_volts": 0.0,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.1553273750032531,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "source_panic_with_held_notes",
+      "sample_rate": 96000,
+      "frames": 4096,
+      "active_lane_samples": 1048576,
+      "input_sha256": "c3aa0235806840531aeb4e17d7e39f91572476762b2bfde8e25669411f1ee61f",
+      "input_crc32": "87d6b5ef",
+      "trace_sha256": {
+        "reference": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2",
+        "production": "3f697bf66a31ab2971c7ce54489504b6fc79cb835c6ba5703f9704f9d0346cb2"
+      },
+      "trace_crc32": {
+        "reference": "b0a0ed25",
+        "production": "b0a0ed25"
+      },
+      "worst_sample": {
+        "frame_zero_based": 0,
+        "cell_one_based": 1,
+        "lane_one_based": 1,
+        "reference_volts": 0.07874015718698502,
+        "actual_volts": 0.07874015718698502,
+        "absolute_error_volts": 0.0,
+        "tolerance_volts": 1.0078740157186986e-05
+      },
+      "maximum_tolerance_ratio": 0.0,
+      "metadata_mismatches": 0,
+      "gate_or_pulse_edge_mismatches": 0,
+      "driver_execution_seconds": 0.2261410000064643,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "executable_sha256": {
+    "reference": "86906529ccff5e44007812140d80608cb473a99ea6f5047cc0340ba828f78d7c",
+    "production": "4a692392c4cfd47c4d383bced4c8d7a4e96e9b689423ad53a5bc1c898c14f023"
+  },
+  "passed": true,
+  "total_frames": 258048,
+  "total_active_lane_samples": 56513088,
+  "elapsed_seconds": 32.47154426574707,
+  "run_utc": "2026-10-15T07:13:40Z"
+}

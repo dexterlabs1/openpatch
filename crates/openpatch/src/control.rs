@@ -6,6 +6,8 @@ mod layout_history;
 mod midi_cc;
 #[cfg(test)]
 mod midi_cc_tests;
+#[cfg(test)]
+mod midi_gate_tests;
 mod preset_tools;
 mod project_capture;
 mod running;
@@ -61,9 +63,110 @@ pub struct MidiCcLearnReceipt {
     pub completion: openpatch_core::MidiCcLearnCompletion,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct MidiLearnCommitKey {
+    backend_ptr: usize,
+    backend: u64,
+    kind: &'static str,
+    id: String,
+    instance: u64,
+    epoch: u64,
+    serial: u64,
+    cell: u8,
+}
+
+/// Shared durable Learn identity. Legacy CC adapters use backend generation zero.
+#[derive(Clone, Debug)]
+pub struct MidiLearnReceipt {
+    pub kind: openpatch_core::MidiLearnKind,
+    pub backend: u64,
+    pub id: String,
+    pub instance: u64,
+    pub epoch: u64,
+    pub frame: u64,
+    pub sequence: u64,
+    pub completion: openpatch_core::MidiLearnCompletion,
+}
+impl From<MidiCcLearnReceipt> for MidiLearnReceipt {
+    fn from(receipt: MidiCcLearnReceipt) -> Self {
+        Self {
+            kind: openpatch_core::MidiLearnKind::Cc,
+            backend: 0,
+            id: receipt.id,
+            instance: receipt.instance,
+            epoch: receipt.epoch,
+            frame: receipt.frame,
+            sequence: receipt.sequence,
+            completion: receipt.completion,
+        }
+    }
+}
+impl MidiLearnReceipt {
+    pub fn legacy_cc(&self) -> Option<MidiCcLearnReceipt> {
+        (self.kind == openpatch_core::MidiLearnKind::Cc).then(|| MidiCcLearnReceipt {
+            id: self.id.clone(),
+            instance: self.instance,
+            epoch: self.epoch,
+            frame: self.frame,
+            sequence: self.sequence,
+            completion: self.completion,
+        })
+    }
+}
+
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    fn learn_midi(
+        &self,
+        kind: openpatch_core::MidiLearnKind,
+        id: &str,
+        cell: u8,
+    ) -> Result<Value, String> {
+        match kind {
+            openpatch_core::MidiLearnKind::Cc => self.learn_midi_cc(id, cell),
+            openpatch_core::MidiLearnKind::Gate => {
+                Err("MIDI Gate learning is unsupported by this backend".into())
+            }
+        }
+    }
+    fn cancel_midi_learn(
+        &self,
+        kind: openpatch_core::MidiLearnKind,
+        id: &str,
+    ) -> Result<Value, String> {
+        match kind {
+            openpatch_core::MidiLearnKind::Cc => self.cancel_midi_cc_learn(id),
+            openpatch_core::MidiLearnKind::Gate => {
+                Err("MIDI Gate learning is unsupported by this backend".into())
+            }
+        }
+    }
+    fn midi_learn_ready(&self) -> Vec<MidiLearnReceipt> {
+        self.midi_cc_learn_ready()
+            .into_iter()
+            .map(Into::into)
+            .collect()
+    }
+    fn acknowledge_midi_learn(&self, receipt: &MidiLearnReceipt) -> Result<(), String> {
+        if receipt.backend != 0 {
+            return Err("obsolete MIDI Learn backend".into());
+        }
+        self.acknowledge_midi_cc_learn(
+            &receipt
+                .legacy_cc()
+                .ok_or("MIDI Gate learning is unsupported by this backend")?,
+        )
+    }
+    fn prepare_midi_learn_edit(&self, ids: &[String]) -> Result<(), String> {
+        self.prepare_midi_cc_edit(ids)
+    }
+    fn midi_learning_active(&self) -> bool {
+        self.midi_cc_learning_active()
+    }
+    fn midi_learning_uncommitted(&self) -> bool {
+        self.midi_cc_learning_uncommitted()
+    }
     fn learn_midi_cc(&self, _id: &str, _cell: u8) -> Result<Value, String> {
         Err("MIDI CC learning is unsupported by this backend".into())
     }
@@ -120,7 +223,8 @@ pub trait LiveModuleEvents: Send + Sync {
                 SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
                 | SavedModuleState::MidiCc { .. }
-                | SavedModuleState::MidiCcMappings(_) => {}
+                | SavedModuleState::MidiCcMappings(_)
+                | SavedModuleState::MidiGateMappings(_) => {}
             }
         }
         if !running.is_empty() {
@@ -145,8 +249,8 @@ pub struct Session {
     closing: bool,
     live_module_events: Option<Arc<dyn LiveModuleEvents>>,
     construction: construction::Construction,
-    midi_cc_worker: bool,
-    midi_cc_committed: BTreeSet<(usize, String, u64, u64, u64, u8)>,
+    midi_learn_worker: bool,
+    midi_learn_committed: BTreeSet<MidiLearnCommitKey>,
 }
 
 // A cloned control snapshot never adopts another session's plan or worker.
@@ -163,8 +267,8 @@ impl Clone for Session {
             closing: self.closing,
             live_module_events: self.live_module_events.clone(),
             construction: construction::Construction::default(),
-            midi_cc_worker: false,
-            midi_cc_committed: self.midi_cc_committed.clone(),
+            midi_learn_worker: false,
+            midi_learn_committed: self.midi_learn_committed.clone(),
         }
     }
 }
@@ -308,8 +412,8 @@ impl Session {
             closing: false,
             live_module_events: None,
             construction: construction::Construction::default(),
-            midi_cc_worker: false,
-            midi_cc_committed: BTreeSet::new(),
+            midi_learn_worker: false,
+            midi_learn_committed: BTreeSet::new(),
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -324,7 +428,7 @@ impl Session {
             backend.sync_patch(&self.patch, self.revision);
         }
         self.live_module_events = backend;
-        self.midi_cc_committed.clear();
+        self.midi_learn_committed.clear();
         Ok(())
     }
 
@@ -694,6 +798,8 @@ impl Session {
                     | "trigger_module"
                     | "learn_midi_cc"
                     | "cancel_midi_cc_learn"
+                    | "learn_midi_gate"
+                    | "cancel_midi_gate_learn"
             )
         {
             self.check_open()?;
@@ -733,7 +839,10 @@ impl Session {
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
             }
-            "learn_midi_cc" | "cancel_midi_cc_learn" => {
+            "learn_midi_cc"
+            | "cancel_midi_cc_learn"
+            | "learn_midi_gate"
+            | "cancel_midi_gate_learn" => {
                 return self.midi_cc_learn_tool(name, &args);
             }
             "trigger_module" => {
@@ -748,6 +857,7 @@ impl Session {
                     .find(|node| node.id == id)
                     .ok_or("module not found")?;
                 let supported = match node.kind.as_str() {
+                    "midi_gate" => action == ModuleAction::MidiPanic,
                     "seq3" => matches!(
                         action,
                         ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
@@ -781,12 +891,13 @@ impl Session {
                     _ => false,
                 };
                 if !supported {
-                    return Err("module action requires a seq3 module for clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release".into());
+                    return Err("module action requires a seq3 module for clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic".into());
                 }
                 if node.bypassed
                     && !matches!(
                         action,
-                        ModuleAction::BRelease
+                        ModuleAction::MidiPanic
+                            | ModuleAction::BRelease
                             | ModuleAction::GateRelease
                             | ModuleAction::PushRelease
                             | ModuleAction::HoldRelease
@@ -956,7 +1067,8 @@ impl Session {
         if name == "randomize_modules"
             && parameter_action_ids(&self.patch, &args)?.iter().all(|id| {
                 self.patch.nodes.iter().any(|node| {
-                    node.id == *id && matches!(node.kind.as_str(), "sh_asr" | "midi_cc")
+                    node.id == *id
+                        && matches!(node.kind.as_str(), "sh_asr" | "midi_cc" | "midi_gate")
                 })
             })
         {
@@ -1510,17 +1622,24 @@ fn apply_edit(
                 .and_then(Value::as_f64)
                 .ok_or("value must be a number")? as f32;
             let parameter = string(args, "parameter")?;
+            let previous_mappings = midi_cc::node_mappings(node);
             node.params.insert(parameter.into(), value);
-            if node.kind == "midi_cc" && midi_cc::mapping_cell(parameter).is_some() {
+            if midi_cc::mapping_cell_for(&node.kind, parameter).is_some() {
                 if !value.is_finite() || value.fract() != 0.0 || !(-1.0..=127.0).contains(&value) {
-                    return Err("MIDI CC assignment must be an integer from -1 to 127".into());
+                    return Err("MIDI assignment must be an integer from -1 to 127".into());
                 }
-                let chosen = midi_cc::mapping_cell(parameter).unwrap();
+                let chosen = midi_cc::mapping_cell_for(&node.kind, parameter).unwrap();
+                let before = previous_mappings.ok_or("invalid MIDI assignment state")?;
+                let prefix = if node.kind == "midi_gate" {
+                    "note"
+                } else {
+                    "cc"
+                };
                 if value >= 0.0 {
-                    for cell in 0..16 {
-                        let key = format!("cc{}", cell + 1);
+                    for (cell, previous) in before.iter().enumerate() {
+                        let key = format!("{prefix}{}", cell + 1);
                         if cell != chosen
-                            && node.params.get(&key).copied().unwrap_or((cell + 1) as f32) == value
+                            && node.params.get(&key).copied().unwrap_or(*previous as f32) == value
                         {
                             node.params.insert(key, -1.0);
                         }
@@ -1778,8 +1897,10 @@ pub fn tools() -> Value {
         tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
-        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release. Matching releases remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
+        tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_scope","Read a coherent live rack Scope capture for one voice (1..16). Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, applied revision and callback frame. Empty bins are null. Includes raw minimum/maximum/peak-to-peak statistics for the selected voice and all active voices, volts/screen, and actual trigger-source channels. Statistics cover stored completed bins, which may mix successive sweeps; they are not RMS or a timestamped sample window. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never performs an offline render or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
+        tool("learn_midi_gate","Arm a MIDI Gate cell (1..16) to learn the next accepted positive-velocity NoteOn on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
+        tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),

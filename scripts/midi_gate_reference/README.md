@@ -1,0 +1,11 @@
+# MIDI → Gate actual-class reference
+
+Run `python3 scripts/midi_gate_reference/run.py`. The audited pinned Rack class is fetched, compiled with the installed SDK in a temporary directory, and compared with the unchanged production Rust module. No upstream source is committed or copied into production.
+
+`fixtures.json` declares all 21 cases, rates, frame counts and locked gates before the first comparison. Every case runs at 44.1, 48 and 96 kHz. All sixteen output probes and every active lane are compared at their original indices, starting at the first process call. Maps, Learn completion sample, widths and every zero/nonzero gate or pulse edge must match exactly. Voltage tolerance is 0.00001 V + 0.000001 × absolute reference voltage. Inputs, traces, drivers, production source, SDK and toolchain are hashed in the benchmark report.
+
+The C++ driver uses the genuine SDK InputQueue and actual source DSP/JSON methods. It applies the pinned InputDevice channel rule before inserting timestamped standard MIDI events, avoiding any native device or Rack context. All output ports are connected as probes; Engine tests separately verify that unconsumed OpenPatch outputs keep advancing. Source velocity bytes remain untouched until a real positive NoteOn initializes the corresponding active cell/lane. No hidden initialization or warm-up is used.
+
+Input columns are velocity mode, MPE mode, human channel filter, operation, one-based Learn arm cell, event count, sixteen assignments, then event groups of status nibble, wire channel, note/controller and value. Operation 1 calls the source-only `panic()` primitive, which retains Learn. Operation 2 captures actual JSON; operation 3 restores mappings and options while excluding hardware endpoint JSON. Configuration changes use source public options/JSON and production build/adopt. Host Learn cancellation during configuration edits is disclosed separately from source Panic.
+
+No app, GUI, MIDI device, audio endpoint or release build is launched. Host cancellation/bypass/reset/initialization, durable Session transport/history, performance and native hardware acceptance remain separate gates. The frozen MIDI-CC source and drivers must still match their existing benchmark hashes; this run does not regenerate that report.

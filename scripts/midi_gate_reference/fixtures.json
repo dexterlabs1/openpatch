@@ -1,0 +1,32 @@
+{
+  "declared_before_first_comparison": true,
+  "rates": [44100, 48000, 96000],
+  "absolute_volts": 0.00001,
+  "relative": 0.000001,
+  "alignment": "raw same-index samples, starting at the first process call",
+  "metadata": "exact maps, Learn state/completion frame, output widths and zero/nonzero gate/pulse edges",
+  "cases": {
+    "startup_defaults": "No events; constructor defaults and every output remain silent without reading uninitialized source velocities.",
+    "all_cells_all_wire_channels": "Every default cell and every wire lane, endpoint velocities, independent releases and retriggers.",
+    "all_128_notes_mapping_windows": "Eight sixteen-note banks cover all ordinary MIDI notes, all sixteen cells and all wire channels.",
+    "minimum_pulse_velocity_endpoints": "Same-sample on/off and velocities 1 and 127 at all rates; every raw pulse edge is checked.",
+    "short_and_long_notes": "Immediate, one-sample, short and long held notes retain the minimum pulse and source timer arithmetic.",
+    "repeated_note_timer_velocity": "Repeated positive NoteOn restarts the cell timer and replaces velocity; one release clears a shared gate.",
+    "zero_velocity_note_on_release": "Zero-velocity NoteOn releases without restarting its timer or producing a new event.",
+    "same_sample_event_order": "Ordered on/off/on, on/zero/off and off/on/off groups in the genuine SDK queue.",
+    "mono_channel_overlap_release": "All accepted channels merge into lane zero with last-event release semantics rather than note ownership.",
+    "channel_filter_and_unrelated_messages": "Human channel selection walks all sixteen channels; rejected notes and CC messages cannot alter gates.",
+    "mpe_hidden_lane_timer_freeze": "An unheld lane-16 minimum pulse freezes while mono is active and resumes at its exact remaining timer.",
+    "velocity_mode_toggle_held_cells": "Mode changes preserve held cells and stored velocities while changing output amplitude.",
+    "unmapped_held_cell_remap": "A held cell remains active through unmapping and remapping; the old note-off no longer finds it.",
+    "collision_arrays_keep_cell_signal": "Actual JSON array loader normalizes collisions last-cell-wins while displaced active cells retain signals.",
+    "learn_positive_repeated_collision": "Rejected channels, offs, zero velocity and CC do not Learn; a repeated positive note completes before matching.",
+    "learn_same_sample_first_message": "First accepted positive NoteOn wins among multiple ordered messages on the same sample.",
+    "source_panic_preserves_learn": "The genuine source panic primitive clears gates/timers and retains an armed Learn request.",
+    "json_mapping_options_snapshot_restore": "Actual JSON snapshot and restore change mappings plus velocity/MPE options while preserving cell signal state.",
+    "parameter_adoption_preserves_cells": "Mapping, channel, velocity and MPE edits exercise Rust rebuild/adoption against source public configuration.",
+    "unmapped_notes_ignored": "All 128 notes are received across sixteen wire lanes while every assignment is unmapped.",
+    "source_panic_with_held_notes": "Source panic clears held gates and minimum pulses, followed by new positive notes and releases."
+  },
+  "frames_per_case": 4096
+}

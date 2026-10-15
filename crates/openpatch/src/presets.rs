@@ -81,11 +81,13 @@ pub fn validate(preset: &Value) -> Result<(), String> {
             }
         }
     }
-    if matches!(kind, "random_values" | "sh_asr" | "midi_cc") {
+    if matches!(kind, "random_values" | "sh_asr" | "midi_cc" | "midi_gate") {
         let node: Node =
             serde_json::from_value(json!({"id":"preset", "kind":kind,"params":params}))
                 .map_err(|error| error.to_string())?;
-        if kind == "midi_cc" {
+        if kind == "midi_gate" {
+            SavedModuleState::from_node(&node).ok_or("invalid MIDI Gate preset")?;
+        } else if kind == "midi_cc" {
             openpatch_core::initial_midi_cc_state(&node)?;
         } else if kind == "sh_asr" {
             openpatch_core::initial_shift_register_state(&node)?;

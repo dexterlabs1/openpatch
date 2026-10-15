@@ -22,6 +22,7 @@ struct Event {
     slot: usize,
     token: u64,
     action_epoch: u64,
+    cancel_through_serial: u64,
     action: ModuleAction,
     sequence: u64,
     revision: u64,
@@ -46,6 +47,7 @@ enum ModuleKind {
     ShiftRegister,
     AdsrEg,
     MidiCc,
+    MidiGate,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -67,6 +69,7 @@ impl ModuleKind {
             "sh_asr" => Some(Self::ShiftRegister),
             "adsr_eg" => Some(Self::AdsrEg),
             "midi_cc" => Some(Self::MidiCc),
+            "midi_gate" => Some(Self::MidiGate),
             _ => None,
         }
     }
@@ -89,7 +92,14 @@ impl ModuleKind {
             Self::ShiftRegister => "sh_asr",
             Self::AdsrEg => "adsr_eg",
             Self::MidiCc => "midi_cc",
+            Self::MidiGate => "midi_gate",
         }
+    }
+    fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {
+        openpatch_core::MidiLearnKind::from_module_kind(self.name())
+    }
+    fn has_safety_release(self) -> bool {
+        self.manual() || self == Self::MidiGate
     }
     fn manual(self) -> bool {
         matches!(
@@ -130,6 +140,7 @@ impl ModuleKind {
                     | ModuleAction::ResetPress
                     | ModuleAction::ResetRelease
             ),
+            Self::MidiGate => action == ModuleAction::MidiPanic,
             Self::Push => matches!(
                 action,
                 ModuleAction::PushPress
@@ -149,6 +160,7 @@ fn is_release(action: ModuleAction) -> bool {
             | ModuleAction::PushRelease
             | ModuleAction::HoldRelease
             | ModuleAction::ResetRelease
+            | ModuleAction::MidiPanic
     ) || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]
@@ -205,7 +217,7 @@ struct Control {
     revision: u64,
     next_token: u64,
     next_sequence: u64,
-    cc_learns: BTreeMap<String, MidiCcLearnControl>,
+    midi_learns: BTreeMap<String, MidiLearnControl>,
     next_learn_serial: u64,
 }
 #[derive(Clone, Copy)]
@@ -216,7 +228,7 @@ struct ModuleSnapshot {
     saved_state: Option<SavedModuleState>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
-    midi_cc_learning: Option<(u64, u8)>,
+    midi_learning: Option<(u64, u8)>,
 }
 struct Meter {
     serial: AtomicU64,
@@ -306,17 +318,21 @@ impl Meter {
                     }
                     5
                 }
+                Some(SavedModuleState::MidiGateMappings(assignments)) => {
+                    for (slot, value) in self.cc_assignments.iter().zip(assignments) {
+                        slot.store(value as u16 as u32, Ordering::SeqCst);
+                    }
+                    6
+                }
                 Some(SavedModuleState::MidiCcMappings(_)) => 0,
                 None => 0,
             },
             Ordering::SeqCst,
         );
-        self.cc_learning_serial.store(
-            snapshot.midi_cc_learning.map_or(0, |x| x.0),
-            Ordering::SeqCst,
-        );
+        self.cc_learning_serial
+            .store(snapshot.midi_learning.map_or(0, |x| x.0), Ordering::SeqCst);
         self.cc_learning_cell.store(
-            snapshot.midi_cc_learning.map_or(0, |x| u32::from(x.1)),
+            snapshot.midi_learning.map_or(0, |x| u32::from(x.1)),
             Ordering::SeqCst,
         );
         if let Some(controls) = snapshot.controls {
@@ -366,6 +382,11 @@ impl Meter {
                 }),
                 values: std::array::from_fn(|i| self.cc_values[i].load(Ordering::SeqCst) as u8),
             });
+            let gate_state = (saved_state & 7 == 6).then(|| {
+                SavedModuleState::MidiGateMappings(std::array::from_fn(|i| {
+                    self.cc_assignments[i].load(Ordering::SeqCst) as u16 as i16
+                }))
+            });
             let cc_serial = self.cc_learning_serial.load(Ordering::SeqCst);
             let cc_cell = self.cc_learning_cell.load(Ordering::SeqCst);
             let input_channels = self.input_channels.load(Ordering::SeqCst);
@@ -393,6 +414,7 @@ impl Meter {
                         3 => random_state,
                         4 => shift_state,
                         5 => cc_state,
+                        6 => gate_state,
                         _ => None,
                     },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
@@ -405,7 +427,7 @@ impl Meter {
                         manual: flags & 16 != 0,
                         input_channels: (input_channels <= 16).then_some(input_channels as u8),
                     }),
-                    midi_cc_learning: (cc_serial != 0 && cc_cell < 16)
+                    midi_learning: (cc_serial != 0 && cc_cell < 16)
                         .then_some((cc_serial, cc_cell as u8)),
                 },
             );
@@ -417,9 +439,11 @@ struct Shared {
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
     emergency_release_epochs: [AtomicU64; MAX_NODES],
+    emergency_learn_cutoffs: [AtomicU64; MAX_NODES],
     emergency_release_requests: AtomicU64,
     emergency_release_applied: AtomicU64,
     meters: Box<[Meter; MAX_NODES]>,
+    backend: u64,
     closed: AtomicBool,
     // One writer (the audio callback) surrounds the complete meter batch.
     // Readers can reject a partial cross-module publication without waiting.
@@ -435,8 +459,8 @@ struct Shared {
     closed_dropped: AtomicU64,
     crossfade_rejected: AtomicU64,
     last_applied_sequence: AtomicU64,
-    cc_learns: Box<[MidiCcLearnMailbox; MAX_NODES]>,
-    cc_completion_sequence: AtomicU64,
+    midi_learns: Box<[MidiLearnMailbox; MAX_NODES]>,
+    midi_completion_sequence: AtomicU64,
 }
 impl Shared {
     fn publish_frame(&self, frame: u64, publish: impl FnOnce()) {
@@ -481,7 +505,7 @@ struct ScopeBinding {
     next_frame: u64,
 }
 pub(super) struct ModulePlan {
-    cc_learns: Vec<MidiCcBinding>,
+    midi_learns: Vec<MidiLearnBinding>,
     scopes: Vec<ScopeBinding>,
     scope_cursor: usize,
     scope_interval: u64,
@@ -497,7 +521,7 @@ impl Default for ModulePlan {
     fn default() -> Self {
         Self {
             scopes: Vec::new(),
-            cc_learns: Vec::new(),
+            midi_learns: Vec::new(),
             scope_cursor: 0,
             scope_interval: 1,
             bindings: [None; MAX_NODES],
@@ -678,6 +702,7 @@ impl Performance {
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
             action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
+            emergency_learn_cutoffs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_requests: AtomicU64::new(0),
             emergency_release_applied: AtomicU64::new(0),
             meters: (0..MAX_NODES)
@@ -687,6 +712,7 @@ impl Performance {
                 .try_into()
                 .ok()
                 .expect("fixed meter capacity"),
+            backend: NEXT_MIDI_BACKEND.fetch_add(1, Ordering::Relaxed),
             closed: AtomicBool::new(false),
             publish_serial: AtomicU64::new(0),
             frame: AtomicU64::new(0),
@@ -700,14 +726,14 @@ impl Performance {
             closed_dropped: AtomicU64::new(0),
             crossfade_rejected: AtomicU64::new(0),
             last_applied_sequence: AtomicU64::new(0),
-            cc_learns: (0..MAX_NODES)
-                .map(|_| MidiCcLearnMailbox::new())
+            midi_learns: (0..MAX_NODES)
+                .map(|_| MidiLearnMailbox::new())
                 .collect::<Vec<_>>()
                 .into_boxed_slice()
                 .try_into()
                 .ok()
                 .expect("fixed CC Learn capacity"),
-            cc_completion_sequence: AtomicU64::new(0),
+            midi_completion_sequence: AtomicU64::new(0),
         });
         let reader = EventReader {
             queue: input,
@@ -725,7 +751,7 @@ impl Performance {
                     revision: 0,
                     next_token: 1,
                     next_sequence: 1,
-                    cc_learns: BTreeMap::new(),
+                    midi_learns: BTreeMap::new(),
                     next_learn_serial: 1,
                 }),
                 shared,
@@ -807,10 +833,10 @@ impl Performance {
                 token: entry.token,
                 handle: if entry.kind.sequential() {
                     engine.resolve_module_telemetry(id)?
+                } else if entry.kind.learn_kind().is_some() {
+                    engine.resolve_module_state(id)?
                 } else if entry.kind.manual() {
                     engine.resolve_module_control(id)?
-                } else if entry.kind == ModuleKind::MidiCc {
-                    engine.resolve_module_state(id)?
                 } else {
                     engine.resolve_module_lights(id)?
                 },
@@ -818,7 +844,7 @@ impl Performance {
                 release_epoch: 0,
             });
         }
-        self.plan_cc_learns(&control, patch, engine, &mut plan)?;
+        self.plan_midi_learns(&control, patch, engine, &mut plan)?;
         plan.scope_interval = u64::from(self.rate).div_ceil(30);
         for node in patch.nodes.iter().filter(|node| node.kind == "scope") {
             let Some(entry) = control
@@ -888,9 +914,11 @@ impl Performance {
             .read(entry, control.revision)?
             .lights
     }
-    fn request_release(&self, entry: &mut Entry) {
+    fn request_release(&self, entry: &mut Entry, cancel_through_serial: u64) {
         entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
         self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
+        self.shared.emergency_learn_cutoffs[entry.slot]
+            .store(cancel_through_serial, Ordering::Release);
         self.shared.emergency_release_epochs[entry.slot].fetch_add(1, Ordering::Release);
         self.shared
             .emergency_release_requests
@@ -900,7 +928,7 @@ impl Performance {
         // Serialize against producer acceptance. This mutex never reaches audio.
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.closed.store(true, Ordering::Release);
-        for mailbox in self.shared.cc_learns.iter() {
+        for mailbox in self.shared.midi_learns.iter() {
             let _ = mailbox.cancel_armed();
         }
         self.diagnostics.close();
@@ -912,9 +940,9 @@ impl Performance {
         }
         let revision = control.revision;
         for (id, value) in states {
-            if let Some(cc) = control.cc_learns.get_mut(id) {
-                if self.shared.cc_learns[cc.slot].cancel_armed().is_ok() {
-                    cc.epoch = cc_epoch();
+            if let Some(cc) = control.midi_learns.get_mut(id) {
+                if self.shared.midi_learns[cc.slot].cancel_armed().is_ok() {
+                    cc.epoch = learn_epoch();
                 }
             }
             let Some(state) = control.state_entries.get_mut(id).filter(|state| {
@@ -949,40 +977,78 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn learn_midi(
+        &self,
+        kind: openpatch_core::MidiLearnKind,
+        id: &str,
+        cell: u8,
+    ) -> Result<Value, String> {
+        self.arm_midi_learn(kind, id, cell)
+    }
+    fn cancel_midi_learn(
+        &self,
+        kind: openpatch_core::MidiLearnKind,
+        id: &str,
+    ) -> Result<Value, String> {
+        self.cancel_learn_kind(kind, id)
+    }
+    fn midi_learn_ready(&self) -> Vec<openpatch::control::MidiLearnReceipt> {
+        self.ready_midi_learns()
+    }
+    fn acknowledge_midi_learn(
+        &self,
+        receipt: &openpatch::control::MidiLearnReceipt,
+    ) -> Result<(), String> {
+        self.ack_midi_learn(receipt)
+    }
+    fn prepare_midi_learn_edit(&self, ids: &[String]) -> Result<(), String> {
+        self.prepare_learn_edit(ids)
+    }
+    fn midi_learning_active(&self) -> bool {
+        self.shared.midi_learns.iter().any(|m| {
+            matches!(
+                learn_phase(m.tag.load(Ordering::Acquire)),
+                LEARN_ARMED | LEARN_PROCESSING | LEARN_READY
+            )
+        })
+    }
+    fn midi_learning_uncommitted(&self) -> bool {
+        self.shared.midi_learns.iter().any(|m| {
+            matches!(
+                learn_phase(m.tag.load(Ordering::Acquire)),
+                LEARN_PROCESSING | LEARN_READY
+            )
+        })
+    }
+    // One-way legacy adapters preserve existing clients and CC-only fake backends.
     fn learn_midi_cc(&self, id: &str, cell: u8) -> Result<Value, String> {
-        self.arm_cc_learn(id, cell)
+        self.learn_midi(openpatch_core::MidiLearnKind::Cc, id, cell)
     }
     fn cancel_midi_cc_learn(&self, id: &str) -> Result<Value, String> {
-        self.prepare_cc_edit(&[id.to_owned()])?;
-        Ok(json!({"status":"cancelled"}))
+        self.cancel_midi_learn(openpatch_core::MidiLearnKind::Cc, id)
     }
     fn midi_cc_learn_ready(&self) -> Vec<openpatch::control::MidiCcLearnReceipt> {
-        self.ready_cc_learns()
+        self.midi_learn_ready()
+            .into_iter()
+            .filter_map(|r| r.legacy_cc())
+            .collect()
     }
     fn acknowledge_midi_cc_learn(
         &self,
-        receipt: &openpatch::control::MidiCcLearnReceipt,
+        r: &openpatch::control::MidiCcLearnReceipt,
     ) -> Result<(), String> {
-        self.ack_cc_learn(receipt)
+        let mut receipt: openpatch::control::MidiLearnReceipt = r.clone().into();
+        receipt.backend = self.shared.backend;
+        self.acknowledge_midi_learn(&receipt)
     }
     fn prepare_midi_cc_edit(&self, ids: &[String]) -> Result<(), String> {
-        self.prepare_cc_edit(ids)
+        self.prepare_learn_edit_kind(ids, Some(openpatch_core::MidiLearnKind::Cc))
     }
     fn midi_cc_learning_active(&self) -> bool {
-        self.shared.cc_learns.iter().any(|m| {
-            matches!(
-                cc_phase(m.tag.load(Ordering::Acquire)),
-                CC_ARMED | CC_PROCESSING | CC_READY
-            )
-        })
+        self.learn_kind_active(openpatch_core::MidiLearnKind::Cc, false)
     }
     fn midi_cc_learning_uncommitted(&self) -> bool {
-        self.shared.cc_learns.iter().any(|m| {
-            matches!(
-                cc_phase(m.tag.load(Ordering::Acquire)),
-                CC_PROCESSING | CC_READY
-            )
-        })
+        self.learn_kind_active(openpatch_core::MidiLearnKind::Cc, true)
     }
 
     fn inspect_scope(&self, id: &str, channel: usize) -> Result<Value, String> {
@@ -1061,13 +1127,14 @@ impl LiveModuleEvents for Performance {
         if self.shared.closed.load(Ordering::Acquire) {
             return;
         }
+        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
         for id in ids {
             if let Some(entry) = control
                 .entries
                 .get_mut(id)
                 .filter(|entry| entry.kind.manual())
             {
-                self.request_release(entry);
+                self.request_release(entry, cancel_through_serial);
             }
         }
     }
@@ -1078,10 +1145,11 @@ impl LiveModuleEvents for Performance {
             return;
         }
         let revision = control.revision;
+        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
         for id in ids {
-            if let Some(cc) = control.cc_learns.get_mut(id) {
-                if self.shared.cc_learns[cc.slot].cancel_armed().is_ok() {
-                    cc.epoch = cc_epoch();
+            if let Some(cc) = control.midi_learns.get_mut(id) {
+                if self.shared.midi_learns[cc.slot].cancel_armed().is_ok() {
+                    cc.epoch = learn_epoch();
                 }
             }
             if let Some(entry) = control.state_entries.get_mut(id) {
@@ -1093,7 +1161,7 @@ impl LiveModuleEvents for Performance {
                 // A held momentary button must also be released in both sides
                 // of a graph crossfade, even if initialization is coalesced.
                 if entry.kind.manual() {
-                    self.request_release(entry);
+                    self.request_release(entry, cancel_through_serial);
                 } else {
                     entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
                     self.shared.action_epochs[entry.slot]
@@ -1106,8 +1174,8 @@ impl LiveModuleEvents for Performance {
     fn retire_modules(&self, ids: &[String]) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
-            if let Some(cc) = control.cc_learns.get(id) {
-                let _ = self.shared.cc_learns[cc.slot].cancel_armed();
+            if let Some(cc) = control.midi_learns.get(id) {
+                let _ = self.shared.midi_learns[cc.slot].cancel_armed();
             }
             control.state_entries.remove(id);
             control.scope_readers.remove(id);
@@ -1220,6 +1288,7 @@ impl LiveModuleEvents for Performance {
         for entry in control.entries.values() {
             used[entry.slot] = true;
         }
+        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
         if patch.version == 2 {
             for (node, kind) in patch
                 .nodes
@@ -1233,7 +1302,9 @@ impl LiveModuleEvents for Performance {
                         entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
                         self.shared.action_epochs[entry.slot]
                             .store(entry.action_epoch, Ordering::Release);
-                        if entry.kind.manual() {
+                        if entry.kind.has_safety_release() {
+                            self.shared.emergency_learn_cutoffs[entry.slot]
+                                .store(cancel_through_serial, Ordering::Release);
                             self.shared.emergency_release_epochs[entry.slot]
                                 .fetch_add(1, Ordering::Release);
                             self.shared
@@ -1262,11 +1333,12 @@ impl LiveModuleEvents for Performance {
                     },
                 );
                 self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
+                self.shared.emergency_learn_cutoffs[slot].store(0, Ordering::Release);
                 self.shared.action_epochs[slot].store(1, Ordering::Release);
                 self.shared.desired[slot].store(token, Ordering::Release);
             }
         }
-        self.sync_cc_learns(&mut control, patch, revision);
+        self.sync_midi_learns(&mut control, patch, revision);
         control.revision = revision;
     }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
@@ -1312,7 +1384,9 @@ impl LiveModuleEvents for Performance {
                         let values = values.map(|row| row.map(f32::from_bits));
                         Some(json!({"values":values,"rng_state":rng,"active_channels":snapshot.lights.and_then(|lights| lights.input_channels).unwrap_or(1)}))
                     } else if let Some(SavedModuleState::MidiCc { assignments, values }) = snapshot.saved_state {
-                        Some(json!({"assignments":assignments,"values":values.to_vec(),"learning":snapshot.midi_cc_learning.map(|(serial,cell)|json!({"serial":serial,"cell":cell+1}))}))
+                        Some(json!({"assignments":assignments,"values":values.to_vec(),"learning":snapshot.midi_learning.map(|(serial,cell)|json!({"serial":serial,"cell":cell+1}))}))
+                    } else if let Some(SavedModuleState::MidiGateMappings(assignments)) = snapshot.saved_state {
+                        Some(json!({"assignments":assignments,"learning":snapshot.midi_learning.map(|(serial,cell)|json!({"serial":serial,"cell":cell+1}))}))
                     } else if let Some(SavedModuleState::ShiftRegister { values, rng }) = snapshot.saved_state {
                         Some(json!({"values":values.map(f32::from_bits),"rng_state":rng}))
                     } else {
@@ -1413,6 +1487,10 @@ impl EventReader {
             per_node[event.slot] += 1;
             self.head = None;
             *budget -= 1;
+            if event.action == ModuleAction::MidiPanic && binding.kind == ModuleKind::MidiGate {
+                let _ = self.shared.midi_learns[event.slot]
+                    .cancel_armed_through(event.cancel_through_serial);
+            }
             if active.handle_module_event(binding.handle, event.action) {
                 if let Some((engine, plan)) = previous.as_mut() {
                     if let Some(old) =
@@ -1449,12 +1527,16 @@ impl EventReader {
         active: bool,
     ) {
         let Some(binding) = binding else { return };
-        if !binding.kind.manual()
+        if !binding.kind.has_safety_release()
             || self.shared.desired[slot].load(Ordering::Acquire) != binding.token
         {
             return;
         }
         let epoch = self.shared.emergency_release_epochs[slot].load(Ordering::Acquire);
+        if binding.release_epoch != epoch && binding.kind == ModuleKind::MidiGate {
+            let cutoff = self.shared.emergency_learn_cutoffs[slot].load(Ordering::Acquire);
+            let _ = self.shared.midi_learns[slot].cancel_armed_through(cutoff);
+        }
         if binding.release_epoch != epoch && engine.release_module_controls(binding.handle) {
             if active {
                 self.shared.emergency_release_applied.fetch_add(
@@ -1485,7 +1567,10 @@ impl EventReader {
                             } else {
                                 None
                             },
-                            midi_cc_learning: engine.midi_cc_learning(binding.handle),
+                            midi_learning: binding
+                                .kind
+                                .learn_kind()
+                                .and_then(|kind| engine.midi_learning(binding.handle, kind)),
                             lights: if !binding.kind.sequential() {
                                 engine.module_lights(binding.handle)
                             } else {
@@ -1500,7 +1585,7 @@ impl EventReader {
 }
 
 include!("guarded_manual.rs");
-include!("midi_cc_performance.rs");
+include!("midi_learn_performance.rs");
 #[cfg(test)]
 mod midi_cc_performance_tests;
 
@@ -1550,7 +1635,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
-                                midi_cc_learning: None,
+                                midi_learning: None,
                                 revision: 1,
                                 frame,
                                 state: (slot == 0).then_some(ModuleTelemetry {
@@ -1640,7 +1725,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
-                                midi_cc_learning: None,
+                                midi_learning: None,
                                 revision: 1,
                                 frame,
                                 state: None,
@@ -1713,7 +1798,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
-                                midi_cc_learning: None,
+                                midi_learning: None,
                                 revision: 1,
                                 frame,
                                 state: None,

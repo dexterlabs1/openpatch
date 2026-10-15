@@ -578,6 +578,18 @@ impl OpenPatch {
             .unwrap_or_default();
         self.rack.set_midi_cc_states(states);
     }
+    fn sync_midi_gate_states(&mut self) {
+        if self.smoke_test.is_some() && self.audio.is_none() {
+            return;
+        }
+        let states = self
+            .audio
+            .as_ref()
+            .filter(|_| self.patch.nodes.iter().any(|node| node.kind == "midi_gate"))
+            .map(Audio::midi_gate_states)
+            .unwrap_or_default();
+        self.rack.set_midi_gate_states(states);
+    }
     fn open_audio(patch: &Patch, device: Option<&str>) -> (Option<Audio>, String) {
         let opened = match device {
             Some(device) => Audio::new_with_device(patch, Some(device)),
@@ -799,7 +811,7 @@ impl OpenPatch {
                 }
                 ui.label("Changing the output pauses playback. Sample rate follows the device.");
                 ui.separator();
-                ui.heading("MIDI input");
+                ui.heading("Global MIDI input");
                 let mut midi = self.midi_device.clone();
                 let midi_label = midi
                     .as_ref()
@@ -997,7 +1009,10 @@ impl OpenPatch {
                 self.status = match name {
                     "trigger_module" => "Performance action queued",
                     "learn_midi_cc" => "MIDI Learn requested · move a controller",
-                    "cancel_midi_cc_learn" => "MIDI Learn cancellation requested",
+                    "learn_midi_gate" => "MIDI Learn requested · play a note",
+                    "cancel_midi_cc_learn" | "cancel_midi_gate_learn" => {
+                        "MIDI Learn cancellation requested"
+                    }
                     _ => "Patch updated",
                 }
                 .into();
@@ -1592,6 +1607,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::shift_register_layout())
                 .expect("bundled shift register layout");
+        } else if title == "MIDI drum pads" {
+            self.rack
+                .restore_layout(&Self::midi_gate_drums_layout())
+                .expect("bundled MIDI drum pads layout");
         } else if title == "MIDI controller voice" {
             self.rack
                 .restore_layout(&Self::midi_cc_voice_layout())
@@ -1608,6 +1627,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn midi_gate_drums_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "pads":[0,0],"mix":[510,0],"out":[900,0],
+            "kick":[0,420],"clap":[390,420],"hat":[780,420]
+        }})
     }
     fn midi_cc_voice_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -2500,6 +2525,11 @@ impl OpenPatch {
                                 ))
                                 .expect("valid bundled gate shaping voice");
                                 self.replace_from_menu(patch, "Gate shaping voice");
+                                ui.close();
+                            }
+                            if ui.button("MIDI drum pads").clicked() {
+                                let patch=serde_json::from_str(include_str!("../../../examples/midi-gate-drums.json")).expect("valid MIDI drum pads");
+                                self.replace_from_menu(patch,"MIDI drum pads");
                                 ui.close();
                             }
                             if ui.button("MIDI controller voice").clicked() {
@@ -3934,6 +3964,85 @@ impl OpenPatch {
         self.status="Actual offline DSP snapshot · 14-bit paired CC7, 16 MPE lanes · output 16 Learn armed · no live MIDI device".into();
     }
 
+    fn prepare_midi_gate_fixture(&mut self) {
+        let patch:Patch=serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[{"id":"pads","kind":"midi_gate","params":{"velocity":1,"mpe":1}},
+                {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0,"x_offset":-5}}],
+            "cables":[{"from":"pads","output":"gate1","to":"scope","input":"x"}]})).unwrap();
+        let mut engine = patch.compile().unwrap();
+        let notes = openpatch_core::midi_gate::DEFAULT_ASSIGNMENTS;
+        for (cell, note) in notes.iter().enumerate().skip(1) {
+            if cell % 2 == 1 {
+                engine.handle_midi(openpatch_core::MidiEvent::NoteOn {
+                    channel: 0,
+                    note: *note as u8,
+                    velocity: ((cell + 1) * 8).min(127) as u8,
+                });
+            }
+        }
+        for frame in 0..8192 {
+            if frame % 128 == 0 || frame % 128 == 64 {
+                for channel in 0..16 {
+                    let note = notes[0] as u8;
+                    let event = if frame % 128 == 0 {
+                        openpatch_core::MidiEvent::NoteOn {
+                            channel,
+                            note,
+                            velocity: (8 + usize::from(channel) * 7 + (frame / 128) % 16).min(127)
+                                as u8,
+                        }
+                    } else {
+                        openpatch_core::MidiEvent::NoteOff {
+                            channel,
+                            note,
+                            velocity: 0,
+                        }
+                    };
+                    engine.handle_midi(event);
+                }
+            }
+            engine.process_block(&mut [0.0]);
+        }
+        let handle = engine.resolve_module_state("pads").unwrap();
+        assert!(engine.arm_midi_gate_learn(handle, 1, 15));
+        let Some(openpatch_core::SavedModuleState::MidiGateMappings(assignments)) =
+            engine.module_saved_state(handle)
+        else {
+            panic!("actual gate mappings")
+        };
+        let learning = engine
+            .midi_gate_learning(handle)
+            .map(|(serial, cell)| json!({"serial":serial,"cell":cell+1}));
+        let lights = engine
+            .module_lights(engine.resolve_module_lights("pads").unwrap())
+            .unwrap();
+        assert_eq!(lights.count, 16);
+        assert_eq!(lights.brightness.iter().filter(|v| v[0] > 0.0).count(), 8);
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!(scope.x_channels, 16);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.rack = Rack::default();
+        self.rack.restore_layout(&json!({"version":1,"zoom":1.0,"pan":[24,12],"positions":{"pads":[0,0],"scope":[510,0]}})).unwrap();
+        self.rack.set_midi_gate_states(BTreeMap::from([(
+            "pads".into(),
+            json!({"assignments":assignments,"learning":learning}),
+        )]));
+        self.rack
+            .set_module_states(BTreeMap::from([("pads".into(), lights)]), BTreeMap::new());
+        self.rack.set_scope_states(BTreeMap::from([(
+            "scope".into(),
+            std::sync::Arc::new(scope),
+        )]));
+        self.browser_open = false;
+        self.select_analysis(None);
+        self.title = "MIDI Gate · notes into rhythm".into();
+        self.status="Actual offline DSP snapshot · velocity gates, sixteen MPE lanes · eight held pads · Learn armed on output16 · no live MIDI device".into();
+    }
+
     fn smoke(&mut self, ctx: &egui::Context) {
         let Some((path, frame, captures)) = &mut self.smoke_test else {
             return;
@@ -4885,6 +4994,13 @@ impl OpenPatch {
             self.rack.set_room_brightness(0.0);
             self.status="MIDI CC · lights out · actual sixteen-voice Scope capture · no live audio or MIDI device".into();
         }
+        if frame == 1550 {
+            self.prepare_midi_gate_fixture();
+        }
+        if frame == 1600 {
+            self.rack.set_room_brightness(0.0);
+            self.status="MIDI Gate · lights out · eight actual pad lamps and sixteen captured gate lanes · no live audio or MIDI device".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -4962,6 +5078,8 @@ impl OpenPatch {
                 | 1422
                 | 1472
                 | 1522
+                | 1572
+                | 1622
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5043,7 +5161,9 @@ impl OpenPatch {
                 60 => path.with_file_name("rack-adsr-eg.png"),
                 61 => path.with_file_name("rack-adsr-eg-lights-out.png"),
                 62 => path.with_file_name("rack-midi-cc.png"),
-                _ => path.with_file_name("rack-midi-cc-lights-out.png"),
+                63 => path.with_file_name("rack-midi-cc-lights-out.png"),
+                64 => path.with_file_name("rack-midi-gate.png"),
+                _ => path.with_file_name("rack-midi-gate-lights-out.png"),
             };
             image::save_buffer(
                 &target,
@@ -5054,18 +5174,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/64 at frame {frame}: {}",
+                "Native smoke: capture {}/66 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 64 {
+            if captures == 66 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 1556, "Native screenshot timeout");
+        assert!(frame < 1656, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -5255,6 +5375,7 @@ impl eframe::App for OpenPatch {
             self.rack.set_scope_states(scopes);
         }
         self.sync_midi_cc_states();
+        self.sync_midi_gate_states();
         self.rack_workspace(ctx, library_action);
         self.mcp_session
             .show(ctx, &self.shared, Path::new(&self.workspace));
@@ -5329,6 +5450,9 @@ mod project_workflow_tests {
         include!("palette_host_tests.rs");
     }
 
+    mod midi_gate_app_tests {
+        include!("midi_gate_app_tests.rs");
+    }
     mod midi_cc_app_tests {
         include!("midi_cc_app_tests.rs");
     }
@@ -5544,6 +5668,28 @@ mod project_workflow_tests {
             assert_eq!(snapshot()["queued"], 2);
             app.file_mode = None;
         }
+    }
+
+    #[test]
+    fn midi_gate_offline_fixture_has_actual_gate_lamps_poly_scope_and_learn() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.prepare_midi_gate_fixture();
+        assert!(app.audio.is_none());
+        let ctx = egui::Context::default();
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        preset_text(&output, "48 C3");
+        preset_text(&output, "LRN");
+        preset_text(&output, "Panic");
     }
 
     #[test]
@@ -8165,6 +8311,11 @@ mod project_workflow_tests {
     #[test]
     fn held_voltage_examples_apply_nonoverlapping_layout_only_after_replacement() {
         for (title, source, layout) in [
+            (
+                "MIDI drum pads",
+                include_str!("../../../examples/midi-gate-drums.json"),
+                OpenPatch::midi_gate_drums_layout(),
+            ),
             (
                 "MIDI controller voice",
                 include_str!("../../../examples/midi-controller-voice.json"),

@@ -36,7 +36,11 @@ mod gates;
 pub mod ladder;
 pub mod midi;
 pub mod midi_cc;
+pub mod midi_gate;
+mod midi_learn;
 pub use midi_cc::{initial_midi_cc_state, MidiCcLearnCompletion};
+pub use midi_gate::initial_midi_gate_state;
+pub use midi_learn::{MidiLearnCompletion, MidiLearnKind};
 mod mixing;
 mod modal_resonator;
 mod multi_lfo;
@@ -1295,6 +1299,91 @@ impl Engine {
         }
         match &self.inner {
             EngineKind::Poly(e) => e.midi_cc(handle.node)?.learning(),
+            _ => None,
+        }
+    }
+    /// Shared Learn commands validate both the engine handle and module kind.
+    pub fn arm_midi_learn(
+        &mut self,
+        handle: ModuleHandle,
+        kind: MidiLearnKind,
+        serial: u64,
+        cell: u8,
+    ) -> bool {
+        match kind {
+            MidiLearnKind::Cc => self.arm_midi_cc_learn(handle, serial, cell),
+            MidiLearnKind::Gate => self.arm_midi_gate_learn(handle, serial, cell),
+        }
+    }
+    pub fn cancel_midi_learn(
+        &mut self,
+        handle: ModuleHandle,
+        kind: MidiLearnKind,
+        serial: u64,
+    ) -> bool {
+        match kind {
+            MidiLearnKind::Cc => self.cancel_midi_cc_learn(handle, serial),
+            MidiLearnKind::Gate => self.cancel_midi_gate_learn(handle, serial),
+        }
+    }
+    pub fn take_midi_learn_completion(
+        &mut self,
+        handle: ModuleHandle,
+        kind: MidiLearnKind,
+    ) -> Option<MidiLearnCompletion> {
+        match kind {
+            MidiLearnKind::Cc => self.take_midi_cc_learn_completion(handle),
+            MidiLearnKind::Gate => self.take_midi_gate_learn_completion(handle),
+        }
+    }
+    pub fn midi_learning(&self, handle: ModuleHandle, kind: MidiLearnKind) -> Option<(u64, u8)> {
+        match kind {
+            MidiLearnKind::Cc => self.midi_cc_learning(handle),
+            MidiLearnKind::Gate => self.midi_gate_learning(handle),
+        }
+    }
+    pub fn arm_midi_gate_learn(&mut self, handle: ModuleHandle, serial: u64, cell: u8) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => {
+                e.midi_gate_active(handle.node)
+                    && e.midi_gate_mut(handle.node)
+                        .is_some_and(|m| m.arm_learn(serial, cell))
+            }
+            _ => false,
+        }
+    }
+    pub fn cancel_midi_gate_learn(&mut self, handle: ModuleHandle, serial: u64) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e
+                .midi_gate_mut(handle.node)
+                .is_some_and(|m| m.cancel_learn(serial)),
+            _ => false,
+        }
+    }
+    pub fn take_midi_gate_learn_completion(
+        &mut self,
+        handle: ModuleHandle,
+    ) -> Option<MidiLearnCompletion> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.midi_gate_mut(handle.node)?.take_learn_completion(),
+            _ => None,
+        }
+    }
+    pub fn midi_gate_learning(&self, handle: ModuleHandle) -> Option<(u64, u8)> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.midi_gate(handle.node)?.learning(),
             _ => None,
         }
     }

@@ -337,8 +337,8 @@ impl Session {
             closing: self.closing,
             live_module_events: None,
             construction: Construction::default(),
-            midi_cc_worker: false,
-            midi_cc_committed: BTreeSet::new(),
+            midi_learn_worker: false,
+            midi_learn_committed: BTreeSet::new(),
         }
     }
 

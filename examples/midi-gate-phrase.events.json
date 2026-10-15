@@ -1,0 +1,218 @@
+[
+  {
+    "frame": 0,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 60,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 0,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 1200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 60,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 1200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 12000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 13200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 24000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 62,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 24000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 25200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 62,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 25200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 36000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 37200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 48000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 60,
+      "velocity": 100
+    }
+  },
+  {
+    "frame": 48000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 49200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 60,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 49200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 60000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 61200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 72000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 62,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 72000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 73200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 62,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 73200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  },
+  {
+    "frame": 84000,
+    "event": {
+      "type": "note_on",
+      "channel": 0,
+      "note": 64,
+      "velocity": 88
+    }
+  },
+  {
+    "frame": 85200,
+    "event": {
+      "type": "note_off",
+      "channel": 0,
+      "note": 64,
+      "velocity": 0
+    }
+  }
+]

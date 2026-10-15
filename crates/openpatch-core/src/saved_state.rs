@@ -13,6 +13,7 @@ pub enum SavedModuleState {
         values: [u8; 128],
     },
     MidiCcMappings([i16; 16]),
+    MidiGateMappings([i16; 16]),
     Seq3Run(bool),
     PushHold(bool),
     /// IEEE-754 voltage bits preserve exact equality in history and dirty checks.
@@ -28,6 +29,7 @@ pub enum SavedModuleState {
 impl SavedModuleState {
     pub fn from_node(node: &Node) -> Option<Self> {
         match node.kind.as_str() {
+            "midi_gate" => crate::initial_midi_gate_state(node).ok(),
             "midi_cc" => crate::initial_midi_cc_state(node).ok(),
             "seq3" => Some(Self::Seq3Run(
                 node.params.get("running").copied().unwrap_or(1.0) != 0.0,
@@ -43,6 +45,7 @@ impl SavedModuleState {
     pub fn kind(self) -> &'static str {
         match self {
             Self::MidiCc { .. } | Self::MidiCcMappings(_) => "midi_cc",
+            Self::MidiGateMappings(_) => "midi_gate",
             Self::Seq3Run(_) => "seq3",
             Self::PushHold(_) => "push",
             Self::ShiftRegister { .. } => "sh_asr",
@@ -59,6 +62,7 @@ impl SavedModuleState {
             Self::PushHold(value) => Some(("holding", value)),
             Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
+            | Self::MidiGateMappings(_)
             | Self::ShiftRegister { .. }
             | Self::RandomValues { .. } => None,
         }
@@ -72,6 +76,7 @@ impl SavedModuleState {
             Self::PushHold(_) => Self::PushHold(value),
             Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
+            | Self::MidiGateMappings(_)
             | Self::ShiftRegister { .. }
             | Self::RandomValues { .. } => self,
         }
@@ -86,6 +91,11 @@ impl SavedModuleState {
                 Self::MidiCcMappings(assignments).write_params(params);
                 for (i, value) in values.iter().enumerate() {
                     params.insert(format!("cc_value{i}"), *value as f32);
+                }
+            }
+            Self::MidiGateMappings(assignments) => {
+                for (i, value) in assignments.iter().enumerate() {
+                    params.insert(format!("note{}", i + 1), *value as f32);
                 }
             }
             Self::MidiCcMappings(assignments) => {

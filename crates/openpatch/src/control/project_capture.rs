@@ -85,7 +85,8 @@ impl Session {
                 SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
                 | SavedModuleState::MidiCc { .. }
-                | SavedModuleState::MidiCcMappings(_) => {}
+                | SavedModuleState::MidiCcMappings(_)
+                | SavedModuleState::MidiGateMappings(_) => {}
             }
         }
         self.check_midi_cc_capture()?;

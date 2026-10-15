@@ -43,6 +43,29 @@ pub(super) fn live_saved(
         return Err(format!("live state kind mismatch for module '{id}'"));
     }
     let state = match expected {
+        SavedModuleState::MidiGateMappings(_) => {
+            let rows = module["state"]["assignments"]
+                .as_array()
+                .filter(|rows| rows.len() == 16)
+                .ok_or_else(|| {
+                    format!("live MIDI Gate assignments unavailable for module '{id}'")
+                })?;
+            let mut maps = [-1_i16; 16];
+            let mut seen = BTreeSet::new();
+            for (slot, value) in maps.iter_mut().zip(rows) {
+                *slot = value
+                    .as_i64()
+                    .filter(|value| (-1..=127).contains(value))
+                    .ok_or_else(|| format!("invalid MIDI Gate assignment for module '{id}'"))?
+                    as i16;
+                if *slot >= 0 && !seen.insert(*slot) {
+                    return Err(format!(
+                        "colliding live MIDI Gate assignments for module '{id}'"
+                    ));
+                }
+            }
+            SavedModuleState::MidiGateMappings(maps)
+        }
         SavedModuleState::MidiCc { .. } | SavedModuleState::MidiCcMappings(_) => {
             let state = &module["state"];
             let mappings = state["assignments"]
@@ -191,6 +214,9 @@ impl Session {
         // A preceding mapping edit in this transaction changes ownership only.
         // Overlay that candidate map on the captured live controller bank.
         let value = match (value, initial) {
+            (SavedModuleState::MidiGateMappings(_), SavedModuleState::MidiGateMappings(maps)) => {
+                SavedModuleState::MidiGateMappings(maps)
+            }
             (
                 SavedModuleState::MidiCc { values, .. },
                 SavedModuleState::MidiCc { assignments, .. },
@@ -228,6 +254,39 @@ impl Session {
         args: &Value,
         effects: &mut EditEffects,
     ) -> Result<(), String> {
+        if name == "set_parameter"
+            && candidate.nodes.iter().any(|node| {
+                node.id == args["id"].as_str().unwrap_or("") && node.kind == "midi_gate"
+            })
+        {
+            let id = string(args, "id")?.to_owned();
+            let parameter = string(args, "parameter")?;
+            let before = SavedModuleState::from_node(
+                candidate.nodes.iter().find(|node| node.id == id).unwrap(),
+            )
+            .ok_or("invalid MIDI Gate state")?;
+            apply_edit(
+                candidate,
+                name,
+                args,
+                &mut effects.retired_cables,
+                &mut effects.initialized,
+            )?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .unwrap();
+            let after = SavedModuleState::from_node(node).ok_or("invalid MIDI Gate state")?;
+            if midi_cc::mapping_cell_for("midi_gate", parameter).is_some() {
+                after.write_params(&mut node.params);
+                effects.before_saved.entry(id.clone()).or_insert(before);
+                effects.after_saved.insert(id.clone(), after);
+                effects.working_saved.insert(id.clone(), after);
+                effects.load_saved.insert(id, after);
+            }
+            return Ok(());
+        }
         let midi_id = args["id"].as_str().filter(|id| {
             candidate
                 .nodes
@@ -348,7 +407,8 @@ impl Session {
                 .filter(|id| {
                     name != "randomize_modules"
                         || !candidate.nodes.iter().any(|node| {
-                            node.id == *id && matches!(node.kind.as_str(), "sh_asr" | "midi_cc")
+                            node.id == *id
+                                && matches!(node.kind.as_str(), "sh_asr" | "midi_cc" | "midi_gate")
                         })
                 })
                 .collect(),
@@ -422,7 +482,13 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
-                    let explicit = if current.kind() == "midi_cc" {
+                    let explicit = if current.kind() == "midi_gate" {
+                        if matches!(name, "initialize_modules" | "apply_module_preset") {
+                            Some(current)
+                        } else {
+                            None
+                        }
+                    } else if current.kind() == "midi_cc" {
                         if name == "initialize_modules" {
                             effects.full_midi_restores.insert(id.clone());
                             Some(current)
@@ -603,7 +669,10 @@ impl Session {
                         explicit.map(|value| current.with_value(value as f32 == 1.0))
                     };
                     if let Some(value) = explicit {
-                        if matches!(value.kind(), "random_values" | "sh_asr" | "midi_cc") {
+                        if matches!(
+                            value.kind(),
+                            "random_values" | "sh_asr" | "midi_cc" | "midi_gate"
+                        ) {
                             let node = candidate
                                 .nodes
                                 .iter_mut()

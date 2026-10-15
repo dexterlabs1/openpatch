@@ -588,6 +588,16 @@ impl Audio {
             .collect()
     }
 
+    pub fn midi_gate_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| module["kind"] == "midi_gate" && module["available"] == true)
+            .map(|(id, module)| (id.clone(), module["state"].clone()))
+            .collect()
+    }
+
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
@@ -981,7 +991,7 @@ impl Callback {
                     )
                 };
                 self.sync_midi_reset();
-                self.module_events.sync_midi_cc(
+                self.module_events.sync_midi_learn(
                     &mut self.graphs.active.engine,
                     &mut self.graphs.active.modules,
                     self.graphs.active.revision,
@@ -995,7 +1005,7 @@ impl Callback {
                     };
                     midi_budget -= 1;
                     if playing {
-                        self.module_events.before_midi_cc(
+                        self.module_events.before_midi_learn(
                             &mut self.graphs.active.engine,
                             &mut self.graphs.active.modules,
                             self.graphs.active.revision,
@@ -1003,10 +1013,10 @@ impl Callback {
                         // Crossfade copies still receive notes/controllers, but
                         // may never consume a Learn ticket or publish history.
                         if let Some(old) = self.graphs.previous.as_mut() {
-                            old.modules.cancel_midi_cc_learn(&mut old.engine);
+                            old.modules.cancel_all_midi_learn(&mut old.engine);
                         }
                         self.graphs.active.handle_midi(event);
-                        self.module_events.after_midi_cc(
+                        self.module_events.after_midi_learn(
                             &mut self.graphs.active.engine,
                             &mut self.graphs.active.modules,
                             self.frame_clock,
@@ -1133,7 +1143,7 @@ impl Callback {
     }
     fn sync_midi_reset(&mut self) {
         if self.midi.sync_epoch() {
-            self.module_events.cancel_midi_cc(
+            self.module_events.cancel_all_midi_learn(
                 &mut self.graphs.active.engine,
                 &mut self.graphs.active.modules,
             );
@@ -5485,6 +5495,7 @@ mod tests {
     include!("shift_register_host_tests.rs");
     include!("adsr_eg_host_tests.rs");
     include!("midi_cc_host_tests.rs");
+    include!("midi_gate_host_tests.rs");
 }
 
 #[cfg(test)]

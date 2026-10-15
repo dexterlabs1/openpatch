@@ -1176,7 +1176,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 59)
+        self.assertEqual(len(catalog["modules"]), 60)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1266,6 +1266,104 @@ class OpenPatchMCPTests(unittest.TestCase):
             samples = self._first_channel_samples(wav.readframes(4800), wav.getsampwidth(), wav.getnchannels())
         self.assertTrue(any(abs(value) > 100 for value in samples), "saved controller values provide an audible voice")
         self.assertLess(max(abs(value) for value in samples), 32767)
+
+    def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
+        catalog = self.payload(self.require_tool_success("catalog"))
+        self.assertEqual(len(catalog["modules"]), 60)
+        module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
+        defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
+        self.assertEqual(module["inputs"], [])
+        self.assertEqual(module["outputs"], [f"gate{i}" for i in range(1, 17)])
+        self.assertEqual(module["min_patch_version"], 2)
+        self.assertEqual([module["params"][f"note{i}"]["default"] for i in range(1, 17)], defaults)
+        self.assertEqual(len(module["params"]), 19)
+        self.assertTrue(all(module["params"][f"note{i}"]["min"] == -1 and
+                            module["params"][f"note{i}"]["max"] == 127 for i in range(1, 17)))
+
+        def note(frame: int, number: int, velocity: int, channel: int = 0, off: bool = False) -> dict[str, Any]:
+            return {"frame": frame, "event": {"type": "note_off" if off else "note_on",
+                    "channel": channel, "note": number, "velocity": velocity}}
+
+        for rate, active_samples in [(44100, 45), (48000, 48), (96000, 97)]:
+            self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": rate,
+                "nodes": [{"id": "pads", "kind": "midi_gate"}]}})
+            before = self.patch_snapshot()
+            pulse = self.payload(self.require_tool_success("capture_signal", {
+                "id": "pads", "port": "gate1", "seconds": 0.003, "points": 2048,
+                "midi_events": [note(0, 48, 127), note(0, 48, 0, off=True)],
+            }))
+            samples = [item["mean"] for item in pulse["bins"]]
+            self.assertEqual(samples[:active_samples], [10] * active_samples, f"{rate}: exact f32 minimum pulse")
+            self.assertEqual(samples[active_samples:], [0] * (len(samples) - active_samples))
+            self.assertEqual(self.patch_snapshot(), before)
+
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "pads", "kind": "midi_gate", "params": {"velocity": 1, "mpe": 1}}]}})
+        before = self.patch_snapshot()
+        voices = self.payload(self.require_tool_success("analyze_signal", {
+            "id": "pads", "port": "gate1", "seconds": 0.003,
+            "midi_events": [note(0, 48, 1), note(0, 48, 0, off=True),
+                            note(0, 48, 127, 15), note(96, 48, 0, 15, off=True)],
+        }))
+        self.assertEqual(voices["max_channels"], 16)
+        self.assertAlmostEqual(voices["channels"][0]["peak"], 10 / 127, delta=0.000001)
+        self.assertAlmostEqual(voices["channels"][0]["mean"], (10 / 127) / 3, delta=0.000001)
+        self.assertEqual(voices["channels"][14]["peak"], 0)
+        self.assertEqual(voices["channels"][15]["peak"], 10)
+        self.assertAlmostEqual(voices["channels"][15]["mean"], 10 * 96 / 144, delta=0.000001)
+        self.assertEqual(self.patch_snapshot(), before, "MIDI gates and velocities are transient")
+
+        mapped = self.payload(self.require_tool_success("set_parameter", {
+            "id": "pads", "parameter": "note1", "value": 49, "expected_revision": before["revision"],
+        }))
+        self.assertEqual((mapped["patch"]["nodes"][0]["params"]["note1"],
+                          mapped["patch"]["nodes"][0]["params"]["note2"]), (49, -1))
+        self.assertEqual(mapped["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        undone = self.payload(self.require_tool_success("undo", {"expected_revision": mapped["revision"]}))
+        params = undone["patch"]["nodes"][0]["params"]
+        self.assertEqual((params.get("note1", 48), params.get("note2", 49)), (48, 49))
+        self.assertEqual((params["velocity"], params["mpe"]), (1, 1))
+        for tool, arguments in [("learn_midi_gate", {"id": "pads", "cell": 16}),
+                                ("cancel_midi_gate_learn", {"id": "pads"})]:
+            error = self.require_tool_error(tool, {**arguments, "expected_revision": undone["revision"]})
+            self.assertIn("live audio backend", json.dumps(error))
+            self.assertEqual(self.patch_snapshot(), undone)
+
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "pads"}))["preset"]
+        self.assertEqual([preset["params"][f"note{i}"] for i in range(1, 17)], defaults)
+        self.require_tool_success("save_module_preset", {"filename": "pads.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "pads.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.require_tool_success("set_parameter", {"id": "pads", "parameter": "note1", "value": 127})
+        applied = self.payload(self.require_tool_success("apply_module_preset", {"id": "pads", "preset": reviewed}))
+        self.assertEqual(applied["patch"]["nodes"][0]["params"]["note1"], 48)
+        self.require_tool_success("save_patch", {"filename": "pads.json"})
+        saved = json.loads((self.workspace / "pads.json").read_text())
+        self.require_tool_success("set_parameter", {"id": "pads", "parameter": "note1", "value": -1})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "pads.json"}))
+        self.assertEqual(loaded["patch"], saved)
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "pads", "parameter": "velocity", "value": 0}},
+            {"tool": "set_parameter", "arguments": {"id": "pads", "parameter": "mpe", "value": 0}},
+        ]})
+        before = self.patch_snapshot()
+        panicked = self.payload(self.require_tool_success("capture_signal", {
+            "id": "pads", "port": "gate1", "seconds": 0.001, "points": 64,
+            "midi_events": [note(0, 48, 127)],
+            "module_events": [{"frame": 12, "id": "pads", "action": "midi_panic"}],
+        }))
+        self.assertEqual([item["mean"] for item in panicked["bins"]], [10] * 12 + [0] * 36)
+        self.assertEqual(self.patch_snapshot(), before, "offline Panic is not a saved parameter/history change")
+
+        drums = json.loads((REPOSITORY / "examples" / "midi-gate-drums.json").read_text())
+        phrase = json.loads((REPOSITORY / "examples" / "midi-gate-phrase.events.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": drums})
+        self.require_tool_success("render_audio", {"filename": "pads.wav", "seconds": 2, "midi_events": phrase})
+        with wave.open(str(self.workspace / "pads.wav")) as wav:
+            self.assertEqual((wav.getnchannels(), wav.getnframes()), (2, 96000))
+            samples = self._first_channel_samples(wav.readframes(96000), wav.getsampwidth(), wav.getnchannels())
+        self.assertTrue(any(abs(value) > 100 for value in samples))
+        self.assertLess(max(abs(value) for value in samples), 32767, "the connected percussion mix leaves headroom")
 
     def test_midi_trace_is_sample_timed_repeatable_and_read_only(self) -> None:
         patch = {"version": 2, "sample_rate": 48000,
@@ -1745,7 +1843,7 @@ class OpenPatchMCPTests(unittest.TestCase):
              "load_patch", "render_audio", "benchmark", "apply_edits", "preview_edits",
              "inspect_history", "undo", "redo", "analyze_signal", "capture_signal",
              "trigger_module", "inspect_performance", "rotate_sequence", "set_bypass", "invert_mutes",
-             "learn_midi_cc", "cancel_midi_cc_learn"}.issubset(names),
+             "learn_midi_cc", "cancel_midi_cc_learn", "learn_midi_gate", "cancel_midi_gate_learn"}.issubset(names),
             f"tools/list omitted documented tools: {names}",
         )
         bypass_tool = next(item for item in tools if item["name"] == "set_bypass")

@@ -169,7 +169,10 @@ included in the returned patch as `cc1`…`cc16` and hidden
 `cc_value0`…`cc_value127` parameters. Pending MSBs, other-channel values, filters
 and Learn tickets are transient.
 
-With live audio, every SEQ-3, Push, Random Values, S&H/ASR and MIDI CC module must be available at the requested revision
+MIDI Gate contributes normalized `note1`…`note16` mappings; its current gates,
+velocities, timers and Learn tickets are never saved.
+
+With live audio, every SEQ-3, Push, Random Values, S&H/ASR, MIDI CC and MIDI Gate module must be available at the requested revision
 and one completed callback frame. Stale, missing, or incoherent telemetry
 rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
 configured initial state when no backend is attached, or `parameters` when there
@@ -234,6 +237,67 @@ A coherent live save captures actual committed controller values; mapping edits
 and their Undo/Redo preserve ongoing controller movement. Full load/preset
 restoration restores the saved channel-zero values. See the
 [complete state, lifecycle and qualification contract](MIDI_CC.md).
+
+## MIDI note gates and Panic
+
+The version-2 `midi_gate` module has no inputs and sixteen outputs `gate1`…`gate16`.
+Integer `note1`…`note16` accept −1 (unmapped) through 127; middle C is MIDI 60 / C4.
+Defaults in panel row order are `48,49,50,51,44,45,46,47,40,41,42,43,36,37,38,39`.
+Loaded assignment collisions resolve in cell order, last cell wins. A direct
+assignment or Learn instead makes the chosen cell win and unmaps the old owner
+in one operation. `velocity=0` emits 10 V; `velocity=1` emits velocity/127 × 10 V.
+`mpe=0` merges accepted channels into a mono gate with last-event semantics;
+`mpe=1` exposes all sixteen wire-channel lanes. `channel=0` is Omni and 1…16
+select human channels. Event wire channels are still 0…15.
+
+A positive NoteOn starts/restarts the cell's minimum one-millisecond timer;
+NoteOff and zero-velocity NoteOn clear its held flag without restarting the timer.
+Even a same-sample NoteOn/Off emits the remaining pulse. Exact f32 subtraction
+produces 45, 48 and 97 active samples at 44.1, 48 and 96 kHz. For example:
+
+```json
+{
+  "id":"pads","port":"gate1","seconds":0.003,"points":2048,
+  "midi_events":[
+    {"frame":0,"event":{"type":"note_on","channel":0,"note":60,"velocity":127}},
+    {"frame":0,"event":{"type":"note_off","channel":0,"note":60,"velocity":0}}
+  ]
+}
+```
+
+Arm `learn_midi_gate` with `{"id":"pads","cell":1,"expected_revision":12}`;
+cancel with `cancel_midi_gate_learn` and `{"id":"pads","expected_revision":12}`.
+Cells are human 1…16. A successful request is not confirmation of completed Learn.
+The first channel-accepted positive NoteOn learns and starts the chosen cell on
+that event's audio sample. NoteOff, zero velocity, rejected channels and unrelated
+messages do not complete it. Completion records one mapping-only history operation.
+Headless servers return a truthful live-backend error for these commands.
+
+State belongs to the **cell**, so editing or learning a new note while held
+preserves its gate/timer/velocity. Its old note-off no longer matches that cell.
+Use `trigger_module` with `{"id":"pads","action":"midi_panic"}` to clear
+this module's gates/timers and cancel armed Learn. Panic is a one-shot performance
+action, available while bypassed, without parameter/history edits. It also works
+as an offline `module_events` action:
+
+```json
+{"frame":12,"id":"pads","action":"midi_panic"}
+```
+
+Mappings/options save and restore; held gates, timers, velocities and Learn are
+transient. Mapping Undo/Redo never replays note events. Host transport stop,
+disconnect, overflow and bypass safety clear gates and cancel armed Learn without
+discarding a completed durable decision. See the [fixed source and host contract](MIDI_GATE.md).
+
+[The MIDI drum pads example](../examples/midi-gate-drums.json) routes notes
+60/62/64 to kick/clap/hat. At the keyboard's default octave, play **Z/X/C** or
+on-screen **C4/D4/E4**. **Global MIDI input** chooses hardware once for the host.
+Velocity is off in this example so a soft note still crosses the drum's Schmitt
+trigger threshold. Render its [two-second phrase](../examples/midi-gate-phrase.events.json)
+with `render_audio` and `midi_events`; this runs offline without starting speaker playback.
+The [63-case actual-class comparison](benchmarks/midi-gate-reference.json) records
+bit-identical probed DSP traces at three sample rates; native hardware and host
+lifecycle qualification remain separate from that numerical result.
 
 ## Initialize and Randomize
 
@@ -399,8 +463,8 @@ For reproducible offline actions, supply `module_events` to `render_audio`,
 ```
 
 Each event has exactly `frame` (a nonnegative integer), `id` (an existing `seq3`
-module for sequence actions, or `logic`/`process`/`pulses`/`push` for manual controls), and `action`
-(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`, plus Push’s `push_press`, `push_release`, `hold_press`, and `hold_release`).
+module for sequence actions, or a matching manual/performance module, including `midi_gate` for Panic), and `action`
+(`clock`, `run`, `reset`, `b_press`, `b_release`, `gate_press`, `gate_release`, or `pulse1_press`/`pulse1_release` through `pulse10_press`/`pulse10_release`, plus Push’s `push_press`, `push_release`, `hold_press`, and `hold_release`, plus MIDI Gate’s `midi_panic`).
 Each action must match its module kind. Frames index the stored patch
 sample rate, must be less than the rounded render frame count, and must be
 nondecreasing. The list is capped at 65,536 events and at 64 actions for one
@@ -446,9 +510,14 @@ not proof that audio has processed it. No live backend means these requests are
 unsupported; offline event traces remain available.
 
 `inspect_performance.performance.modules` is keyed by module ID for the
-sequencer, sequential switches, the four signal processors, VCA Mix, SUM, VIZ, Pulses, Push, and Gates. Each entry has
+sequencer, sequential switches, the four signal processors, VCA Mix, SUM, VIZ, Pulses, Push, Gates, MIDI CC and MIDI Gate. Each entry has
 `kind`, saved `bypassed`, `available`, actual applied `revision` (or null),
 `state`, `controls`, and `lights`. Sequence state retains step/running/length. Push state reports `holding`.
+MIDI CC state exposes sixteen `assignments`, 128 committed channel-zero `values`
+and actual `learning`; MIDI Gate state exposes `assignments` and `learning`
+without saved gate/velocity state. `learning` is null or `{serial,cell}`, with a
+human cell 1…16. Gate's sixteen light entries report the maximum current output
+voltage across lanes divided by 10; no pending request creates an activity lamp.
 Manual `controls` reports `pressed` and `pressed_mask` (Pulses rows use bits 0–9; Push uses bit 0 for PUSH and bit 1 for HOLD); indicator `lights` provides `count`, sixteen
 fixed-capacity brightness pairs, and a `manual` flag. SUM and VIZ also supply
 `input_channels`, latched with their light state; other kinds omit that field. Signal processors use

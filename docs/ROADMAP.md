@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 59 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 60 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Next product design priority
 
@@ -26,7 +26,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 59 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 59 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 60 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 60 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -42,7 +42,7 @@ This plan starts from the code inspected on the baseline date:
 - Audio oscillator: four simultaneous outputs, FM/PWM, hard/soft sync and direct Fundamental 2.6.4 voltage comparisons. Reconstruction and retirement gaps remain; see [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md).
 - Reference DSP: voltage-based VCO/ladder/OTA VCA/RC ADSR/gate/audio conversion, with documented idealizations and numerical tests. Ladder and VCA each add 64 samples of oversampling latency; parallel paths are not compensated. Legacy patches retain normalized semantics. See [ANALOG_MODELS.md](ANALOG_MODELS.md).
 - Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. SUM now adds output attenuation and revision-coherent six-band level/channel telemetry; [contract](POLYPHONIC_SUM.md). [VIZ](POLYPHONIC_VIZ.md) adds 16-channel signed indicators and genuine input-only modules, with primitive reference comparisons at three sample rates. Complete corresponding VCV module contracts remain open.
-- Native host: rack browser, module movement, rotary controls, cable creation/removal, single-file native projects with Save/Save As/Revert, recovery copies, and legacy JSON/sidecar import, shared multi-step patch undo/redo, and optional GLSL visuals. Studio Rack chrome provides direct transport/save/history controls and a bounded, tabbed Scope/Visuals dock beside the module library. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Single/group module moves now create one checkpoint in that shared history; drag previews are excluded from saved geometry. Selectable-device stereo output, one hardware MIDI input, polyphonic MIDI → CV, sixteen-output MIDI CC with Learn, and a performance keyboard are implemented. Hardware audio input and hands-on MIDI/device qualification remain open. See [MIDI_AUDIO.md](MIDI_AUDIO.md).
+- Native host: rack browser, module movement, rotary controls, cable creation/removal, single-file native projects with Save/Save As/Revert, recovery copies, and legacy JSON/sidecar import, shared multi-step patch undo/redo, and optional GLSL visuals. Studio Rack chrome provides direct transport/save/history controls and a bounded, tabbed Scope/Visuals dock beside the module library. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Single/group module moves now create one checkpoint in that shared history; drag previews are excluded from saved geometry. Selectable-device stereo output, one hardware MIDI input, polyphonic MIDI → CV, sixteen-output MIDI CC and MIDI Gate with Learn, and a performance keyboard are implemented. Hardware audio input and hands-on MIDI/device qualification remain open. See [MIDI_AUDIO.md](MIDI_AUDIO.md).
 - Control: UI and MCP share revision-checked transactions and bounded history. `preview_edits` validates a candidate without committing; `apply_edits` validates the final graph and commits up to 256 edit operations as one revision/history action. History retains at most 128 prior/future patch snapshots combined. Rendering/export clone the active patch without cloning history. Audio swaps compiled graphs through bounded queues and carries matching DSP state forward. Desktop stdio starts with one application instance. On macOS/Linux, the CLI can also discover and attach to an existing window over a private local socket; Windows retains stdio.
 - Validation: repository tests and platform CI exist. Independent engine-v2 contract tests pass, covering timing/counts, feedback, normalization, routing, retirement/state adoption, invalid data, legacy rendering and allocation/deallocation checks. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
 
@@ -66,7 +66,7 @@ This plan starts from the code inspected on the baseline date:
 | Browser/navigation | Partial; docked library with optional pinned natural-size inspection, search, role filters, saved favorites, keyboard access, contextual help and drag-to-add previews | Zoom/pan and selection reveal are implemented; broader large-rack navigation and full Rack browser equivalence remain open. |
 | Project lifecycle | Partial; coherent native projects, atomic Save/Save As, Revert, current SEQ-3 Run, Push HOLD, Random Values, S&H/ASR and MIDI CC saved-value capture, content dirty tracking for persistent state and per-instance recovery implemented | Qualify physical interruption/durability across filesystems, standard file dialogs, project-level MCP operations, factory templates, assets and VCV preset conversion. Native module presets are available separately. See [PROJECTS.md](PROJECTS.md) for guarantees and remaining boundaries. |
 | Hardware audio | Partial; selectable device and explicit stereo sink | Select backend/device/rate/buffer; stereo and 8/16-channel input/output; loopback channel-isolation and latency checks; hot unplug/reconnect without callback blockage. |
-| MIDI and keyboard performance | Partial; hardware input, 32-pitch QWERTY/mouse keyboard with guarded note ownership, voice allocation, MIDI CC conversion/Learn, paired 14-bit CC, MPE and sample-timed traces | Input/output notes, gates, CC, pitch bend, pressure, clock/transport, learn/mapping, poly allocation, and keyboard performance; timestamp/order tests and stuck-note recovery. |
+| MIDI and keyboard performance | Partial; hardware input, 32-pitch QWERTY/mouse keyboard with guarded note ownership, voice allocation, MIDI CC and note-gate conversion/Learn, paired 14-bit CC, MPE and sample-timed traces | Input/output notes, gates, CC, pitch bend, pressure, clock/transport, learn/mapping, poly allocation, and keyboard performance; timestamp/order tests and stuck-note recovery. |
 | Plugin extensibility | Missing | Versioned Rust module API/manifests, state migration, install/discovery/update and missing-module recovery; publish compatibility boundaries. Existing VCV binary support remains a separate unfulfilled gate. |
 | Existing Rack projects | Missing | Supported `.vcv` imports preserve routings, parameters and layout; unknown modules/assets remain explicit and recoverable; publish a version/module compatibility matrix. |
 | Platform release quality | Partial; macOS ARM first | Repeatable macOS ARM builds and actual input/audio/UI tests, then Linux/Windows device qualification; clean-machine install, upgrade, recovery and accessibility checks. |
@@ -292,3 +292,35 @@ recorded DSP scope and platform; it does not prove native Mac input/window,
 hardware MIDI, audio-device behavior, or complete Core/host parity. Hardware
 endpoint selection is global, and the nonstandard signed gamepad extension is
 excluded.
+
+
+## MIDI Gate: functional coverage and explicit state behavior
+
+The version-2 `midi_gate` kind adds sixteen note assignments, minimum-duration
+note gates, velocity voltage, MPE, channel filtering, Learn/Cancel and an explicit
+module Panic. CC and Gate share one original 4×4 panel/precision-entry renderer
+and the kind-tagged durable Learn transport. The catalog now contains 60 kinds;
+this does not complete the Core inventory.
+
+The source's state belongs to output cells. A mapping edit, Learn, or mapping
+Undo preserves that cell's gates/timers/velocities; an old note-off may no longer
+find a held cell after reassignment. Panic clears gates/timers and cancels armed
+Learn. Completed durable decisions still reconcile. Same-sample NoteOn/Off emits
+a minimum pulse: the exact f32 timer produces 45, 48 and 97 samples at
+44.1, 48 and 96 kHz, respectively. Velocity mode scales the active voltage to
+velocity/127 × 10 V. Mono merges accepted channels with last-event semantics;
+MPE preserves sixteen separate lanes. Only mappings/options persist.
+
+The [actual-class report](benchmarks/midi-gate-reference.json) passes 63 cases
+(21 fixtures × 44.1/48/96 kHz), 258,048 frames and 56,513,088 active lane samples.
+Binary voltage traces are bit-identical with zero voltage error and no mapping,
+Learn, width or edge mismatches. This is the recorded pinned DSP/SDK queue/source
+JSON comparison, with an explicit driver channel rule and every output probed;
+it does not qualify disconnected SDK port metadata or native hardware behavior.
+The [locked Gate contract](MIDI_GATE.md) keeps host transport/Session/UI tests
+separate. Native Mac window/audio, physical MIDI, endpoint timing/reconnect and
+broader platform acceptance remain open.
+The selected hardware input is global rather than per module. The connected
+[MIDI drum pads](../examples/midi-gate-drums.json) example and
+[two-second note trace](../examples/midi-gate-phrase.events.json) exercise the
+existing global keyboard and offline MCP path without replacing the CC module.

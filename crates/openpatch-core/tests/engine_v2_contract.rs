@@ -1406,3 +1406,70 @@ fn svf_low_gain_feedback_preserves_partition_order_and_live_rebuild() {
         }
     }
 }
+
+#[test]
+fn mixed_cc_gate_first_callback_adoption_learn_lights_and_panic_use_no_heap() {
+    use openpatch_core::{MidiEvent, MidiLearnKind, ModuleAction, SavedModuleState, TapSample};
+    let mut p = patch(
+        vec![
+            node("gate", "midi_gate", &[("mpe", 1.0), ("velocity", 1.0)]),
+            node("cc", "midi_cc", &[("mpe", 1.0)]),
+        ],
+        vec![],
+        "gate",
+    );
+    p.output_port = "gate1".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let gh = old.resolve_module_state("gate").unwrap();
+    let ch = old.resolve_module_state("cc").unwrap();
+    let new_gh = replacement.resolve_module_state("gate").unwrap();
+    let new_ch = replacement.resolve_module_state("cc").unwrap();
+    let taps = [
+        Some(replacement.resolve_tap("gate", "gate16", 15).unwrap()),
+        Some(replacement.resolve_tap("cc", "out16", 15).unwrap()),
+    ];
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[TapSample::default(); 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|active| active.set(true));
+    assert!(old.arm_midi_learn(gh, MidiLearnKind::Gate, 1, 0));
+    assert!(old.arm_midi_learn(ch, MidiLearnKind::Cc, 2, 0));
+    for lane in 0..16 {
+        for note in openpatch_core::midi_gate::DEFAULT_ASSIGNMENTS {
+            old.handle_midi(MidiEvent::NoteOn {
+                channel: lane,
+                note: note as u8,
+                velocity: 1 + lane * 8,
+            });
+        }
+        old.handle_midi(MidiEvent::ControlChange {
+            channel: lane,
+            controller: 16,
+            value: 64,
+        });
+    }
+    replacement.adopt_state_from(&old);
+    std::hint::black_box(replacement.take_midi_learn_completion(new_gh, MidiLearnKind::Gate));
+    std::hint::black_box(replacement.take_midi_learn_completion(new_ch, MidiLearnKind::Cc));
+    replacement.process_audio_block_with_taps(&mut audio, &taps, &mut samples);
+    replacement.process_poly_block(&mut frames);
+    std::hint::black_box(replacement.module_lights(new_gh));
+    std::hint::black_box(replacement.module_saved_state(new_gh));
+    assert!(replacement.set_module_saved_state(
+        new_gh,
+        SavedModuleState::MidiGateMappings(openpatch_core::midi_gate::DEFAULT_ASSIGNMENTS)
+    ));
+    for _ in 0..1000 {
+        assert!(replacement.handle_module_event(new_gh, ModuleAction::MidiPanic));
+    }
+    assert!(replacement.release_module_controls(new_gh));
+    assert!(replacement.initialize_module_state(new_gh));
+    assert!(replacement.reset_module_state(new_gh));
+    replacement.handle_midi(MidiEvent::Panic);
+    TRACK_MEMORY.with(|active| active.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(samples[0].iter().all(|sample| sample.active));
+    assert_eq!(replacement.module_lights(new_gh).unwrap().count, 16);
+}
