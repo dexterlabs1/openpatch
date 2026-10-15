@@ -1,0 +1,7411 @@
+{
+  "benchmark": "OpenPatch native MACRO VOICE offline wall-clock profile",
+  "cv_note": "Pitch poly_constant values span -1..+1 V; three mono poly_constant CVs feed harmonics/timbre/morph. Trigger is unpatched, so the voice remains continuous.",
+  "method": "Separate single-engine workloads measured sequentially; 8 warmup blocks and 64 timed blocks per workload. Table creation, compilation and output inspection are outside the timed calls. No baseline subtraction. high_drive is a selected high-control setting, not an exhaustive worst case. With 64 observations and this nearest-rank estimator p99 equals max; these are short-run observations, not stable tail-capacity bounds. Baseline has only the pitch source and is not a matched support graph.",
+  "model_note": "Eight native OpenPatch engines; FM/additive algorithms are adapted from Plaits, not a bit-identical Plaits port.",
+  "qualification": "Offline process_poly_block wall-clock measurements only; not audio-device callback qualification and no Rack or physical-device comparison.",
+  "rows": [
+    {
+      "all_finite": true,
+      "baseline": true,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": 0.0,
+      "engine": "poly_constant",
+      "iterations": 64,
+      "max_processing_us": 62.24999999999999,
+      "max_utilization": 0.0466875,
+      "mean_processing_us": 4.227187499999999,
+      "mean_us_per_frame": 0.06604980468749999,
+      "mean_utilization": 0.0031703906249999996,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        2.1670000000000003,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.084,
+        2.125,
+        8.459,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        2.125,
+        2.2910000000000004,
+        5.625,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        21.208000000000002,
+        2.1670000000000003,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        40.25,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        9.542,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        62.24999999999999,
+        2.125,
+        2.125,
+        2.125,
+        2.0829999999999997,
+        2.25,
+        2.0829999999999997,
+        2.125,
+        2.125,
+        2.125
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 2.125,
+      "p95_processing_us": 9.542,
+      "p95_utilization": 0.0071565000000000005,
+      "p99_processing_us": 62.24999999999999,
+      "patch": {
+        "cables": [],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          }
+        ],
+        "output": "pitch",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "baseline",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": 110.35682610049844,
+      "engine": "Analog",
+      "iterations": 64,
+      "max_processing_us": 2562.333,
+      "max_utilization": 1.9217497500000003,
+      "mean_processing_us": 68.450421875,
+      "mean_us_per_frame": 1.069537841796875,
+      "mean_utilization": 0.05133781640625001,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        25.25,
+        25.208,
+        25.415999999999997,
+        25.291,
+        25.25,
+        77.834,
+        25.458,
+        25.292,
+        25.417,
+        25.334,
+        25.333,
+        25.291,
+        25.291,
+        25.334,
+        25.292,
+        25.291,
+        25.291,
+        25.333,
+        25.292,
+        25.334,
+        35.875,
+        25.333,
+        25.291,
+        25.333,
+        25.334,
+        25.25,
+        25.292,
+        25.417,
+        25.25,
+        25.291,
+        25.334,
+        25.25,
+        25.25,
+        25.292,
+        25.333,
+        25.291,
+        25.333,
+        25.292,
+        25.375,
+        25.25,
+        25.333,
+        25.333,
+        25.292,
+        25.292,
+        25.375,
+        25.25,
+        25.333,
+        95.375,
+        25.291,
+        25.333,
+        25.292,
+        103.04199999999999,
+        25.415999999999997,
+        25.291,
+        25.291,
+        25.458,
+        25.25,
+        25.5,
+        25.458,
+        25.292,
+        25.375,
+        37.666000000000004,
+        2562.333,
+        25.458
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 25.333,
+      "p95_processing_us": 77.834,
+      "p95_utilization": 0.058375500000000004,
+      "p99_processing_us": 2562.333,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 0.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -425.07876004092395,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 2711.625,
+      "max_utilization": 2.0337187500000002,
+      "mean_processing_us": 189.992875,
+      "mean_us_per_frame": 2.968638671875,
+      "mean_utilization": 0.14249465625000002,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        2711.625,
+        68.458,
+        68.334,
+        68.458,
+        68.0,
+        69.167,
+        217.916,
+        702.792,
+        68.583,
+        77.042,
+        68.916,
+        83.791,
+        99.583,
+        231.459,
+        70.5,
+        68.667,
+        68.0,
+        68.959,
+        155.292,
+        68.5,
+        90.125,
+        68.333,
+        102.5,
+        186.084,
+        69.04100000000001,
+        906.083,
+        85.084,
+        68.792,
+        67.875,
+        224.75,
+        2084.875,
+        68.458,
+        157.08399999999997,
+        290.0,
+        69.04199999999999,
+        107.917,
+        203.417,
+        135.333,
+        107.667,
+        129.292,
+        129.833,
+        176.875,
+        68.333,
+        68.416,
+        68.666,
+        67.875,
+        68.959,
+        68.458,
+        68.375,
+        68.417,
+        68.042,
+        68.958,
+        68.125,
+        90.0,
+        68.334,
+        68.208,
+        68.875,
+        67.833,
+        68.917,
+        68.334,
+        68.208,
+        68.584,
+        68.0,
+        69.125
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 68.959,
+      "p95_processing_us": 702.792,
+      "p95_utilization": 0.5270940000000001,
+      "p99_processing_us": 2711.625,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -242.51854180172086,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 106.791,
+      "max_utilization": 0.08009325,
+      "mean_processing_us": 39.103515625000014,
+      "mean_us_per_frame": 0.6109924316406252,
+      "mean_utilization": 0.02932763671875001,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        35.375,
+        35.542,
+        35.417,
+        35.5,
+        35.459,
+        35.458,
+        35.375,
+        35.459,
+        35.375,
+        35.541,
+        35.459,
+        35.375,
+        35.416000000000004,
+        35.416000000000004,
+        35.541,
+        35.458,
+        35.375,
+        35.583999999999996,
+        35.375,
+        49.916000000000004,
+        35.5,
+        35.459,
+        35.375,
+        35.458,
+        35.5,
+        35.459,
+        35.375,
+        35.375,
+        35.417,
+        106.791,
+        35.583,
+        35.5,
+        35.459,
+        35.458,
+        35.333000000000006,
+        35.459,
+        35.416000000000004,
+        51.875,
+        35.709,
+        35.458,
+        35.375,
+        35.417,
+        35.5,
+        35.5,
+        35.458,
+        35.458,
+        97.167,
+        42.583999999999996,
+        35.375,
+        35.583,
+        60.833,
+        39.958,
+        42.917,
+        36.375,
+        35.542,
+        59.375,
+        35.75,
+        35.5,
+        35.375,
+        35.375,
+        35.5,
+        35.375,
+        35.458,
+        35.5
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 35.459,
+      "p95_processing_us": 59.375,
+      "p95_utilization": 0.04453125,
+      "p99_processing_us": 106.791,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -8.032060325145721,
+      "engine": "Harmonic",
+      "iterations": 64,
+      "max_processing_us": 35.042,
+      "max_utilization": 0.026281500000000003,
+      "mean_processing_us": 13.132203124999995,
+      "mean_us_per_frame": 0.20519067382812492,
+      "mean_utilization": 0.009849152343749997,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        12.542,
+        12.5,
+        12.542,
+        12.458,
+        12.5,
+        12.583,
+        12.375,
+        12.542,
+        13.0,
+        15.291,
+        15.291999999999998,
+        15.042,
+        15.083,
+        15.334,
+        15.542000000000002,
+        12.458,
+        12.459,
+        12.541,
+        12.417,
+        12.542,
+        12.5,
+        12.375,
+        12.542,
+        12.583,
+        12.542,
+        12.625,
+        12.5,
+        12.459,
+        12.583,
+        12.5,
+        12.459,
+        12.625,
+        12.541,
+        12.417,
+        12.5,
+        12.583,
+        12.5,
+        12.625,
+        12.542,
+        12.417,
+        12.541,
+        12.541,
+        12.417,
+        12.542,
+        12.625,
+        12.333,
+        12.625,
+        12.542,
+        12.5,
+        12.625,
+        12.5,
+        12.458,
+        35.042,
+        12.707999999999998,
+        12.375,
+        12.541,
+        12.584,
+        12.417,
+        12.541,
+        12.5,
+        12.417,
+        12.584,
+        12.542,
+        12.5
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 12.541,
+      "p95_processing_us": 15.291999999999998,
+      "p95_utilization": 0.011469,
+      "p99_processing_us": 35.042,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 3.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -153.2848836183548,
+      "engine": "Wavetable",
+      "iterations": 64,
+      "max_processing_us": 12.541,
+      "max_utilization": 0.009405750000000001,
+      "mean_processing_us": 12.388656250000002,
+      "mean_us_per_frame": 0.19357275390625003,
+      "mean_utilization": 0.009291492187500002,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        12.333,
+        12.5,
+        12.5,
+        12.292,
+        12.375,
+        12.417,
+        12.292,
+        12.541,
+        12.375,
+        12.292,
+        12.417,
+        12.375,
+        12.333,
+        12.5,
+        12.415999999999999,
+        12.417,
+        12.458,
+        12.415999999999999,
+        12.292,
+        12.458,
+        12.375,
+        12.334000000000001,
+        12.417,
+        12.417,
+        12.291,
+        12.417,
+        12.375,
+        12.292,
+        12.415999999999999,
+        12.375,
+        12.291,
+        12.459,
+        12.415999999999999,
+        12.415999999999999,
+        12.375,
+        12.417,
+        12.292,
+        12.417,
+        12.415999999999999,
+        12.292,
+        12.375,
+        12.458,
+        12.333,
+        12.458,
+        12.417,
+        12.334000000000001,
+        12.375,
+        12.375,
+        12.417,
+        12.5,
+        12.415999999999999,
+        12.292,
+        12.417,
+        12.5,
+        12.292,
+        12.5,
+        12.375,
+        12.291,
+        12.375,
+        12.415999999999999,
+        12.334000000000001,
+        12.417,
+        12.415999999999999,
+        12.292
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 12.415999999999999,
+      "p95_processing_us": 12.5,
+      "p95_utilization": 0.009375000000000001,
+      "p99_processing_us": 12.541,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 4.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -26.64999304432422,
+      "engine": "Chord",
+      "iterations": 64,
+      "max_processing_us": 9.917,
+      "max_utilization": 0.00743775,
+      "mean_processing_us": 9.773468749999992,
+      "mean_us_per_frame": 0.15271044921874988,
+      "mean_utilization": 0.007330101562499995,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        9.834,
+        9.709,
+        9.791,
+        9.792,
+        9.667000000000002,
+        9.875,
+        9.791,
+        9.833,
+        9.707999999999998,
+        9.792,
+        9.75,
+        9.792,
+        9.791,
+        9.792,
+        9.792,
+        9.792,
+        9.791,
+        9.834,
+        9.666,
+        9.707999999999998,
+        9.792,
+        9.791,
+        9.792,
+        9.834,
+        9.792,
+        9.875,
+        9.709,
+        9.833,
+        9.834,
+        9.707999999999998,
+        9.792,
+        9.75,
+        9.75,
+        9.75,
+        9.791,
+        9.75,
+        9.75,
+        9.707999999999998,
+        9.75,
+        9.707999999999998,
+        9.834,
+        9.791,
+        9.709,
+        9.875,
+        9.792,
+        9.875,
+        9.667000000000002,
+        9.666,
+        9.917,
+        9.792,
+        9.707999999999998,
+        9.75,
+        9.75,
+        9.75,
+        9.709,
+        9.833,
+        9.75,
+        9.709,
+        9.75,
+        9.75,
+        9.791,
+        9.916,
+        9.709,
+        9.75
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 9.791,
+      "p95_processing_us": 9.875,
+      "p95_utilization": 0.0074062500000000005,
+      "p99_processing_us": 9.917,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 5.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -2.696140445303172,
+      "engine": "Swarm",
+      "iterations": 64,
+      "max_processing_us": 13.416,
+      "max_utilization": 0.010062000000000001,
+      "mean_processing_us": 13.264953125,
+      "mean_us_per_frame": 0.207264892578125,
+      "mean_utilization": 0.009948714843750001,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        13.375,
+        13.291,
+        13.292000000000002,
+        13.332999999999998,
+        13.292000000000002,
+        13.292000000000002,
+        13.25,
+        13.334,
+        13.332999999999998,
+        13.209,
+        13.332999999999998,
+        13.209,
+        13.332999999999998,
+        13.292000000000002,
+        13.292000000000002,
+        13.291,
+        13.25,
+        13.291,
+        13.25,
+        13.25,
+        13.209,
+        13.332999999999998,
+        13.292000000000002,
+        13.208,
+        13.292000000000002,
+        13.25,
+        13.208,
+        13.084,
+        13.291,
+        13.209,
+        13.166,
+        13.25,
+        13.334,
+        13.332999999999998,
+        13.334,
+        13.125,
+        13.25,
+        13.25,
+        13.375,
+        13.083,
+        13.25,
+        13.416,
+        13.332999999999998,
+        13.292000000000002,
+        13.167,
+        13.291,
+        13.375,
+        13.25,
+        13.25,
+        13.209,
+        13.25,
+        13.208,
+        13.209,
+        13.25,
+        13.208,
+        13.25,
+        13.125,
+        13.332999999999998,
+        13.291,
+        13.291,
+        13.209,
+        13.208,
+        13.416,
+        13.208
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 13.25,
+      "p95_processing_us": 13.375,
+      "p95_utilization": 0.01003125,
+      "p99_processing_us": 13.416,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 6.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -109.77397015225142,
+      "engine": "Metallic",
+      "iterations": 64,
+      "max_processing_us": 9.917,
+      "max_utilization": 0.00743775,
+      "mean_processing_us": 9.833937500000012,
+      "mean_us_per_frame": 0.15365527343750018,
+      "mean_utilization": 0.007375453125000009,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        9.875,
+        9.833,
+        9.834,
+        9.875,
+        9.833,
+        9.834,
+        9.833,
+        9.792,
+        9.875,
+        9.792,
+        9.916,
+        9.833,
+        9.833,
+        9.75,
+        9.792,
+        9.792,
+        9.833,
+        9.792,
+        9.791,
+        9.833,
+        9.834,
+        9.875,
+        9.791,
+        9.916,
+        9.833,
+        9.792,
+        9.916,
+        9.834,
+        9.833,
+        9.833,
+        9.834,
+        9.875,
+        9.834,
+        9.875,
+        9.916,
+        9.834,
+        9.833,
+        9.916,
+        9.792,
+        9.833,
+        9.916,
+        9.833,
+        9.833,
+        9.875,
+        9.834,
+        9.791,
+        9.792,
+        9.917,
+        9.791,
+        9.792,
+        9.792,
+        9.791,
+        9.792,
+        9.792,
+        9.833,
+        9.834,
+        9.791,
+        9.792,
+        9.833,
+        9.791,
+        9.792,
+        9.875,
+        9.917,
+        9.833
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 9.833,
+      "p95_processing_us": 9.916,
+      "p95_utilization": 0.007437000000000001,
+      "p99_processing_us": 9.917,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 7.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -21.356027707457542,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 27.542,
+      "max_utilization": 0.0206565,
+      "mean_processing_us": 26.203124999999996,
+      "mean_us_per_frame": 0.40942382812499994,
+      "mean_utilization": 0.01965234375,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        24.042,
+        26.5,
+        26.833,
+        25.292,
+        25.791999999999998,
+        27.0,
+        26.792,
+        24.708000000000002,
+        27.084,
+        27.041,
+        25.125,
+        25.916,
+        27.166,
+        26.209,
+        25.041,
+        27.166999999999998,
+        26.75,
+        25.25,
+        26.75,
+        27.25,
+        25.458,
+        26.041999999999998,
+        27.083000000000002,
+        26.583,
+        24.666999999999998,
+        27.208000000000002,
+        26.709,
+        25.415999999999997,
+        26.375,
+        26.875,
+        26.333,
+        24.625,
+        27.041999999999998,
+        27.166999999999998,
+        24.958000000000002,
+        26.0,
+        26.958,
+        26.208000000000002,
+        25.417,
+        27.25,
+        26.5,
+        24.75,
+        26.959,
+        26.917,
+        25.0,
+        26.291999999999998,
+        26.583,
+        26.0,
+        24.791999999999998,
+        27.208000000000002,
+        27.041999999999998,
+        25.0,
+        26.583,
+        27.125,
+        25.25,
+        25.541,
+        27.542,
+        26.542,
+        24.875,
+        27.041999999999998,
+        26.833,
+        25.083000000000002,
+        26.25,
+        27.209
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 26.5,
+      "p95_processing_us": 27.209,
+      "p95_utilization": 0.02040675,
+      "p99_processing_us": 27.542,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -3335.094529673457,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 549.291,
+      "max_utilization": 0.4119682500000001,
+      "mean_processing_us": 44.46221875000003,
+      "mean_us_per_frame": 0.6947221679687504,
+      "mean_utilization": 0.033346664062500024,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        35.5,
+        35.541,
+        35.583999999999996,
+        35.625,
+        35.5,
+        35.583,
+        35.583999999999996,
+        35.583,
+        35.583999999999996,
+        35.583,
+        35.583,
+        35.583,
+        35.542,
+        35.583,
+        35.459,
+        35.583,
+        35.583,
+        35.542,
+        35.583,
+        35.542,
+        35.542,
+        35.583,
+        35.583,
+        35.625,
+        35.583,
+        35.625,
+        35.667,
+        35.541,
+        35.625,
+        35.416000000000004,
+        35.583999999999996,
+        35.625,
+        35.458,
+        35.5,
+        35.459,
+        35.458,
+        35.583,
+        35.625,
+        35.542,
+        35.5,
+        35.542,
+        82.875,
+        35.791,
+        35.583,
+        35.459,
+        35.583,
+        35.667,
+        35.458,
+        35.5,
+        35.541,
+        35.5,
+        41.125,
+        38.791999999999994,
+        35.5,
+        35.583999999999996,
+        549.291,
+        35.792,
+        35.5,
+        35.5,
+        35.542,
+        35.5,
+        35.583,
+        35.583999999999996,
+        35.416000000000004
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 35.583,
+      "p95_processing_us": 38.791999999999994,
+      "p95_utilization": 0.029094,
+      "p99_processing_us": 549.291,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": true,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 0.0,
+      "engine": "poly_constant",
+      "iterations": 64,
+      "max_processing_us": 3.5420000000000003,
+      "max_utilization": 0.0006641250000000001,
+      "mean_processing_us": 3.41603125,
+      "mean_us_per_frame": 0.0133438720703125,
+      "mean_utilization": 0.0006405058593750001,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        3.5,
+        3.375,
+        3.375,
+        3.416,
+        3.4589999999999996,
+        3.375,
+        3.5,
+        3.416,
+        3.5,
+        3.5,
+        3.4170000000000003,
+        3.375,
+        3.375,
+        3.416,
+        3.4170000000000003,
+        3.458,
+        3.458,
+        3.375,
+        3.375,
+        3.375,
+        3.334,
+        3.416,
+        3.4170000000000003,
+        3.4170000000000003,
+        3.375,
+        3.4589999999999996,
+        3.416,
+        3.4170000000000003,
+        3.4170000000000003,
+        3.375,
+        3.5,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.5,
+        3.375,
+        3.4170000000000003,
+        3.375,
+        3.375,
+        3.4170000000000003,
+        3.5,
+        3.5420000000000003,
+        3.416,
+        3.375,
+        3.375,
+        3.375,
+        3.5,
+        3.416,
+        3.375,
+        3.5,
+        3.375,
+        3.4170000000000003,
+        3.5420000000000003,
+        3.375,
+        3.375,
+        3.4170000000000003,
+        3.375,
+        3.375,
+        3.5,
+        3.375,
+        3.4170000000000003
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 3.416,
+      "p95_processing_us": 3.5,
+      "p95_utilization": 0.00065625,
+      "p99_processing_us": 3.5420000000000003,
+      "patch": {
+        "cables": [],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          }
+        ],
+        "output": "pitch",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "baseline",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 46.94290615897626,
+      "engine": "Analog",
+      "iterations": 64,
+      "max_processing_us": 38.084,
+      "max_utilization": 0.007140750000000001,
+      "mean_processing_us": 37.90099999999999,
+      "mean_us_per_frame": 0.14805078124999996,
+      "mean_utilization": 0.007106437499999998,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        37.916000000000004,
+        37.917,
+        38.0,
+        37.875,
+        37.833,
+        37.959,
+        37.875,
+        37.917,
+        37.958,
+        37.959,
+        37.916000000000004,
+        37.917,
+        38.0,
+        37.958,
+        37.708,
+        38.042,
+        37.792,
+        38.084,
+        37.833,
+        38.0,
+        37.791,
+        38.084,
+        37.75,
+        37.959,
+        37.833,
+        38.0,
+        37.833,
+        38.0,
+        37.875,
+        37.917,
+        37.958,
+        37.833,
+        37.917,
+        37.875,
+        37.875,
+        37.958,
+        38.0,
+        37.917,
+        37.875,
+        37.791,
+        37.958,
+        37.917,
+        37.833,
+        37.833,
+        37.917,
+        37.833,
+        37.708,
+        37.917,
+        37.833,
+        38.0,
+        37.792,
+        38.041,
+        37.875,
+        38.0,
+        37.792,
+        37.958,
+        37.875,
+        37.916000000000004,
+        37.792,
+        38.041,
+        37.792,
+        37.916000000000004,
+        37.75,
+        37.875
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 37.916000000000004,
+      "p95_processing_us": 38.041,
+      "p95_utilization": 0.0071326875,
+      "p99_processing_us": 38.084,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 0.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -193.7699263319373,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 119.75,
+      "max_utilization": 0.022453125,
+      "mean_processing_us": 94.91929687499997,
+      "mean_us_per_frame": 0.37077850341796864,
+      "mean_utilization": 0.017797368164062497,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        94.75,
+        94.25,
+        94.292,
+        95.125,
+        94.125,
+        94.625,
+        93.917,
+        94.208,
+        95.084,
+        94.791,
+        93.75,
+        94.459,
+        94.958,
+        94.083,
+        94.75,
+        94.208,
+        93.666,
+        95.25,
+        94.625,
+        93.792,
+        94.083,
+        94.875,
+        94.291,
+        95.084,
+        94.167,
+        93.917,
+        95.083,
+        94.708,
+        94.583,
+        94.33399999999999,
+        94.125,
+        94.959,
+        94.75,
+        94.083,
+        93.958,
+        94.833,
+        94.083,
+        94.833,
+        94.542,
+        93.458,
+        95.0,
+        94.792,
+        93.959,
+        94.33300000000001,
+        94.583,
+        94.33399999999999,
+        94.75,
+        94.75,
+        93.5,
+        95.209,
+        94.5,
+        94.33399999999999,
+        94.66699999999999,
+        94.208,
+        94.875,
+        95.167,
+        94.25,
+        119.75,
+        94.833,
+        94.084,
+        94.66699999999999,
+        94.75,
+        96.958,
+        95.125
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 94.583,
+      "p95_processing_us": 95.209,
+      "p95_utilization": 0.0178516875,
+      "p99_processing_us": 119.75,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -33.93299688398838,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 198.792,
+      "max_utilization": 0.0372735,
+      "mean_processing_us": 144.26623437499998,
+      "mean_us_per_frame": 0.5635399780273437,
+      "mean_utilization": 0.027049918945312498,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        142.0,
+        141.916,
+        142.125,
+        141.791,
+        142.25,
+        141.875,
+        142.042,
+        141.833,
+        148.583,
+        148.291,
+        141.25,
+        137.75,
+        139.875,
+        141.958,
+        141.875,
+        142.084,
+        142.208,
+        142.667,
+        142.25,
+        142.166,
+        142.209,
+        142.5,
+        142.083,
+        196.458,
+        151.042,
+        198.792,
+        156.25,
+        142.5,
+        141.833,
+        142.083,
+        141.875,
+        142.042,
+        141.791,
+        142.0,
+        141.95899999999997,
+        142.083,
+        142.25,
+        142.375,
+        141.833,
+        141.917,
+        142.292,
+        142.0,
+        141.833,
+        142.167,
+        141.834,
+        142.0,
+        141.916,
+        142.042,
+        142.333,
+        142.0,
+        141.875,
+        142.125,
+        141.875,
+        142.042,
+        141.833,
+        142.0,
+        144.25,
+        142.0,
+        142.0,
+        141.875,
+        142.125,
+        141.833,
+        142.083,
+        142.042
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 142.042,
+      "p95_processing_us": 151.042,
+      "p95_utilization": 0.028320375000000002,
+      "p99_processing_us": 198.792,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -7.707473307847977,
+      "engine": "Harmonic",
+      "iterations": 64,
+      "max_processing_us": 50.875,
+      "max_utilization": 0.0095390625,
+      "mean_processing_us": 50.107406250000004,
+      "mean_us_per_frame": 0.19573205566406252,
+      "mean_utilization": 0.009395138671875001,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        50.083,
+        49.959,
+        49.959,
+        49.916000000000004,
+        50.167,
+        50.25,
+        50.083,
+        50.208,
+        50.25,
+        50.0,
+        50.25,
+        50.041,
+        49.959,
+        50.125,
+        50.125,
+        49.917,
+        50.167,
+        50.041,
+        49.917,
+        50.166000000000004,
+        50.875,
+        49.958,
+        50.292,
+        50.291,
+        50.25,
+        50.5,
+        50.417,
+        50.083,
+        50.0,
+        50.25,
+        50.0,
+        50.208,
+        50.0,
+        50.083,
+        50.25,
+        50.042,
+        50.25,
+        50.208,
+        50.125,
+        49.959,
+        50.291,
+        50.0,
+        50.0,
+        50.083999999999996,
+        50.0,
+        49.833000000000006,
+        50.042,
+        50.0,
+        49.958,
+        49.958,
+        50.167,
+        50.375,
+        50.083,
+        50.209,
+        50.25,
+        50.042,
+        50.083,
+        49.917,
+        50.0,
+        50.041,
+        49.917,
+        50.125,
+        50.041,
+        49.833999999999996
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 50.083,
+      "p95_processing_us": 50.375,
+      "p95_utilization": 0.0094453125,
+      "p99_processing_us": 50.875,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 3.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -23.947336971759796,
+      "engine": "Wavetable",
+      "iterations": 64,
+      "max_processing_us": 50.375,
+      "max_utilization": 0.0094453125,
+      "mean_processing_us": 49.249343749999994,
+      "mean_us_per_frame": 0.19238024902343748,
+      "mean_utilization": 0.009234251953125,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        49.709,
+        50.0,
+        50.042,
+        49.75,
+        49.75,
+        49.875,
+        49.458,
+        48.417,
+        48.666,
+        48.5,
+        48.25,
+        48.291999999999994,
+        48.417,
+        48.458000000000006,
+        48.541999999999994,
+        48.5,
+        48.5,
+        48.416,
+        48.625,
+        48.334,
+        48.75,
+        48.208000000000006,
+        48.334,
+        48.416,
+        48.5,
+        48.334,
+        48.458000000000006,
+        48.291999999999994,
+        48.25,
+        48.458000000000006,
+        48.25,
+        48.25,
+        48.458000000000006,
+        48.208000000000006,
+        48.75,
+        49.75,
+        49.875,
+        50.0,
+        50.042,
+        49.875,
+        49.916000000000004,
+        50.167,
+        49.958,
+        50.292,
+        50.125,
+        49.792,
+        50.041,
+        49.917,
+        49.75,
+        49.833000000000006,
+        49.917,
+        49.792,
+        49.833000000000006,
+        49.833000000000006,
+        49.666999999999994,
+        49.916000000000004,
+        49.875,
+        49.833000000000006,
+        49.792,
+        49.791,
+        49.792,
+        49.792,
+        50.375,
+        50.0
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 49.75,
+      "p95_processing_us": 50.125,
+      "p95_utilization": 0.0093984375,
+      "p99_processing_us": 50.375,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 4.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -15.08037339861039,
+      "engine": "Chord",
+      "iterations": 64,
+      "max_processing_us": 69.083,
+      "max_utilization": 0.012953062500000001,
+      "mean_processing_us": 40.83851562499999,
+      "mean_us_per_frame": 0.15952545166015622,
+      "mean_utilization": 0.007657221679687499,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        39.625,
+        39.333,
+        39.417,
+        39.25,
+        39.417,
+        39.166,
+        39.375,
+        39.167,
+        39.167,
+        39.291000000000004,
+        39.167,
+        39.625,
+        39.375,
+        39.25,
+        39.084,
+        39.291000000000004,
+        39.208999999999996,
+        39.083,
+        39.208,
+        39.167,
+        39.375,
+        39.208,
+        39.167,
+        39.208,
+        39.208,
+        39.292,
+        39.125,
+        39.333,
+        39.167,
+        39.291000000000004,
+        39.084,
+        66.166,
+        39.625,
+        39.291000000000004,
+        38.0,
+        38.042,
+        46.792,
+        39.25,
+        39.375,
+        39.291000000000004,
+        39.25,
+        39.208,
+        39.125,
+        39.208,
+        39.125,
+        39.292,
+        69.083,
+        39.167,
+        39.416,
+        49.25,
+        46.959,
+        57.792,
+        41.916000000000004,
+        39.292,
+        39.375,
+        39.25,
+        39.375,
+        39.291000000000004,
+        39.25,
+        39.083,
+        39.292,
+        39.167,
+        39.292,
+        39.25
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 39.291000000000004,
+      "p95_processing_us": 49.25,
+      "p95_utilization": 0.009234375000000001,
+      "p99_processing_us": 69.083,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 5.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -9.179857121489476,
+      "engine": "Swarm",
+      "iterations": 64,
+      "max_processing_us": 127.208,
+      "max_utilization": 0.0238515,
+      "mean_processing_us": 55.897140625,
+      "mean_us_per_frame": 0.21834820556640624,
+      "mean_utilization": 0.0104807138671875,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        53.041999999999994,
+        53.0,
+        52.958999999999996,
+        52.875,
+        52.958999999999996,
+        53.0,
+        52.75,
+        53.0,
+        52.833,
+        53.083,
+        92.042,
+        55.708000000000006,
+        75.79100000000001,
+        53.083,
+        52.917,
+        53.0,
+        53.0,
+        53.041000000000004,
+        52.75,
+        53.041999999999994,
+        52.917,
+        52.875,
+        53.0,
+        52.958,
+        52.833,
+        59.333999999999996,
+        80.709,
+        53.25,
+        53.041999999999994,
+        52.833,
+        52.958999999999996,
+        53.0,
+        53.041999999999994,
+        52.791000000000004,
+        53.0,
+        52.834,
+        53.0,
+        52.834,
+        53.041000000000004,
+        52.833,
+        52.875,
+        52.875,
+        52.875,
+        52.917,
+        52.958,
+        52.917,
+        52.875,
+        53.167,
+        52.916,
+        52.917,
+        53.0,
+        52.875,
+        127.208,
+        53.375,
+        63.75000000000001,
+        56.416000000000004,
+        53.334,
+        53.083,
+        53.125,
+        52.833,
+        53.041000000000004,
+        53.167,
+        52.916,
+        53.041999999999994
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 53.0,
+      "p95_processing_us": 75.79100000000001,
+      "p95_utilization": 0.014210812500000003,
+      "p99_processing_us": 127.208,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 6.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 8.375854330137372,
+      "engine": "Metallic",
+      "iterations": 64,
+      "max_processing_us": 39.959,
+      "max_utilization": 0.007492312500000001,
+      "mean_processing_us": 39.072937499999995,
+      "mean_us_per_frame": 0.15262866210937498,
+      "mean_utilization": 0.0073261757812499995,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        39.167,
+        39.25,
+        39.375,
+        39.292,
+        39.25,
+        39.166,
+        38.0,
+        37.959,
+        37.958,
+        38.0,
+        38.042,
+        37.958,
+        38.042,
+        38.083,
+        38.042,
+        39.083,
+        39.208,
+        39.167,
+        39.291000000000004,
+        39.25,
+        39.25,
+        39.292,
+        39.291000000000004,
+        39.25,
+        39.292,
+        39.167,
+        39.167,
+        39.208,
+        39.208999999999996,
+        39.333,
+        39.25,
+        39.208,
+        39.25,
+        39.291000000000004,
+        39.167,
+        39.334,
+        39.292,
+        39.375,
+        39.167,
+        39.208,
+        39.25,
+        39.208,
+        39.208,
+        39.25,
+        39.208,
+        39.208999999999996,
+        39.25,
+        39.208,
+        39.25,
+        39.208,
+        39.208,
+        39.208999999999996,
+        39.125,
+        39.334,
+        39.25,
+        39.208,
+        39.167,
+        39.959,
+        39.208,
+        39.125,
+        39.208999999999996,
+        39.25,
+        39.291000000000004,
+        39.292
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 39.208999999999996,
+      "p95_processing_us": 39.334,
+      "p95_utilization": 0.007375125000000001,
+      "p99_processing_us": 39.959,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 7.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -108.85519459843636,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 122.459,
+      "max_utilization": 0.0229610625,
+      "mean_processing_us": 105.5774375,
+      "mean_us_per_frame": 0.412411865234375,
+      "mean_utilization": 0.01979576953125,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        104.375,
+        104.667,
+        105.208,
+        105.208,
+        105.333,
+        104.0,
+        104.125,
+        104.791,
+        106.625,
+        109.792,
+        105.45800000000001,
+        103.916,
+        103.75,
+        104.75,
+        105.834,
+        105.042,
+        105.416,
+        104.625,
+        104.5,
+        105.834,
+        104.875,
+        105.042,
+        105.167,
+        103.541,
+        103.83399999999999,
+        106.5,
+        104.958,
+        105.125,
+        105.166,
+        102.959,
+        104.75,
+        104.5,
+        105.542,
+        105.625,
+        104.0,
+        104.958,
+        106.75,
+        106.208,
+        107.25,
+        122.459,
+        106.25,
+        103.833,
+        105.667,
+        105.29100000000001,
+        106.41699999999999,
+        105.042,
+        105.166,
+        105.875,
+        106.083,
+        106.41699999999999,
+        106.834,
+        106.791,
+        105.625,
+        104.666,
+        105.583,
+        106.167,
+        105.625,
+        106.083,
+        106.083,
+        104.833,
+        105.542,
+        104.667,
+        105.25,
+        104.708
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 105.208,
+      "p95_processing_us": 106.834,
+      "p95_utilization": 0.020031375,
+      "p99_processing_us": 122.459,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -1371.2626337818801,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 174.542,
+      "max_utilization": 0.032726625,
+      "mean_processing_us": 142.48565624999992,
+      "mean_us_per_frame": 0.5565845947265622,
+      "mean_utilization": 0.026716060546874986,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        142.5,
+        142.5,
+        142.25,
+        142.208,
+        142.125,
+        141.833,
+        142.041,
+        141.875,
+        142.084,
+        141.791,
+        142.0,
+        141.79199999999997,
+        142.208,
+        141.917,
+        142.958,
+        142.208,
+        141.79199999999997,
+        142.208,
+        141.833,
+        141.95899999999997,
+        141.875,
+        142.041,
+        141.75,
+        141.958,
+        141.79199999999997,
+        142.083,
+        142.167,
+        142.083,
+        141.875,
+        142.125,
+        142.041,
+        142.167,
+        141.79199999999997,
+        142.0,
+        141.791,
+        141.917,
+        141.875,
+        142.083,
+        141.95899999999997,
+        141.958,
+        141.917,
+        141.958,
+        141.79199999999997,
+        174.542,
+        143.0,
+        141.75,
+        142.25,
+        141.875,
+        142.166,
+        141.834,
+        142.041,
+        141.917,
+        142.125,
+        141.79199999999997,
+        141.958,
+        141.459,
+        138.375,
+        143.292,
+        142.125,
+        141.75,
+        142.083,
+        141.834,
+        141.958,
+        141.875
+      ],
+      "output_channels": 1,
+      "p50_processing_us": 141.95899999999997,
+      "p95_processing_us": 142.958,
+      "p95_utilization": 0.026804625000000002,
+      "p99_processing_us": 174.542,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.0
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 1,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": true,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": 0.0009765625,
+      "engine": "poly_constant",
+      "iterations": 64,
+      "max_processing_us": 1.0,
+      "max_utilization": 0.00075,
+      "mean_processing_us": 0.87434375,
+      "mean_us_per_frame": 0.01366162109375,
+      "mean_utilization": 0.0006557578125,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        0.875,
+        0.875,
+        0.875,
+        0.834,
+        0.875,
+        0.875,
+        0.875,
+        0.875,
+        0.833,
+        0.875,
+        0.875,
+        0.833,
+        1.0,
+        0.875,
+        0.875,
+        0.833,
+        0.875,
+        0.875,
+        0.834,
+        0.875,
+        0.875,
+        0.875,
+        0.875,
+        0.875,
+        0.833,
+        0.958,
+        0.875,
+        0.875,
+        1.0,
+        0.834,
+        0.875,
+        0.833,
+        0.875,
+        0.875,
+        0.875,
+        1.0,
+        0.875,
+        0.875,
+        0.875,
+        0.875,
+        0.833,
+        0.875,
+        0.875,
+        0.834,
+        0.875,
+        0.875,
+        0.834,
+        0.875,
+        0.875,
+        0.875,
+        0.833,
+        0.833,
+        0.875,
+        0.875,
+        0.958,
+        0.875,
+        0.875,
+        0.875,
+        0.833,
+        0.875,
+        0.875,
+        0.875,
+        0.875,
+        0.875
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 0.875,
+      "p95_processing_us": 0.958,
+      "p95_utilization": 0.0007185000000000001,
+      "p99_processing_us": 1.0,
+      "patch": {
+        "cables": [],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          }
+        ],
+        "output": "pitch",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "baseline",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": 1907.5207244148478,
+      "engine": "Analog",
+      "iterations": 64,
+      "max_processing_us": 59.666000000000004,
+      "max_utilization": 0.044749500000000005,
+      "mean_processing_us": 59.08857812499999,
+      "mean_us_per_frame": 0.9232590332031249,
+      "mean_utilization": 0.044316433593749996,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        59.208,
+        59.209,
+        59.208,
+        59.041,
+        59.25,
+        59.0,
+        59.083000000000006,
+        59.125,
+        59.042,
+        59.25,
+        58.833999999999996,
+        59.209,
+        59.0,
+        59.25,
+        58.959,
+        59.25,
+        58.916000000000004,
+        59.208,
+        58.833999999999996,
+        59.166999999999994,
+        59.042,
+        59.083999999999996,
+        59.208,
+        58.833999999999996,
+        59.083000000000006,
+        59.25,
+        58.917,
+        58.958,
+        59.209,
+        59.0,
+        59.333000000000006,
+        59.125,
+        59.041,
+        59.125,
+        59.0,
+        59.209,
+        59.333000000000006,
+        59.125,
+        58.833,
+        59.166999999999994,
+        59.125,
+        59.0,
+        58.917,
+        59.125,
+        59.666000000000004,
+        59.208,
+        58.875,
+        59.125,
+        58.833,
+        59.0,
+        59.25,
+        59.416999999999994,
+        59.0,
+        58.958,
+        59.083000000000006,
+        59.209,
+        59.0,
+        58.875,
+        59.0,
+        58.959,
+        59.042,
+        59.0,
+        59.0,
+        59.083000000000006
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 59.083000000000006,
+      "p95_processing_us": 59.333000000000006,
+      "p95_utilization": 0.044499750000000005,
+      "p99_processing_us": 59.666000000000004,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 0.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -6276.010554323904,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 321.625,
+      "max_utilization": 0.24121875,
+      "mean_processing_us": 274.8294843750001,
+      "mean_us_per_frame": 4.294210693359377,
+      "mean_utilization": 0.2061221132812501,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        272.458,
+        290.667,
+        275.875,
+        272.625,
+        273.20799999999997,
+        274.875,
+        313.25,
+        281.083,
+        305.0,
+        275.875,
+        271.417,
+        275.375,
+        272.667,
+        274.667,
+        271.875,
+        275.167,
+        273.79200000000003,
+        273.20799999999997,
+        271.709,
+        276.042,
+        274.75,
+        271.209,
+        277.45899999999995,
+        273.375,
+        272.25,
+        275.5,
+        272.95899999999995,
+        274.5,
+        274.084,
+        274.084,
+        273.375,
+        272.792,
+        275.0,
+        274.0,
+        273.75,
+        271.0,
+        276.16700000000003,
+        314.042,
+        271.792,
+        285.5,
+        281.959,
+        321.625,
+        273.08299999999997,
+        273.708,
+        271.375,
+        277.458,
+        272.0,
+        265.583,
+        266.04200000000003,
+        265.75,
+        267.16700000000003,
+        265.25,
+        263.83299999999997,
+        264.58299999999997,
+        269.541,
+        270.91700000000003,
+        267.0,
+        263.70799999999997,
+        264.291,
+        265.08299999999997,
+        267.875,
+        261.459,
+        265.08299999999997,
+        266.291
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 273.20799999999997,
+      "p95_processing_us": 305.0,
+      "p95_utilization": 0.22875,
+      "p99_processing_us": 321.625,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -2164.906805793289,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 765.5840000000001,
+      "max_utilization": 0.574188,
+      "mean_processing_us": 486.2825156250001,
+      "mean_us_per_frame": 7.598164306640626,
+      "mean_utilization": 0.3647118867187501,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        451.958,
+        498.541,
+        474.58299999999997,
+        765.583,
+        613.375,
+        466.83299999999997,
+        539.333,
+        490.667,
+        467.5,
+        534.6669999999999,
+        496.833,
+        765.5840000000001,
+        518.5409999999999,
+        466.375,
+        495.58299999999997,
+        467.333,
+        476.29200000000003,
+        469.79200000000003,
+        504.417,
+        497.541,
+        466.41700000000003,
+        466.667,
+        467.79200000000003,
+        467.209,
+        467.125,
+        466.958,
+        456.08299999999997,
+        478.959,
+        467.625,
+        466.583,
+        466.834,
+        467.542,
+        468.375,
+        467.875,
+        467.29200000000003,
+        467.58299999999997,
+        466.792,
+        466.667,
+        467.375,
+        466.91700000000003,
+        514.291,
+        466.459,
+        459.583,
+        465.25,
+        466.625,
+        516.875,
+        467.66700000000003,
+        466.958,
+        467.375,
+        467.25,
+        469.5,
+        452.333,
+        455.83299999999997,
+        447.666,
+        453.875,
+        486.208,
+        466.41700000000003,
+        466.70799999999997,
+        472.29200000000003,
+        466.458,
+        466.791,
+        487.95799999999997,
+        502.541,
+        463.16700000000003
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 467.375,
+      "p95_processing_us": 539.333,
+      "p95_utilization": 0.40449975,
+      "p99_processing_us": 765.5840000000001,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -661.0526270400733,
+      "engine": "Harmonic",
+      "iterations": 64,
+      "max_processing_us": 142.5,
+      "max_utilization": 0.10687500000000001,
+      "mean_processing_us": 105.13996874999997,
+      "mean_us_per_frame": 1.6428120117187495,
+      "mean_utilization": 0.07885497656249998,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        105.125,
+        106.334,
+        106.333,
+        104.375,
+        106.333,
+        106.208,
+        104.25,
+        106.41600000000001,
+        106.41600000000001,
+        113.625,
+        115.083,
+        106.5,
+        115.625,
+        106.333,
+        106.291,
+        104.5,
+        142.5,
+        102.25,
+        102.542,
+        104.0,
+        106.41600000000001,
+        102.833,
+        103.084,
+        103.0,
+        101.25,
+        103.084,
+        103.0,
+        101.167,
+        103.084,
+        103.04199999999999,
+        101.25,
+        103.0,
+        105.625,
+        101.208,
+        103.04100000000001,
+        103.0,
+        101.166,
+        103.0,
+        103.0,
+        101.209,
+        103.084,
+        103.0,
+        101.208,
+        105.25,
+        103.0,
+        101.084,
+        103.084,
+        103.167,
+        101.166,
+        103.04199999999999,
+        103.04199999999999,
+        102.916,
+        106.292,
+        106.25,
+        104.33399999999999,
+        106.292,
+        106.333,
+        104.791,
+        107.041,
+        106.25,
+        104.584,
+        106.333,
+        106.542,
+        104.375
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 104.25,
+      "p95_processing_us": 113.625,
+      "p95_utilization": 0.08521875000000001,
+      "p99_processing_us": 142.5,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 3.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -1669.9917745180428,
+      "engine": "Wavetable",
+      "iterations": 64,
+      "max_processing_us": 198.583,
+      "max_utilization": 0.14893725000000002,
+      "mean_processing_us": 108.68299999999998,
+      "mean_us_per_frame": 1.6981718749999997,
+      "mean_utilization": 0.08151225,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        100.708,
+        105.208,
+        127.50000000000001,
+        104.25,
+        105.709,
+        105.708,
+        104.208,
+        105.45800000000001,
+        105.375,
+        105.583,
+        120.125,
+        123.833,
+        104.125,
+        105.709,
+        105.792,
+        103.75,
+        105.625,
+        105.667,
+        103.875,
+        105.625,
+        105.5,
+        103.792,
+        105.5,
+        105.375,
+        103.83399999999999,
+        105.45800000000001,
+        105.5,
+        103.458,
+        104.0,
+        104.75,
+        100.75,
+        102.334,
+        102.25,
+        100.875,
+        198.583,
+        126.458,
+        183.0,
+        105.875,
+        105.708,
+        104.33399999999999,
+        105.75,
+        105.45899999999999,
+        103.917,
+        105.417,
+        105.5,
+        104.292,
+        105.833,
+        106.042,
+        104.209,
+        105.958,
+        105.958,
+        104.375,
+        106.167,
+        106.166,
+        104.542,
+        105.667,
+        105.45800000000001,
+        103.875,
+        105.667,
+        105.417,
+        103.875,
+        105.584,
+        105.5,
+        103.917
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 105.45899999999999,
+      "p95_processing_us": 126.458,
+      "p95_utilization": 0.09484350000000001,
+      "p99_processing_us": 198.583,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 4.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -481.7901756905485,
+      "engine": "Chord",
+      "iterations": 64,
+      "max_processing_us": 119.625,
+      "max_utilization": 0.08971875,
+      "mean_processing_us": 67.15823437499999,
+      "mean_us_per_frame": 1.0493474121093749,
+      "mean_utilization": 0.05036867578125,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        65.33300000000001,
+        65.125,
+        65.25,
+        65.292,
+        65.33399999999999,
+        65.25,
+        65.5,
+        65.042,
+        63.37499999999999,
+        63.5,
+        63.125,
+        63.292,
+        63.292,
+        63.125,
+        63.5,
+        65.125,
+        63.37499999999999,
+        63.583000000000006,
+        114.167,
+        73.25,
+        65.084,
+        65.583,
+        65.375,
+        65.208,
+        65.292,
+        65.25,
+        65.25,
+        65.75,
+        65.042,
+        65.33399999999999,
+        65.208,
+        65.25,
+        65.459,
+        65.459,
+        65.542,
+        65.25,
+        65.5,
+        65.458,
+        65.291,
+        65.292,
+        65.458,
+        65.292,
+        119.625,
+        65.75,
+        79.416,
+        79.541,
+        65.167,
+        65.416,
+        65.583,
+        74.584,
+        65.417,
+        65.125,
+        65.375,
+        64.291,
+        63.5,
+        63.25000000000001,
+        63.5,
+        63.37499999999999,
+        63.25000000000001,
+        63.208,
+        65.667,
+        64.375,
+        66.75,
+        63.5
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 65.25,
+      "p95_processing_us": 79.416,
+      "p95_utilization": 0.059562000000000004,
+      "p99_processing_us": 119.625,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 5.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": 54.34331524907611,
+      "engine": "Swarm",
+      "iterations": 64,
+      "max_processing_us": 199.75,
+      "max_utilization": 0.14981250000000002,
+      "mean_processing_us": 118.91076562499998,
+      "mean_us_per_frame": 1.8579807128906247,
+      "mean_utilization": 0.08918307421874999,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        119.375,
+        119.5,
+        119.542,
+        119.208,
+        137.708,
+        130.208,
+        117.125,
+        115.75,
+        115.708,
+        115.542,
+        115.666,
+        115.625,
+        115.542,
+        116.0,
+        115.417,
+        115.667,
+        115.625,
+        115.333,
+        115.792,
+        117.792,
+        118.625,
+        119.334,
+        199.75,
+        119.666,
+        119.416,
+        119.083,
+        120.333,
+        115.75,
+        116.209,
+        117.167,
+        115.625,
+        115.708,
+        115.917,
+        116.08399999999999,
+        115.708,
+        115.666,
+        115.917,
+        117.875,
+        115.458,
+        115.625,
+        115.708,
+        115.542,
+        116.291,
+        115.75,
+        116.041,
+        116.042,
+        115.792,
+        115.91600000000001,
+        115.541,
+        115.75,
+        116.708,
+        119.833,
+        118.542,
+        115.5,
+        116.292,
+        115.75,
+        115.875,
+        115.792,
+        115.833,
+        115.541,
+        118.625,
+        119.833,
+        120.167,
+        134.584
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 115.917,
+      "p95_processing_us": 130.208,
+      "p95_utilization": 0.097656,
+      "p99_processing_us": 199.75,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 6.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -246.46553227916593,
+      "engine": "Metallic",
+      "iterations": 64,
+      "max_processing_us": 71.167,
+      "max_utilization": 0.053375250000000006,
+      "mean_processing_us": 68.08067187500001,
+      "mean_us_per_frame": 1.0637604980468751,
+      "mean_utilization": 0.051060503906250006,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        68.125,
+        67.91699999999999,
+        67.333,
+        67.167,
+        66.834,
+        67.042,
+        66.875,
+        66.75,
+        66.708,
+        66.79199999999999,
+        66.75,
+        66.79199999999999,
+        66.708,
+        66.708,
+        66.667,
+        66.833,
+        67.375,
+        68.166,
+        66.75,
+        66.75,
+        66.708,
+        66.75,
+        67.041,
+        68.042,
+        67.333,
+        66.75,
+        66.625,
+        66.708,
+        66.625,
+        66.708,
+        66.583,
+        66.79199999999999,
+        66.708,
+        67.291,
+        69.666,
+        69.417,
+        69.75,
+        69.625,
+        70.0,
+        69.04199999999999,
+        68.875,
+        68.916,
+        68.916,
+        68.875,
+        68.833,
+        68.958,
+        68.833,
+        68.75,
+        68.833,
+        68.75,
+        68.70899999999999,
+        69.666,
+        68.708,
+        69.666,
+        68.792,
+        68.958,
+        69.584,
+        68.959,
+        69.75,
+        69.917,
+        70.16699999999999,
+        70.208,
+        69.167,
+        71.167
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 68.125,
+      "p95_processing_us": 70.0,
+      "p95_utilization": 0.052500000000000005,
+      "p99_processing_us": 71.167,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 7.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -775.6758662220091,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 390.75,
+      "max_utilization": 0.2930625,
+      "mean_processing_us": 320.3132031250001,
+      "mean_us_per_frame": 5.004893798828126,
+      "mean_utilization": 0.24023490234375008,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        313.5,
+        314.792,
+        315.33299999999997,
+        315.167,
+        316.541,
+        317.70799999999997,
+        315.625,
+        320.417,
+        341.666,
+        315.25,
+        358.875,
+        317.125,
+        324.79200000000003,
+        315.04200000000003,
+        320.959,
+        310.54200000000003,
+        322.916,
+        313.209,
+        313.875,
+        309.16700000000003,
+        307.333,
+        312.209,
+        313.375,
+        315.04200000000003,
+        323.375,
+        315.29200000000003,
+        317.334,
+        323.20899999999995,
+        316.0,
+        316.334,
+        321.166,
+        321.54200000000003,
+        313.0,
+        316.625,
+        326.75,
+        315.125,
+        313.5,
+        317.0,
+        390.75,
+        374.459,
+        315.291,
+        320.75,
+        316.83299999999997,
+        321.625,
+        316.417,
+        315.666,
+        320.333,
+        316.66700000000003,
+        323.0,
+        314.958,
+        313.625,
+        318.416,
+        313.41700000000003,
+        325.708,
+        318.125,
+        317.084,
+        314.0,
+        319.79200000000003,
+        317.167,
+        325.042,
+        321.0,
+        319.208,
+        313.5,
+        320.5
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 316.83299999999997,
+      "p95_processing_us": 341.666,
+      "p95_utilization": 0.2562495,
+      "p99_processing_us": 390.75,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 64,
+      "channels_match": true,
+      "checksum": -50966.03662836179,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 898.125,
+      "max_utilization": 0.67359375,
+      "mean_processing_us": 477.5488124999999,
+      "mean_us_per_frame": 7.461700195312498,
+      "mean_utilization": 0.3581616093749999,
+      "nominal_block_budget_us": 1333.3333333333333,
+      "observations_us": [
+        465.33399999999995,
+        466.792,
+        466.292,
+        466.25,
+        466.375,
+        491.833,
+        452.08299999999997,
+        454.04100000000005,
+        452.0,
+        451.958,
+        452.125,
+        452.125,
+        452.042,
+        452.08299999999997,
+        450.959,
+        445.625,
+        438.66700000000003,
+        452.209,
+        499.50000000000006,
+        459.75,
+        466.33299999999997,
+        466.33299999999997,
+        466.25,
+        466.33299999999997,
+        496.33399999999995,
+        502.25,
+        466.541,
+        466.33299999999997,
+        466.584,
+        466.29100000000005,
+        466.666,
+        466.583,
+        466.54200000000003,
+        466.41700000000003,
+        466.625,
+        466.583,
+        466.667,
+        458.834,
+        462.541,
+        898.125,
+        576.083,
+        476.25,
+        466.583,
+        466.375,
+        467.75,
+        487.0,
+        472.83299999999997,
+        531.583,
+        466.791,
+        466.541,
+        466.625,
+        466.16700000000003,
+        469.709,
+        477.75,
+        466.375,
+        466.458,
+        512.709,
+        473.667,
+        499.875,
+        470.625,
+        475.375,
+        466.54200000000003,
+        481.625,
+        488.625
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 466.54200000000003,
+      "p95_processing_us": 512.709,
+      "p95_utilization": 0.38453175,
+      "p99_processing_us": 898.125,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": true,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 0.00390625,
+      "engine": "poly_constant",
+      "iterations": 64,
+      "max_processing_us": 3.541,
+      "max_utilization": 0.0006639375,
+      "mean_processing_us": 3.3788906250000004,
+      "mean_us_per_frame": 0.013198791503906251,
+      "mean_utilization": 0.0006335419921875001,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        3.333,
+        3.334,
+        3.4170000000000003,
+        3.333,
+        3.375,
+        3.333,
+        3.4589999999999996,
+        3.375,
+        3.333,
+        3.4589999999999996,
+        3.375,
+        3.375,
+        3.333,
+        3.4170000000000003,
+        3.5,
+        3.4170000000000003,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.333,
+        3.375,
+        3.333,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.4170000000000003,
+        3.375,
+        3.334,
+        3.4170000000000003,
+        3.4170000000000003,
+        3.375,
+        3.375,
+        3.333,
+        3.375,
+        3.375,
+        3.458,
+        3.334,
+        3.333,
+        3.334,
+        3.333,
+        3.458,
+        3.375,
+        3.333,
+        3.375,
+        3.375,
+        3.375,
+        3.291,
+        3.375,
+        3.375,
+        3.375,
+        3.375,
+        3.458,
+        3.375,
+        3.416,
+        3.4170000000000003,
+        3.333,
+        3.333,
+        3.375,
+        3.541
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 3.375,
+      "p95_processing_us": 3.4589999999999996,
+      "p95_utilization": 0.0006485624999999999,
+      "p99_processing_us": 3.541,
+      "patch": {
+        "cables": [],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          }
+        ],
+        "output": "pitch",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "baseline",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 864.4214573930949,
+      "engine": "Analog",
+      "iterations": 64,
+      "max_processing_us": 307.29200000000003,
+      "max_utilization": 0.05761725000000001,
+      "mean_processing_us": 234.55474999999993,
+      "mean_us_per_frame": 0.9162294921874997,
+      "mean_utilization": 0.043979015624999986,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        233.458,
+        232.084,
+        232.125,
+        234.91699999999997,
+        234.334,
+        234.084,
+        233.334,
+        234.083,
+        235.291,
+        235.75,
+        236.333,
+        229.5,
+        232.084,
+        228.833,
+        229.125,
+        230.542,
+        231.834,
+        228.709,
+        228.917,
+        233.333,
+        236.125,
+        236.292,
+        236.541,
+        236.0,
+        233.125,
+        243.375,
+        236.083,
+        235.916,
+        236.292,
+        307.29200000000003,
+        239.792,
+        228.709,
+        230.125,
+        230.708,
+        231.041,
+        234.584,
+        235.208,
+        236.333,
+        236.375,
+        236.25,
+        236.584,
+        236.625,
+        236.166,
+        232.917,
+        234.916,
+        231.167,
+        232.458,
+        225.292,
+        234.375,
+        236.0,
+        237.042,
+        229.375,
+        231.875,
+        231.583,
+        238.417,
+        229.375,
+        229.25,
+        231.291,
+        230.792,
+        229.042,
+        233.917,
+        233.0,
+        234.959,
+        230.25
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 233.917,
+      "p95_processing_us": 238.417,
+      "p95_utilization": 0.044703187500000005,
+      "p99_processing_us": 307.29200000000003,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 0.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -3028.428852275014,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 3359.791,
+      "max_utilization": 0.6299608125,
+      "mean_processing_us": 1240.6713125,
+      "mean_us_per_frame": 4.846372314453125,
+      "mean_utilization": 0.23262587109375005,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        1098.3329999999999,
+        1133.9589999999998,
+        1097.833,
+        1101.167,
+        1095.875,
+        1096.75,
+        1137.5829999999999,
+        1144.0420000000001,
+        1102.6670000000001,
+        1128.209,
+        1120.7910000000002,
+        1120.625,
+        1097.5,
+        1100.6670000000001,
+        1096.375,
+        1095.625,
+        1095.959,
+        1094.25,
+        1093.2920000000001,
+        1136.833,
+        1105.375,
+        1111.084,
+        1110.7910000000002,
+        1097.5,
+        1094.667,
+        1092.75,
+        1096.042,
+        1092.5,
+        1138.0839999999998,
+        1146.542,
+        1098.458,
+        1077.25,
+        1076.2079999999999,
+        1064.0,
+        1089.792,
+        1090.334,
+        1094.25,
+        1103.0829999999999,
+        1126.542,
+        1094.625,
+        1094.0,
+        1077.333,
+        1095.0829999999999,
+        1092.292,
+        1091.5420000000001,
+        1163.75,
+        1095.792,
+        1158.958,
+        1096.667,
+        1091.333,
+        1697.708,
+        1112.125,
+        1663.2089999999998,
+        1266.417,
+        1092.875,
+        1386.792,
+        1094.584,
+        1654.875,
+        2697.125,
+        1615.708,
+        1396.292,
+        3026.709,
+        3359.791,
+        1093.792
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 1098.3329999999999,
+      "p95_processing_us": 1697.708,
+      "p95_utilization": 0.31832025,
+      "p99_processing_us": 3359.791,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -737.1926835132763,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 2740.666,
+      "max_utilization": 0.5138748750000001,
+      "mean_processing_us": 1933.358734375,
+      "mean_us_per_frame": 7.552182556152344,
+      "mean_utilization": 0.3625047626953125,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        1867.5829999999999,
+        1868.9170000000001,
+        1868.4579999999999,
+        1909.333,
+        1909.25,
+        2214.083,
+        1868.125,
+        1867.5829999999999,
+        1873.75,
+        1880.333,
+        1870.25,
+        1870.375,
+        1869.125,
+        1869.042,
+        1910.0,
+        1866.75,
+        1867.083,
+        1866.75,
+        1891.0,
+        1913.208,
+        1866.542,
+        1866.3329999999999,
+        1867.125,
+        1875.334,
+        1890.292,
+        1866.75,
+        1932.1670000000001,
+        1872.667,
+        1866.209,
+        1867.5420000000001,
+        1928.125,
+        1961.7910000000002,
+        1861.667,
+        1868.0,
+        1866.0420000000001,
+        2098.5,
+        1877.083,
+        1918.084,
+        1867.417,
+        1882.3329999999999,
+        1933.2920000000001,
+        2294.083,
+        1929.041,
+        1899.5,
+        1867.625,
+        1870.292,
+        2740.666,
+        1866.625,
+        1866.0829999999999,
+        1912.9170000000001,
+        2016.7499999999998,
+        1960.1670000000001,
+        2084.666,
+        1873.166,
+        1868.4170000000001,
+        1866.9579999999999,
+        1963.7499999999998,
+        1867.209,
+        2238.334,
+        2197.625,
+        2157.625,
+        1886.625,
+        1885.417,
+        1867.125
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 1873.75,
+      "p95_processing_us": 2214.083,
+      "p95_utilization": 0.41514056250000003,
+      "p99_processing_us": 2740.666,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -239.65316620469093,
+      "engine": "Harmonic",
+      "iterations": 64,
+      "max_processing_us": 462.79200000000003,
+      "max_utilization": 0.08677350000000002,
+      "mean_processing_us": 424.578765625,
+      "mean_us_per_frame": 1.6585108032226563,
+      "mean_utilization": 0.07960851855468751,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        409.042,
+        416.875,
+        416.791,
+        420.916,
+        423.16700000000003,
+        445.0,
+        421.75,
+        423.334,
+        423.45799999999997,
+        421.875,
+        439.16700000000003,
+        431.833,
+        421.16700000000003,
+        424.459,
+        437.875,
+        422.41700000000003,
+        432.792,
+        425.375,
+        421.334,
+        423.959,
+        423.291,
+        422.083,
+        419.45799999999997,
+        424.458,
+        424.41700000000003,
+        413.20799999999997,
+        410.91700000000003,
+        414.58299999999997,
+        439.16700000000003,
+        423.0,
+        421.75,
+        462.79200000000003,
+        414.792,
+        420.541,
+        423.791,
+        424.25,
+        416.792,
+        410.375,
+        411.542,
+        409.083,
+        410.33299999999997,
+        410.292,
+        410.666,
+        427.375,
+        425.5,
+        422.541,
+        424.75,
+        425.042,
+        422.33299999999997,
+        425.291,
+        425.25,
+        422.33299999999997,
+        453.209,
+        433.958,
+        423.208,
+        443.334,
+        425.084,
+        456.125,
+        424.33299999999997,
+        445.5,
+        415.083,
+        425.83299999999997,
+        424.625,
+        418.167
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 423.291,
+      "p95_processing_us": 445.5,
+      "p95_utilization": 0.08353125,
+      "p99_processing_us": 462.79200000000003,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 3.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -597.7702142372727,
+      "engine": "Wavetable",
+      "iterations": 64,
+      "max_processing_us": 478.875,
+      "max_utilization": 0.0897890625,
+      "mean_processing_us": 423.9537968750001,
+      "mean_us_per_frame": 1.656069519042969,
+      "mean_utilization": 0.07949133691406252,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        419.584,
+        420.95799999999997,
+        420.70799999999997,
+        437.75,
+        437.75,
+        424.625,
+        419.04200000000003,
+        421.875,
+        422.166,
+        436.0,
+        421.292,
+        420.833,
+        419.375,
+        420.541,
+        423.084,
+        422.0,
+        424.083,
+        422.125,
+        418.917,
+        420.125,
+        420.58299999999997,
+        418.417,
+        420.542,
+        420.29200000000003,
+        420.625,
+        421.375,
+        420.959,
+        435.375,
+        420.58299999999997,
+        437.625,
+        419.958,
+        421.666,
+        419.45799999999997,
+        418.58299999999997,
+        422.625,
+        420.833,
+        419.91700000000003,
+        417.292,
+        421.459,
+        418.66700000000003,
+        420.459,
+        420.833,
+        418.917,
+        421.66700000000003,
+        417.83299999999997,
+        419.91700000000003,
+        421.292,
+        420.79200000000003,
+        418.79200000000003,
+        420.29200000000003,
+        445.16700000000003,
+        420.20799999999997,
+        424.166,
+        443.54200000000003,
+        420.833,
+        423.83299999999997,
+        478.875,
+        419.208,
+        443.875,
+        422.41700000000003,
+        419.083,
+        420.625,
+        421.0,
+        419.75
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 420.833,
+      "p95_processing_us": 443.54200000000003,
+      "p95_utilization": 0.083164125,
+      "p99_processing_us": 478.875,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 4.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -226.4607815919735,
+      "engine": "Chord",
+      "iterations": 64,
+      "max_processing_us": 310.709,
+      "max_utilization": 0.0582579375,
+      "mean_processing_us": 262.44012499999997,
+      "mean_us_per_frame": 1.0251567382812499,
+      "mean_utilization": 0.0492075234375,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        262.042,
+        261.292,
+        261.875,
+        257.416,
+        258.084,
+        261.292,
+        259.125,
+        279.125,
+        264.875,
+        261.083,
+        262.66700000000003,
+        261.25,
+        261.0,
+        286.958,
+        261.459,
+        260.875,
+        262.125,
+        261.33299999999997,
+        260.917,
+        261.04200000000003,
+        261.54200000000003,
+        262.541,
+        259.70799999999997,
+        260.83299999999997,
+        261.25,
+        261.04200000000003,
+        256.375,
+        260.375,
+        259.33299999999997,
+        259.125,
+        260.0,
+        256.792,
+        262.20799999999997,
+        261.083,
+        260.917,
+        261.125,
+        261.875,
+        261.041,
+        260.625,
+        261.0,
+        261.083,
+        260.75,
+        261.416,
+        261.334,
+        261.125,
+        286.083,
+        273.084,
+        260.791,
+        276.417,
+        310.709,
+        261.875,
+        260.75,
+        261.25,
+        261.292,
+        260.959,
+        253.292,
+        252.541,
+        253.00000000000003,
+        259.834,
+        253.917,
+        252.95800000000003,
+        256.375,
+        260.791,
+        259.91700000000003
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 261.04200000000003,
+      "p95_processing_us": 279.125,
+      "p95_utilization": 0.052335937500000006,
+      "p99_processing_us": 310.709,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 5.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": 17.96279359192704,
+      "engine": "Swarm",
+      "iterations": 64,
+      "max_processing_us": 789.417,
+      "max_utilization": 0.14801568750000002,
+      "mean_processing_us": 485.84824999999995,
+      "mean_us_per_frame": 1.8978447265624998,
+      "mean_utilization": 0.09109654687499999,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        487.25,
+        492.5,
+        548.208,
+        488.708,
+        488.66700000000003,
+        471.625,
+        463.042,
+        463.166,
+        478.75,
+        475.416,
+        476.79200000000003,
+        470.584,
+        467.875,
+        462.41700000000003,
+        470.5,
+        476.79200000000003,
+        479.375,
+        471.209,
+        474.0,
+        474.5,
+        463.917,
+        478.916,
+        477.959,
+        554.875,
+        477.625,
+        477.875,
+        478.875,
+        477.208,
+        478.084,
+        477.791,
+        477.83299999999997,
+        477.666,
+        485.58299999999997,
+        477.541,
+        477.875,
+        484.916,
+        477.958,
+        478.79200000000003,
+        477.916,
+        477.791,
+        478.79200000000003,
+        477.791,
+        477.958,
+        495.125,
+        490.75,
+        571.125,
+        478.29200000000003,
+        475.208,
+        468.417,
+        466.625,
+        474.291,
+        468.708,
+        476.875,
+        477.04200000000003,
+        480.29200000000003,
+        477.25,
+        477.583,
+        477.625,
+        477.25,
+        477.75,
+        477.54200000000003,
+        789.417,
+        497.79100000000005,
+        466.41700000000003
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 477.791,
+      "p95_processing_us": 548.208,
+      "p95_utilization": 0.102789,
+      "p99_processing_us": 789.417,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 6.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -31.39481039531529,
+      "engine": "Metallic",
+      "iterations": 64,
+      "max_processing_us": 313.166,
+      "max_utilization": 0.058718625,
+      "mean_processing_us": 277.120390625,
+      "mean_us_per_frame": 1.0825015258789064,
+      "mean_utilization": 0.05196007324218751,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        275.041,
+        275.166,
+        275.79200000000003,
+        275.20799999999997,
+        275.25,
+        275.0,
+        274.958,
+        275.0,
+        274.916,
+        275.083,
+        275.125,
+        276.375,
+        275.0,
+        275.584,
+        313.166,
+        275.167,
+        275.375,
+        275.25,
+        276.708,
+        275.458,
+        275.083,
+        275.5,
+        275.083,
+        275.20799999999997,
+        275.66700000000003,
+        275.125,
+        275.084,
+        296.583,
+        291.20799999999997,
+        275.0,
+        301.875,
+        275.541,
+        274.459,
+        275.083,
+        274.75,
+        275.959,
+        270.25,
+        274.916,
+        275.20799999999997,
+        274.375,
+        274.625,
+        274.541,
+        274.708,
+        274.54200000000003,
+        274.5,
+        274.584,
+        274.667,
+        274.375,
+        274.5,
+        274.625,
+        274.416,
+        274.584,
+        274.541,
+        274.75,
+        274.5,
+        276.66700000000003,
+        274.5,
+        282.167,
+        274.708,
+        274.75,
+        274.792,
+        274.375,
+        274.584,
+        304.125
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 275.041,
+      "p95_processing_us": 296.583,
+      "p95_utilization": 0.05560931250000001,
+      "p99_processing_us": 313.166,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 7.0,
+              "frequency": 220.0,
+              "harmonics": 0.3499999940395355,
+              "level": 0.800000011920929,
+              "morph": 0.4000000059604645,
+              "timbre": 0.550000011920929
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "representative",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -358.03780099004507,
+      "engine": "Wavefold",
+      "iterations": 64,
+      "max_processing_us": 1354.875,
+      "max_utilization": 0.2540390625,
+      "mean_processing_us": 1287.901046875,
+      "mean_us_per_frame": 5.030863464355469,
+      "mean_utilization": 0.2414814462890625,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        1284.5420000000001,
+        1280.333,
+        1273.0420000000001,
+        1272.667,
+        1272.625,
+        1266.875,
+        1271.375,
+        1307.584,
+        1300.209,
+        1282.875,
+        1276.75,
+        1274.125,
+        1354.875,
+        1275.25,
+        1282.542,
+        1327.25,
+        1307.875,
+        1282.875,
+        1277.917,
+        1276.8339999999998,
+        1280.25,
+        1287.042,
+        1275.2079999999999,
+        1301.6670000000001,
+        1280.375,
+        1322.291,
+        1276.291,
+        1285.5,
+        1270.4170000000001,
+        1280.6670000000001,
+        1290.708,
+        1303.0,
+        1283.625,
+        1301.6670000000001,
+        1280.583,
+        1275.5,
+        1268.875,
+        1278.25,
+        1321.4170000000001,
+        1323.333,
+        1282.958,
+        1282.333,
+        1281.875,
+        1277.375,
+        1282.917,
+        1264.708,
+        1324.0420000000001,
+        1279.291,
+        1280.542,
+        1279.958,
+        1273.625,
+        1271.375,
+        1289.208,
+        1268.792,
+        1311.2079999999999,
+        1299.167,
+        1282.166,
+        1277.2079999999999,
+        1278.916,
+        1270.375,
+        1278.25,
+        1333.625,
+        1330.8339999999998,
+        1289.833
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 1280.6670000000001,
+      "p95_processing_us": 1327.25,
+      "p95_utilization": 0.24885937500000002,
+      "p99_processing_us": 1354.875,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 1.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    },
+    {
+      "all_finite": true,
+      "baseline": false,
+      "block_size": 256,
+      "channels_match": true,
+      "checksum": -20344.564828094095,
+      "engine": "FM",
+      "iterations": 64,
+      "max_processing_us": 2240.667,
+      "max_utilization": 0.42012506250000003,
+      "mean_processing_us": 1881.5813437499999,
+      "mean_us_per_frame": 7.349927124023437,
+      "mean_utilization": 0.352796501953125,
+      "nominal_block_budget_us": 5333.333333333333,
+      "observations_us": [
+        1863.083,
+        1965.25,
+        1893.458,
+        1932.75,
+        1922.375,
+        1902.541,
+        1896.4170000000001,
+        1879.5,
+        1859.541,
+        1860.5410000000002,
+        1852.459,
+        1891.25,
+        2187.584,
+        1866.667,
+        1865.583,
+        1865.25,
+        1910.208,
+        1915.666,
+        1865.75,
+        1838.166,
+        1868.375,
+        2240.667,
+        1873.75,
+        1867.959,
+        1882.5,
+        1849.0,
+        1819.5,
+        1847.583,
+        1885.875,
+        1866.959,
+        1828.75,
+        1870.416,
+        1868.167,
+        1918.417,
+        1867.25,
+        1841.5829999999999,
+        1817.5839999999998,
+        1821.8329999999999,
+        1880.791,
+        1861.875,
+        1868.375,
+        1827.959,
+        1868.75,
+        1870.125,
+        1898.292,
+        1878.8329999999999,
+        1865.958,
+        1872.958,
+        1866.0,
+        1864.334,
+        1917.208,
+        1871.625,
+        1844.8329999999999,
+        1789.75,
+        1847.334,
+        1862.458,
+        1863.125,
+        1892.458,
+        1922.917,
+        1836.166,
+        1890.584,
+        1880.75,
+        1861.458,
+        1846.083
+      ],
+      "output_channels": 16,
+      "p50_processing_us": 1868.167,
+      "p95_processing_us": 1932.75,
+      "p95_utilization": 0.362390625,
+      "p99_processing_us": 2240.667,
+      "patch": {
+        "cables": [
+          {
+            "from": "pitch",
+            "input": "pitch",
+            "to": "voice"
+          },
+          {
+            "from": "harm",
+            "input": "harmonics",
+            "to": "voice"
+          },
+          {
+            "from": "timbre",
+            "input": "timbre",
+            "to": "voice"
+          },
+          {
+            "from": "morph",
+            "input": "morph",
+            "to": "voice"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "pitch",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 16.0,
+              "v1": -1.0,
+              "v10": 0.20000004768371582,
+              "v11": 0.3333333730697632,
+              "v12": 0.46666669845581055,
+              "v13": 0.6000000238418579,
+              "v14": 0.7333333492279053,
+              "v15": 0.8666666746139526,
+              "v16": 1.0,
+              "v2": -0.8666666746139526,
+              "v3": -0.7333333492279053,
+              "v4": -0.6000000238418579,
+              "v5": -0.46666663885116577,
+              "v6": -0.3333333134651184,
+              "v7": -0.19999998807907104,
+              "v8": -0.06666666269302368,
+              "v9": 0.06666672229766846
+            }
+          },
+          {
+            "id": "voice",
+            "kind": "macro_voice",
+            "params": {
+              "decay": 0.5,
+              "engine": 2.0,
+              "frequency": 110.0,
+              "harmonics": 1.0,
+              "level": 0.800000011920929,
+              "morph": 1.0,
+              "timbre": 1.0
+            }
+          },
+          {
+            "id": "harm",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 1.0
+            }
+          },
+          {
+            "id": "timbre",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": -1.0
+            }
+          },
+          {
+            "id": "morph",
+            "kind": "poly_constant",
+            "params": {
+              "channels": 1.0,
+              "v1": 0.5
+            }
+          }
+        ],
+        "output": "voice",
+        "sample_rate": 48000,
+        "version": 2
+      },
+      "profile": "high_drive",
+      "sample_rate": 48000,
+      "voice_count": 16,
+      "warmup_blocks": 8
+    }
+  ],
+  "provenance": {
+    "observed_utc": "2026-10-15T19:35:08.018883+00:00",
+    "source_base_commit": "95a18fc7e08398769c1f427843972f6dcd07d5ee",
+    "working_tree_note": "Adds tests, profile example and documentation to the base. Production core DSP is unchanged from the base; source hashes identify this measured tree.",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "hardware": {
+      "cpu": "Apple M1 Max",
+      "memory_bytes": 34359738368,
+      "logical_cpus": 10
+    },
+    "platform": "Darwin arm64",
+    "build_command": "cargo run --locked --release -p openpatch-core --example macro_voice_profile",
+    "release_profile": {
+      "lto": "thin",
+      "codegen_units": 1
+    },
+    "flag_overrides": {
+      "RUSTFLAGS": null,
+      "CARGO_ENCODED_RUSTFLAGS": null,
+      "CARGO_BUILD_TARGET": null,
+      "CARGO_PROFILE_RELEASE_OPT_LEVEL": null,
+      "CARGO_PROFILE_RELEASE_LTO": null,
+      "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": null
+    },
+    "binary_sha256": "ab4c24f0401ba768457bf6f6feec8ae5a7a0c5329af722277d50fd63cad21992",
+    "source_sha256": {
+      "Cargo.toml": "98776401b2811279f8d7d16ec30353510a6b2cecc30604f5bc8f93aa814481e0",
+      "Cargo.lock": "33eafe94fd8ab6c66e64c0ed81c3c43eeb2ad7b12bd9c8c715a60378f23e96bd",
+      "crates/openpatch-core/Cargo.toml": "237a4824d48c378d9c5a6af8eb57c8fd39f8785e0ae376e9cc6e5808addabb0a",
+      "crates/openpatch-core/examples/macro_voice_profile.rs": "5fa1a8b2e3572f2e09751cee99fe3aa3982381922dd5895777c9b037e58ffb87",
+      "crates/openpatch-core/src/adsr_eg.rs": "6002672b9b3c23aaa98ea642f2198c0b91918208bd8805b73b86cf6647d9e3e0",
+      "crates/openpatch-core/src/analog.rs": "44a28a5b441e01c5bc91376b71556c304b1a9b38488051f5305aa82014793a24",
+      "crates/openpatch-core/src/bypass.rs": "6be3a5f0a379d9924c25e04feb141523c9255d3441010f517e4d5fb91fbd6cc2",
+      "crates/openpatch-core/src/cable_order.rs": "a1c5f214ce5e6236d19e7cb073a664673fff1065497e58a2b28ac7e7f3fbc6a0",
+      "crates/openpatch-core/src/colored_noise/tests.rs": "dbcd82112d5388d84807568510a80eb57b273db575b1a4e5b34d4a48be6a427d",
+      "crates/openpatch-core/src/colored_noise.rs": "88f65f8ca82a876dcef1f1c09bdecefd5efed1293998f370c1f8e884be6d62c8",
+      "crates/openpatch-core/src/colored_noise_gray.rs": "ac84139c0675f05745b05aa8d44d77363fac737728be2acafe7a8ed59af7bc1a",
+      "crates/openpatch-core/src/content.rs": "924c92c76a535dbfae0d430c8b04e218be5a6d806adc9b16a6dad19b9ec4a106",
+      "crates/openpatch-core/src/gates.rs": "9ce0995de46e528117c16c0f26d4d81752c09e509368ce84ea0ed9558903ba72",
+      "crates/openpatch-core/src/ladder/optimization_reference.rs": "1a8d4adcbc1f0e58e21d0feafadc0446cc8f1f371d7f3290fda605abaa7c6442",
+      "crates/openpatch-core/src/ladder/pair_tests.rs": "64a0a7d8f9dc64b488da7e88e4ca8f108e125cfa22f75ecd69d3c373ef08e304",
+      "crates/openpatch-core/src/ladder.rs": "a6f157e6b317285468f825be3607a48d23d1e8e6126a844080cf6c7d0b5de714",
+      "crates/openpatch-core/src/lib.rs": "36f085d2ad9556633bfa8c5a14a3d860b1e2e326172b57946e66d55bbcfe9c3a",
+      "crates/openpatch-core/src/macro_voice/tests.rs": "6a917fa2599bb1ce566bc197f31ebeea80d86a07a839165a71dcfc49bf4929cc",
+      "crates/openpatch-core/src/macro_voice.rs": "b1d9122e2dce971b0bcd2c56aa54fff7869df048df4ca1d2b29d82f76012b030",
+      "crates/openpatch-core/src/midi.rs": "cc7eaa54838539ccfd7fb9d2272b9da535e7c230db4f89dd4ea17d98892bc445",
+      "crates/openpatch-core/src/midi_cc.rs": "9d98b0f2b5c17ffddd0471488ce68c53af50ca7a8b1e7d9be5a5f8115e99957d",
+      "crates/openpatch-core/src/midi_gate.rs": "9ee40f3f63a916101cdd62ca957ac848047a9bde1e635828a460885397efeacc",
+      "crates/openpatch-core/src/midi_learn.rs": "3cb64518c62df91598e715dcdfde50eea860dc64fe6738f8a6910c1c0c146e6c",
+      "crates/openpatch-core/src/mixing.rs": "40d90930aee0048b2e4038a7362ecfdfb82853c72065631e4866c12d7a324ad2",
+      "crates/openpatch-core/src/modal_resonator/tests.rs": "64d68d78ff9966e0fc71154a6956a5fbcd71d2f7963b17f29cd78604a43de2bb",
+      "crates/openpatch-core/src/modal_resonator.rs": "028cddd9fcc70398c18f5501f2f28212927aef013a029ddb6fe25cc10c9df323",
+      "crates/openpatch-core/src/multi_lfo.rs": "7d4a9c1700cca6077f04c2763f5998ffb3b7a4af14077994f5a649de43cc8dcd",
+      "crates/openpatch-core/src/multi_vco.rs": "d65a2cf74334c576562b930c249c9409bdfa8bf9f8aa3f1a9aa942e88c8e7c6c",
+      "crates/openpatch-core/src/parameter_actions.rs": "226b1f7bb49c0288983b752ed0035179b456e6a423593500ef167254e81582ef",
+      "crates/openpatch-core/src/poly.rs": "3ab69bcdfb9ba2ee2cba0d6183b089e0267bd0eef76cfba3b5f4a07769ac8ca5",
+      "crates/openpatch-core/src/port_lights.rs": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
+      "crates/openpatch-core/src/pulses.rs": "af84389ec6962bd353686d8c8aaaca2874707aabe9d271b3643b040c7c1739bf",
+      "crates/openpatch-core/src/push.rs": "7a3624fb4da49deacc86dbbb489f63b0f169e41446402a63f151cb6b10bb0e5c",
+      "crates/openpatch-core/src/random_values.rs": "e4bc3e7a6d084b5926e251d7835010531d70b2d287925106084abbe60d3506c0",
+      "crates/openpatch-core/src/routing.rs": "1f7f02db665b655e44aa350509a5d7c4c8ba36a3d4741aa581f64f1e96ff8472",
+      "crates/openpatch-core/src/saved_state.rs": "f36923dd2550bbd3335ae2d5766eb311c5be8e01caed252afc172f3d4f4c8fb3",
+      "crates/openpatch-core/src/scope.rs": "b928a2ff92f9f03c8f148c43e2bba2d3ae662a128c02b61f5361c870eb094d22",
+      "crates/openpatch-core/src/scope_measurement.rs": "4e22fecab7a74471956f8872c128a50bf87e2adc56dfeb162f2c62128cfb5ccf",
+      "crates/openpatch-core/src/score.rs": "b33ba211d276821a1a5d9ca6ea8758cd84eee5013e053101342e89be7084bb96",
+      "crates/openpatch-core/src/sequence.rs": "954423f02993373663ebd6ff2187faaeef2d9d4f6b9ed2616659c63c7f095305",
+      "crates/openpatch-core/src/shift_register.rs": "0ed1ba414b3ce0f855eb4a572f9b58c35650a09684accf06942733ea3904984c",
+      "crates/openpatch-core/src/signal.rs": "d821bc79580d01052ce92d170bd0020d9f6a770d0e611142b812e6546e6f412b",
+      "crates/openpatch-core/src/stereo_output.rs": "1595967ff47bd9b3e1e128b8891d52a4e785a1b89c51d020355a2aa8b841e765",
+      "crates/openpatch-core/src/stock_vca.rs": "912d9b207864d8273a4724c6b20b840e2a9ccc94d3d2743b0a0cf2c81f938685",
+      "crates/openpatch-core/src/stock_vcf.rs": "8d10d4db0bd32abc8152c347384ae24d310095fe11c3b7fc07a662f5e152391d",
+      "crates/openpatch-core/src/stream_render.rs": "e667618b18da26ad66257e0145457617c032cb9c91191d17efa4c0eeeba20b67",
+      "crates/openpatch-core/src/studio_fx.rs": "d148f723b4fc23e899a50f8c1028513b26730cbba4d23abe032be17eae0ac63d",
+      "crates/openpatch-core/src/sum.rs": "b3cc87529b96e84ee86be1225c25e8c10da507f823442aa5333c9b20fd0b5890",
+      "crates/openpatch-core/src/svf_resampler.rs": "0b0c2e2d3465b30e0e3328c45dcd0825361e6a3697b2f2d13077eeb00a8d870c",
+      "crates/openpatch-core/src/svf_resampler_kernels.rs": "f1db8217d8667e72c27c250cd35a4d90319fb79678091f44242bdd26be2dddeb",
+      "crates/openpatch-core/src/svf_resampler_tests.rs": "21bb3c620021f2a69ed9b9e5eb4104127167f3c46790ca5780140053986c55c1",
+      "crates/openpatch-core/src/switch.rs": "be3ecc77d458084b569fb4cf64cbaef7f485f9ebadf9353c42db23fa1f31d52c",
+      "crates/openpatch-core/src/utilities.rs": "f0e0be0e9d7861f5d608cfd4290be2ec60b9294e8484bdb3b2f0af1dd544a3eb",
+      "crates/openpatch-core/src/utility_bank.rs": "64260f54ed56700c11466bb5da069e59deefd045742af33d9e0dcb798c03d65a",
+      "crates/openpatch-core/src/viz.rs": "466853e5eab53b59c3727db8fdd4c55003ccbec51dd01db092a297d06ec94a65",
+      "crates/openpatch-core/src/voice_tools/hoisted_tests.rs": "44f59a8a159ead3e7ab9275389d19d6a1ea7300dfd9b83ec1afe3a044ed9db43",
+      "crates/openpatch-core/src/voice_tools/qualification_tests.rs": "72911468ef0dece0a51129e7fddb8e22957a09ec6bbc6370e62150a15d7ab64d",
+      "crates/openpatch-core/src/voice_tools/scalar_reference.rs": "9bd650cbf9de45d4cb32274a49d6748606effdf948d0575dcf6245554a181218",
+      "crates/openpatch-core/src/voice_tools.rs": "8cc844940f3e61b940b4d3609377819a8a8f7f1158d65413eedf7c3a60d29aa6"
+    },
+    "limitations": "One sequential run per workload; no affinity, thermal control, background load isolation or audio device. Timing observations are not CI thresholds or VCV Rack comparisons."
+  }
+}

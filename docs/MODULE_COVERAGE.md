@@ -62,7 +62,7 @@ separately; this does not complete all filter or host compatibility.
 
 [Stock VCA](STOCK_VCA.md) adds a separate ideal polyphonic amplifier with level,
 linear/fourth-power CV response and per-channel effective gain telemetry,
-bringing the current catalog to **64 kinds**. The reference OTA VCA and legacy
+bringing the catalog to **64 kinds at that milestone**. The reference OTA VCA and legacy
 `gain` keep their existing contracts. Its [actual-class report](benchmarks/stock-vca-reference.json)
 passes 72 traces at 44.1/48/96 kHz: 55,872 frames, 800,328 active output/gain
 comparisons and maximum absolute error 9.54e-7 under the frozen
@@ -72,6 +72,13 @@ panel tests, reviewed Linux normal/dark captures, and macOS ARM/Windows/Linux CI
 also have [recorded bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation).
 Native macOS/Windows window input, physical MIDI/audio I/O and complete Rack
 host/import parity remain open.
+
+[MACRO VOICE](MACRO_VOICE.md) adds eight synthesis engines in one native kind,
+bringing the current catalog to **65 kinds**. Its sixteen independent voices,
+OUT/AUX outputs and trigger-driven low-pass gate are an original OpenPatch
+instrument. FM feedback and additive shaping adapt MIT-licensed Plaits
+algorithms; this is neither a sample-identical Plaits port nor an additional
+completed stock VCV target.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source

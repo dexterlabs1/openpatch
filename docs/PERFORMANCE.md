@@ -3,6 +3,42 @@
 The goal is lower CPU use and predictable audio deadlines on large patches.
 Rust alone is not evidence of a speedup. No VCV Rack comparison is available yet.
 
+## Native macro voice observation
+
+The [MACRO VOICE contract](MACRO_VOICE.md) includes a public Engine profile for
+all eight engines, separately at one and sixteen voices, 48 kHz and 64/256-frame
+blocks. A local Apple M1 Max / Rust 1.99.0 release run on 2026-10-15 produced
+these sixteen-voice, 256-frame representative observations. Each block has
+5,333.33 µs of nominal frame time. Each row is a separate graph, not eight
+engines running simultaneously.
+
+| Engine | Median µs/block | Maximum µs/block | Mean frame-time budget use |
+|---|---:|---:|---:|
+| Analog | 233.92 | 307.29 | 4.40% |
+| Wavefold | 1,098.33 | 3,359.79 | 23.26% |
+| FM | 1,873.75 | 2,740.67 | 36.25% |
+| Harmonic | 423.29 | 462.79 | 7.96% |
+| Wavetable | 420.83 | 478.88 | 7.95% |
+| Chord | 261.04 | 310.71 | 4.92% |
+| Swarm | 477.79 | 789.42 | 9.11% |
+| Metallic | 275.04 | 313.17 | 5.20% |
+
+The selected high-drive Wavefold/FM graphs had mean budget use of 24.15% and
+35.28%. They are additional fixtures, not exhaustive worst-case bounds. The
+source-only baseline median was 3.38 µs/block; it has fewer sources and cables,
+and no subtraction is used to claim isolated oscillator cost. All 44 workloads
+reported finite output and the requested channel count throughout measured
+blocks. [Raw observations, actual patches, source hashes, binary hash, toolchain
+and hardware provenance](benchmarks/macro-voice-m1max.json).
+
+Each workload uses eight warmup blocks and 64 timed blocks, excluding compilation,
+table creation and output inspection. With this short sample count the reported
+p99 equals the maximum; neither is a stable long-run tail bound. Graphs run in a
+fixed sequential order without affinity, thermal control or background-load
+isolation. These are offline graph timings, not live audio callback measurements,
+dropout qualification or VCV Rack speed comparisons. FM and Wavefold are the
+largest costs in this measured matrix and remain optimization candidates.
+
 ## Live callback diagnostics
 
 ![Native Audio performance window with buffer timing and overrun counters](images/openpatch-audio-performance.png)
