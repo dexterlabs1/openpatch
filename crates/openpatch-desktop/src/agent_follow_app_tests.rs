@@ -55,6 +55,32 @@ fn follow_checkbox_is_opt_in_session_state_and_never_patch_work() {
     assert!(app.rack.agent_follow_enabled());
     assert!(app.capture_document().equivalent(&document));
     assert_eq!(app.shared.lock().unwrap().snapshot(), graph);
+    app.replace_rack(Rack::default());
+    assert!(
+        app.rack.agent_follow_enabled(),
+        "A new document keeps the window opt-in"
+    );
+    let fresh_pan = app.rack.agent_follow_view_pan();
+    for millis in [0, 260] {
+        app.rack
+            .set_construction_clock_override(Some(Instant::now() + Duration::from_millis(millis)));
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        assert_eq!(
+            app.rack.agent_follow_view_pan(),
+            fresh_pan,
+            "Replacement must not replay earlier edits"
+        );
+    }
     assert!(!host(dir.path()).rack.agent_follow_enabled());
 }
 

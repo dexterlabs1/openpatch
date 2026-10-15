@@ -616,10 +616,11 @@ impl OpenPatch {
             Err(e) => (None, e),
         }
     }
-    // Rack replacement is a document operation; cable appearance belongs to
-    // the host, including when offline examples replace the entire rack.
+    // Rack replacement is a document operation; appearance and follow opt-in
+    // belong to the window, including when examples replace the entire rack.
     fn replace_rack(&mut self, mut rack: Rack) {
         rack.set_cable_presentation(self.rack.cable_presentation());
+        rack.set_agent_follow(self.rack.agent_follow_enabled());
         self.rack = rack;
     }
     fn set_cable_presentation(&mut self, presentation: CablePresentation) {

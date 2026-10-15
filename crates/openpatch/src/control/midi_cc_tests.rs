@@ -239,7 +239,18 @@ fn shared_worker_reconciles_without_gui_and_releases_weak_session() {
     assert!(b.ready.lock().unwrap().is_empty());
     let weak = Arc::downgrade(&shared);
     drop(shared);
-    assert!(weak.upgrade().is_none());
+    // Unlocking the Session and dropping the worker's temporary Arc are
+    // separate operations. Another thread can acquire the mutex between them.
+    // Check eventual release, rather than requiring that scheduling race to end
+    // before the caller drops its own Arc.
+    let deadline = Instant::now() + std::time::Duration::from_secs(2);
+    while weak.upgrade().is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "worker retained a dropped session"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 #[test]
 fn processing_blocks_close_and_backend_replacement_without_erasing_decisions() {
