@@ -179,7 +179,11 @@ fn cable_presentation_tension_keeps_endpoints_and_one_geometry_for_prefix_hover_
                         let point = evaluate(points, t);
                         assert!(cable_curve_near(points, point, (4.5 * zoom).max(3.0)));
                         if tension == 1.0 {
-                            assert!(point.distance(a.lerp(b, t)) < 0.001);
+                            let offset = point - a.lerp(b, t);
+                            assert!(offset.y >= -0.001 && offset.y <= 12.0 * zoom + 0.001);
+                            assert!(
+                                offset.x.abs() <= (a.distance(b) * 0.0225).min(1.8 * zoom) + 0.001
+                            );
                         }
                         let prefix = cable_curve_prefix(points, t);
                         for u in [0.0, 0.2, 0.7, 1.0] {
@@ -228,8 +232,17 @@ fn cable_presentation_actual_draft_uses_selected_tension_and_full_opacity() {
     );
     let main = &curves[1];
     assert_eq!(main.points[3], pointer);
+    assert_eq!(
+        main.points,
+        cable_curve_points(main.points[0], pointer, rack.zoom, 0.0, 1.0)
+    );
+    let middle = evaluate(main.points, 0.5);
+    assert!(
+        middle.y > main.points[0].lerp(pointer, 0.5).y,
+        "taut draft retains a gravity bow"
+    );
     for t in [0.2, 0.5, 0.8] {
-        assert!(evaluate(main.points, t).distance(main.points[0].lerp(pointer, t)) < 0.001);
+        assert!(cable_curve_near(main.points, evaluate(main.points, t), 3.0));
     }
     let egui::epaint::ColorMode::Solid(color) = main.stroke.color else {
         panic!("solid")
@@ -276,6 +289,68 @@ fn cable_presentation_animated_tip_and_shadow_use_the_current_nondefault_geometr
                 assert!(curves(&output).is_empty());
             } else {
                 assert_eq!(curves(&output).len(), 6);
+            }
+        }
+    }
+}
+
+#[test]
+fn cable_presentation_high_tension_sag_is_monotonic_bounded_and_screen_scale_consistent() {
+    for zoom in [0.25, 0.5, 1.0, 2.0, 4.0] {
+        for (a, b) in [
+            (pos2(0.0, 0.0), pos2(600.0, 120.0)),
+            (pos2(600.0, 120.0), pos2(0.0, 0.0)),
+            (pos2(0.0, 0.0), pos2(0.0, 300.0)),
+            (pos2(0.0, 300.0), pos2(0.0, 0.0)),
+            (pos2(0.0, 0.0), pos2(1.0, 0.0)),
+            (pos2(0.0, 0.0), pos2(0.0, 0.0)),
+        ] {
+            let pan = vec2(20.0, 50.0);
+            let from = (a.to_vec2() * zoom + pan).to_pos2();
+            let to = (b.to_vec2() * zoom + pan).to_pos2();
+            for fan in [-20.0, 0.0, 20.0] {
+                let mut previous = f32::INFINITY;
+                for tension in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0] {
+                    let points = cable_curve_points(from, to, zoom, fan, tension);
+                    let sag = evaluate(points, 0.5).y - from.lerp(to, 0.5).y;
+                    assert!(
+                        sag >= -0.001 && sag <= previous + 0.001,
+                        "zoom={zoom} tension={tension}"
+                    );
+                    previous = sag;
+                    if tension == 1.0 {
+                        if a != b {
+                            assert!(sag > 0.0);
+                        }
+                        assert!(sag <= (from.distance(to) * 0.04125).min(12.0 * zoom) + 0.001);
+                        // Taut chord progress remains monotonic: no short/reverse loops.
+                        let direction = to - from;
+                        let mut progress = -0.001;
+                        for i in 0..=32 {
+                            let point = evaluate(points, i as f32 / 32.0);
+                            let projected = (point - from).dot(direction);
+                            assert!(projected + 0.001 >= progress);
+                            progress = projected;
+                        }
+                        let world = cable_curve_points(a, b, 1.0, fan, tension);
+                        for (point, expected) in points.iter().zip(world) {
+                            assert!(
+                                point.distance((expected.to_vec2() * zoom + pan).to_pos2()) < 0.001
+                            );
+                        }
+                    }
+                }
+                // Default is the exact original control construction.
+                let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
+                assert_eq!(
+                    cable_curve_points(from, to, zoom, fan, 0.5),
+                    [
+                        from,
+                        from + vec2(fan * zoom, sag),
+                        to + vec2(fan * zoom, sag),
+                        to
+                    ]
+                );
             }
         }
     }

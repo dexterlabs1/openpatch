@@ -1056,7 +1056,16 @@ impl OpenPatch {
             args["expected_revision"] = json!(self.revision);
         }
         match execute_shared(&self.shared, name, args) {
-            Ok(_) => {
+            Ok(receipt) => {
+                // The hand has already moved this cable. Consume only this
+                // accepted local revision before sync, including a busy retry;
+                // a following MCP revision still gets its own motion cue.
+                if let Some(revision) = receipt["revision"]
+                    .as_u64()
+                    .filter(|_| matches!(name, "move_cables" | "apply_edits"))
+                {
+                    self.rack.suppress_cable_move_revision(revision);
+                }
                 self.status = match name {
                     "trigger_module" => "Performance action queued",
                     "learn_midi_cc" => "MIDI Learn requested · move a controller",
@@ -1206,6 +1215,9 @@ impl OpenPatch {
                 let mut presentation = construction.clone();
                 if presentation["last_commit"].is_object() {
                     presentation["last_commit"]["age_ms"] = json!(0);
+                }
+                if presentation["last_move"].is_object() {
+                    presentation["last_move"]["age_ms"] = json!(0);
                 }
                 self.rack.observe_construction_transition_at(
                     &self.patch,
@@ -2873,6 +2885,18 @@ impl OpenPatch {
                             ui.separator();
                             self.cable_presentation_controls(ui);
                             ui.separator();
+                            ui.label("Agent motion");
+                            ui.horizontal(|ui| {
+                                for mode in [crate::construction_motion::MotionMode::Full,
+                                    crate::construction_motion::MotionMode::Reduced,
+                                    crate::construction_motion::MotionMode::Off] {
+                                    if ui.selectable_label(self.construction.motion_mode() == mode, mode.label()).clicked() {
+                                        self.construction.set_motion_mode(mode);
+                                        self.rack.set_construction_motion_mode(mode);
+                                    }
+                                }
+                            });
+                            ui.separator();
                             let mut locked = self.rack.positions_locked();
                             if ui.checkbox(&mut locked, "Lock module positions").changed() {
                                 self.rack.set_positions_locked(locked);
@@ -3959,6 +3983,87 @@ impl OpenPatch {
         }
         assert_eq!(state["last_commit"]["revision"], self.revision);
         vec![state["last_commit"].clone()]
+    }
+
+    /// Observe a real endpoint move, with a controlled presentation clock only.
+    /// Graph routing and the authoritative receipt are never staged or faked.
+    fn prepare_cable_move_fixture(&mut self, origin: Instant, progressive: bool) -> Value {
+        self.smoke_motion_origin = None;
+        assert!(self.command("replace_patch", json!({"patch":{
+            "version":2,"nodes":[
+                {"id":"voice","kind":"multi_vco","params":{"frequency":110}},
+                {"id":"filter-a","kind":"ladder_vcf","params":{"cutoff":800}},
+                {"id":"filter-b","kind":"ladder_vcf","params":{"cutoff":2400}},
+                {"id":"out","kind":"audio_out"}
+            ],"cables":[
+                {"id":"moving-tone","from":"voice","output":"saw","to":"filter-a","input":"signal","color":[245,200,70]},
+                {"id":"moving-output","from":"filter-a","to":"out","input":"signal","color":[65,190,180]}
+            ],"output":"out"
+        }})));
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":1.0,"pan":[72,48],"positions":{
+                "voice":[0,0],"filter-a":[330,0],"filter-b":[600,0],"out":[870,0]
+            }}))
+            .unwrap();
+        self.smoke_motion_origin = Some(origin);
+        self.rack.set_construction_clock_override(Some(origin));
+        let before = self.revision;
+        let edits = json!([
+            {"tool":"move_cables","arguments":{"cable_ids":["moving-tone"],"end":"input","node":"filter-b","port":"signal"}},
+            {"tool":"move_cables","arguments":{"cable_ids":["moving-output"],"end":"output","node":"filter-b","port":"out"}}
+        ]);
+        if progressive {
+            execute_shared(
+                &self.shared,
+                "start_construction",
+                json!({
+                    "title":"Repatch the voice","expected_revision":before,"interval_ms":100,
+                    "steps":[{"label":"Move the voice to the second filter","edits":edits}]
+                }),
+            )
+            .unwrap();
+        } else {
+            execute_shared(
+                &self.shared,
+                "apply_edits",
+                json!({
+                    "expected_revision":before,"edits":edits
+                }),
+            )
+            .unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let state = loop {
+            let state = self.shared.lock().unwrap().construction_snapshot();
+            if !progressive || state["status"] == "completed" {
+                break state;
+            }
+            assert_eq!(state["status"], "running", "{state}");
+            assert!(
+                Instant::now() < deadline,
+                "Cable move fixture did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        let receipt = if progressive {
+            &state["last_commit"]
+        } else {
+            &state["last_move"]
+        };
+        assert_eq!(receipt["before_revision"], before);
+        assert_eq!(receipt["moved_cables"].as_array().unwrap().len(), 2);
+        let revision = receipt["revision"].as_u64().unwrap();
+        while self.revision < revision {
+            self.sync();
+            assert!(
+                Instant::now() < deadline,
+                "Cable move fixture could not observe commit"
+            );
+            std::thread::yield_now();
+        }
+        assert_eq!(self.revision, revision);
+        receipt.clone()
     }
 
     /// Freeze actual offline DSP telemetry for matched room-lighting captures.
@@ -5572,6 +5677,39 @@ impl OpenPatch {
             self.title = "Compact rack · readable mode labels".into();
             self.status = "Actual shared panels at 50% rack zoom · linear FM, soft sync and mixer modes stay inside their controls".into();
         }
+        if frame == 2052 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            self.browser_open = false;
+            self.prepare_cable_move_fixture(Instant::now(), true);
+            self.rack.set_room_brightness(1.0);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1440.0, 960.0)));
+            self.title = "Invisible hand · repatch the voice".into();
+            self.status =
+                "Two real cable moves · input and output ends · controlled presentation clock"
+                    .into();
+        }
+        if matches!(frame, 2060 | 2076 | 2092 | 2108) {
+            let millis = match frame {
+                2060 => 40,
+                2076 => 200,
+                2092 => 350,
+                _ => 460,
+            };
+            self.rack.set_construction_clock_override(Some(
+                self.smoke_motion_origin.unwrap() + Duration::from_millis(millis),
+            ));
+        }
+        if frame == 2116 {
+            self.prepare_room_lighting_fixture();
+            self.browser_open = false;
+            self.rack.set_room_brightness(1.0);
+            let mut appearance = self.rack.cable_presentation();
+            appearance.tension = 1.0;
+            self.rack.set_cable_presentation(appearance);
+            self.title = "Taut cables · a little gravity".into();
+            self.status = "Maximum tension · restrained distance-dependent bow · actual shared cable geometry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -5671,6 +5809,11 @@ impl OpenPatch {
                 | 2012
                 | 2028
                 | 2044
+                | 2060
+                | 2076
+                | 2092
+                | 2108
+                | 2124
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -5774,7 +5917,12 @@ impl OpenPatch {
                 82 => path.with_file_name("library-zoom-wide.png"),
                 83 => path.with_file_name("library-zoom-compact.png"),
                 84 => path.with_file_name("library-zoom-200.png"),
-                _ => path.with_file_name("rack-small-labels.png"),
+                85 => path.with_file_name("rack-small-labels.png"),
+                86 => path.with_file_name("cable-move-unplug.png"),
+                87 => path.with_file_name("cable-move-travel.png"),
+                88 => path.with_file_name("cable-move-settle.png"),
+                89 => path.with_file_name("cable-move-complete.png"),
+                _ => path.with_file_name("cable-tension-tight.png"),
             };
             image::save_buffer(
                 &target,
@@ -5785,18 +5933,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/86 at frame {frame}: {}",
+                "Native smoke: capture {}/91 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 86 {
+            if captures == 91 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2058, "Native screenshot timeout");
+        assert!(frame < 2138, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6078,6 +6226,9 @@ mod project_workflow_tests {
     }
     mod library_zoom_host_tests {
         include!("library_zoom_host_tests.rs");
+    }
+    mod cable_move_host_tests {
+        include!("cable_move_host_tests.rs");
     }
 
     mod midi_gate_app_tests {

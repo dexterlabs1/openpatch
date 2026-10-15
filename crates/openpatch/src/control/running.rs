@@ -7,6 +7,9 @@ pub(super) struct EditEffects {
     pub retired: Vec<String>,
     pub retired_cables: Vec<String>,
     pub initialized: BTreeSet<String>,
+    // Presentation provenance only; independent of DSP cable retirement.
+    pub cable_moves: BTreeMap<String, BTreeSet<String>>,
+    discontinuous_cables: BTreeSet<String>,
     pub release_controls: BTreeSet<String>,
     pub before_saved: BTreeMap<String, SavedModuleState>,
     pub after_saved: BTreeMap<String, SavedModuleState>,
@@ -248,6 +251,70 @@ impl Session {
     }
 
     pub(super) fn apply_session_edit(
+        &self,
+        candidate: &mut Patch,
+        name: &str,
+        args: &Value,
+        effects: &mut EditEffects,
+    ) -> Result<(), String> {
+        // Observe successful topology operations, not arbitrary before/after
+        // differences. A removed/recreated ID never regains continuity within
+        // this transaction, even when a later explicit move succeeds.
+        let topology = matches!(
+            name,
+            "connect"
+                | "disconnect"
+                | "disconnect_cables"
+                | "move_cables"
+                | "remove_module"
+                | "clear_cables"
+                | "duplicate_modules"
+        );
+        let before: BTreeMap<_, _> = if topology {
+            candidate
+                .cables
+                .iter()
+                .filter_map(|cable| {
+                    Some((cable.id.clone()?, construction::CableRoute::from(cable)))
+                })
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
+        self.apply_session_edit_inner(candidate, name, args, effects)?;
+        if topology {
+            let after: BTreeMap<_, _> = candidate
+                .cables
+                .iter()
+                .filter_map(|cable| {
+                    Some((cable.id.clone()?, construction::CableRoute::from(cable)))
+                })
+                .collect();
+            for id in before.keys().chain(after.keys()) {
+                match (before.get(id), after.get(id)) {
+                    (Some(old), Some(new)) if old != new && name == "move_cables" => {
+                        if !effects.discontinuous_cables.contains(id) {
+                            let nodes = effects.cable_moves.entry(id.clone()).or_default();
+                            nodes.extend([
+                                old.from.clone(),
+                                old.to.clone(),
+                                new.from.clone(),
+                                new.to.clone(),
+                            ]);
+                        }
+                    }
+                    (Some(old), Some(new)) if old == new => {}
+                    _ => {
+                        effects.discontinuous_cables.insert(id.clone());
+                        effects.cable_moves.remove(id);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_session_edit_inner(
         &self,
         candidate: &mut Patch,
         name: &str,

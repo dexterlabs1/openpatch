@@ -94,14 +94,16 @@ Progress reports **committed graph edits**, not confirmation that the audio
 callback has applied them. The control worker advances independently of GUI
 repaints. A stalled or hidden window can miss intermediate frames; this is not
 a guarantee that every step was displayed. The cable reveal is edit feedback,
-not an indication of signal propagation or audio timing. It runs for 280 ms and
-tracks at most 128 new cables simultaneously. Larger batches display remaining
-cables normally; they are never queued for later animation.
+not an indication of signal propagation or audio timing. New connections reveal
+over 300 ms and settle over 120 ms; existing endpoint moves use a 420 ms
+unplug/travel/settle gesture. At most 128 targets share one receipt. Larger batches
+display remaining targets normally; they are never queued for later animation.
 
 Only a single consecutive construction revision observed by the UI can start
 a reveal. Skipped revisions, human edits, project replacement and Undo/Redo
-clear active reveals and show the current graph immediately. Moving, recoloring
-or promoting an existing cable does not start another reveal. A hidden window
+clear active reveals and show the current graph immediately. Direct MCP moves
+also carry authoritative move receipts, without requiring a construction plan.
+Recoloring or promoting an existing cable does not start another reveal. A hidden window
 does not replay expired effects. Turning animation back on affects future
 commits only. Speaker playback remains a local user action. Audio-application
 acknowledgements, subscriptions and creating new DSP modules remain future work.

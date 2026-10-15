@@ -656,6 +656,11 @@ without retiring its signal state. `promote_cables` raises selected plugs at one
 end without changing DSP routing; `move_cables` can commit routing and plug order
 together. All support `expected_revision`, previews,
 and transactions. See [cable editing examples and guarantees](STACKED_CABLES.md).
+Successful existing-cable moves publish an additive `last_move` receipt through
+`inspect_construction`, even while idle. Paced steps also include `moved_cables`
+in `last_commit`. The native rack uses their exact committed before/after routes
+for an interruptible unplug/travel/settle animation; graph and DSP changes are
+not delayed by the animation. [Motion controls and receipt lifecycle](CONSTRUCTION_MOTION.md).
 
 `clear_cables` accepts only optional `expected_revision`. A direct call on an
 empty patch validates that revision and returns the unchanged snapshot; it

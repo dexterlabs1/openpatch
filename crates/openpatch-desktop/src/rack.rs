@@ -488,6 +488,12 @@ impl Rack {
         }
     }
 
+    /// Suppress only this successful human edit, even if synchronization is delayed.
+    pub(crate) fn suppress_cable_move_revision(&mut self, revision: u64) {
+        self.construction_animation
+            .suppress_cable_move_revision(revision);
+    }
+
     pub(crate) fn clear_construction_animation(&mut self) {
         self.construction_animation.clear();
     }
@@ -1776,6 +1782,51 @@ impl Rack {
                         0.0
                     }
                 };
+                let movement = self
+                    .construction_animation
+                    .cables
+                    .movement(cable, animation_now)
+                    .and_then(|(old, old_fan, elapsed)| {
+                        Some(cable_move_geometry(
+                            *outputs.get(&(old.from.clone(), old.output.clone()))?,
+                            *inputs.get(&(old.to.clone(), old.input.clone()))?,
+                            from,
+                            to,
+                            old_fan,
+                            fan,
+                            self.zoom,
+                            elapsed,
+                            old.from != cable.from || old.output != cable.output,
+                            old.to != cable.to || old.input != cable.input,
+                        ))
+                    });
+                // Missing old ports invalidate a decorative route immediately.
+                if self
+                    .construction_animation
+                    .cables
+                    .movement(cable, animation_now)
+                    .is_some()
+                    && movement.is_none()
+                {
+                    self.construction_animation.cables.interrupt(cable);
+                }
+                let moving_hover = self.pending.is_none()
+                    && movement.is_some_and(|m| {
+                        pointer.is_some_and(|p| {
+                            cable_curve_near(
+                                cable_curve_points(
+                                    m.from,
+                                    m.to,
+                                    self.zoom,
+                                    m.fan,
+                                    self.cable_presentation.tension,
+                                ),
+                                p,
+                                (4.5 * self.zoom).max(3.0),
+                            ) || (m.output_moving && p.distance(m.from) <= 12.0 * self.zoom)
+                                || (m.input_moving && p.distance(m.to) <= 12.0 * self.zoom)
+                        })
+                    });
                 let curve_hover = self.pending.is_none()
                     && self
                         .construction_animation
@@ -1795,32 +1846,64 @@ impl Rack {
                             (4.5 * self.zoom).max(3.0),
                         )
                     });
-                if picked_up || traced || curve_hover {
+                if picked_up || traced || curve_hover || moving_hover {
                     self.construction_animation.cables.interrupt(cable);
                 }
                 let phase = self
                     .construction_animation
                     .cables
                     .phase(cable, animation_now);
-                paint_motion_cable_curves(
-                    &painter,
-                    from,
-                    to,
-                    color,
-                    self.zoom,
-                    configured_bus(patch, catalog, &cable.from),
-                    fan,
-                    phase,
-                    &self.lighting,
-                    crate::cable_presentation::CablePresentation {
-                        opacity: if traced {
-                            1.0
-                        } else {
-                            self.cable_presentation.opacity
-                        },
-                        ..self.cable_presentation
+                let presentation = crate::cable_presentation::CablePresentation {
+                    opacity: if traced {
+                        1.0
+                    } else {
+                        self.cable_presentation.opacity
                     },
-                );
+                    ..self.cable_presentation
+                };
+                if let Some(movement) = movement.filter(|_| phase.is_some()) {
+                    paint_moving_cable_curves(
+                        &painter,
+                        from,
+                        to,
+                        color,
+                        self.zoom,
+                        configured_bus(patch, catalog, &cable.from),
+                        fan,
+                        movement,
+                        presentation,
+                    );
+                } else if let Some((phase, ends)) = phase
+                    .filter(|p| p.reduced)
+                    .zip(self.construction_animation.cables.moved_ends(cable))
+                {
+                    paint_reduced_cable_move(
+                        &painter,
+                        from,
+                        to,
+                        color,
+                        self.zoom,
+                        configured_bus(patch, catalog, &cable.from),
+                        fan,
+                        phase.fade,
+                        ends,
+                        &self.lighting,
+                        presentation,
+                    );
+                } else {
+                    paint_motion_cable_curves(
+                        &painter,
+                        from,
+                        to,
+                        color,
+                        self.zoom,
+                        configured_bus(patch, catalog, &cable.from),
+                        fan,
+                        phase,
+                        &self.lighting,
+                        presentation,
+                    );
+                }
             }
         }
         // Curves retain native array order. Caps and their top lights use each
@@ -10651,17 +10734,33 @@ fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -
     } else {
         0.5
     };
-    // Keep the established curve bit-for-bit at the OpenPatch default. At full
-    // tension use a straight cubic, including coincident/reversed endpoints.
+    // Keep the established default and lower-half looseness unchanged. Taut
+    // cables retain a restrained gravity bow instead of becoming rigid rulers.
     if tension == 0.5 {
         return original;
     }
     let straight = [from, from.lerp(to, 1.0 / 3.0), from.lerp(to, 2.0 / 3.0), to];
-    let looseness = 2.0 * (1.0 - tension);
+    if tension < 0.5 {
+        let looseness = 2.0 * (1.0 - tension);
+        return [
+            from,
+            straight[1] + (original[1] - straight[1]) * looseness,
+            straight[2] + (original[2] - straight[2]) * looseness,
+            to,
+        ];
+    }
+    let distance = from.distance(to);
+    // Distance-relative bounds prevent tiny or vertical cables folding back.
+    // These are presentation controls, not a physical cable simulation.
+    let bow = vec2(
+        (fan * zoom * 0.12).clamp(-distance * 0.03, distance * 0.03),
+        (distance * 0.055).min(16.0 * zoom),
+    );
+    let amount = (tension - 0.5) * 2.0;
     [
         from,
-        straight[1] + (original[1] - straight[1]) * looseness,
-        straight[2] + (original[2] - straight[2]) * looseness,
+        original[1].lerp(straight[1] + bow, amount),
+        original[2].lerp(straight[2] + bow, amount),
         to,
     ]
 }
@@ -10755,6 +10854,138 @@ fn paint_motion_badge(
         galley,
         Color32::WHITE,
     );
+}
+
+/// Screen geometry is resolved anew from port identities every frame. These
+/// positions never enter jack hit testing or pending cable operations.
+#[derive(Clone, Copy, Debug)]
+struct CableMoveGeometry {
+    from: Pos2,
+    to: Pos2,
+    fan: f32,
+    output_moving: bool,
+    input_moving: bool,
+    settle: f32,
+}
+fn smooth_motion(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+#[allow(clippy::too_many_arguments)]
+fn cable_move_geometry(
+    old_from: Pos2,
+    old_to: Pos2,
+    from: Pos2,
+    to: Pos2,
+    old_fan: f32,
+    fan: f32,
+    zoom: f32,
+    elapsed: f32,
+    output_moving: bool,
+    input_moving: bool,
+) -> CableMoveGeometry {
+    let ms = elapsed.clamp(0.0, 1.0) * 420.0;
+    let travel = smooth_motion((ms - 55.0) / 290.0);
+    let settle = smooth_motion((ms - 345.0) / 75.0);
+    let lift = 9.0 * zoom * smooth_motion(ms / 55.0) * (1.0 - settle);
+    let endpoint = |old: Pos2, new: Pos2, moving| {
+        if moving {
+            old.lerp(new, travel) - vec2(0.0, lift)
+        } else {
+            new
+        }
+    };
+    CableMoveGeometry {
+        from: endpoint(old_from, from, output_moving),
+        to: endpoint(old_to, to, input_moving),
+        fan: egui::lerp(old_fan..=fan, travel),
+        output_moving,
+        input_moving,
+        settle,
+    }
+}
+#[allow(clippy::too_many_arguments)]
+fn paint_moving_cable_curves(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    fan: f32,
+    movement: CableMoveGeometry,
+    presentation: crate::cable_presentation::CablePresentation,
+) {
+    // True committed route is always visible. Real caps/lights are painted later
+    // in independent endpoint-stack order; decorative plugs carry no telemetry.
+    paint_cable_curves(
+        painter,
+        from,
+        to,
+        color.gamma_multiply(0.28 + 0.72 * movement.settle),
+        zoom,
+        bus,
+        fan,
+        presentation,
+    );
+    let opacity = presentation.opacity * (1.0 - movement.settle);
+    if opacity <= 0.0 {
+        return;
+    }
+    paint_cable_curves(
+        painter,
+        movement.from,
+        movement.to,
+        color,
+        zoom,
+        bus,
+        movement.fan,
+        crate::cable_presentation::CablePresentation {
+            opacity,
+            ..presentation
+        },
+    );
+    for (point, moving) in [
+        (movement.from, movement.output_moving),
+        (movement.to, movement.input_moving),
+    ] {
+        if moving {
+            let mut plug_painter = painter.clone();
+            plug_painter.multiply_opacity(opacity);
+            paint_cable_plug(&plug_painter, point, color, zoom);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_reduced_cable_move(
+    painter: &egui::Painter,
+    from: Pos2,
+    to: Pos2,
+    color: Color32,
+    zoom: f32,
+    bus: bool,
+    fan: f32,
+    fade: f32,
+    ends: (bool, bool),
+    lighting: &crate::lighting::RoomLighting,
+    presentation: crate::cable_presentation::CablePresentation,
+) {
+    paint_cable_curves(painter, from, to, color, zoom, bus, fan, presentation);
+    let start = crate::lighting::next(painter);
+    for (point, changed) in [(from, ends.0), (to, ends.1)] {
+        if changed {
+            painter.circle_stroke(
+                point,
+                11.5 * zoom,
+                Stroke::new(
+                    1.4 * zoom,
+                    color.gamma_multiply(fade * presentation.opacity),
+                ),
+            );
+        }
+    }
+    lighting.preserve(painter, start);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -17864,6 +18095,7 @@ mod tests {
     }
     include!("cable_menu_tests.rs");
     include!("cable_animation_render_tests.rs");
+    include!("cable_move_render_tests.rs");
     mod construction_motion_render_tests {
         include!("construction_motion_render_tests.rs");
     }

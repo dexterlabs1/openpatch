@@ -2662,12 +2662,13 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.assertIsInstance(receipt["age_ms"], int)
             self.assertGreaterEqual(receipt["age_ms"], 0)
             self.assertIsInstance(receipt["invalidate_existing_cables"], bool)
-            self.assertLessEqual(sum(len(receipt[k]) for k in ("new_modules", "new_cables", "parameter_changes")), 128)
+            self.assertLessEqual(sum(len(receipt[k]) for k in ("new_modules", "new_cables", "moved_cables", "parameter_changes")), 128)
             observed.append(receipt)
         self.assertEqual(observed[0]["new_modules"], [{"id": "source", "kind": "constant"}])
         self.assertEqual(observed[2]["new_cables"], [{"id": "visible", "from": "source", "output": "out", "to": "level", "input": "signal"}])
         self.assertEqual(observed[3]["parameter_changes"], [{"id": "level", "kind": "gain", "parameter": "gain", "old_effective": 1, "new_effective": .25}])
         self.assertEqual(observed[4]["new_cables"], [])
+        self.assertEqual(observed[4]["moved_cables"], [])
         self.assertTrue(observed[4]["invalidate_existing_cables"])
         final = self.patch_snapshot()
         self.assertEqual(final["history"]["undo_steps"], before["history"]["undo_steps"] + 5)
@@ -2675,6 +2676,56 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("undo")
         self.require_tool_success("redo")
         self.assertEqual(self.patch_snapshot()["patch"], final["patch"])
+
+    def test_direct_and_paced_cable_moves_publish_exact_successful_routes(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2,
+            "nodes": [{"id": "s", "kind": "constant"}, {"id": "s2", "kind": "constant"},
+                      {"id": "a", "kind": "gain"}, {"id": "b", "kind": "gain"}],
+            "cables": [{"id": "moving", "from": "s", "to": "a", "input": "signal"}]}})
+        self.assertIsNone(self.payload(self.require_tool_success("inspect_construction"))["last_move"])
+        before = self.patch_snapshot()
+        self.require_tool_success("move_cables", {"cable_ids": ["moving"], "end": "input",
+            "node": "b", "port": "signal", "expected_revision": before["revision"]})
+        state = self.payload(self.require_tool_success("inspect_construction"))
+        self.assertEqual(state["status"], "idle")
+        direct = state["last_move"]
+        route_a = {"from": "s", "output": "out", "to": "a", "input": "signal"}
+        route_b = {"from": "s", "output": "out", "to": "b", "input": "signal"}
+        expected = [{"id": "moving", "before": route_a, "after": route_b}]
+        self.assertEqual(direct["moved_cables"], expected)
+        self.assertEqual(direct["before_revision"], before["revision"])
+        self.assertEqual(direct["revision"], before["revision"] + 1)
+        self.assertEqual(self.patch_snapshot()["patch"]["cables"][0]["to"], "b")
+        self.require_tool_error("move_cables", {"cable_ids": ["moving"], "end": "input",
+            "node": "b", "port": "missing"})
+        retained = self.payload(self.require_tool_success("inspect_construction"))["last_move"]
+        self.assertGreaterEqual(retained["age_ms"], direct["age_ms"])
+        self.assertEqual({k: v for k, v in retained.items() if k != "age_ms"},
+                         {k: v for k, v in direct.items() if k != "age_ms"})
+        started = self.payload(self.require_tool_success("start_construction", {
+            "expected_revision": direct["revision"], "interval_ms": 100,
+            "steps": [{"label": "Move the source", "edits": [{"tool": "move_cables", "arguments": {
+                "cable_ids": ["moving"], "end": "output", "node": "s2", "port": "out"}}]}]}))
+        deadline = time.monotonic() + 10
+        while True:
+            state = self.payload(self.require_tool_success("inspect_construction", {"plan_id": started["plan_id"]}))
+            if state["status"] == "completed":
+                break
+            self.assertEqual(state["status"], "running")
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(.01)
+        expected = [{"id": "moving", "before": route_b, "after": {**route_b, "from": "s2"}}]
+        self.assertEqual(state["last_commit"]["moved_cables"], expected)
+        self.assertEqual(state["last_move"]["moved_cables"], expected)
+        self.assertEqual(state["last_commit"]["revision"], state["last_move"]["revision"])
+        final = self.patch_snapshot()
+        self.assertEqual(final["patch"]["cables"][0]["from"], "s2")
+        self.assertEqual(final["history"]["undo_steps"], before["history"]["undo_steps"] + 2)
+        self.require_tool_success("undo")
+        self.assertIsNone(self.payload(self.require_tool_success("inspect_construction"))["last_move"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], final["patch"])
+        self.assertIsNone(self.payload(self.require_tool_success("inspect_construction"))["last_move"])
 
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()

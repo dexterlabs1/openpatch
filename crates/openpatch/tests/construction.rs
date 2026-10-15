@@ -87,7 +87,7 @@ fn mcp_construction_survives_transport_eof_and_every_visible_step_is_undoable() 
                 receipt,
                 json!({
                     "plan_id":id,"step_index":3,"before_revision":3,"revision":4,
-                    "label":"Select output","new_modules":[],"new_cables":[],"parameter_changes":[],
+                    "label":"Select output","new_modules":[],"new_cables":[],"moved_cables":[],"parameter_changes":[],
                     "invalidate_existing_cables":false
                 })
             );

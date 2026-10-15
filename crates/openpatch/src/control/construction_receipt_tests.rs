@@ -93,6 +93,7 @@ fn successful_receipt_has_exact_identity_graph_routes_and_effective_defaults() {
                 {"id":"wire-b","from":"z","output":"out","to":"a","input":"signal"},
                 {"id":"wire-a","from":"z","output":"out","to":"a","input":"signal"}
             ],
+            "moved_cables":[],
             "parameter_changes":[
                 {"id":"a","kind":"gain","parameter":"gain","old_effective":1.0,"new_effective":2.0},
                 {"id":"z","kind":"constant","parameter":"value","old_effective":0.0,"new_effective":3.0}
@@ -243,6 +244,12 @@ fn reused_module_id_is_an_arrival_and_preexisting_cable_ids_never_are() {
     let moved = advance_one(&session)["last_commit"].clone();
     assert_eq!(moved["invalidate_existing_cables"], true);
     assert_eq!(moved["new_cables"], json!([]));
+    assert_eq!(
+        moved["moved_cables"],
+        json!([{"id":"moved",
+        "before":{"from":"source","output":"out","to":"gain","input":"cv"},
+        "after":{"from":"source","output":"out","to":"gain","input":"signal"}}])
+    );
     let receipt = advance_one(&session)["last_commit"].clone();
     assert_eq!(receipt["invalidate_existing_cables"], true);
     assert_eq!(
@@ -250,6 +257,7 @@ fn reused_module_id_is_an_arrival_and_preexisting_cable_ids_never_are() {
         json!([{"id":"source","kind":"constant"}])
     );
     assert_eq!(receipt["parameter_changes"], json!([]));
+    assert_eq!(receipt["moved_cables"], json!([]));
     assert_eq!(
         receipt["new_cables"],
         json!([
@@ -592,4 +600,266 @@ fn commit_age_uses_monotonic_time_and_snapshots_pause_and_cancel_do_not_refresh_
             committed_at
         );
     }
+}
+
+fn move_fixture() -> SharedSession {
+    let session = shared();
+    setup(
+        &session,
+        json!([
+            {"tool":"add_module","arguments":{"id":"s","kind":"constant"}},
+            {"tool":"add_module","arguments":{"id":"s2","kind":"constant"}},
+            {"tool":"add_module","arguments":{"id":"a","kind":"gain"}},
+            {"tool":"add_module","arguments":{"id":"b","kind":"gain"}},
+            {"tool":"add_module","arguments":{"id":"c","kind":"gain"}},
+            {"tool":"connect","arguments":{"cable_id":"wire","from":"s","to":"a","input":"signal"}}
+        ]),
+    );
+    session
+}
+
+fn move_edit(end: &str, node: &str, port: &str) -> Value {
+    json!({"tool":"move_cables","arguments":{"cable_ids":["wire"],
+        "end":end,"node":node,"port":port,"duplicate_mode":"stack"}})
+}
+
+fn moved_route(from: &str, to: &str, input: &str) -> Value {
+    json!({"from":from,"output":"out","to":to,"input":input})
+}
+
+#[test]
+fn direct_move_receipt_is_authoritative_idle_revision_bound_and_history_never_replays_it() {
+    let session = move_fixture();
+    let mut live = session.lock().unwrap();
+    assert!(live.construction_snapshot()["last_move"].is_null());
+    let before = live.revision;
+    live.execute(
+        "move_cables",
+        move_edit("input", "b", "cv")["arguments"].clone(),
+    )
+    .unwrap();
+    let snapshot = live.construction_snapshot();
+    assert_eq!(snapshot["status"], "idle");
+    assert!(snapshot["last_commit"].is_null());
+    let expected = json!({"before_revision":before,"revision":before+1,
+        "moved_cables":[{"id":"wire","before":moved_route("s","a","signal"),
+            "after":moved_route("s","b","cv")}]});
+    assert_eq!(without_age(snapshot["last_move"].clone()), expected);
+    // Routing is already committed, independent of receipt delivery or age.
+    assert_eq!(live.patch.cables[0].to, "b");
+    assert_eq!(live.patch.cables[0].input, "cv");
+    let committed_at = live.construction.last_move.as_ref().unwrap().committed_at;
+    assert!(live
+        .execute(
+            "move_cables",
+            json!({"cable_ids":["wire"],"end":"input",
+        "node":"missing","port":"signal"})
+        )
+        .is_err());
+    assert_eq!(
+        live.construction.last_move.as_ref().unwrap().committed_at,
+        committed_at
+    );
+    assert_eq!(
+        without_age(live.construction_snapshot()["last_move"].clone()),
+        expected
+    );
+    assert!(live.clone().construction_snapshot()["last_move"].is_null());
+    assert!(live.detached_snapshot().construction_snapshot()["last_move"].is_null());
+    live.execute("undo", json!({})).unwrap();
+    assert_eq!(live.patch.cables[0].to, "a");
+    assert!(live.construction_snapshot()["last_move"].is_null());
+    live.execute("redo", json!({})).unwrap();
+    assert_eq!(live.patch.cables[0].to, "b");
+    assert!(live.construction_snapshot()["last_move"].is_null());
+    live.execute(
+        "move_cables",
+        move_edit("input", "c", "signal")["arguments"].clone(),
+    )
+    .unwrap();
+    live.execute(
+        "set_parameter",
+        json!({"id":"s","parameter":"value","value":2}),
+    )
+    .unwrap();
+    assert!(live.construction_snapshot()["last_move"].is_null());
+}
+
+#[test]
+fn atomic_input_and_output_moves_coalesce_initial_to_final_without_delaying_commit() {
+    let session = move_fixture();
+    setup(
+        &session,
+        json!([
+            move_edit("input", "b", "cv"),
+            move_edit("output", "s2", "out"),
+            move_edit("input", "c", "signal")
+        ]),
+    );
+    let live = session.lock().unwrap();
+    assert_eq!(live.revision, 2);
+    assert_eq!(live.undo.len(), 2);
+    assert_eq!(live.patch.cables[0].from, "s2");
+    assert_eq!(live.patch.cables[0].to, "c");
+    assert_eq!(
+        live.construction_snapshot()["last_move"]["moved_cables"],
+        json!([
+            {"id":"wire","before":moved_route("s","a","signal"),"after":moved_route("s2","c","signal")}
+        ])
+    );
+    assert_eq!(
+        live.undo.back().unwrap().retired_cables,
+        vec!["wire", "wire", "wire"]
+    );
+}
+
+#[test]
+fn move_receipts_exclude_recreation_discard_net_noop_and_cosmetic_only_transactions() {
+    let disconnect = json!({"tool":"disconnect","arguments":{"cable_id":"wire"}});
+    let connect = json!({"tool":"connect","arguments":{"cable_id":"wire","from":"s","to":"a","input":"signal"}});
+    let remove = |id: &str| json!({"tool":"remove_module","arguments":{"id":id}});
+    let add = |id: &str| json!({"tool":"add_module","arguments":{"id":id,"kind":"gain"}});
+    let cases = vec![
+        json!([
+            disconnect.clone(),
+            connect.clone(),
+            move_edit("input", "b", "cv")
+        ]),
+        json!([move_edit("input", "b", "cv"), disconnect, connect]),
+        // Original endpoint identity was destroyed after moving away.
+        json!([move_edit("input", "b", "cv"), remove("a"), add("a")]),
+        // Intermediate visited endpoint identity was destroyed as well.
+        json!([
+            move_edit("input", "b", "cv"),
+            move_edit("input", "c", "signal"),
+            remove("b"),
+            add("b")
+        ]),
+        json!([
+            move_edit("input", "b", "cv"),
+            move_edit("input", "a", "signal")
+        ]),
+        json!([{"tool":"set_cable_color","arguments":{"cable_id":"wire","color":[13,42,71]}},
+            {"tool":"promote_cables","arguments":{"cable_ids":["wire"],"end":"input"}}]),
+        json!([{"tool":"connect","arguments":{"cable_id":"other","from":"s","to":"b","input":"cv"}},
+            {"tool":"move_cables","arguments":{"cable_ids":["wire"],"end":"input","node":"b","port":"cv","duplicate_mode":"discard"}}]),
+    ];
+    for (index, edits) in cases.into_iter().enumerate() {
+        let session = move_fixture();
+        setup(&session, edits);
+        assert!(snapshot(&session)["last_move"].is_null(), "case {index}");
+    }
+    let session = move_fixture();
+    setup(
+        &session,
+        json!([
+            {"tool":"connect","arguments":{"cable_id":"fresh","from":"s2","to":"a","input":"cv"}},
+            {"tool":"move_cables","arguments":{"cable_ids":["fresh"],"end":"input","node":"b","port":"cv"}}
+        ]),
+    );
+    assert!(snapshot(&session)["last_move"].is_null());
+}
+
+#[test]
+fn failed_atomic_move_does_not_publish_partial_evidence_or_refresh_age() {
+    let session = move_fixture();
+    let mut live = session.lock().unwrap();
+    live.execute(
+        "move_cables",
+        move_edit("input", "b", "cv")["arguments"].clone(),
+    )
+    .unwrap();
+    live.construction.last_move.as_mut().unwrap().committed_at =
+        Instant::now() - Duration::from_secs(30);
+    let before = live.snapshot();
+    let stamp = live.construction.last_move.as_ref().unwrap().committed_at;
+    assert!(live
+        .execute(
+            "apply_edits",
+            json!({"edits":[move_edit("input","c","signal"),
+        {"tool":"set_parameter","arguments":{"id":"missing","parameter":"gain","value":1}}]})
+        )
+        .is_err());
+    assert_eq!(live.snapshot(), before);
+    assert_eq!(
+        live.construction.last_move.as_ref().unwrap().committed_at,
+        stamp
+    );
+    assert!(
+        live.construction_snapshot()["last_move"]["age_ms"]
+            .as_u64()
+            .unwrap()
+            >= 30_000
+    );
+}
+
+#[test]
+fn paced_move_receipts_share_module_cable_move_parameter_budget() {
+    let session = move_fixture();
+    // Duplication accepts each source identity once. Seed enough distinct
+    // sources while keeping the complete graph below the 256-node bound.
+    setup(
+        &session,
+        json!((0..124)
+            .map(|i| json!({"tool":"add_module",
+        "arguments":{"id":format!("seed{i:03}"),"kind":"constant"}}))
+            .collect::<Vec<_>>()),
+    );
+    let copies: Vec<Value> = ["s".to_owned(), "s2".to_owned()]
+        .into_iter()
+        .chain((0..124).map(|i| format!("seed{i:03}")))
+        .enumerate()
+        .map(|(i, id)| json!({"id":id,"new_id":format!("copy{i:03}")}))
+        .collect();
+    let session = controlled_steps(
+        session,
+        vec![step(
+            "Mixed bounded move",
+            json!([
+                {"tool":"duplicate_modules","arguments":{"modules":copies}},
+                {"tool":"connect","arguments":{"cable_id":"fresh","from":"s2","to":"a","input":"cv"}},
+                move_edit("input","b","cv"),
+                {"tool":"set_parameter","arguments":{"id":"s","parameter":"value","value":3}}
+            ]),
+        )],
+    );
+    let state = advance_one(&session);
+    let receipt = &state["last_commit"];
+    assert_eq!(receipt["new_modules"].as_array().unwrap().len(), 126);
+    assert_eq!(receipt["new_cables"].as_array().unwrap().len(), 1);
+    assert_eq!(receipt["moved_cables"].as_array().unwrap().len(), 1);
+    assert_eq!(receipt["parameter_changes"], json!([]));
+    assert_eq!(receipt["moved_cables"], state["last_move"]["moved_cables"]);
+    let live = session.lock().unwrap();
+    assert_eq!(live.patch.nodes.len(), 255);
+    assert_eq!(live.patch.cables.len(), 2);
+    assert_eq!(live.patch.nodes[0].params["value"], 3.0);
+}
+
+#[test]
+fn direct_move_presentation_bound_does_not_truncate_actual_graph_edits() {
+    let session = move_fixture();
+    let edits: Vec<Value> = (0..130)
+        .map(|i| {
+            json!({"tool":"connect","arguments":{
+        "cable_id":format!("stack{i:03}"),"from":"s2","to":"a","input":"cv","mode":"stack"}})
+        })
+        .collect();
+    setup(&session, json!(edits));
+    let ids: Vec<_> = (0..130).map(|i| format!("stack{i:03}")).collect();
+    let mut live = session.lock().unwrap();
+    live.execute(
+        "move_cables",
+        json!({"cable_ids":ids,"end":"input","node":"b","port":"cv","duplicate_mode":"stack"}),
+    )
+    .unwrap();
+    let moves = live.construction_snapshot()["last_move"]["moved_cables"].clone();
+    assert_eq!(moves.as_array().unwrap().len(), 128);
+    assert_eq!(moves[0]["id"], "stack000");
+    assert_eq!(moves[127]["id"], "stack127");
+    assert_eq!(
+        live.patch.cables.iter().filter(|c| c.to == "b").count(),
+        130
+    );
+    assert_eq!(live.patch.cables.len(), 131);
 }

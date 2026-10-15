@@ -28,6 +28,7 @@ struct Animation {
     to: String,
     input: String,
     started: Instant,
+    origin: Option<(Cable, f32)>,
 }
 
 impl Animation {
@@ -38,6 +39,7 @@ impl Animation {
             to: cable.to.clone(),
             input: cable.input.clone(),
             started: now,
+            origin: None,
         }
     }
 
@@ -114,6 +116,80 @@ impl Tracker {
                 .insert(id.to_owned(), Animation::new(cable, now));
         }
         !self.active.is_empty()
+    }
+
+    /// Only explicit authoritative move receipts may install an existing-ID cue.
+    pub(crate) fn observe_moves(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        ids: &[String],
+        now: Instant,
+    ) {
+        if self.mode == MotionMode::Off {
+            return;
+        }
+        self.prune(after, now);
+        let prior = unique_cables(before);
+        let current = unique_cables(after);
+        for id in ids.iter().take(MAX_ACTIVE) {
+            let Some(old) = prior.get(id.as_str()).and_then(|c| *c) else {
+                continue;
+            };
+            let Some(new) = current.get(id.as_str()).and_then(|c| *c) else {
+                continue;
+            };
+            let mut entry = Animation::new(new, now);
+            if entry.matches_route(old) {
+                continue;
+            }
+            if self.active.len() >= MAX_ACTIVE && !self.active.contains_key(id) {
+                break;
+            }
+            let group: Vec<_> = before
+                .cables
+                .iter()
+                .filter(|c| c.to == old.to && c.input == old.input)
+                .collect();
+            let ordinal = group.iter().position(|c| c.id == old.id).unwrap_or(0);
+            let fan = if group.len() > 1 {
+                (ordinal as f32 / (group.len() - 1) as f32 - 0.5) * 40.0
+            } else {
+                0.0
+            };
+            entry.origin = Some((old.clone(), fan));
+            self.active.insert(id.clone(), entry);
+        }
+    }
+
+    pub(crate) fn moved_ends(&self, cable: &Cable) -> Option<(bool, bool)> {
+        let entry = self.active.get(cable.id.as_deref()?)?;
+        if !entry.matches_route(cable) {
+            return None;
+        }
+        let (old, _) = entry.origin.as_ref()?;
+        Some((
+            old.from != cable.from || old.output != cable.output,
+            old.to != cable.to || old.input != cable.input,
+        ))
+    }
+
+    /// Port identities, never cached screen coordinates. The rack resolves these
+    /// through its current layout each frame, including during pan and zoom.
+    pub(crate) fn movement(&self, cable: &Cable, now: Instant) -> Option<(&Cable, f32, f32)> {
+        if self.mode != MotionMode::Full {
+            return None;
+        }
+        let entry = self.active.get(cable.id.as_deref()?)?;
+        if !entry.matches_route(cable) || now.saturating_duration_since(entry.started) >= DURATION {
+            return None;
+        }
+        let (origin, fan) = entry.origin.as_ref()?;
+        Some((
+            origin,
+            *fan,
+            crate::construction_motion::fraction(entry.started, now, 420),
+        ))
     }
 
     /// Eased progress for this exact ID and route. None means draw normally.

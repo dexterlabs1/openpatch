@@ -22,6 +22,7 @@ struct CommitReceipt {
     new_modules: Vec<ModuleArrival>,
     new_cables: Vec<CableArrival>,
     parameter_changes: Vec<ParameterChange>,
+    moved_cables: Vec<CableMove>,
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +38,113 @@ struct CableArrival {
     output: String,
     to: String,
     input: String,
+}
+
+/// Exact committed routes. Cosmetic color/stack order are intentionally absent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct CableRoute {
+    pub(super) from: String,
+    output: String,
+    pub(super) to: String,
+    input: String,
+}
+
+impl From<&Cable> for CableRoute {
+    fn from(cable: &Cable) -> Self {
+        Self {
+            from: cable.from.clone(),
+            output: cable.output.clone(),
+            to: cable.to.clone(),
+            input: cable.input.clone(),
+        }
+    }
+}
+
+impl CableRoute {
+    fn to_json(&self) -> Value {
+        json!({"from":self.from,"output":self.output,"to":self.to,"input":self.input})
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CableMove {
+    id: String,
+    before: CableRoute,
+    after: CableRoute,
+}
+
+impl CableMove {
+    fn to_json(&self) -> Value {
+        json!({"id":self.id,"before":self.before.to_json(),"after":self.after.to_json()})
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct MoveReceipt {
+    before_revision: u64,
+    revision: u64,
+    committed_at: Instant,
+    moved_cables: Vec<CableMove>,
+}
+
+impl MoveReceipt {
+    pub(super) fn from_commit(
+        before_revision: u64,
+        revision: u64,
+        before: &Patch,
+        after: &Patch,
+        effects: &EditEffects,
+    ) -> Option<Self> {
+        if effects.cable_moves.is_empty() {
+            return None;
+        }
+        let old: BTreeMap<_, _> = before
+            .cables
+            .iter()
+            .filter_map(|c| Some((c.id.as_ref()?, c)))
+            .collect();
+        let retired: BTreeSet<_> = effects.retired.iter().collect();
+        let moved_cables: Vec<_> = after
+            .cables
+            .iter()
+            .filter_map(|cable| {
+                let id = cable.id.as_ref()?;
+                let touched = effects.cable_moves.get(id)?;
+                if touched.iter().any(|node| retired.contains(node)) {
+                    return None;
+                }
+                // All endpoint module instances must survive, including temporary
+                // endpoints visited by a coalesced sequence of moves.
+                if touched.iter().any(|id| {
+                    let old = before.nodes.iter().find(|node| &node.id == id);
+                    let new = after.nodes.iter().find(|node| &node.id == id);
+                    !matches!((old, new), (Some(a), Some(b)) if a.kind == b.kind)
+                }) {
+                    return None;
+                }
+                let before = CableRoute::from(*old.get(id)?);
+                let after = CableRoute::from(cable);
+                (before != after).then(|| CableMove {
+                    id: id.clone(),
+                    before,
+                    after,
+                })
+            })
+            .take(MAX_RECEIPT_TARGETS)
+            .collect();
+        (!moved_cables.is_empty()).then(|| Self {
+            before_revision,
+            revision,
+            committed_at: Instant::now(),
+            moved_cables,
+        })
+    }
+
+    fn to_json(&self) -> Value {
+        let age_ms = u64::try_from(self.committed_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        json!({"before_revision":self.before_revision,"revision":self.revision,"age_ms":age_ms,
+            "moved_cables":self.moved_cables.iter().map(CableMove::to_json).collect::<Vec<_>>()})
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -55,6 +163,7 @@ impl CommitReceipt {
         before: &Patch,
         after: &Patch,
         history: &HistoryEntry,
+        moves: Option<&MoveReceipt>,
     ) -> Self {
         let mut receipt = Self {
             plan_id: plan.id,
@@ -69,6 +178,7 @@ impl CommitReceipt {
             new_modules: Vec::new(),
             new_cables: Vec::new(),
             parameter_changes: Vec::new(),
+            moved_cables: Vec::new(),
         };
         let before_nodes: BTreeMap<_, _> =
             before.nodes.iter().map(|node| (&node.id, node)).collect();
@@ -110,7 +220,7 @@ impl CommitReceipt {
             }
             let Some(id) = &cable.id else { continue };
             // Retirement also includes endpoint moves. Keep cable arrivals to
-            // IDs absent before the step; reused/rerouted IDs display normally.
+            // IDs absent before the step; explicit moves have separate evidence.
             if !before_cables.contains(id) {
                 receipt.new_cables.push(CableArrival {
                     id: id.clone(),
@@ -121,6 +231,14 @@ impl CommitReceipt {
                 });
                 remaining -= 1;
             }
+        }
+        if let Some(moves) = moves.filter(|moves| {
+            moves.revision == revision && moves.before_revision == plan.expected_revision
+        }) {
+            receipt
+                .moved_cables
+                .extend(moves.moved_cables.iter().take(remaining).cloned());
+            remaining -= receipt.moved_cables.len();
         }
         if remaining == 0 {
             return receipt;
@@ -184,6 +302,7 @@ impl CommitReceipt {
             "age_ms":age_ms,"invalidate_existing_cables":self.invalidate_existing_cables,
             "new_modules":self.new_modules.iter().map(|module| json!({"id":module.id,"kind":module.kind})).collect::<Vec<_>>(),
             "new_cables":self.new_cables.iter().map(|cable| json!({"id":cable.id,"from":cable.from,"output":cable.output,"to":cable.to,"input":cable.input})).collect::<Vec<_>>(),
+            "moved_cables":self.moved_cables.iter().map(CableMove::to_json).collect::<Vec<_>>(),
             "parameter_changes":self.parameter_changes.iter().map(|change| json!({"id":change.id,"kind":change.kind,"parameter":change.parameter,"old_effective":change.old_effective,"new_effective":change.new_effective})).collect::<Vec<_>>()})
     }
 }
@@ -192,6 +311,7 @@ impl CommitReceipt {
 pub(super) struct Construction {
     next_id: u64,
     plan: Option<Plan>,
+    pub(super) last_move: Option<MoveReceipt>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -304,7 +424,7 @@ impl Session {
     /// Cheap progress metadata only; never serialize the patch or consult audio.
     pub fn construction_snapshot(&self) -> Value {
         let Some(plan) = &self.construction.plan else {
-            return json!({"status":"idle","current_revision":self.revision,"last_commit":null});
+            return json!({"status":"idle","current_revision":self.revision,"last_commit":null,"last_move":self.construction.last_move.as_ref().map(MoveReceipt::to_json)});
         };
         // Report a conflict immediately, even before the woken worker has been
         // scheduled to record that terminal transition.
@@ -320,6 +440,7 @@ impl Session {
             "completed_steps":plan.completed,"total_steps":plan.steps.len(),
             "expected_revision":plan.expected_revision,"base_revision":plan.base_revision,
             "current_revision":self.revision,"last_revision":plan.last_revision,
+            "last_move":self.construction.last_move.as_ref().map(MoveReceipt::to_json),
             "last_label":plan.last_label,"last_commit":plan.last_commit.as_ref().map(CommitReceipt::to_json),
             "next_label":plan.steps.get(plan.completed).map(|step| &step.label),
             "error":error,"interval_ms":plan.interval_ms})
@@ -584,6 +705,7 @@ fn worker(session: Weak<Mutex<Session>>, id: u64, wake: Arc<Wake>) {
                         live.undo
                             .back()
                             .expect("successful construction has history"),
+                        live.construction.last_move.as_ref(),
                     )
                 });
                 let plan = live.construction.plan.as_mut().unwrap();

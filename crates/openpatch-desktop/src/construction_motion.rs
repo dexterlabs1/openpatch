@@ -44,6 +44,8 @@ pub(crate) struct Tracker {
     pub cables: crate::cable_animation::Tracker,
     plan: Option<u64>,
     seen: Option<(u64, u64, u64)>,
+    seen_move: Option<u64>,
+    suppressed_move: Option<u64>,
     pub modules: Vec<ModuleCue>,
     pub parameters: Vec<ParameterCue>,
     pub focus: Vec<ModuleCue>,
@@ -81,7 +83,115 @@ fn effective(patch: &Patch, id: &str, kind: &str, param: &str, catalog: &Value) 
         .or_else(|| spec["default"].as_f64().map(|v| v as f32))?;
     value.is_finite().then_some(value)
 }
+// Validate exact receipt routes and surviving endpoint identities before any cue
+// is installed. The backend additionally proves move continuity/incarnation.
+fn moved_ids(before: &Patch, after: &Patch, moves: &[Value]) -> Option<Vec<String>> {
+    let mut ids = BTreeSet::new();
+    for entry in moves {
+        let id = entry["id"].as_str().filter(|id| !id.is_empty())?;
+        if !ids.insert(id.to_owned()) {
+            return None;
+        }
+        let mut old = before.cables.iter().filter(|c| c.id.as_deref() == Some(id));
+        let old_cable = old.next()?;
+        if old.next().is_some() {
+            return None;
+        }
+        let mut new = after.cables.iter().filter(|c| c.id.as_deref() == Some(id));
+        let new_cable = new.next()?;
+        if new.next().is_some() {
+            return None;
+        }
+        for (key, cable) in [("before", old_cable), ("after", new_cable)] {
+            let route = &entry[key];
+            if route["from"] != cable.from
+                || route["output"] != cable.output
+                || route["to"] != cable.to
+                || route["input"] != cable.input
+            {
+                return None;
+            }
+            for id in [&cable.from, &cable.to] {
+                let mut a = before.nodes.iter().filter(|n| &n.id == id);
+                let mut b = after.nodes.iter().filter(|n| &n.id == id);
+                if a.next()?.kind != b.next()?.kind || a.next().is_some() || b.next().is_some() {
+                    return None;
+                }
+            }
+        }
+        if old_cable.from == new_cable.from
+            && old_cable.output == new_cable.output
+            && old_cable.to == new_cable.to
+            && old_cable.input == new_cable.input
+        {
+            return None;
+        }
+    }
+    Some(ids.into_iter().collect())
+}
+
 impl Tracker {
+    pub(crate) fn suppress_cable_move_revision(&mut self, revision: u64) {
+        self.suppressed_move = Some(revision);
+        self.clear();
+    }
+    fn observe_direct_move(
+        &mut self,
+        before: &Patch,
+        after: &Patch,
+        previous: u64,
+        revision: u64,
+        receipt: &Value,
+        now: Instant,
+    ) -> Observation {
+        if receipt["revision"].as_u64() != Some(revision) {
+            self.clear();
+            return Observation::Clear;
+        }
+        if self.seen_move == Some(revision) {
+            return if previous == revision || previous.checked_add(1) == Some(revision) {
+                Observation::Preserve
+            } else {
+                self.clear();
+                Observation::Clear
+            };
+        }
+        self.seen_move = Some(revision);
+        self.clear();
+        if self.suppressed_move == Some(revision)
+            || self.mode == MotionMode::Off
+            || previous.checked_add(1) != Some(revision)
+            || receipt["before_revision"].as_u64() != Some(previous)
+        {
+            return Observation::Clear;
+        }
+        let Some(age) = receipt["age_ms"].as_u64() else {
+            return Observation::Clear;
+        };
+        let Some(moves) = receipt["moved_cables"]
+            .as_array()
+            .filter(|m| m.len() <= MAX_TARGETS)
+        else {
+            return Observation::Clear;
+        };
+        let Some(ids) = moved_ids(before, after, moves) else {
+            return Observation::Clear;
+        };
+        if age
+            >= if self.mode == MotionMode::Reduced {
+                300
+            } else {
+                420
+            }
+        {
+            return Observation::Clear;
+        }
+        let Some(started) = now.checked_sub(Duration::from_millis(age)) else {
+            return Observation::Clear;
+        };
+        self.cables.observe_moves(before, after, &ids, started);
+        Observation::Commit
+    }
     pub fn clear(&mut self) {
         self.cables.clear();
         self.modules.clear();
@@ -148,6 +258,20 @@ impl Tracker {
             .retain(|m| after.nodes.iter().any(|n| n.id == m.id && n.kind == m.kind));
         self.parameters
             .retain(|p| effective(after, &p.id, &p.kind, &p.parameter, catalog) == Some(p.new));
+        // Direct MCP moves have their own bounded receipt even when no paced
+        // construction plan is active. A matching paced commit takes precedence.
+        if snapshot["last_commit"]["revision"].as_u64() != Some(revision)
+            && snapshot["last_move"].is_object()
+        {
+            return self.observe_direct_move(
+                before,
+                after,
+                previous,
+                revision,
+                &snapshot["last_move"],
+                now,
+            );
+        }
         let plan = snapshot["plan_id"].as_u64();
         let new_plan = self.plan != plan;
         if new_plan {
@@ -215,7 +339,21 @@ impl Tracker {
             self.clear();
             return Observation::Clear;
         };
-        if modules.len() + cables.len() + parameters.len() > MAX_TARGETS {
+        let moves = match receipt.get("moved_cables") {
+            None => &[][..], // additive receipt field; older arrival receipts remain valid
+            Some(value) => match value.as_array() {
+                Some(values) => values.as_slice(),
+                None => {
+                    self.clear();
+                    return Observation::Clear;
+                }
+            },
+        };
+        let Some(move_ids) = moved_ids(before, after, moves) else {
+            self.clear();
+            return Observation::Clear;
+        };
+        if modules.len() + cables.len() + parameters.len() + move_ids.len() > MAX_TARGETS {
             self.clear();
             return Observation::Clear;
         }
@@ -230,7 +368,8 @@ impl Tracker {
         let mut changes = Vec::new();
         let mut cable_ids = Vec::new();
         let mut affected = BTreeSet::new();
-        let mut identities = BTreeSet::new();
+        let mut identities: BTreeSet<String> =
+            move_ids.iter().map(|id| format!("cable:{id}")).collect();
         let validate = (|| -> Option<()> {
             for m in modules {
                 let id = m["id"].as_str()?;
@@ -309,7 +448,7 @@ impl Tracker {
             self.cables.clear();
         }
         // Keep overlap bounded. New effects take priority; overflow is ordinary UI.
-        let incoming = arrivals.len() + changes.len() + cable_ids.len();
+        let incoming = arrivals.len() + changes.len() + cable_ids.len() + move_ids.len();
         if self.modules.len() + self.parameters.len() + self.cables.len() + incoming > MAX_TARGETS {
             self.clear();
         }
@@ -338,6 +477,7 @@ impl Tracker {
         }
         if age_ms < if reduced { 300 } else { 420 } {
             self.cables.observe_ids(before, after, &cable_ids, started);
+            self.cables.observe_moves(before, after, &move_ids, started);
         }
         Observation::Commit
     }

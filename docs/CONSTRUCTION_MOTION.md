@@ -14,11 +14,15 @@ under the user's control.
 
 ## Motion controls
 
-The construction strip offers **Full**, **Reduced** and **Off**:
+**View → Agent motion** and the construction strip offer **Full**, **Reduced** and **Off**:
 
 - Full gives a fixed-position module arrival over 320 ms, a source-to-destination
   cable reveal over 300 ms followed by a 120 ms destination settle, and a 360 ms
   parameter accent. A quiet header cue identifies the affected module.
+- Moving an existing cable uses a 420 ms unplug/travel/settle gesture: 55 ms
+  lift, 290 ms eased travel and 75 ms settle. Input and output ends can move,
+  including both ends in one validated transaction. The curve follows current
+  pan, zoom, module positions, cable tension and independent plug ordering.
 - Reduced uses a static accent or value-change badge for 300 ms.
 - Off immediately settles the display. Re-enabling affects future commits.
 
@@ -28,6 +32,9 @@ DSP are not interpolated by this feature. A faint complete cable route and its
 real plugs remain visible during the reveal. Hovering or picking up a cable
 shows its ordinary complete form. Editing a highlighted control yields to the
 user immediately. Motion does not move the camera or change selection.
+The final cable route, sockets and signal lights are already correct during a
+move. Traveling plugs are passive decoration and do not emit fake signal lights.
+Pointing at or picking up the cable immediately ends its decorative motion.
 
 Control anchors come from the actual current renderer, so they follow pan,
 zoom, panel size and control mappings. Where a specialized control has no anchor,
@@ -39,14 +46,25 @@ invented intermediate values. Browser previews stay neutral.
 `inspect_construction` includes an additive `last_commit` object after a
 successful step, otherwise null. It contains `plan_id`, zero-based `step_index`,
 `before_revision`, `revision`, `label`, `age_ms`, `invalidate_existing_cables`,
-`new_modules`, `new_cables` and `parameter_changes`.
+`new_modules`, `new_cables`, `moved_cables` and `parameter_changes`.
 
 Targets are derived from validated before/after graphs, including catalog
 defaults. Equal values, hidden state and initial parameters of new modules do
 not produce redundant value cues. Repeated parameter writes collapse to the
 initial and final values. Module removal/recreation is an arrival. Existing
-cable IDs, including reroutes and disconnect/recreate operations, display
-normally; retirement invalidates earlier cable reveals.
+cable IDs animate a move only when a real `move_cables` operation preserves their
+identity and changes their route. `moved_cables` contains each ID and exact
+`before`/`after` source, output, destination and input. Disconnect/recreate,
+replaced modules, discarded cables and net no-ops never imitate a move;
+retirement still invalidates earlier cable reveals.
+
+Direct MCP `move_cables` calls and transactions also publish `last_move` through
+`inspect_construction`, including when no construction plan exists. It contains
+`before_revision`, `revision`, monotonic `age_ms` and up to 128 `moved_cables`.
+The UI prefers the matching construction receipt, so one commit never animates
+twice. Failed edits do not restart the age; unrelated revisions and history clear
+the direct receipt. A manually completed GUI move consumes its own exact revision
+without suppressing a later MCP move, including when GUI sync was temporarily busy.
 
 There are at most 128 visible targets per receipt, shared across all target
 types. Overflow displays normally. The UI checks exact plan, step and revision

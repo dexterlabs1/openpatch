@@ -44,6 +44,12 @@ Their labels stay on one line when zoomed out instead of wrapping into tall
 boxes over the ports. They retain the same saved parameter actions in the rack;
 browser previews use the same drawing without accepting edits.
 
+Maximum cable tension retains a small, distance-dependent gravity bow instead
+of collapsing into a ruler-straight segment. Short cables stay restrained;
+the default 50% curve and looser settings keep their established appearance.
+Committed wires, drag previews, stacked routes and agent motion use the same
+geometry. This is a visual model, not a simulation of cable elasticity.
+
 Five categorical parameters have horizontal segments driven by explicit catalog
 `values` and `labels`: Analog VCO waveform (Saw/Pulse), Crossfade law
 (Linear/Power), Stereo Audio DC block and Score running (Off/On), and Drum Voice

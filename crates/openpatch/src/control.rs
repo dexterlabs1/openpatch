@@ -556,6 +556,13 @@ impl Session {
         if !effects.learn_reconciliation {
             self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
         }
+        let move_receipt = construction::MoveReceipt::from_commit(
+            self.revision,
+            revision,
+            &self.patch,
+            &candidate,
+            effects,
+        );
         if group.is_some() && group == self.history_group {
             self.patch = candidate;
             if let Some(entry) = self.undo.back_mut() {
@@ -579,6 +586,7 @@ impl Session {
         self.history_group = group;
         self.redo.clear();
         self.revision = revision;
+        self.construction.last_move = move_receipt;
         self.construction.wake();
         if !effects.retired.is_empty() {
             if let Some(backend) = &self.live_module_events {
@@ -656,6 +664,7 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        self.construction.last_move = None;
         self.history_group = None;
         self.construction.wake();
         if let Some(backend) = &self.live_module_events {
@@ -1916,7 +1925,7 @@ pub fn tools() -> Value {
     let plan_id = json!({"type":"integer","minimum":1});
     json!([
         tool("start_construction","Preflight every intermediate graph on an isolated snapshot, then progressively apply a reviewed plan to this session. Accepts 1..64 labelled steps, 1..8 graph edits per step, at most 256 edits total; labels/title are bounded to 160/128 UTF-8 bytes. Each step commits one revision and ordinary undo entry after its interval. External edits, undo, redo, or layout checkpoints stop the plan as conflicted; the plan never rebases. A client disconnect does not cancel it.",json!({"expected_revision":rev,"title":{"type":"string","maxLength":128},"steps":construction_steps,"interval_ms":{"type":"integer","minimum":100,"maximum":2000,"default":500}}),&["expected_revision","steps"],false),
-        tool("inspect_construction","Read the latest construction plan and current revision, or idle when no plan exists. Optional plan_id must identify the latest retained plan. Additive last_commit reports the latest successful step's exact plan/zero-based step/revisions/label and up to 128 total new_modules, new_cables, and visible effective parameter_changes. Module replacements are arrivals; cables require an ID absent before the step. Equal or hidden values and parameters on arrivals are excluded. The receipt survives pause, cancellation, and completion; a new plan clears it.",json!({"plan_id":plan_id}),&[],true),
+        tool("inspect_construction","Read the latest construction plan and current revision, or idle when no plan exists. Optional plan_id must identify the latest retained plan. Additive last_commit reports the latest successful step's exact plan/zero-based step/revisions/label and up to 128 total new_modules, new_cables, moved_cables, and visible effective parameter_changes. Module replacements are arrivals; new cables require an ID absent before the step. moved_cables gives exact nested before/after routes only for explicit successful moves with uninterrupted cable and endpoint module identities; repeated moves coalesce and net no-ops or replacements are excluded. Additive last_move reports before_revision, revision, age_ms and up to 128 moved_cables for the latest successful direct move or move transaction even while idle; any other successful revision or history transition clears it. Equal or hidden values and parameters on arrivals are excluded. The receipt survives pause, cancellation, and completion; a new plan clears it.",json!({"plan_id":plan_id}),&[],true),
         tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
