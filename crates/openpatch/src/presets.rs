@@ -81,11 +81,15 @@ pub fn validate(preset: &Value) -> Result<(), String> {
             }
         }
     }
-    if kind == "random_values" {
+    if matches!(kind, "random_values" | "sh_asr") {
         let node: Node =
             serde_json::from_value(json!({"id":"preset", "kind":kind,"params":params}))
                 .map_err(|error| error.to_string())?;
-        openpatch_core::initial_random_values_state(&node)?;
+        if kind == "sh_asr" {
+            openpatch_core::initial_shift_register_state(&node)?;
+        } else {
+            openpatch_core::initial_random_values_state(&node)?;
+        }
     }
     if object
         .get("bypassed")
@@ -140,17 +144,8 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
             .filter(|state| state.kind() == expected.kind())
             .ok_or_else(|| {
                 format!(
-                    "{} capture requires current {}",
-                    if expected.kind() == "seq3" {
-                        "SEQ3"
-                    } else {
-                        "PUSH"
-                    },
-                    if expected.kind() == "seq3" {
-                        "Run"
-                    } else {
-                        "HOLD"
-                    }
+                    "{} capture requires current persistent state",
+                    expected.kind()
                 )
             })?;
         actual.write_params(&mut params);

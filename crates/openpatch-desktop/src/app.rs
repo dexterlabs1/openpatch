@@ -1469,6 +1469,14 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::stacked_layout())
                 .expect("bundled stacked layout");
+        } else if title == "Shift register canon" {
+            self.rack
+                .restore_layout(&Self::shift_register_layout())
+                .expect("bundled shift register layout");
+        } else if title == "Random values voice" {
+            self.rack
+                .restore_layout(&Self::random_values_layout())
+                .expect("bundled Random Values layout");
         } else if title == "Layered stereo morph" {
             self.rack
                 .restore_layout(&Self::mixing_layout())
@@ -1477,6 +1485,19 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn shift_register_layout() -> Value {
+        json!({"version":1,"zoom":0.6,"pan":[24,12],"positions":{
+            "register":[0,0],"scope":[420,0],"clock":[1080,0],"out":[1410,0],
+            "notes1":[0,420],"voice1":[270,420],"notes2":[600,420],"voice2":[870,420],
+            "notes3":[1200,420],"voice3":[1470,420],"mix":[1800,420]
+        }})
+    }
+    fn random_values_layout() -> Value {
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "values":[0,0],"scope":[330,0],"clock":[0,420],
+            "notes":[330,420],"vco":[600,420],"out":[930,420]
+        }})
     }
     fn switched_stereo_layout(&mut self) {
         let _ = self.rack.restore_layout(
@@ -2281,6 +2302,14 @@ impl OpenPatch {
                                 ui.close();
                                 self.replace_from_menu(patch, "Manual push voice");
                             }
+                            if ui.button("Shift register canon").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/shift-register-canon.json"
+                                ))
+                                .expect("valid bundled shift register canon");
+                                ui.close();
+                                self.replace_from_menu(patch, "Shift register canon");
+                            }
                             if ui.button("Random values voice").clicked() {
                                 let patch = serde_json::from_str(include_str!(
                                     "../../../examples/random-values-voice.json"
@@ -2288,7 +2317,6 @@ impl OpenPatch {
                                 .expect("valid bundled random values voice");
                                 ui.close();
                                 self.replace_from_menu(patch, "Random values voice");
-                                self.rack.set_zoom(0.75);
                             }
                             if ui.button("Noise colors").clicked() {
                                 let patch = serde_json::from_str(include_str!(
@@ -4181,10 +4209,7 @@ impl OpenPatch {
             execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
             self.rack = Rack::default();
             self.rack
-                .restore_layout(&json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
-                    "values":[0,0],"scope":[330,0],"clock":[0,420],
-                    "notes":[240,420],"vco":[420,420],"out":[750,420]
-                }}))
+                .restore_layout(&Self::random_values_layout())
                 .unwrap();
             self.rack.set_scope_states(BTreeMap::from([(
                 "scope".into(),
@@ -4197,6 +4222,41 @@ impl OpenPatch {
             )]));
             self.title = "Random values voice · held voltages".into();
             self.status = "Offline DSP capture · seven held outputs · seeded melody through a pentatonic quantizer".into();
+        }
+        if frame == 878 {
+            egui::Popup::close_all(ctx);
+            self.select_analysis(None);
+            let patch: Patch =
+                serde_json::from_str(include_str!("../../../examples/shift-register-canon.json"))
+                    .expect("shift register smoke patch");
+            let mut engine = patch.compile().expect("shift register smoke engine");
+            engine.process_block(&mut vec![0.0; 144000]);
+            let scope = engine
+                .module_scope(engine.resolve_module_scope("scope").unwrap())
+                .unwrap()
+                .clone();
+            let state = engine
+                .module_saved_state(engine.resolve_module_state("register").unwrap())
+                .unwrap();
+            let openpatch_core::SavedModuleState::ShiftRegister { values, rng } = state else {
+                panic!("shift register snapshot");
+            };
+            execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+            self.rack = Rack::default();
+            self.rack
+                .restore_layout(&Self::shift_register_layout())
+                .unwrap();
+            self.rack.set_scope_states(BTreeMap::from([(
+                "scope".into(),
+                std::sync::Arc::new(scope),
+            )]));
+            self.rack.set_shift_register_states(BTreeMap::from([(
+                "register".into(),
+                json!({"values":values.map(f32::from_bits),"rng_state":rng}),
+            )]));
+            self.title = "Shift register canon · eight linked holds".into();
+            self.status =
+                "Offline DSP capture · rows 1 / 3 / 5 play a three-voice pentatonic canon".into();
         }
         if frame == 622 {
             assert!(
@@ -4250,6 +4310,7 @@ impl OpenPatch {
                 | 816
                 | 844
                 | 872
+                | 900
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -4312,7 +4373,8 @@ impl OpenPatch {
                 41 => path.with_file_name("rack-scope-external.png"),
                 42 => path.with_file_name("rack-modal-resonator.png"),
                 43 => path.with_file_name("rack-colored-noise.png"),
-                _ => path.with_file_name("rack-random-values.png"),
+                44 => path.with_file_name("rack-random-values.png"),
+                _ => path.with_file_name("rack-shift-register.png"),
             };
             image::save_buffer(
                 &target,
@@ -4323,18 +4385,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/45 at frame {frame}: {}",
+                "Native smoke: capture {}/46 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 45 {
+            if captures == 46 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 906, "Native screenshot timeout");
+        assert!(frame < 934, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -4444,6 +4506,14 @@ impl eframe::App for OpenPatch {
                 .map(|audio| audio.random_values_states())
                 .unwrap_or_default();
             self.rack.set_random_values_states(random_values);
+            let shift_registers = self
+                .audio
+                .as_ref()
+                .filter(|_| self.patch.nodes.iter().any(|node| node.kind == "sh_asr"))
+                .map(|audio| audio.shift_register_states())
+                .unwrap_or_default();
+            self.rack.set_shift_register_states(shift_registers);
+
             self.rack.set_module_states(lights, controls);
             self.rack.set_scope_states(scopes);
         }
@@ -7101,6 +7171,70 @@ mod project_workflow_tests {
     }
 
     #[test]
+    fn held_voltage_examples_apply_nonoverlapping_layout_only_after_replacement() {
+        for (title, source, layout) in [
+            (
+                "Shift register canon",
+                include_str!("../../../examples/shift-register-canon.json"),
+                OpenPatch::shift_register_layout(),
+            ),
+            (
+                "Random values voice",
+                include_str!("../../../examples/random-values-voice.json"),
+                OpenPatch::random_values_layout(),
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            edit(&mut app, 330.0);
+            let before = app.capture_document();
+            let patch: Patch = serde_json::from_str(source).unwrap();
+            app.replace_from_menu(patch.clone(), title);
+            assert!(matches!(
+                app.confirm_discard,
+                Some(PendingAction::Replace(_, _))
+            ));
+            assert!(app.capture_document().equivalent(&before));
+            app.confirm_discard = None;
+            app.replace_now(patch, title);
+            let mut expected_rack = Rack::default();
+            expected_rack.restore_layout(&layout).unwrap();
+            assert_eq!(app.rack.layout(), expected_rack.layout());
+            for (i, a) in app.patch.nodes.iter().enumerate() {
+                let a_pos = &layout["positions"][&a.id];
+                let ax = a_pos[0].as_f64().unwrap();
+                let ay = a_pos[1].as_f64().unwrap();
+                for b in &app.patch.nodes[i + 1..] {
+                    let b_pos = &layout["positions"][&b.id];
+                    let bx = b_pos[0].as_f64().unwrap();
+                    let by = b_pos[1].as_f64().unwrap();
+                    assert!(
+                        ax + f64::from(crate::rack::panel_width(&a.kind)) <= bx
+                            || bx + f64::from(crate::rack::panel_width(&b.kind)) <= ax
+                            || ay + 396.0 <= by
+                            || by + 396.0 <= ay,
+                        "{} overlaps {}",
+                        a.id,
+                        b.id
+                    );
+                }
+            }
+            app.save_document("example.openpatch", true);
+            let saved = app
+                .projects
+                .as_ref()
+                .unwrap()
+                .load("example.openpatch")
+                .unwrap();
+            // Saving materializes the held-state defaults omitted by examples.
+            assert!(saved
+                .document
+                .equivalent(&app.capture_persisted_document().unwrap()));
+            assert!(!app.dirty());
+        }
+    }
+
+    #[test]
     fn bypass_and_mute_edits_participate_in_dirty_undo_and_native_save() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
@@ -7958,7 +8092,23 @@ mod project_workflow_tests {
                 {"tool": "add_module", "arguments": {"id": "construction_source", "kind": "constant"}}
             ]}]
         })).unwrap();
+        // Close intentionally defers while the construction worker owns the
+        // session lock. Exercise that path explicitly instead of assuming the
+        // request acquires both nonblocking locks during a loaded test run.
+        let shared = app.shared.clone();
+        let guard = shared.lock().unwrap();
         app.request_action(PendingAction::Close);
+        assert!(app.deferred_action.is_some());
+        assert!(!app.allow_close);
+        drop(guard);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while let Some(action) = app.deferred_action.take() {
+            assert!(Instant::now() < deadline, "Close remained deferred");
+            app.request_action(action);
+            if app.deferred_action.is_some() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
         assert!(app.confirm_discard.is_some());
         assert!(!app.allow_close);
         assert_eq!(

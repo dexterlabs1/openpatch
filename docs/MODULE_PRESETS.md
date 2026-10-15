@@ -125,3 +125,8 @@ zero voltages. Applying a complete snapshot restores it even if its configured
 fields already match, and undo/redo restore the captured states. A range-only
 preset preserves held values; a seed-only preset rerolls only when the seed
 changes. Physical PUSH and trigger-detector histories are not preset content.
+
+`sh_asr` presets carry all eight held voltages plus generator state as a complete
+hidden snapshot. A controls-only preset preserves held values; a changed seed
+restarts only the generator. Explicit snapshots restore even when configured
+parameters compare equal. See [S&H / Analog Shift Register](SHIFT_REGISTER.md).

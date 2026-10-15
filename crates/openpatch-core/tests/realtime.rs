@@ -183,3 +183,41 @@ fn random_values_actions_capture_restore_and_adoption_allocate_nothing() {
     TRACKING.with(|enabled| enabled.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0);
 }
+
+#[test]
+fn shift_register_first_callback_actions_snapshot_initialize_and_adoption_allocate_nothing() {
+    use openpatch_core::{ModuleAction, Patch, PortFrame};
+    let p:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,"nodes":[{"id":"s","kind":"sh_asr","params":{"random":1}}],"output":"s","output_port":"out8"})).unwrap();
+    let mut a = p.compile().unwrap();
+    let mut b = p.compile().unwrap();
+    let mut bp = p.clone();
+    bp.nodes[0].bypassed = true;
+    let mut paused = bp.compile().unwrap();
+    let ha = a.resolve_module_control("s").unwrap();
+    let hb = b.resolve_module_state("s").unwrap();
+    let mut frames = [PortFrame::default(); 129];
+    ALLOCATIONS.with(|c| c.set(0));
+    TRACKING.with(|c| c.set(true));
+    for length in [0, 1, 3, 64, 129] {
+        a.handle_module_event(ha, ModuleAction::PushPress);
+        a.handle_module_event(ha, ModuleAction::PushRelease);
+        a.handle_module_event(ha, ModuleAction::ResetPress);
+        a.handle_module_event(ha, ModuleAction::ResetRelease);
+        a.process_poly_block(&mut frames[..length]);
+        let state = a.module_saved_state(ha).unwrap();
+        b.set_module_saved_state(hb, state);
+        b.adopt_state_from(&a);
+        b.process_poly_block(&mut frames[..length]);
+        paused.adopt_state_from(&b);
+        paused.process_poly_block(&mut frames[..length]);
+        a.adopt_state_from(&paused);
+        a.initialize_module_state(ha);
+        a.reset_module_state(ha);
+        std::hint::black_box(a.module_control_state(ha));
+    }
+    TRACKING.with(|c| c.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert!(frames
+        .iter()
+        .all(|f| f.values.iter().all(|v| v.is_finite())));
+}

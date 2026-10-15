@@ -2115,6 +2115,100 @@ class OpenPatchMCPTests(unittest.TestCase):
             self.require_tool_success("capture_signal", {"id": "button", "port": "gate", "seconds": 0.001,
                 "module_events": [{"frame": 0, "id": "button", "action": action}]})
 
+    def test_shift_register_normaling_mono_actions_and_persistent_state(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["sh_asr"]
+        self.assertEqual(descriptor["inputs"], [f"in{i}" for i in range(1, 9)] + [f"trig{i}" for i in range(1, 9)])
+        self.assertEqual(descriptor["outputs"], [f"out{i}" for i in range(1, 9)])
+        self.assertEqual(descriptor["runtime_actions"], ["push_press", "push_release", "reset_press", "reset_release"])
+        self.assertEqual(sum(p.get("hidden", False) for p in descriptor["params"].values()), 10)
+        self.assertTrue(all(p["maximum_channels"] == 1 for p in descriptor["output_metadata"]))
+        rng = 1 ^ 0xA341316C
+        params = {f"value{i}": float(i) for i in range(1, 9)} | {"rng_hi": rng >> 16, "rng_lo": rng & 0xffff}
+        patch = {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "register", "kind": "sh_asr", "params": params},
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 16, "v1": 4.5, "v2": 15}},
+            {"id": "low", "kind": "constant", "params": {"value": 0}},
+        ], "cables": [{"from": "source", "to": "register", "input": "in1"}]}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        events = [{"frame": frame, "id": "register", "action": action}
+                  for frame, action in [(32, "push_press"), (33, "push_release"), (64, "push_press"), (65, "push_release")]]
+        for row in (1, 3, 8):
+            capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": "register", "port": f"out{row}", "seconds": .002, "module_events": events}))
+            expected = [float(row)] * 32
+            expected += [4.5 if row == 1 else float(row - 1)] * 32
+            expected += [4.5 if row <= 2 else float(row - 2)] * 32
+            self.assertEqual([b["mean"] for b in capture["bins"]], expected)
+            analyzed = self.payload(self.require_tool_success("analyze_signal", {
+                "id": "register", "port": f"out{row}", "seconds": .002, "module_events": events}))
+            self.assertEqual(analyzed["max_channels"], 1)
+        # A patched LOW clock at row 4 breaks inherited PUSH propagation.
+        patch["cables"].append({"from": "low", "to": "register", "input": "trig4"})
+        self.require_tool_success("replace_patch", {"patch": patch})
+        held = self.payload(self.require_tool_success("capture_signal", {
+            "id": "register", "port": "out8", "seconds": .002, "module_events": events}))
+        self.assertTrue(all(b["mean"] == 8 for b in held["bins"]))
+        # CLEAR wins over captures regardless of the two buttons' queue order.
+        for actions in [("reset_press", "push_press"), ("push_press", "reset_press")]:
+            cleared = self.payload(self.require_tool_success("capture_signal", {
+                "id": "register", "port": "out8", "seconds": .002,
+                "module_events": [{"frame": 32, "id": "register", "action": a} for a in actions]}))
+            self.assertEqual([b["mean"] for b in cleared["bins"]], [8] * 32 + [0] * 64)
+        # Rendering is isolated; saved/preset/duplicate state remains the configured snapshot.
+        captured = self.payload(self.require_tool_success("capture_project_patch"))
+        state = captured["shift_registers"]["register"]
+        self.assertEqual(state, {"values": list(range(1, 9)), "rng_state": rng})
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "register"}))["preset"]
+        self.assertEqual(preset["params"]["value8"], 8)
+        self.require_tool_success("duplicate_modules", {"modules": [{"id": "register", "new_id": "copy"}]})
+        self.assertEqual(self.payload(self.require_tool_success("capture_project_patch"))["shift_registers"]["copy"], state)
+        before = self.patch_snapshot()
+        self.require_tool_success("randomize_modules", {"ids": ["register"], "seed": 42})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("set_parameter", {"id": "register", "parameter": "seed", "value": 123})
+        reseeded = self.payload(self.require_tool_success("capture_project_patch"))["shift_registers"]["register"]
+        self.assertEqual(reseeded["values"], state["values"])
+        self.assertEqual(reseeded["rng_state"], 123 ^ 0xA341316C)
+        self.require_tool_success("initialize_modules", {"ids": ["register"]})
+        self.assertEqual(self.payload(self.require_tool_success("capture_project_patch"))["shift_registers"]["register"],
+                         {"values": [0] * 8, "rng_state": rng})
+        self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("capture_project_patch"))["shift_registers"]["register"], reseeded)
+        self.require_tool_success("save_patch", {"filename": "shift-register.json"})
+        self.require_tool_success("load_patch", {"filename": "shift-register.json"})
+        self.assertEqual(self.payload(self.require_tool_success("capture_project_patch"))["shift_registers"]["register"], reseeded)
+        # Independently reproduce random draws: RND consumes once even with IN1 patched.
+        def f32(value: float) -> float:
+            return struct.unpack("<f", struct.pack("<f", value))[0]
+        for range_, low, width in [(0, 0, 10), (1, 0, 5), (2, 0, 1), (3, -10, 20), (4, -5, 10), (5, -1, 2)]:
+            self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+                "nodes": [{"id": "register", "kind": "sh_asr", "params": {"random": 1, "range": range_}}]}})
+            stream = rng
+            values = []
+            for _ in range(2):
+                stream ^= (stream << 13) & 0xffffffff
+                stream ^= stream >> 17
+                stream ^= (stream << 5) & 0xffffffff
+                values.append(f32(low + f32(width * f32((stream >> 8) / 16777216))))
+            random_capture = self.payload(self.require_tool_success("capture_signal", {
+                "id": "register", "port": "out1", "seconds": .002, "module_events": events}))
+            actual = [b["mean"] for b in random_capture["bins"]]
+            self.assertEqual([struct.pack("<f", v) for v in actual],
+                             [struct.pack("<f", v) for v in [0] * 32 + [values[0]] * 32 + [values[1]] * 32])
+        for invalid in [{"value1": 1}, {"rng_hi": 1}, {"range": .5}, {"random": 2}, {"seed": -1}]:
+            before = self.patch_snapshot()
+            self.require_tool_error("add_module", {"id": "invalid", "kind": "sh_asr", "params": invalid})
+            self.assertEqual(self.patch_snapshot(), before)
+        demo = json.loads((REPOSITORY / "examples" / "shift-register-canon.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": demo})
+        result = self.payload(self.require_tool_success("render_audio", {"filename": "canon.wav", "seconds": 1}))
+        self.assertLess(result["peak"], 1)
+        with wave.open(str(self.workspace / "canon.wav"), "rb") as rendered:
+            samples = self._first_channel_samples(rendered.readframes(rendered.getnframes()), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertGreater(max(abs(s) for s in samples), 100)
+        self.assertLess(max(abs(s) for s in samples), 32767)
+
     def test_mutation_errors_preserve_revision(self) -> None:
         self.make_audio_graph()
         before_invalid = self.patch_snapshot()

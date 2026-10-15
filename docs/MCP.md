@@ -158,12 +158,13 @@ mutations and live module actions with `session is closing`; inspection and expo
 
 `capture_project_patch` accepts optional `expected_revision` and returns
 `patch`, `revision`, `state_id`, `running` and `holding` (module ID → boolean),
-`random_values` (module ID → `values[7][16]` and `rng_state`), `state_source`,
+`random_values` (module ID → `values[7][16]` and `rng_state`),
+`shift_registers` (module ID → eight `values` and `rng_state`), `state_source`,
 and `frame`. It projects current persistent state into a cloned graph without modifying
 history, queuing controls, resetting DSP state, or writing a file. Native Save
 and recovery use this same capture path; the MCP result does not include layout.
 
-With live audio, every SEQ-3, Push and Random Values module must be available at the requested revision
+With live audio, every SEQ-3, Push, Random Values and S&H/ASR module must be available at the requested revision
 and one completed callback frame. Stale, missing, or incoherent telemetry
 rejects the capture. `state_source` is `live` with a frame, `offline_reset` with
 configured initial state when no backend is attached, or `parameters` when there
@@ -649,3 +650,9 @@ Random Values voltages and generator state. It may now serialize implicit saved
 defaults, while leaving the live graph/history unchanged. Random Values
 `randomize_modules` derives a fresh generator from `max(1, FNV-1a32(id) XOR seed)`
 and refreshes all 112 voltages; PUSH/TRIG continue the current random stream.
+
+S&H/Analog Shift Register (`sh_asr`) supports PUSH and CLEAR via ordered runtime
+actions, coherent saved holds/RNG, presets, duplication and history.
+`capture_project_patch` includes a `shift_registers` map of eight actual voltages
+and `rng_state` per module. Host Randomize is a no-op for this kind;
+[full contract](SHIFT_REGISTER.md).

@@ -11,6 +11,10 @@ pub enum SavedModuleState {
     Seq3Run(bool),
     PushHold(bool),
     /// IEEE-754 voltage bits preserve exact equality in history and dirty checks.
+    ShiftRegister {
+        values: [u32; 8],
+        rng: u32,
+    },
     RandomValues {
         values: [[u32; 16]; 7],
         rng: u32,
@@ -25,6 +29,7 @@ impl SavedModuleState {
             "push" => Some(Self::PushHold(
                 node.params.get("holding").copied().unwrap_or(0.0) != 0.0,
             )),
+            "sh_asr" => crate::initial_shift_register_state(node).ok(),
             "random_values" => crate::initial_random_values_state(node).ok(),
             _ => None,
         }
@@ -33,6 +38,7 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(_) => "seq3",
             Self::PushHold(_) => "push",
+            Self::ShiftRegister { .. } => "sh_asr",
             Self::RandomValues { .. } => "random_values",
         }
     }
@@ -44,7 +50,7 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(value) => Some(("running", value)),
             Self::PushHold(value) => Some(("holding", value)),
-            Self::RandomValues { .. } => None,
+            Self::ShiftRegister { .. } | Self::RandomValues { .. } => None,
         }
     }
     pub fn value(self) -> bool {
@@ -54,12 +60,19 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(_) => Self::Seq3Run(value),
             Self::PushHold(_) => Self::PushHold(value),
-            Self::RandomValues { .. } => self,
+            Self::ShiftRegister { .. } | Self::RandomValues { .. } => self,
         }
     }
     /// Overlay all persistent state on a graph or preset without changing controls.
     pub fn write_params(self, params: &mut BTreeMap<String, f32>) {
         match self {
+            Self::ShiftRegister { values, rng } => {
+                for (row, value) in values.iter().enumerate() {
+                    params.insert(format!("value{}", row + 1), f32::from_bits(*value));
+                }
+                params.insert("rng_hi".into(), (rng >> 16) as f32);
+                params.insert("rng_lo".into(), (rng & 0xffff) as f32);
+            }
             Self::RandomValues { values, rng } => {
                 for (output, row) in values.iter().enumerate() {
                     for (channel, value) in row.iter().enumerate() {

@@ -1,12 +1,29 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 56 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline checked **2026-10-12**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 57 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+
+## Next product design priority
+
+The feedback shared on 2026-10-14 makes the next design pass a priority before
+another batch of modules. Keep familiar rack patching and a single shared
+module/browser renderer, while improving controls for a computer: ordinary
+click and keyboard value entry, direct sliders or other appropriate editors,
+clear signal flow, readable typography and fewer decorative hardware cues.
+The current metal panels and rotary controls still need that broader review.
+Any changes must preserve cable targets, explicit values, undo and MCP edits.
+
+The product direction also includes visible incremental agent work and eventual
+creation of genuinely new modules. Existing module insertion and progressive
+construction are distinct from authoring new DSP; live module authoring remains
+unimplemented. Physical acoustic modeling means excitation, resonators and
+damping; it is separate from FFT analysis or analog circuit emulation. The modal
+resonator is an initial acoustic model, with its validation boundaries documented.
 
 ## Define what “parity” includes
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 56 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 56 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 57 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 57 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -44,7 +61,7 @@ This plan starts from the code inspected on the baseline date:
 | Parameter/cable interaction | Partial; precise parameter entry and core Rack cable gestures, both-end menus, grouped moves/deletion, independent plug ordering and cable colours implemented with guarded history | Precise entry, fine control, reset, reconnect/delete/fan-out, keyboard shortcuts and cable presentation work together; no swallowed gestures or accidental edits behind dialogs. |
 | History | Partial; shared 128-step patch/movement undo/redo, explicit parameter grouping and observed-state layout restoration implemented | Complete geometry history for states the GUI has not observed; broaden device/native gesture qualification and project-history coverage. |
 | Browser/navigation | Partial; docked library with search, role filters, saved favorites, keyboard access, contextual help and drag-to-add previews | Zoom/pan and selection reveal are implemented; broader large-rack navigation and full Rack browser equivalence remain open. |
-| Project lifecycle | Partial; coherent native projects, atomic Save/Save As, Revert, current SEQ-3 Run and Push HOLD capture, content dirty tracking for both and per-instance recovery implemented | Qualify physical interruption/durability across filesystems, standard file dialogs, project-level MCP operations, factory templates, assets and VCV preset conversion. Native module presets are available separately. See [PROJECTS.md](PROJECTS.md) for guarantees and remaining boundaries. |
+| Project lifecycle | Partial; coherent native projects, atomic Save/Save As, Revert, current SEQ-3 Run, Push HOLD, Random Values and S&H/ASR capture, content dirty tracking for persistent state and per-instance recovery implemented | Qualify physical interruption/durability across filesystems, standard file dialogs, project-level MCP operations, factory templates, assets and VCV preset conversion. Native module presets are available separately. See [PROJECTS.md](PROJECTS.md) for guarantees and remaining boundaries. |
 | Hardware audio | Partial; selectable device and explicit stereo sink | Select backend/device/rate/buffer; stereo and 8/16-channel input/output; loopback channel-isolation and latency checks; hot unplug/reconnect without callback blockage. |
 | MIDI and keyboard performance | Partial; hardware input, 32-pitch QWERTY/mouse keyboard with guarded note ownership, voice allocation and sample-timed traces | Input/output notes, gates, CC, pitch bend, pressure, clock/transport, learn/mapping, poly allocation, and keyboard performance; timestamp/order tests and stuck-note recovery. |
 | Plugin extensibility | Missing | Versioned Rust module API/manifests, state migration, install/discovery/update and missing-module recovery; publish compatibility boundaries. Existing VCV binary support remains a separate unfulfilled gate. |

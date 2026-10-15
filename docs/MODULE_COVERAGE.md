@@ -19,7 +19,9 @@ The original [physical modal resonator](MODAL_RESONATOR.md) brings the catalog t
 [Seven-color Noise](COLORED_NOISE.md) brings the catalog to 55 kinds,
 with original filters and explicitly bounded spectral qualification.
 [Random Values](RANDOM_VALUES.md) adds seven polyphonic held-voltage outputs and
-coherent saved state, bringing the current catalog to 56 kinds.
+coherent saved state, bringing the catalog to 56 kinds.
+[Sample & Hold / Analog Shift Register](SHIFT_REGISTER.md) adds eight mono holds,
+normalized clock and old-value signal chains, bringing the current catalog to 57 kinds.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -174,7 +176,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Random Values | Source | `random_values`: seven outputs × sixteen held voices, per-voice TRIG and manual PUSH, six ranges, coherent saved voltages and generator state; [contract](RANDOM_VALUES.md) | Original seeded generator and explicit edge ordering; VCV random-sequence equivalence, Rack import and native device qualification remain open. |
 | Push | Gate utility | Implemented signal role: `push`, manual/CV push and HOLD, XOR gate, rising-gate trigger, coherent saved latch and native controls | Direct reference traces, saved-state import, smoothed reference lights and native qualification; [contract](PUSH.md) |
-| Sample & Hold Analog Shift Register | Sampling | Partial: single `sample_hold`, hysteresis and live-state continuity | Eight rows, shift ordering, clear/random modes and runtime JSON persistence |
+| Sample & Hold Analog Shift Register | Sampling | Implemented `sh_asr`: eight mono rows, old-value shift normaling, independent clocks, PUSH/CLEAR, RND and coherent held-state persistence | Complete reference qualification, native device interaction and Rack import remain open; [contract](SHIFT_REGISTER.md) |
 
 ## Hidden legacy modules and existing patches
 

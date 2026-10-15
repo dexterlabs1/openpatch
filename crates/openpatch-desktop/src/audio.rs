@@ -563,6 +563,16 @@ impl Audio {
             .collect()
     }
 
+    pub fn shift_register_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| module["kind"] == "sh_asr" && module["available"] == true)
+            .map(|(id, module)| (id.clone(), module["state"].clone()))
+            .collect()
+    }
+
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
@@ -5351,6 +5361,7 @@ mod tests {
         assert_eq!(sender.snapshot()["applied"], 256);
     }
     include!("random_values_host_tests.rs");
+    include!("shift_register_host_tests.rs");
 }
 
 #[cfg(test)]

@@ -179,6 +179,9 @@ fn saved_content(
             SavedModuleState::RandomValues { values, rng } => {
                 Some((id, json!({"values":values,"rng":rng})))
             }
+            SavedModuleState::ShiftRegister { values, rng } => {
+                Some((id, json!({"values":values,"rng":rng})))
+            }
             _ => None,
         })
         .collect::<BTreeMap<_, _>>();

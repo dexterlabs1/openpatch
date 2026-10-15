@@ -41,6 +41,29 @@ pub(super) fn live_saved(
         return Err(format!("live state kind mismatch for module '{id}'"));
     }
     let state = match expected {
+        SavedModuleState::ShiftRegister { .. } => {
+            let rows = module["state"]["values"]
+                .as_array()
+                .filter(|rows| rows.len() == 8)
+                .ok_or_else(|| {
+                    format!("live Shift Register state unavailable for module '{id}'")
+                })?;
+            let mut values = [0_u32; 8];
+            for (slot, value) in values.iter_mut().zip(rows) {
+                let value = value
+                    .as_f64()
+                    .filter(|value| value.is_finite() && (-1e6..=1e6).contains(value))
+                    .ok_or_else(|| format!("invalid Shift Register voltage for module '{id}'"))?
+                    as f32;
+                *slot = value.to_bits();
+            }
+            let rng = module["state"]["rng_state"]
+                .as_u64()
+                .and_then(|rng| u32::try_from(rng).ok())
+                .filter(|rng| *rng != 0)
+                .ok_or_else(|| format!("invalid Shift Register RNG for module '{id}'"))?;
+            SavedModuleState::ShiftRegister { values, rng }
+        }
         SavedModuleState::RandomValues { .. } => {
             let rows = module["state"]["values"]
                 .as_array()
@@ -146,13 +169,21 @@ impl Session {
             .copied()
             .unwrap_or(1.0);
         let targets: Vec<String> = match name {
-            "initialize_modules" | "randomize_modules" => {
-                parameter_action_ids(candidate, args)?.into_iter().collect()
-            }
+            "initialize_modules" | "randomize_modules" => parameter_action_ids(candidate, args)?
+                .into_iter()
+                .filter(|id| {
+                    name != "randomize_modules"
+                        || !candidate
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == *id && node.kind == "sh_asr")
+                })
+                .collect(),
             "apply_module_preset" | "remove_module" => vec![string(args, "id")?.to_owned()],
             "set_parameter"
                 if candidate.nodes.iter().any(|node| {
-                    node.id == args["id"].as_str().unwrap_or("") && node.kind == "random_values"
+                    node.id == args["id"].as_str().unwrap_or("")
+                        && matches!(node.kind.as_str(), "random_values" | "sh_asr")
                 }) || args["parameter"] == "running"
                     || args["parameter"] == "holding"
                     || args["parameter"] == "seed"
@@ -218,7 +249,54 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
-                    let explicit = if current.kind() == "random_values" {
+                    let explicit = if current.kind() == "sh_asr" {
+                        let previous = effects.working_saved.get(&id).copied().unwrap_or(current);
+                        let snapshot = (name == "apply_module_preset"
+                            && args["preset"]["params"].get("rng_hi").is_some())
+                            || (name == "set_parameter"
+                                && args["parameter"].as_str().is_some_and(|name| {
+                                    name.starts_with("value") || name.starts_with("rng_")
+                                }));
+                        if name == "initialize_modules" {
+                            let mut fresh = candidate
+                                .nodes
+                                .iter()
+                                .find(|node| node.id == id)
+                                .unwrap()
+                                .clone();
+                            fresh.params.retain(|name, _| {
+                                !name.starts_with("value") && !name.starts_with("rng_")
+                            });
+                            Some(openpatch_core::initial_shift_register_state(&fresh)?)
+                        } else if snapshot {
+                            Some(current)
+                        } else if (name == "set_parameter" && args["parameter"] == "seed")
+                            || (name == "apply_module_preset"
+                                && args["preset"]["params"].get("seed").is_some())
+                        {
+                            let node = candidate.nodes.iter().find(|node| node.id == id).unwrap();
+                            if node.params.get("seed").copied().unwrap_or(1.0) != prior_seed {
+                                let mut fresh = node.clone();
+                                fresh.params.retain(|name, _| {
+                                    !name.starts_with("value") && !name.starts_with("rng_")
+                                });
+                                let SavedModuleState::ShiftRegister { rng, .. } =
+                                    openpatch_core::initial_shift_register_state(&fresh)?
+                                else {
+                                    return Err("Shift Register state kind mismatch".into());
+                                };
+                                let SavedModuleState::ShiftRegister { values, .. } = previous
+                                else {
+                                    return Err("Shift Register state kind mismatch".into());
+                                };
+                                Some(SavedModuleState::ShiftRegister { values, rng })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else if current.kind() == "random_values" {
                         let previous = effects.working_saved.get(&id).copied().unwrap_or(current);
                         if name == "initialize_modules" {
                             Some(previous)
@@ -288,7 +366,7 @@ impl Session {
                         explicit.map(|value| current.with_value(value as f32 == 1.0))
                     };
                     if let Some(value) = explicit {
-                        if value.kind() == "random_values" {
+                        if matches!(value.kind(), "random_values" | "sh_asr") {
                             let node = candidate
                                 .nodes
                                 .iter_mut()

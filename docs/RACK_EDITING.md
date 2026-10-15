@@ -195,8 +195,8 @@ behaviors; use Cmd/Ctrl to start an additional cable.
 
 ## Exact parameter values
 
-Right-click a knob to type a value directly in its parameter menu. Double-clicking
-the displayed value also opens an editor. **Enter** or **Apply** commits a valid
+Right-click a knob to type a value directly in its parameter menu. Click its
+displayed value, or focus that value and press Space/Enter, to open an editor. **Enter** or **Apply** commits a valid
 value as one shared undo action; **Escape** or **Cancel** discards the draft.
 Clicking outside the parameter menu cancels it. Losing app focus or opening
 a modal editor also discards the draft. The editor shows the control's units

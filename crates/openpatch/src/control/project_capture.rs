@@ -81,7 +81,7 @@ impl Session {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
-                SavedModuleState::RandomValues { .. } => {}
+                SavedModuleState::RandomValues { .. } | SavedModuleState::ShiftRegister { .. } => {}
             }
         }
         Ok(ProjectRunningSnapshot {

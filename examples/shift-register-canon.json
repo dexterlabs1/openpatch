@@ -1,0 +1,166 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "register",
+      "kind": "sh_asr",
+      "params": {
+        "random": 1,
+        "range": 2,
+        "seed": 42
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "multi_lfo",
+      "params": {
+        "frequency": 3
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 1,
+        "trigger_enabled": 0,
+        "x_scale": 3,
+        "y_scale": 3
+      }
+    },
+    {
+      "id": "mix",
+      "kind": "vca_mix",
+      "params": {
+        "level1": 0.3,
+        "level2": 0.3,
+        "level3": 0.3,
+        "mix_level": 0.6
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_out"
+    },
+    {
+      "id": "notes1",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661
+      }
+    },
+    {
+      "id": "voice1",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 110
+      }
+    },
+    {
+      "id": "notes2",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661
+      }
+    },
+    {
+      "id": "voice2",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 110
+      }
+    },
+    {
+      "id": "notes3",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 661
+      }
+    },
+    {
+      "id": "voice3",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 110
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "square",
+      "to": "register",
+      "input": "trig1"
+    },
+    {
+      "from": "register",
+      "output": "out1",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "register",
+      "output": "out3",
+      "to": "scope",
+      "input": "y"
+    },
+    {
+      "from": "mix",
+      "output": "mix",
+      "to": "out",
+      "input": "signal"
+    },
+    {
+      "from": "register",
+      "output": "out1",
+      "to": "notes1",
+      "input": "pitch"
+    },
+    {
+      "from": "notes1",
+      "to": "voice1",
+      "input": "pitch"
+    },
+    {
+      "from": "voice1",
+      "output": "sine",
+      "to": "mix",
+      "input": "in1"
+    },
+    {
+      "from": "register",
+      "output": "out3",
+      "to": "notes2",
+      "input": "pitch"
+    },
+    {
+      "from": "notes2",
+      "to": "voice2",
+      "input": "pitch"
+    },
+    {
+      "from": "voice2",
+      "output": "sine",
+      "to": "mix",
+      "input": "in2"
+    },
+    {
+      "from": "register",
+      "output": "out5",
+      "to": "notes3",
+      "input": "pitch"
+    },
+    {
+      "from": "notes3",
+      "to": "voice3",
+      "input": "pitch"
+    },
+    {
+      "from": "voice3",
+      "output": "sine",
+      "to": "mix",
+      "input": "in3"
+    }
+  ],
+  "output": "out"
+}

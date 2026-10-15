@@ -44,7 +44,7 @@ fn seq_row(name: &str) -> bool {
 fn policy(kind: &str, name: &str) -> Randomization {
     use Randomization::{Disabled, Enum, InclusiveInteger, Linear, Log2};
     match (kind, name) {
-        ("random_values", _) => Disabled,
+        ("random_values" | "sh_asr", _) => Disabled,
         ("seq3", name) if seq_row(name) => Linear,
         ("seq3", name) if numbered(name, "gate", 8) => Enum,
         ("seq3", _) => Disabled,
@@ -110,7 +110,8 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
     for (name, descriptor) in module["params"].as_object_mut().unwrap() {
         descriptor["initialize"] = json!(
-            !((kind == "random_values" && descriptor["hidden"] == true)
+            !((matches!(kind.as_str(), "random_values" | "sh_asr")
+                && descriptor["hidden"] == true)
                 || (kind == "seq3" && name == "running")
                 || (kind == "mix6" && (name == "invert" || name == "average")))
         );

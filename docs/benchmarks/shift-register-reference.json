@@ -1,0 +1,300 @@
+{
+  "reference": {
+    "fundamental_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "source_url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/SHASR.cpp",
+    "source_sha256": "a4e660cbdb18206075f243f8f8baaaf292628260ff2fdd6d57ff90649629ed28",
+    "compiled_prefix_sha256": "a3fab107c7b52d0475d21cc591e4a9663caa8e94787dca81336fa1b1974b07c2",
+    "sdk_path": "/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
+    "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "sdk_header_sha256": {
+      "rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+      "dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+      "engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+      "engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df",
+      "engine/Param.hpp": "7f7a3a0a286cae099ad6b884d4ca1648be1bcf658f398b2a15366c27a6c373aa",
+      "engine/Light.hpp": "70affe4a5f167d5e018633da41931d7d1666a113ea8358fa8f01a63cae46e4c2"
+    }
+  },
+  "method": "Actual pinned Fundamental SHASR class DSP/persistence prefix compiled in a temporary directory, changing only plugin.hpp to rack.hpp and omitting SHASRWidget/model registration; linked to separately installed libRack. Compared every output sample against production shift_register.rs compiled directly with minimal host types and the workspace's existing serde_json dependency.",
+  "scope": "Deterministic RND-off electrical sample/hold/shift behavior; no random-stream equivalence claim.",
+  "coverage": [
+    "old held-value snapshot normaling across eight rows",
+    "patched sample inputs override normals",
+    "independent and split clocks break inherited events",
+    "startup high/intermediate suppression and exact 0.1/1 V thresholds",
+    "disconnect/reconnect detector history",
+    "held PUSH/CLEAR and simultaneous CV/PUSH/CLEAR",
+    "channel zero only with zero, mono and polyphonic connected inputs",
+    "all eight values compared on every frame at 44100/48000/96000 Hz"
+  ],
+  "limitations": [
+    "No Rack application, plugin host, GUI or audio device is opened; upstream widget/model registration is not compiled",
+    "Minimal Rust adapters bypass public Engine graph/cable delay, host queue publication, saved JSON validation, MCP and UI",
+    "RND off only; OpenPatch's deterministic PRNG/ranges/seed, multi-edge queues within one sample, bypass, reset/init, adoption and persistence are outside this differential check",
+    "Inputs are finite and inside OpenPatch's \u00b11000000 V safety bound; nonfinite and unrestricted Rack headroom are not parity claims",
+    "Driver assigns SDK input channel bookkeeping and output mono channel count normally owned by Rack Engine; arming frame processes low manual buttons with CV disconnected"
+  ],
+  "tolerances": {
+    "values_absolute": 0.0,
+    "comparison": "decimal outputs decoded to float32; exact numeric equality for all eight outputs"
+  },
+  "production_source_sha256": "9d89bef9ee4376fbf02befc9c1348381691e697dee66a6544f8379f314278ca4",
+  "driver_sha256": {
+    "sdk_probe.cpp": "23517f48b7db84c091970a5ba1aafbd8e5c5a7de62a259da0eb0bb86e91c3a2e",
+    "rust_probe.rs": "3dfe489ae4efaa5eba94ebe1d6fa7ffdf8bd9dfcaa70e89c10bde33fbd77e639",
+    "run.py": "a031ec6a7befecb2335f41a9cb9b50e3b3cdbab7cb543753d11caefc2502039f"
+  },
+  "toolchain": {
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "platform": "darwin"
+  },
+  "cases": [
+    {
+      "name": "shift_old_holds",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "38db4fcffbc8834b6a85c5d7c065ceecde48fe0caf0f3709e3e793996ea9d1f2",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "patched_input_overrides",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "72cfb6f03ae3baea88ea3f706dcdb462ed57161267024812077bd09d677dd8d0",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_clocks",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "8d32617b04ac6e5447a97915b1fd0a7a2f83f4c105383959e6cc9187396796a9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "split_clock_inheritance",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "be95c94915ad51c3fe8d5c7d392a87fe243d3d8c16e45e9f1ef075e21cd8449d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "startup_high_and_intermediate",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "37c099138258780e9720e0672cda496ede311514df8d57ca0199e9350f028826",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnect_reconnect_history",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "d8c6fba492d40ccb48fcabb37a605eb22387ee9f3da27d8aa994d1a464f350f6",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "push_clear_collisions",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "baec454d42e798c6ebdd93f7bd93e09d9b5bdded0389d01c0ce4a891f4437fc7",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_zero",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "ff293faeab624b135e9531984565fe319c9cfb933e1d5c2d8e8114a32d7396d9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "deterministic_mixed",
+      "sample_rate": 44100,
+      "frames": 1024,
+      "input_sha256": "f27384ced5997f174ed42ae464262e45fa5984bafd0a86a3f276359bb600e87d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "shift_old_holds",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "38db4fcffbc8834b6a85c5d7c065ceecde48fe0caf0f3709e3e793996ea9d1f2",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "patched_input_overrides",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "72cfb6f03ae3baea88ea3f706dcdb462ed57161267024812077bd09d677dd8d0",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_clocks",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "8d32617b04ac6e5447a97915b1fd0a7a2f83f4c105383959e6cc9187396796a9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "split_clock_inheritance",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "be95c94915ad51c3fe8d5c7d392a87fe243d3d8c16e45e9f1ef075e21cd8449d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "startup_high_and_intermediate",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "37c099138258780e9720e0672cda496ede311514df8d57ca0199e9350f028826",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnect_reconnect_history",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "d8c6fba492d40ccb48fcabb37a605eb22387ee9f3da27d8aa994d1a464f350f6",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "push_clear_collisions",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "baec454d42e798c6ebdd93f7bd93e09d9b5bdded0389d01c0ce4a891f4437fc7",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_zero",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "ff293faeab624b135e9531984565fe319c9cfb933e1d5c2d8e8114a32d7396d9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "deterministic_mixed",
+      "sample_rate": 48000,
+      "frames": 1024,
+      "input_sha256": "f27384ced5997f174ed42ae464262e45fa5984bafd0a86a3f276359bb600e87d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "shift_old_holds",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "38db4fcffbc8834b6a85c5d7c065ceecde48fe0caf0f3709e3e793996ea9d1f2",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "patched_input_overrides",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "72cfb6f03ae3baea88ea3f706dcdb462ed57161267024812077bd09d677dd8d0",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "independent_clocks",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "8d32617b04ac6e5447a97915b1fd0a7a2f83f4c105383959e6cc9187396796a9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "split_clock_inheritance",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "be95c94915ad51c3fe8d5c7d392a87fe243d3d8c16e45e9f1ef075e21cd8449d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "startup_high_and_intermediate",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "37c099138258780e9720e0672cda496ede311514df8d57ca0199e9350f028826",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "disconnect_reconnect_history",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "d8c6fba492d40ccb48fcabb37a605eb22387ee9f3da27d8aa994d1a464f350f6",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "push_clear_collisions",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "baec454d42e798c6ebdd93f7bd93e09d9b5bdded0389d01c0ce4a891f4437fc7",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "mono_channel_zero",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "ff293faeab624b135e9531984565fe319c9cfb933e1d5c2d8e8114a32d7396d9",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    },
+    {
+      "name": "deterministic_mixed",
+      "sample_rate": 96000,
+      "frames": 1024,
+      "input_sha256": "f27384ced5997f174ed42ae464262e45fa5984bafd0a86a3f276359bb600e87d",
+      "max_absolute_error": 0.0,
+      "passed": true,
+      "first_failures": []
+    }
+  ],
+  "passed": true,
+  "total_frames": 27648,
+  "total_values": 221184
+}

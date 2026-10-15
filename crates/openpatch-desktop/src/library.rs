@@ -84,7 +84,7 @@ impl Category {
             "lowpass" | "ladder_vcf" | "svf_filter" => Self::Filters,
             "adsr" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
-            "lfo" | "multi_lfo" | "gate" | "random_values" => Self::Modulation,
+            "lfo" | "multi_lfo" | "gate" | "random_values" | "sh_asr" => Self::Modulation,
             "gain"
             | "mixer"
             | "analog_vca"
@@ -844,6 +844,28 @@ mod tests {
     }
 
     #[test]
+    fn shift_register_search_excludes_hidden_capture_state_and_uses_musical_category() {
+        let catalog = openpatch_core::catalog();
+        let module = modules(&catalog)
+            .find(|module| module["kind"] == "sh_asr")
+            .unwrap();
+        let library = ModuleLibrary::default();
+        for hidden in ["value1", "value8", "rng_hi", "rng_lo"] {
+            assert!(
+                !library.matches(module, hidden),
+                "hidden runtime field {hidden} is not a control"
+            );
+        }
+        for visible in ["seed", "random", "range", "in8", "trig8", "out8"] {
+            assert!(
+                library.matches(module, visible),
+                "visible parameter or port {visible} remains searchable"
+            );
+        }
+        assert_eq!(Category::of_kind("sh_asr"), Category::Modulation);
+    }
+
+    #[test]
     fn search_categories_and_favorites_use_catalog_meaning_not_model_provenance() {
         let catalog = fixture();
         let mut library = ModuleLibrary {
@@ -1176,6 +1198,8 @@ mod tests {
                             "seq3" => text.galley.text().ends_with(" BPM"),
                             "poly_constant" => text.galley.text().ends_with(" V"),
                             "push" => text.galley.text() == "HOLD",
+                            "sh_asr" => text.galley.text() == "CLEAR",
+                            "constant" => text.galley.text() == "0.000",
                             _ => false,
                         } =>
                     {
@@ -1198,7 +1222,7 @@ mod tests {
             }
         }
         let all = openpatch_core::catalog();
-        for kind in ["seq3", "poly_constant", "push"] {
+        for kind in ["seq3", "poly_constant", "push", "sh_asr", "constant"] {
             let module = all["modules"]
                 .as_array()
                 .unwrap()
@@ -1220,7 +1244,7 @@ mod tests {
                     _ => None,
                 })
                 .fold(0.0_f32, f32::max);
-            if matches!(kind, "seq3" | "poly_constant") {
+            if matches!(kind, "seq3" | "poly_constant" | "sh_asr") {
                 assert!(
                     card_width > 250.0,
                     "wide {kind} needs the full browser shelf"

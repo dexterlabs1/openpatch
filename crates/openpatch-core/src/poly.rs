@@ -15,6 +15,7 @@ use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
+use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
 use crate::studio_fx::{self, StudioFx};
@@ -89,6 +90,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "pulses"
                 | "push"
                 | "random_values"
+                | "sh_asr"
                 | "scope"
                 | "gates"
         )
@@ -132,6 +134,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
+        "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "pulses" | "colored_noise" => None,
@@ -180,6 +183,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         scope::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "pulses" {
         pulses::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "sh_asr" {
+        shift_register::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "random_values" {
         random_values::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "push" {
@@ -282,6 +289,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "scope" {
         scope::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "sh_asr" {
+        shift_register::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -459,6 +471,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "push" {
         push::annotate(module);
     }
+    if kind == "sh_asr" {
+        shift_register::annotate(module);
+    }
     if kind == "random_values" {
         random_values::annotate(module);
     }
@@ -493,6 +508,7 @@ enum Model {
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
+    ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
     Scope(Box<Scope>),
     Gates(Box<Gates>),
@@ -535,6 +551,9 @@ impl Model {
         }
         if node.kind == "scope" {
             return Ok(Self::Scope(Box::new(Scope::build(node, rate)?)));
+        }
+        if node.kind == "sh_asr" {
+            return Ok(Self::ShiftRegister(Box::new(ShiftRegister::build(node)?)));
         }
         if node.kind == "random_values" {
             return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
@@ -726,6 +745,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.controls(),
             Some(Model::Pulses(p)) => Some(p.controls()),
             Some(Model::Push(p)) => Some(p.controls()),
+            Some(Model::ShiftRegister(p)) => Some(p.controls()),
             Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
             _ => None,
@@ -736,6 +756,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
+            Some(Model::ShiftRegister(p)) => Some(p.lights()),
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
@@ -748,6 +769,10 @@ impl PolyEngine {
         match self.nodes.get_mut(index).map(|n| &mut n.model) {
             Some(Model::Signal(s)) => s.release(),
             Some(Model::Pulses(p)) => {
+                p.release();
+                true
+            }
+            Some(Model::ShiftRegister(p)) => {
                 p.release();
                 true
             }
@@ -775,6 +800,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.supports(action),
             Some(Model::Pulses(_)) => action.pulse_button().is_some(),
             Some(Model::Push(_)) => Push::supports(action),
+            Some(Model::ShiftRegister(_)) => ShiftRegister::supports(action),
             Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
             _ => false,
@@ -829,6 +855,15 @@ impl PolyEngine {
     }
     pub(crate) fn handle_module_event(&mut self, node: usize, action: ModuleAction) -> bool {
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if matches!(
+                action,
+                ModuleAction::PushRelease | ModuleAction::ResetRelease
+            ) {
+                if let Model::ShiftRegister(p) = &mut self.nodes[node].model {
+                    p.release();
+                    return true;
+                }
+            }
             if action == ModuleAction::PushRelease {
                 if let Model::RandomValues(p) = &mut self.nodes[node].model {
                     p.release();
@@ -870,6 +905,7 @@ impl PolyEngine {
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
             Some(Model::Push(p)) => p.enqueue(action),
+            Some(Model::ShiftRegister(p)) => p.enqueue(action),
             Some(Model::RandomValues(p)) => p.enqueue(action),
             Some(Model::Gates(g)) => g.enqueue(action),
             _ => false,
@@ -919,6 +955,10 @@ impl PolyEngine {
                 s.reset();
                 scope::OUTPUTS.len()
             }
+            Model::ShiftRegister(p) => {
+                p.reset_state();
+                shift_register::OUTPUTS.len()
+            }
             Model::RandomValues(p) => {
                 p.reset_state();
                 random_values::OUTPUTS.len()
@@ -967,6 +1007,7 @@ impl PolyEngine {
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
+            Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
             Model::ModalResonator(s) => s.reset_state(),
@@ -993,6 +1034,7 @@ impl PolyEngine {
         match self.nodes.get(index).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
             Some(Model::Push(push)) => Some(SavedModuleState::PushHold(push.holding())),
+            Some(Model::ShiftRegister(p)) => Some(p.saved_state()),
             Some(Model::RandomValues(p)) => Some(p.saved_state()),
             _ => None,
         }
@@ -1006,6 +1048,7 @@ impl PolyEngine {
                 push.set_holding(holding);
                 true
             }
+            (Some(Model::ShiftRegister(p)), state) => p.set_saved_state(state),
             (Some(Model::RandomValues(p)), state) => p.set_saved_state(state),
             _ => false,
         }
@@ -1096,6 +1139,7 @@ impl PolyEngine {
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
+                    "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
                     "gates" => gates::OUTPUTS.len(),
@@ -1365,6 +1409,18 @@ impl PolyEngine {
                         }
                     }
                     s.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                    );
+                }
+                Model::ShiftRegister(p) => {
+                    let mut inputs = [PortFrame::default(); 16];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    p.process(
                         &inputs,
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
                     );
@@ -1783,6 +1839,14 @@ impl PolyEngine {
                 }
             }
             if let (Model::Pulses(p), Model::Pulses(previous)) = (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
+                if bypass_changed {
+                    p.release();
+                }
+            }
+            if let (Model::ShiftRegister(p), Model::ShiftRegister(previous)) =
+                (&mut node.model, &previous.model)
             {
                 p.adopt(previous);
                 if bypass_changed {

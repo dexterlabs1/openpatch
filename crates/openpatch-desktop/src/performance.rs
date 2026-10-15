@@ -43,6 +43,7 @@ enum ModuleKind {
     Push,
     Gates,
     RandomValues,
+    ShiftRegister,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -61,6 +62,7 @@ impl ModuleKind {
             "push" => Some(Self::Push),
             "gates" => Some(Self::Gates),
             "random_values" => Some(Self::RandomValues),
+            "sh_asr" => Some(Self::ShiftRegister),
             _ => None,
         }
     }
@@ -80,6 +82,7 @@ impl ModuleKind {
             Self::Push => "push",
             Self::Gates => "gates",
             Self::RandomValues => "random_values",
+            Self::ShiftRegister => "sh_asr",
         }
     }
     fn manual(self) -> bool {
@@ -91,6 +94,7 @@ impl ModuleKind {
                 | Self::Push
                 | Self::Gates
                 | Self::RandomValues
+                | Self::ShiftRegister
         )
     }
     fn sequential(self) -> bool {
@@ -112,6 +116,13 @@ impl ModuleKind {
             Self::RandomValues => {
                 matches!(action, ModuleAction::PushPress | ModuleAction::PushRelease)
             }
+            Self::ShiftRegister => matches!(
+                action,
+                ModuleAction::PushPress
+                    | ModuleAction::PushRelease
+                    | ModuleAction::ResetPress
+                    | ModuleAction::ResetRelease
+            ),
             Self::Push => matches!(
                 action,
                 ModuleAction::PushPress
@@ -207,6 +218,8 @@ struct Meter {
     saved_state: AtomicU32,
     random_values: [[AtomicU32; 16]; 7],
     random_rng: AtomicU32,
+    shift_values: [AtomicU32; 8],
+    shift_rng: AtomicU32,
     input_channels: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
@@ -222,6 +235,8 @@ impl Meter {
             saved_state: AtomicU32::new(0),
             random_values: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
             random_rng: AtomicU32::new(0),
+            shift_values: std::array::from_fn(|_| AtomicU32::new(0)),
+            shift_rng: AtomicU32::new(0),
             input_channels: AtomicU32::new(u32::MAX),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
@@ -243,8 +258,8 @@ impl Meter {
         }
         self.saved_state.store(
             match snapshot.saved_state {
-                Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 2),
-                Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 2),
+                Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 3),
+                Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 3),
                 Some(SavedModuleState::RandomValues { values, rng }) => {
                     for (row, values) in self.random_values.iter().zip(values) {
                         for (slot, value) in row.iter().zip(values) {
@@ -253,6 +268,13 @@ impl Meter {
                     }
                     self.random_rng.store(rng, Ordering::SeqCst);
                     3
+                }
+                Some(SavedModuleState::ShiftRegister { values, rng }) => {
+                    for (slot, value) in self.shift_values.iter().zip(values) {
+                        slot.store(value, Ordering::SeqCst);
+                    }
+                    self.shift_rng.store(rng, Ordering::SeqCst);
+                    4
                 }
                 None => 0,
             },
@@ -287,13 +309,17 @@ impl Meter {
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
             let saved_state = self.saved_state.load(Ordering::SeqCst);
-            let random_state = (saved_state & 3 == 3).then(|| SavedModuleState::RandomValues {
+            let random_state = (saved_state & 7 == 3).then(|| SavedModuleState::RandomValues {
                 values: std::array::from_fn(|row| {
                     std::array::from_fn(|channel| {
                         self.random_values[row][channel].load(Ordering::SeqCst)
                     })
                 }),
                 rng: self.random_rng.load(Ordering::SeqCst),
+            });
+            let shift_state = (saved_state & 7 == 4).then(|| SavedModuleState::ShiftRegister {
+                values: std::array::from_fn(|row| self.shift_values[row].load(Ordering::SeqCst)),
+                rng: self.shift_rng.load(Ordering::SeqCst),
             });
             let input_channels = self.input_channels.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
@@ -314,10 +340,11 @@ impl Meter {
                         length: (value >> 8) as u8,
                         running: value & (1 << 16) != 0,
                     }),
-                    saved_state: match saved_state & 3 {
-                        1 => Some(SavedModuleState::Seq3Run(saved_state & 4 != 0)),
-                        2 => Some(SavedModuleState::PushHold(saved_state & 4 != 0)),
+                    saved_state: match saved_state & 7 {
+                        1 => Some(SavedModuleState::Seq3Run(saved_state & 8 != 0)),
+                        2 => Some(SavedModuleState::PushHold(saved_state & 8 != 0)),
                         3 => random_state,
+                        4 => shift_state,
                         _ => None,
                     },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
@@ -1221,6 +1248,8 @@ impl LiveModuleEvents for Performance {
                     } else if let Some(SavedModuleState::RandomValues { values, rng }) = snapshot.saved_state {
                         let values = values.map(|row| row.map(f32::from_bits));
                         Some(json!({"values":values,"rng_state":rng,"active_channels":snapshot.lights.and_then(|lights| lights.input_channels).unwrap_or(1)}))
+                    } else if let Some(SavedModuleState::ShiftRegister { values, rng }) = snapshot.saved_state {
+                        Some(json!({"values":values.map(f32::from_bits),"rng_state":rng}))
                     } else {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
@@ -1576,6 +1605,78 @@ mod tests {
                         for value in row.as_array().unwrap() {
                             assert_eq!(*value, json!((frame % 20) as f32 * 0.5));
                         }
+                    }
+                }
+            }
+        }
+        writer.join().unwrap();
+    }
+    #[test]
+    fn shift_register_host_snapshot_keeps_all_eight_voltages_and_rng_in_one_frame() {
+        let (performance, _reader, _timing) = Performance::new(48_000);
+        {
+            let mut control = performance.control.lock().unwrap();
+            control.revision = 1;
+            for slot in 0..2 {
+                control.entries.insert(
+                    format!("random{slot}"),
+                    Entry {
+                        slot,
+                        token: slot as u64 + 11,
+                        born_revision: 1,
+                        kind: ModuleKind::ShiftRegister,
+                        bypassed: false,
+                        action_epoch: 1,
+                    },
+                );
+            }
+        }
+        let shared = performance.shared.clone();
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=1_000_u64 {
+                shared.publish_frame(frame, || {
+                    for slot in 0..2 {
+                        let voltage = (frame as f32 - 500.0) * 1_000.0;
+                        shared.meters[slot].write(
+                            slot as u64 + 11,
+                            ModuleSnapshot {
+                                revision: 1,
+                                frame,
+                                state: None,
+                                saved_state: Some(SavedModuleState::ShiftRegister {
+                                    values: [voltage.to_bits(); 8],
+                                    rng: frame as u32,
+                                }),
+                                controls: None,
+                                lights: Some(ModuleLightState {
+                                    input_channels: Some((frame % 16 + 1) as u8),
+                                    ..ModuleLightState::default()
+                                }),
+                            },
+                        );
+                        std::thread::yield_now();
+                    }
+                });
+            }
+        });
+        for _ in 0..1_000 {
+            let snapshot = performance.snapshot();
+            if snapshot["coherent"] == false {
+                for id in ["random0", "random1"] {
+                    assert_eq!(snapshot["modules"][id]["available"], false);
+                }
+            } else if snapshot["modules"]["random0"]["available"] == true {
+                let frame = snapshot["frame"].as_u64().unwrap();
+                for id in ["random0", "random1"] {
+                    let module = &snapshot["modules"][id];
+                    assert_eq!(module["available"], true);
+                    assert_eq!(module["frame"], frame);
+                    assert_eq!(module["state"]["rng_state"], frame);
+                    assert!(module["state"]["active_channels"].is_null());
+                    let values = module["state"]["values"].as_array().unwrap();
+                    assert_eq!(values.len(), 8);
+                    for value in values {
+                        assert_eq!(*value, json!((frame as f32 - 500.0) * 1_000.0));
                     }
                 }
             }
