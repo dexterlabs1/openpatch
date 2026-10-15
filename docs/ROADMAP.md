@@ -2,7 +2,25 @@
 
 Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 64 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
-## Next product design priority
+## Delivery order
+
+Updated by user direction on **2026-10-15**: MIDI and live-performance work move
+to the final delivery phase. MIDI Map and its controller-driven live parameter
+foundation are deferred; their research remains available for that phase.
+
+| Order | Focus | Main work |
+|---|---|---|
+| 1 | Design and patching experience | Consistent module/browser rendering, direct controls, typography, cable dragging, navigation and room lighting. |
+| 2 | Synthesis and module fidelity | Complete non-MIDI stock synthesis/effects, validate existing modules against their references, and improve physical models. |
+| 3 | Projects and compatibility | Reliable editing/history, presets/templates, `.vcv` import, missing-module recovery and selected open-source ports/extension foundations. |
+| 4 | MCP and creative tools | Refine visible agent construction, inspection/analysis, instrument-authoring foundations and GLSL audio/visual workflows. |
+| 5 — final | MIDI and live performance | MIDI Map, controller-driven parameter authority, remaining MIDI inputs/outputs, keyboard/stage workflows, expanded hardware I/O and latency/reconnect/device qualification. |
+
+DSP correctness, CPU optimization and ordinary playback reliability remain part
+of every phase. Existing MIDI features remain supported. Full stock/host parity
+cannot be signed off until the final phase meets its acceptance gates.
+
+## Current product design priority
 
 The feedback shared on 2026-10-14 makes the next design pass a priority before
 another batch of modules. Visible agent construction, a toolbar MCP session
@@ -123,8 +141,8 @@ The next gates are:
    fixtures with sequencing modules. Keep crossfades a host policy rather than
    claiming them as circuit behavior.
 4. **Connect the foundation to complete instrument workflows.** Qualify native
-   multi-output patching and persistence, then stereo/multichannel device I/O
-   and MIDI allocation. Every new module still needs its own complete port,
+   multi-output patching and persistence. Expanded hardware I/O and MIDI
+   allocation belong to the final delivery phase. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
 ## Three-row sequencer: implemented contract, partial parity
@@ -260,17 +278,18 @@ These are researched candidates, not newly added dependencies or endorsements of
 
 ## Release gates
 
-Advance by evidence, not module count alone:
+Advance by evidence, not module count alone. These are acceptance criteria;
+implementation follows the delivery order above:
 
 1. **Engine foundation:** implemented named multi-output/polyphonic/timed routing and backward-compatible files pass the independent contract tests; remaining performance, broader state/event and native/device qualification gates are listed above.
-2. **Useful instrument:** shared history, reliable projects, stereo audio/MIDI and a playable polyphonic voice pass native macOS tests; core concurrency and device-failure cases are exercised.
-3. **Stock Free coverage:** all 49 inventory rows meet their contracts; remaining behavioral differences and host/plugin compatibility gaps are listed openly.
-4. **Free host parity:** every host-matrix gate has a test artifact and supported-platform result. An unsupported plugin/file workflow remains a gap, not an implied success.
-5. **Beyond parity:** MCP/visual features have end-to-end tests and measurable benefits; quality/performance claims cite matched experiments. Pro and third-party work retain their separate matrices.
+2. **Editing and synthesis:** shared history, reliable projects, stereo playback and a playable polyphonic voice pass native macOS tests; non-MIDI module contracts and core concurrency cases are exercised.
+3. **Creative tools and compatibility:** delivered MCP/visual/import/extension capabilities have end-to-end tests and explicit supported-version boundaries; quality/performance claims cite matched experiments.
+4. **Final MIDI/live-performance phase:** mapping and controller authority, remaining MIDI interfaces, stage workflows and expanded device I/O pass timing, persistence, recovery and native/hardware qualification.
+5. **Stock Free and host parity sign-off:** all 49 inventory rows and every host-matrix gate have test artifacts and supported-platform results. Remaining behavior, plugin and file gaps stay explicit. Pro and third-party work retain their separate matrices.
 
 Each milestone should link its patch fixtures, reference version, test results, known differences and representative recordings/screenshots. Refresh this baseline when upstream functionality or OpenPatch's contracts change.
 
-The stock-style [ADSR EG](ADSR_EG.md) adds four CV depths, retrigger, PUSH and real stage lamps without changing the original RC `adsr` kind. Its pinned DSP comparison is separate from macOS device/window qualification and hardware calibration. Next priorities remain the missing stock VCF interfaces, remaining Core MIDI interfaces, and explicit host acceptance.
+The stock-style [ADSR EG](ADSR_EG.md) adds four CV depths, retrigger, PUSH and real stage lamps without changing the original RC `adsr` kind. Its pinned DSP comparison is separate from macOS device/window qualification and hardware calibration. Stock VCF and VCA have since added their separate interfaces and bounded comparisons; remaining MIDI work follows the final delivery phase above.
 
 
 ## MIDI CC: bounded DSP comparison and remaining host qualification
@@ -342,8 +361,9 @@ Direct MCP/preset width changes retain the left position; the Session does not
 own rack positions and cannot enforce layout collision constraints. Existing
 observed-state position-history limitations and native macOS IME/clipboard/
 interaction qualification remain open. Notes' screen is emissive in lights-out;
-Blank and faceplates are passive. Next synthesis milestone: the stock VCF
-interface and actual-class DSP qualification; MIDI Map follows host editing work.
+Blank and faceplates are passive. Stock VCF and VCA subsequently added their
+interfaces and actual-class DSP qualification. MIDI Map is deferred to the final
+MIDI/live-performance phase.
 
 
 ## Stock VCF milestone
