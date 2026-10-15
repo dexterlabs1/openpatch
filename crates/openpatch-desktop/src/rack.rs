@@ -10377,34 +10377,6 @@ fn paint_panel(
     }
     let point = |x, y| rect.min + vec2(x, y) * zoom;
     let width = rect.width() / zoom;
-    for x in [8.0, width - 8.0] {
-        for y in [9.0, PANEL_HEIGHT - 9.0] {
-            let center = point(x, y);
-            painter.circle_filled(
-                center + vec2(0.5, 0.8) * zoom,
-                4.5 * zoom,
-                Color32::from_black_alpha(75),
-            );
-            painter.circle_filled(center, 3.8 * zoom, Color32::from_rgb(99, 97, 91));
-            painter.circle_filled(
-                center - vec2(0.4, 0.5) * zoom,
-                2.9 * zoom,
-                Color32::from_rgb(204, 200, 190),
-            );
-            painter.circle_stroke(
-                center,
-                3.7 * zoom,
-                Stroke::new(0.8 * zoom, Color32::from_rgb(245, 241, 229)),
-            );
-            painter.line_segment(
-                [
-                    center - vec2(1.7, 1.7) * zoom,
-                    center + vec2(1.7, 1.7) * zoom,
-                ],
-                Stroke::new(0.9 * zoom, Color32::from_rgb(68, 67, 63)),
-            );
-        }
-    }
     if node.kind == "blank" && width < 120.0 {
         return;
     }

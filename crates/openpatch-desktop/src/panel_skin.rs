@@ -285,39 +285,16 @@ pub(crate) fn parameter_fader(
 }
 
 pub(crate) fn socket(painter: &egui::Painter, center: Pos2, connected: bool, zoom: f32) {
-    painter.circle_filled(
-        center + vec2(0.7, 1.8) * zoom,
-        11.1 * zoom,
-        Color32::from_black_alpha(30),
-    );
-    let corners: Vec<_> = (0..6)
-        .map(|i| {
-            let a = (30.0 + i as f32 * 60.0).to_radians();
-            center + vec2(a.cos(), a.sin()) * 10.3 * zoom
-        })
-        .collect();
-    painter.add(egui::Shape::convex_polygon(
-        corners,
-        Color32::from_rgb(158, 160, 154),
-        Stroke::new(0.8 * zoom, Color32::from_rgb(106, 109, 103)),
-    ));
-    painter.circle_filled(center, 8.9 * zoom, Color32::from_rgb(214, 214, 205));
+    // Flat concentric marks keep the connection target legible without a
+    // decorative nut, offset shadow or reflected-metal stack. Output surrounds
+    // and actual signal emission are painted separately by the caller.
+    painter.circle_filled(center, 10.3 * zoom, Color32::from_rgb(190, 191, 182));
     painter.circle_stroke(
         center,
-        8.9 * zoom,
-        Stroke::new(0.9 * zoom, Color32::from_rgb(229, 228, 218)),
-    );
-    painter.circle_filled(
-        center + vec2(0.15, 0.4) * zoom,
-        7.25 * zoom,
-        Color32::from_rgb(64, 67, 68),
+        10.3 * zoom,
+        Stroke::new(0.8 * zoom, Color32::from_rgb(106, 109, 103)),
     );
     painter.circle_filled(center, 5.9 * zoom, Color32::from_rgb(12, 17, 16));
-    painter.circle_stroke(
-        center,
-        6.5 * zoom,
-        Stroke::new(0.65 * zoom, Color32::from_rgb(116, 119, 119)),
-    );
     if connected {
         painter.circle_stroke(
             center,
