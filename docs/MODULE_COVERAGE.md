@@ -67,9 +67,11 @@ bringing the current catalog to **64 kinds**. The reference OTA VCA and legacy
 passes 72 traces at 44.1/48/96 kHz: 55,872 frames, 800,328 active output/gain
 comparisons and maximum absolute error 9.54e-7 under the frozen
 `2e-6 + 2e-6 * abs(reference)` gate. Six DSP unit tests, five public Engine tests
-and one core allocation/deallocation guard pass. Desktop callback/panel
-validation, native captures, platform CI and native macOS input/audio
-qualification remain open; this is bounded DSP evidence, not full parity.
+and one core allocation/deallocation guard pass. Dedicated desktop callback and
+panel tests, reviewed Linux normal/dark captures, and macOS ARM/Windows/Linux CI
+also have [recorded bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation).
+Native macOS/Windows window input, physical MIDI/audio I/O and complete Rack
+host/import parity remain open.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -191,7 +193,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
 | Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
 | VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
-| VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json) passes the frozen gate; local callback/panel tests pass; native captures and platform CI are release gates; native macOS/device qualification remains separate; [contract](STOCK_VCA.md). Hidden VCA-2 remains a separate target. |
+| VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
 | LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
 | Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
 | Delay | Effect | Planned | Fractional delay, interpolation, feedback stability, modulation; allocate buffers off callback |

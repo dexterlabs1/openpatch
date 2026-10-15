@@ -71,11 +71,13 @@ The shared-renderer regressions compare primitive geometry and drawing for all
 real rack instance IDs. Interaction tests cover full-width and narrow cards, preview input
 isolation and card click/drag behavior over specialized controls. Categorical
 segments use that same passive preview path and cannot edit the live patch.
-Native Linux CI captures provide visual acceptance of the shared paths. The
-linked library image documents an earlier capture; it is not evidence that the
-simplified screw-free panels and flat sockets have passed new visual checks.
-Those changes still need the normal CI capture review. macOS device playback is
-not part of these visual checks.
+On 2026-10-15, two reviews of actual captures from
+[c4fd1da Linux CI](https://github.com/dexterlabs1/openpatch/actions/runs/38778208214)
+found no new visual blocker in the screw-free panels and flat sockets. Reviewed
+scenes include the normal rack, dense studio panels, standard/compact library,
+natural-size Inspect and dark-room signal/gain emission. This records the Linux
+visual gate. Native macOS/Windows window input and physical audio/device qualification
+remain separate; these images do not establish full Rack visual or host parity.
 
 Panel print uses [Barlow SemiBold and Semi Condensed SemiBold](../crates/openpatch-desktop/assets/fonts/README.md),
 with its original SIL Open Font License bundled in the Mac application.

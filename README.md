@@ -45,11 +45,12 @@ For Apple Silicon, install stable [Rust](https://rustup.rs), Xcode Command Line 
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
-cargo build --locked --release -p openpatch-desktop
+cargo build --locked --release -p openpatch-desktop -p openpatch --bins
 python3 scripts/package_macos.py
 open dist/OpenPatch.app
 ```
 
+The bundle includes the desktop app and the CLI used for MCP attachment.
 The app opens a connected reference voice with playback paused. Press **Play** or **Space** to hear it. To run directly from source, use `cargo run --locked --release -p openpatch-desktop`.
 
 This is a **v0.2 development preview**, built from source. The local `.app` is ad-hoc signed; it is not notarized. CI also builds Linux and Windows targets; platform notes are below.
@@ -394,9 +395,10 @@ and [session controls](docs/MCP_SESSIONS.md).
 The new Stock VCA's [pinned actual-class comparison](docs/benchmarks/stock-vca-reference.json)
 passes 72 traces at three sample rates: 55,872 frames and 800,328 active
 output/gain comparisons, with maximum absolute error 9.54e-7 under the frozen
-`2e-6 + 2e-6 * abs(reference)` gate. Host tests cover live gain publication,
-shared rack/browser rendering and edit history. Analog hardware, native macOS
-controls and audio devices require separate qualification.
+`2e-6 + 2e-6 * abs(reference)` gate. Its [integration validation record](docs/STOCK_VCA.md#recorded-host-and-platform-validation)
+includes passing callback/panel tests, reviewed Linux screenshots and macOS ARM,
+Windows and Linux CI. Native macOS/Windows window input, physical MIDI/audio I/O,
+and complete Rack host/import parity remain open.
 
 macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
 

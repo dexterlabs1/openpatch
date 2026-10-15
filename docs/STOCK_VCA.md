@@ -1,11 +1,11 @@
 # Stock VCA
 
-Local qualification: the actual-source DSP oracle, six DSP unit tests, five
+Bounded qualification: the actual-source DSP oracle, six DSP unit tests, five
 public Engine tests, one core allocation guard and fifteen desktop tests pass.
-The desktop tests cover real gain publication, heap-free callbacks, shared
-thumbnails and repeated keyboard edits. Cross-platform CI and actual Linux
-captures are required release gates. Native macOS window/input/playback and
-audio-device qualification are separate outstanding work.
+Reviewed Linux captures and macOS ARM, Windows and Linux CI passes are recorded
+below. Native macOS/Windows window input and physical MIDI/audio-device
+qualification remain open, as do complete Rack host/import parity and analog
+hardware calibration.
 
 A separate `stock_vca` targets the VCV Free VCA-1 digital behavior, preserving
 `analog_vca` and legacy `gain`. This is ideal amplification and a specified CV
@@ -115,8 +115,29 @@ adapters, SDK padding, unused output metadata and recorded source/toolchain hash
 
 This is finite digital DSP coverage. It does not measure analog hardware or
 qualify native macOS controls, audio devices or playback. Public Engine, desktop
-callback, panel, native capture and cross-platform gates remain separately
-tracked; passing this oracle does not complete VCV module or host parity.
+callback, panel, native capture and cross-platform gates have their own evidence
+below; passing this oracle does not complete VCV module or host parity.
+
+## Recorded host and platform validation
+
+On 2026-10-15, [e50f342 CI](https://github.com/dexterlabs1/openpatch/actions/runs/38770399339)
+and [c903b211 CI](https://github.com/dexterlabs1/openpatch/actions/runs/38776627903)
+passed correctness/allocation tests, clippy, release builds and MCP checks on
+macOS ARM64, Windows x86-64 and Linux x86-64. Linux native window/GLSL smoke also
+passed; that step was skipped on macOS and Windows.
+
+The dedicated [callback tests](../crates/openpatch-desktop/src/stock_vca_audio_tests.rs)
+cover first-buffer and graph-crossfade heap activity, partition-independent audio
+and true gain publication with silent signals, and raw-width bypass with frozen
+gain telemetry. [Panel tests](../crates/openpatch-desktop/src/stock_vca_ui_tests.rs)
+cover actual input, precise entry, keyboard focus/history, shared rack/browser
+rendering and dark-room gain emission. The App example fixture also passes.
+Actual Linux normal/dark captures were reviewed: full gain can remain bright
+while silent signal plugs remain dark.
+
+These are bounded integration and platform-build passes. They do not establish
+native macOS/Windows window input, physical MIDI/audio I/O, analog calibration,
+complete Rack state/import compatibility or VCA-2 coverage.
 
 ## Measured callback cost
 
