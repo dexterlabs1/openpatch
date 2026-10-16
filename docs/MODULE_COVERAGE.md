@@ -138,7 +138,7 @@ per cable, including feedback cycles. Independent engine contract tests cover ro
 See [ENGINE_V2.md](ENGINE_V2.md) for exact routing, normalization and state rules.
 
 
-[Stock LFO](STOCK_LFO.md) brings the current catalog to **70 kinds**. This
+[Stock LFO](STOCK_LFO.md) brings the catalog to **70 kinds at that milestone**. This
 separate unipolar-default modulation source retains the older LFO contracts.
 Its actual-class comparison passes 393,046 frames at three sample rates with
 exact phase, reset, shared-clock, lamp and active non-sine values; maximum sine
@@ -146,6 +146,13 @@ error is 0.954 µV against the frozen 3 µV gate. Another 1,572 Rust-only safety
 frames pass separately. The shared rack/browser panel uses actual clock and RGB
 phase observations and has visible MCP cues for all six controls. Native
 interaction/device and complete host/import parity remain separate gates.
+[Stock VCO](STOCK_VCO.md) brings the catalog to **71 kinds**. Its separate
+processor targets the newer pinned VCO without changing the older oscillator.
+Source, shared panel, factory voice and tests are implemented. The 552,428-frame
+actual-class comparison passes under its explicit float32 endpoint erratum,
+with zero measured voltage/filter/tail error; platform qualification is pending. This count does not represent 71 completed
+VCV equivalents.
+
 ## Implemented functional utility contracts
 
 Five additional original models use at most two inputs and one output. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They retain mono version-1 behavior; version 2 adds the declared voice policies below. They extend the usable toolkit; they do not establish full VCV module parity.
@@ -250,11 +257,11 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 
 | Module | Group | Rust status | Next acceptance test or prerequisite |
 |---|---|---|---|
-| VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
+| VCO | Oscillator | Separate `stock_vco` implements the newer pinned processor with step/slope correction, four DC blockers, fractional sync and retained quartets; older `multi_vco` and circuit VCO preserved | All 552,428 actual-class frames and 1,956 safety frames pass under the explicit phase-endpoint erratum; zero measured voltage/filter/tail error. Native-capture/platform qualification pending; [Stock contract](STOCK_VCO.md). Older measured differences remain documented in [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). |
 | Wavetable VCO | Oscillator | Implemented bounded `wavetable_vco`: prepared custom audio tables, position/CV, pitch/FM, hard/soft sync, immutable publication and local host/heap tests | Checked 153-case family SDK comparison; power-of-two audio lengths >=32 only, source nonpositive-frequency path excluded. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
 | VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
-| LFO | Modulation | Separate `stock_lfo`: unipolar default, four waveforms, shared clock, reset, quartet retention, actual phase/mode lamps and clock observation; existing `multi_lfo` unchanged | 393,046 actual-class frames pass at three rates with exact non-sine/state and sine within 3 µV; platform/native capture, Rack state/import mapping and native-device qualification remain open. [Contract](STOCK_LFO.md). |
+| LFO | Modulation | Separate `stock_lfo`: unipolar default, four waveforms, shared clock, reset, quartet retention, actual phase/mode lamps and clock observation; existing `multi_lfo` unchanged | 393,046 actual-class frames pass at three rates with exact non-sine/state and sine within 3 µV; all118 native captures validated and three-platform CI passed in [PR11](https://github.com/dexterlabs1/openpatch/pull/11). Rack state/import mapping and native-device qualification remain open. [Contract](STOCK_LFO.md). |
 | Wavetable LFO | Modulation | Implemented bounded `wavetable_lfo`: custom-table interpolation, FM, clock/reset, offset/invert, coherent position and local host/file/preset tests | Exact LFO voltages in the checked family SDK run; integer wave lengths >=2. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | Delay | Effect | Implemented bounded `stock_delay`: clock-synchronized mono sinc delay, feedback/tone, MIX/WET, four signed depths and shared native panel | Final guarded source-defined DSP matrix, Rust/MCP checks and release build pass; source-undefined analytic SRC case has safety evidence only. Adoption microprofile is separate from callback deadlines. Three-platform CI and native captures passed; native input/device remains open; [contract](STOCK_DELAY.md) |
 | ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |

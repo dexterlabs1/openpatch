@@ -2053,6 +2053,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::random_motion_layout())
                 .expect("bundled Random motion layout");
+        } else if title == "Stock modular voice" {
+            self.rack
+                .restore_layout(&Self::stock_voice_layout())
+                .expect("bundled Stock modular voice layout");
         } else if title == "Wavetable voice" {
             self.rack
                 .restore_layout(&Self::wavetable_voice_layout())
@@ -2061,6 +2065,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn stock_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "voice":[0,0],"filter":[390,0],"amplifier":[690,0],"out":[900,0],
+            "motion":[0,420],"envelope":[390,420],"clock":[780,420],"scope":[960,420],"guide":[1110,0]
+        }})
     }
     fn annotated_drums_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -3082,6 +3092,13 @@ impl OpenPatch {
                 ))
                 .expect("valid MIDI controller voice");
                 self.replace_from_menu(patch, "MIDI controller voice");
+                ui.close();
+            }
+            if ui.button("Stock modular voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-voice.json"))
+                        .expect("valid Stock modular voice");
+                self.replace_from_menu(patch, "Stock modular voice");
                 ui.close();
             }
             if ui.button("Stock VCA voice").clicked() {
@@ -5480,6 +5497,88 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_stock_vco_fixture(&mut self) -> BTreeMap<String, openpatch_core::ModuleLightState> {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"mono","kind":"stock_vco","params":{"frequency":-12}},
+                {"id":"synced","kind":"stock_vco","params":{"frequency":-24,"linear_fm":1,"soft_sync":1}},
+                {"id":"poly","kind":"stock_vco","params":{"frequency":0,"pulse_width":0.3}},
+                {"id":"clock","kind":"stock_lfo","params":{"rate":3,"offset":0}},
+                {"id":"pitch","kind":"poly_constant","params":{"channels":5,"v1":-2,"v2":-1,"v3":0,"v4":1,"v5":2}},
+                {"id":"scope","kind":"scope","params":{"time":0.008,"trigger_enabled":0}}],
+            "cables":[
+                {"from":"clock","output":"square","to":"synced","input":"sync"},
+                {"from":"pitch","to":"poly","input":"pitch"},
+                {"from":"mono","output":"sine","to":"scope","input":"x"},
+                {"from":"poly","output":"saw","to":"scope","input":"y"}],
+            "output":"mono","output_port":"sine"})).expect("Stock VCO fixture");
+        let mut engine = patch.compile().expect("Stock VCO fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let ids = ["mono", "synced", "poly"];
+        let ports = ["sine", "triangle", "saw", "square"];
+        let taps: [_; 12] =
+            std::array::from_fn(|i| Some(engine.resolve_tap(ids[i / 4], ports[i % 4], 0).unwrap()));
+        let mut audio = vec![[0.0; 2]; 18000];
+        let mut observed = vec![[openpatch_core::TapSample::default(); 12]; audio.len()];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut observed);
+        assert!(audio.iter().flatten().all(|v| v.is_finite()));
+        assert!(audio.iter().flatten().any(|v| v.abs() > 0.1));
+        let mut lights = BTreeMap::new();
+        for id in ids {
+            let state = engine
+                .module_lights(engine.resolve_module_lights(id).unwrap())
+                .unwrap();
+            assert_eq!(state.count, 5);
+            assert_eq!(state.clock_frequency, None);
+            assert!(state.brightness.iter().flatten().all(|v| v.is_finite()));
+            lights.insert(id.to_owned(), state);
+        }
+        assert_eq!(lights["poly"].brightness[2][0], 1.0);
+        assert_eq!(lights["poly"].brightness[0][0], 0.0);
+        assert_eq!(lights["poly"].brightness[1][0], 0.0);
+        assert_eq!(lights["synced"].brightness[3][0], 1.0);
+        assert_eq!(lights["synced"].brightness[4][0], 1.0);
+        assert_eq!(lights["mono"].brightness[3][0], 0.0);
+        assert_eq!(lights["mono"].brightness[4][0], 0.0);
+        assert!(observed
+            .last()
+            .unwrap()
+            .iter()
+            .all(|sample| sample.active && sample.value.is_finite()));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 5));
+        assert!(scope.x[0]
+            .iter()
+            .any(|point| point.min.is_finite() && point.max > point.min));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],
+            "positions":{"mono":[0,0],"synced":[390,0],"poly":[780,0],
+                "scope":[0,420],"clock":[720,420],"pitch":[1110,420]}}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights.clone(), BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock VCO · mono, soft sync, and five voices".into();
+        self.status = "Actual offline Engine · phase RGB and Linear/Soft lamps · eight real jacks · five-voice Scope · no live audio".into();
+        lights
+    }
+
     fn prepare_wavetable_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
@@ -7220,6 +7319,25 @@ impl OpenPatch {
             self.title = "Stock LFO · shared library faceplate".into();
             self.status = "Shared Stock LFO panel · configured controls remain visible; preview does not invent clock or lamp telemetry".into();
         }
+        if frame == 2580 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_vco_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2598 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock VCO · actual phase RGB, Linear FM and Soft sync lamps remain emissive · no live audio".into();
+        }
+        if frame == 2614 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("stock_vco", &self.catalog));
+            self.title = "Stock VCO · shared library faceplate".into();
+            self.status = "Same Stock VCO panel in rack and browser · configured values, no invented phase or mode telemetry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7351,6 +7469,9 @@ impl OpenPatch {
                 | 2540
                 | 2556
                 | 2572
+                | 2590
+                | 2606
+                | 2622
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -7486,7 +7607,10 @@ impl OpenPatch {
                 114 => path.with_file_name("split-library.png"),
                 115 => path.with_file_name("rack-stock-lfo.png"),
                 116 => path.with_file_name("rack-stock-lfo-lights-out.png"),
-                _ => path.with_file_name("stock-lfo-library.png"),
+                117 => path.with_file_name("stock-lfo-library.png"),
+                118 => path.with_file_name("rack-stock-vco.png"),
+                119 => path.with_file_name("rack-stock-vco-lights-out.png"),
+                _ => path.with_file_name("stock-vco-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7497,18 +7621,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/118 at frame {frame}: {}",
+                "Native smoke: capture {}/121 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 118 {
+            if captures == 121 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2600, "Native screenshot timeout");
+        assert!(frame < 2660, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -8192,6 +8316,51 @@ mod project_workflow_tests {
         assert_eq!(app.patch.nodes.len(), 6);
         assert_eq!(app.patch.cables.len(), 4);
         assert!(app.status.contains("offline"));
+    }
+
+    #[test]
+    fn stock_vco_smoke_and_bundled_voice_observe_real_audio_and_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let lights = app.prepare_stock_vco_fixture();
+        assert_eq!(lights.len(), 3);
+        assert_eq!(lights["poly"].brightness[2][0], 1.0);
+        assert_eq!(lights["synced"].brightness[3][0], 1.0);
+        assert_eq!(lights["synced"].brightness[4][0], 1.0);
+        assert_eq!(app.patch.nodes.len(), 6);
+        assert_eq!(app.patch.cables.len(), 4);
+        assert!(app.status.contains("offline"));
+        let playable: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-voice.json")).unwrap();
+        for kind in [
+            "stock_lfo",
+            "stock_vco",
+            "stock_vcf",
+            "stock_vca",
+            "adsr_eg",
+        ] {
+            assert!(playable.nodes.iter().any(|node| node.kind == kind));
+        }
+        let mut engine = playable.compile().unwrap();
+        let mut audio = vec![[0.0; 2]; 48000];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|sample| sample.is_finite()));
+        assert!(audio.iter().flatten().any(|sample| sample.abs() > 0.001));
+        let original = app.revision;
+        app.replace_from_menu(playable, "Stock modular voice");
+        assert_eq!(
+            app.revision, original,
+            "The fixture is unsaved; the menu must preserve its discard guard"
+        );
+        assert!(matches!(
+            app.confirm_discard,
+            Some(PendingAction::Replace(_, _))
+        ));
+        let confirmed = app.confirm_discard.take().unwrap();
+        app.perform_action(confirmed);
+        assert!(app.revision > original);
+        assert_eq!(app.rack.layout()["zoom"], 0.75);
+        assert_eq!(app.title, "Stock modular voice");
     }
 
     #[test]

@@ -113,7 +113,10 @@ three tested rates because f32 accumulation reaches a fixed point before 1000 s;
 the acceptance records the arithmetic proof rather than claiming it ran.
 
 This is digital behavior qualification for the recorded compiler/SDK/platform
-and domain. Platform/native captures, real input/device interaction, Rack
-state/import mapping and full host parity remain separate gates. It is not a
+and domain. Both exact-head CI runs for [PR11](https://github.com/dexterlabs1/openpatch/pull/11)
+passed macOS ARM, Windows, Linux and visualizer jobs. All118 native captures
+passed integrity checks; new normal/dark/shared-browser views and changed prior
+views were reviewed. Real input/device interaction, Rack state/import mapping
+and full host parity remain separate gates. It is not a
 hardware circuit model. OpenPatch uses original Rust and original panel artwork;
 GPL reference source and its license remain in ignored comparison evidence.

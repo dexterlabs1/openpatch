@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 70)
+        self.assertEqual(len(catalog["modules"]), 71)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 70)
+        self.assertEqual(len(catalog["modules"]), 71)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 70)
+        self.assertEqual(len(catalog["modules"]), 71)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,64 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_vco_named_outputs_and_semitone_controls_through_mcp(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_vco"]
+        self.assertEqual(descriptor["inputs"], ["pitch", "fm", "sync", "pwm"])
+        self.assertEqual(descriptor["outputs"], ["sine", "triangle", "saw", "square"])
+        self.assertEqual([descriptor["params"]["frequency"][k] for k in ("min", "max", "default")], [-76, 76, 0])
+        for name in ["fm_amount", "pwm_amount"]:
+            self.assertEqual(descriptor["params"][name]["randomization"], "disabled")
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "vco", "kind": "stock_vco"}], "output": "vco", "output_port": "sine"}})
+        original = self.patch_snapshot()
+        for port in ["sine", "triangle", "saw", "square"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "vco", "port": port, "seconds": .01, "points": 256,
+                "expected_revision": original["revision"],
+            }))
+            values = [point["mean"] for point in trace["bins"]]
+            self.assertEqual(trace["summary"]["active_frames"], 480)
+            self.assertTrue(all(math.isfinite(value) for value in values))
+            self.assertGreater(max(values) - min(values), .1, port)
+        self.assertEqual(self.patch_snapshot(), original, "offline taps do not edit or save DSP history")
+        measured = self.payload(self.require_tool_success("inspect_performance"))
+        self.assertFalse(measured["supported"])
+        self.assertIsNone(measured["performance"], "headless MCP must not invent live VCO lamps")
+
+    def test_stock_vco_presets_initialize_and_atomic_control_validation(self) -> None:
+        parameters = {"frequency": -12, "pulse_width": .25, "fm_amount": -.5,
+                      "pwm_amount": .75, "linear_fm": 1, "soft_sync": 1}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2,
+            "nodes": [{"id": "vco", "kind": "stock_vco", "params": parameters}],
+            "output": "vco", "output_port": "triangle"}})
+        original = self.patch_snapshot()
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "vco"}))["preset"]
+        self.assertEqual(preset["params"], parameters)
+        self.assertNotIn("phase", preset)
+        self.require_tool_success("save_patch", {"filename": "stock-vco.json"})
+        duplicate = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "vco", "new_id": "copy"}], "cable_mode": "inputs",
+            "expected_revision": original["revision"],
+        }))
+        self.assertEqual(next(n for n in duplicate["patch"]["nodes"] if n["id"] == "copy")["params"], parameters)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], duplicate["patch"])
+        before = self.patch_snapshot()
+        for name, value in [("frequency", 77), ("frequency", -77), ("pulse_width", 0), ("linear_fm", .5), ("soft_sync", .5)]:
+            self.require_tool_error("apply_edits", {"expected_revision": before["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "vco", "parameter": "frequency", "value": 3}},
+                {"tool": "set_parameter", "arguments": {"id": "copy", "parameter": name, "value": value}},
+            ]})
+            self.assertEqual(self.patch_snapshot(), before)
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-vco.json"}))
+        self.assertEqual(loaded["patch"], original["patch"])
+        self.require_tool_success("initialize_modules", {"ids": ["vco"]})
+        current = self.patch_snapshot()
+        self.assertEqual(next(n for n in current["patch"]["nodes"] if n["id"] == "vco")["params"], {
+            "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

@@ -54,6 +54,7 @@ enum ModuleKind {
     StockVca,
     StockDelay,
     StockLfo,
+    StockVco,
     WavetableVco,
     WavetableLfo,
 }
@@ -84,6 +85,7 @@ impl ModuleKind {
             "stock_vca" => Some(Self::StockVca),
             "stock_delay" => Some(Self::StockDelay),
             "stock_lfo" => Some(Self::StockLfo),
+            "stock_vco" => Some(Self::StockVco),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
             _ => None,
@@ -115,6 +117,7 @@ impl ModuleKind {
             Self::StockVca => "stock_vca",
             Self::StockDelay => "stock_delay",
             Self::StockLfo => "stock_lfo",
+            Self::StockVco => "stock_vco",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
         }
@@ -1706,6 +1709,7 @@ mod tests {
 
     include!("split_performance_tests.rs");
     include!("stock_lfo_performance_tests.rs");
+    include!("stock_vco_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {

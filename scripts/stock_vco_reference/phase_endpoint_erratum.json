@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-16",
+  "discovery": "After attempt-002, the original independent phase-range assertion rejected equal SDK and Rust phase values of exactly1.0. Original frozen files and original attempt/results remain immutable. Corrected qualification requires complete revalidation, not filtering the retained first-failure examples.",
+  "erratum_id": "stock-vco-phase-endpoint-1",
+  "mathematical_proof": {
+    "arithmetic": "IEEE754 binary32, round to nearest ties to even",
+    "consequence": "A real-number [0,1) wrap expression can produce the upper endpoint1.0 in binary32. Negative soft-sync phase residuals make this relevant to the pinned source. Do not clamp or otherwise alter production to satisfy the old real-number assertion.",
+    "counterexample_input": "x = -2^-26, exactly representable binary32",
+    "exact_real_subtraction": "x - floor(x) = 1 - 2^-26",
+    "floor": "floor(x) = -1 exactly",
+    "midpoint_below_one": "1 - 2^-25",
+    "predecessor_of_one": "1 - 2^-24",
+    "rounding": "1 - 2^-26 is strictly above the midpoint, so binary32 subtraction rounds to exactly1.0, bits0x3f800000."
+  },
+  "minimal_change": {
+    "diagnostic_text_change": "outside [0,1): -> outside [0,1]:",
+    "new_condition": "if not 0 <= v[68+lane] <= 1:",
+    "old_condition": "if not 0 <= v[68+lane] < 1:",
+    "scope": "Independent phase-domain assertion only, for both implementations and safety. Meaningful-state finiteness remains required. The upper endpoint is allowed without epsilon; any representable value above1 remains invalid."
+  },
+  "new_validator": {
+    "path": "verify_phase_endpoint.py",
+    "sha256": "cbb6073abedbb68c3e67bb50581e0b9a2be762d8be4d946e313d077f781d1699"
+  },
+  "original_sha256": {
+    "README.md": "b54f001afa90d8488b618f7020182c56e59a072deb59f66e223d033cc53d51fe",
+    "acceptance.json": "ee813055502ae2c62e8001aeb00320ec12ee9792eb163728c744177370e9f8b8",
+    "fixtures.json": "f6fee9c3fea4f2658739b4aec9d9e8a508420385bf80f0755699cb512318464d",
+    "fixtures.py": "cb5006c1ce25312582303e3116b22b928db74679acaac59f277e3f33147219ad",
+    "verify.py": "bec6e3d3f6316377123b2773352e5968b3611151e1b575105cec16e33816379e"
+  },
+  "primary_source": {
+    "commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "operation": "phase -= simd::floor(phase); there is no additional clamp after this operation.",
+    "path": "src/VCO.cpp",
+    "relevant_lines": {
+      "final_phase_wrap": [
+        594
+      ],
+      "soft_sync_direction_and_end_phase": [
+        552,
+        553,
+        554,
+        555,
+        556
+      ],
+      "sync_phase_wrap": [
+        532
+      ]
+    },
+    "repository": "https://github.com/VCVRack/Fundamental",
+    "sha256": "3745dd5e7fafd3b4260fed6ecdb19fb19f1573943cc5f0b1d55fa30fd2efe67d",
+    "url": "https://github.com/VCVRack/Fundamental/blob/10dd0160c664770910e5584b7b00498cc48d9ddd/src/VCO.cpp#L594"
+  },
+  "qualification_statement": "Qualification under the frozen stock VCO matrix plus this versioned source-domain erratum. This does not turn the original declaration or its failed attempt into an original-declaration pass.",
+  "revalidation_policy": [
+    "Preserve original five frozen files, attempt-002 evidence, failed original result and all original hashes.",
+    "Verify original acceptance/generator/manifest/validator hashes and retained production/source/binary/input/trace closure before revalidation.",
+    "Decompress retained traces to temporary plain files, verify their uncompressed hashes against retained numerical evidence, then invoke the new validator with original input paths and all original rows.",
+    "Revalidate all552428 reference frames, all1956 safety frames, all original checkpoints and1024 kernel fields. Retain new validator/erratum hashes and the complete new result separately.",
+    "No DSP or SDK rerun is required when source, inputs, binaries and retained trace hashes are unchanged; this is revalidation of existing execution evidence.",
+    "A passing result must identify this erratum explicitly; the original acceptance result stays failed."
+  ],
+  "schema": 1,
+  "unchanged_requirements": [
+    "Exact f32-bit cross-implementation equality for all16 phase fields on every reference frame, including phases equal1.0.",
+    "All other exact state/count/cursor/divider/lamp gates remain unchanged.",
+    "Kernel absolute tolerance2e-7, normalized filter/tail tolerance5e-5, active output tolerance5e-4V, relative tolerance0 remain unchanged.",
+    "All frozen fixtures, every startup and observed frame, full-tail checkpoints and independent anchors remain unchanged; no sample/case/checkpoint exclusions.",
+    "SDK inactive/disconnected output storage exclusion and Rust positive-zero padding contract remain exactly as originally declared.",
+    "Safety is Rust-only and makes no SDK equivalence claim."
+  ]
+}

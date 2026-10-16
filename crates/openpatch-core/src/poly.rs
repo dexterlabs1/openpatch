@@ -27,6 +27,7 @@ use crate::stock_delay::{self, StockDelay};
 use crate::stock_lfo::{self, StockLfo};
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
+use crate::stock_vco::{self, StockVco};
 use crate::studio_fx::{self, StudioFx};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
@@ -109,6 +110,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_vcf"
                 | "stock_vca"
                 | "stock_delay"
+                | "stock_vco"
                 | "stock_lfo"
                 | "random_values"
                 | "random"
@@ -157,6 +159,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         return ports.iter().position(|port| *port == name);
     }
     match kind {
+        "stock_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
@@ -247,6 +250,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         gates::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_vco" {
+        stock_vco::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -404,6 +409,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "seq3" {
         sequence::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_vco" {
+        stock_vco::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -592,6 +602,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
+    if kind == "stock_vco" {
+        stock_vco::annotate(module);
+    }
     if kind == "stock_lfo" {
         stock_lfo::annotate(module);
     }
@@ -672,6 +685,7 @@ enum Model {
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
+    StockVco(Box<StockVco>),
     MultiVco(Box<MultiVco>),
     Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
@@ -771,6 +785,9 @@ impl Model {
         }
         if node.kind == "seq3" {
             return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
+        }
+        if node.kind == "stock_vco" {
+            return Ok(Self::StockVco(Box::new(StockVco::build(node, rate)?)));
         }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
@@ -976,7 +993,7 @@ impl PolyEngine {
             for tap in taps.iter().flatten() {
                 if matches!(
                     node.model,
-                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_)
+                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
                 ) && (node.output_start..node.output_start + node.output_count).contains(tap)
                 {
                     node.connected_mask |= 1 << (tap - node.output_start);
@@ -1067,6 +1084,7 @@ impl PolyEngine {
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
+            Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
             Some(Model::Sum(s)) => Some(s.lights()),
@@ -1377,6 +1395,7 @@ impl PolyEngine {
             Model::ColoredNoise(s) => s.reset_state(),
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
+            Model::StockVco(vco) => vco.initialize_state(),
             Model::Wavetable(oscillator) => oscillator.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
@@ -1536,6 +1555,7 @@ impl PolyEngine {
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
+                    "stock_vco" => stock_vco::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
@@ -1648,7 +1668,7 @@ impl PolyEngine {
             let node = &mut nodes[edge.source_node];
             if matches!(
                 node.model,
-                Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_)
+                Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
             ) {
                 node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
             }
@@ -1657,7 +1677,7 @@ impl PolyEngine {
             for node in &mut nodes {
                 if matches!(
                     node.model,
-                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_)
+                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
                 ) && (node.output_start..node.output_start + node.output_count).contains(&output)
                 {
                     node.base_connected_mask |= 1 << (output - node.output_start);
@@ -2119,6 +2139,20 @@ impl PolyEngine {
                             [node.output_start..node.output_start + colored_noise::OUTPUTS.len()],
                     );
                 }
+                Model::StockVco(vco) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    vco.process(
+                        &inputs,
+                        node.connected_mask,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + stock_vco::OUTPUTS.len()],
+                    );
+                }
                 Model::StockLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2516,6 +2550,7 @@ impl PolyEngine {
                 (Model::ColoredNoise(s), Model::ColoredNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
+                (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::Split(s), Model::Split(old)) => s.adopt(old),
                 (Model::Merge(m), Model::Merge(old)) => m.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),

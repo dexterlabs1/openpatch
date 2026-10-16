@@ -30,6 +30,9 @@ mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod stereo_output;
 mod stock_delay;
+mod stock_vco;
+#[doc(hidden)]
+pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
 mod stock_lfo;
 #[doc(hidden)]
 pub use stock_lfo::{StockLfoProbe, StockLfoSnapshot};
@@ -354,6 +357,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_lfo::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_vco::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
