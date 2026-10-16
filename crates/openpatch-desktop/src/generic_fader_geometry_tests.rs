@@ -239,6 +239,11 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
     // Exact continuous/choice counts prevent missing paint, accidental fallback
     // to a thumb, or missing actual response registration from passing.
     for (kind, faders, choices) in [
+        ("gate", 2, &[][..]),
+        ("attenuverter", 2, &[][..]),
+        ("white_noise", 2, &[][..]),
+        ("oscillator", 2, &[][..]),
+        ("lfo", 3, &[][..]),
         ("seq3", 24, &[][..]),
         ("stereo_delay", 10, &[][..]),
         ("analog_vco", 2, &["waveform"][..]),
@@ -313,6 +318,24 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                     );
                 }
                 for (surface_name, surface) in [("rack", &rack), ("browser", &browser)] {
+                    // Generic stacks need room for the installed font between
+                    // the preceding numeric well and the next fader. Check real
+                    // text bounds with two logical pixels of clear space.
+                    if matches!(kind, "gate" | "attenuverter" | "white_noise" | "oscillator" | "lfo") {
+                        for text in surface.texts.iter().filter(|text| {
+                            text.color == INK
+                                && rack.controls.iter().any(|control| {
+                                    text.text == parameter_label(&control.name)
+                                })
+                        }) {
+                            for well in &surface.readouts {
+                                assert!(
+                                    !well.expand2(vec2(0.0, 2.0 * surface.scale)).intersects(text.bounds),
+                                    "{context} {surface_name}: parameter label {text:?} touches numeric well {well:?}"
+                                );
+                            }
+                        }
+                    }
                     for (index, thumb) in surface.thumbs.iter().enumerate() {
                         assert!(
                             surface.bounds.contains_rect(*thumb),

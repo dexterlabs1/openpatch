@@ -3300,6 +3300,7 @@ impl Rack {
                     }
                     continue;
                 }
+                let mut label_gap = 13.0;
                 let (knob_position, radius) = if let Some((row, column)) =
                     sequence_cell(name).filter(|_| node.kind == "seq3")
                 {
@@ -3397,6 +3398,12 @@ impl Rack {
                 } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf") {
                     voice_parameter_position(index, width)
                 } else {
+                    // Stacked generic labels share the space between the prior
+                    // numeric well and this fader. Keep the larger print below
+                    // that well without moving controls or their hit regions.
+                    if matches!(count, 2 | 3) && index > 0 {
+                        label_gap = 3.0;
+                    }
                     parameter_position(count, index, width)
                 };
                 let center = point(knob_position.x, knob_position.y);
@@ -3806,7 +3813,7 @@ impl Rack {
                 }
                 crate::panel_skin::control_label(
                     &painter,
-                    center - vec2(0.0, (radius + 13.0) * self.zoom),
+                    center - vec2(0.0, (radius + label_gap) * self.zoom),
                     if node.kind == "seq3" {
                         ""
                     } else if node.kind == "random" {
