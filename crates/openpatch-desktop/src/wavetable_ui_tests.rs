@@ -21,7 +21,7 @@ fn wavetable_all_controls_have_revision_guarded_numeric_entry() {
             let ctx = egui::Context::default();
             let mut rack = Rack::default();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-            let position = wavetable_parameter_position(index) + vec2(24.0, 12.0 + 27.0);
+            let position = wavetable_parameter_position(index) + vec2(24.0, 12.0 + 33.0);
             frame_revision_state(
                 &ctx,
                 &mut rack,
@@ -200,7 +200,7 @@ fn open_wavetable_rate_editor(raw: f32, clocked: bool) -> ParameterEdit {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-    let position = wavetable_parameter_position(0) + vec2(24.0, 12.0 + 27.0);
+    let position = wavetable_parameter_position(0) + vec2(24.0, 12.0 + 33.0);
     frame_revision_state(
         &ctx,
         &mut rack,

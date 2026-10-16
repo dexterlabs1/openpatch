@@ -1,7 +1,8 @@
 // Shared rack/browser faceplate. Only a coherent DSP snapshot illuminates gains.
 const STOCK_VCA_PARAMS: [&str; 2] = ["level", "response"];
-fn stock_vca_slider_rect() -> Rect {
-    Rect::from_min_max(pos2(25.0, 109.0), pos2(55.0, 273.0))
+const STOCK_VCA_KNOB_BODY: f32 = 27.0;
+fn stock_vca_knob_rect() -> Rect {
+    Rect::from_center_size(pos2(40.0, 202.0), Vec2::splat(60.0))
 }
 fn stock_vca_value_rect() -> Rect {
     Rect::from_center_size(pos2(40.0, 295.0), vec2(54.0, 22.0))
@@ -68,7 +69,7 @@ impl Rack {
         let painter = ui.painter().clone();
         let font = |size| crate::panel_skin::print_font(ui.ctx(), size * z);
         let accent = Color32::from_rgb(86, 181, 137);
-        let mut level = node
+        let level = node
             .params
             .get("level")
             .copied()
@@ -77,12 +78,13 @@ impl Rack {
         let response_mode = node.params.get("response").copied().unwrap_or(1.0);
         let mut action = None;
         painter.text(
-            p(40.0, 91.0),
+            p(40.0, 158.0),
             Align2::CENTER_CENTER,
             "LEVEL",
             font(10.0),
             INK,
         );
+        painter.text(p(40.0, 248.0), Align2::CENTER_CENTER, "0–100%", font(8.0), MUTED);
         painter.text(
             p(118.0, 91.0),
             Align2::CENTER_CENTER,
@@ -98,102 +100,72 @@ impl Rack {
             MUTED,
         );
 
-        // Use global node+parameter identity: UI auto IDs change after graph edits.
-        let id = egui::Id::new(("stock-vca", &node.id, "level"));
-        let slider_rect = screen(stock_vca_slider_rect());
-        let slider = ui.interact(slider_rect, id, Sense::click_and_drag());
-        slider.widget_info(|| {
+        // Global node+parameter identity survives graph reorder and culling.
+        let knob_rect = screen(stock_vca_knob_rect());
+        let knob = ui.interact(
+            knob_rect,
+            egui::Id::new(("stock-vca-knob", &node.id, "level")),
+            Sense::click_and_drag(),
+        );
+        knob.widget_info(|| {
             egui::WidgetInfo::slider(
                 ui.is_enabled(),
                 f64::from(level),
                 format!("{} level", node.id),
             )
         });
-        if slider.drag_started()
-            || (slider.is_pointer_button_down_on()
-                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
+        let input_enabled = ui.is_enabled()
+            && self.shortcuts_enabled
+            && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && !egui::Popup::is_any_open(ui.ctx());
+        let input = self.parameter_knob_input(ui, &knob, level, input_enabled);
+        if input_enabled
+            && (knob.is_pointer_button_down_on()
+                || knob.clicked_by(PointerButton::Primary)
+                || knob.drag_started_by(PointerButton::Primary))
         {
             self.select_primary(node.id.clone());
-            slider.request_focus();
-            if ui.data(|d| d.get_temp::<String>(id)).is_none() {
-                self.gesture = self.gesture.wrapping_add(1);
-                ui.data_mut(|d| {
-                    d.insert_temp(id, format!("rack-stock-vca-slider-{}", self.gesture))
-                });
-            }
         }
-        let old_level = level;
-        if (slider.dragged() || slider.is_pointer_button_down_on()) && ui.is_enabled() {
-            if let Some(pointer) = slider.interact_pointer_pos() {
-                level = ((slider_rect.bottom() - pointer.y) / slider_rect.height()).clamp(0.0, 1.0);
+        let keyboard_step = ui.input(|i| {
+            if i.modifiers.command || i.modifiers.ctrl {
+                if i.modifiers.shift { 0.0001 } else { 0.001 }
+            } else if i.modifiers.shift {
+                0.1
+            } else {
+                0.01
             }
-        }
-        if slider.double_clicked() {
-            level = 1.0;
-        }
-        if slider.has_focus() {
-            // Arrow edits belong to this vertical fader; keep ordinary Tab
-            // traversal available, matching egui's built-in slider policy.
-            ui.ctx().memory_mut(|memory| {
-                memory.set_focus_lock_filter(
-                    slider.id,
-                    egui::EventFilter {
-                        vertical_arrows: true,
-                        ..Default::default()
-                    },
-                );
-            });
-            let step = ui.input(|i| if i.modifiers.shift { 0.1 } else { 0.01 });
-            if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                level = (level + step).min(1.0);
-            }
-            if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                level = (level - step).max(0.0);
-            }
-        }
-        if level != old_level || slider.double_clicked() {
-            self.select_primary(node.id.clone());
-            let mut args = json!({"id":node.id,"parameter":"level","value":level,"expected_revision":revision});
-            if !slider.double_clicked() && (slider.dragged() || slider.is_pointer_button_down_on())
-            {
-                if let Some(group) = ui.data(|d| d.get_temp::<String>(id)) {
-                    args["history_group"] = json!(group);
-                }
+        });
+        let next = if input.reset {
+            Some(1.0)
+        } else if let Some(high) = input.boundary {
+            Some(if high { 1.0 } else { 0.0 })
+        } else if input.nudge != 0 {
+            Some((level + input.nudge as f32 * keyboard_step).clamp(0.0, 1.0))
+        } else {
+            input.normalized
+        };
+        if let Some(value) = next.filter(|value| *value != level) {
+            let mut args = json!({"id":node.id,"parameter":"level","value":value,"expected_revision":revision});
+            if let Some(group) = input.history_group {
+                args["history_group"] = json!(group);
             }
             action = Some(RackAction::Command("set_parameter", args));
         }
-        if slider.drag_stopped() || ui.input(|i| i.pointer.button_released(PointerButton::Primary))
-        {
-            ui.data_mut(|d| d.remove::<String>(id));
-        }
-        if slider.secondary_clicked() {
+        if input_enabled && knob.secondary_clicked() {
             self.open_precision_editor(
                 stock_vca_edit(node, 0, revision),
                 screen(stock_vca_value_rect()),
             );
         }
-        slider.on_hover_text("Level 0–100%. Drag vertically; arrows adjust 1%, Shift adjusts 10%. Double-click resets to 100%. Right-click or click the readout for exact entry.");
-        let track = Rect::from_min_max(p(36.0, 109.0), p(44.0, 273.0));
-        painter.rect_filled(track, 4.0 * z, Color32::from_rgb(52, 61, 58));
-        for tick in 0..=4 {
-            let y = 273.0 - tick as f32 * 41.0;
-            painter.line_segment([p(19.0, y), p(25.0, y)], Stroke::new(0.8 * z, MUTED));
-        }
-        // The configured fader is reflective; it never claims to be live gain.
-        let thumb = Rect::from_center_size(p(40.0, 273.0 - level * 164.0), vec2(24.0, 9.0) * z);
-        painter.rect_filled(thumb, 2.0 * z, Color32::from_rgb(222, 226, 212));
-        painter.rect_stroke(
-            thumb,
-            2.0 * z,
-            Stroke::new(z, Color32::from_rgb(76, 105, 90)),
-            egui::StrokeKind::Inside,
-        );
-        painter.line_segment(
-            [
-                thumb.left_center() + vec2(4.0 * z, 0.0),
-                thumb.right_center() - vec2(4.0 * z, 0.0),
-            ],
-            Stroke::new(z, INK),
+        knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text("Saved level 0–100%. Drag vertically; Ctrl/Cmd for fine adjustment. Arrow keys adjust, Home/End choose limits. Double-click resets to 100%. Right-click or click the readout for exact entry. The adjacent columns show actual gain, not audio amplitude.");
+        crate::panel_skin::signal_atlas_rotary(
+            &painter,
+            knob_rect.center(),
+            level,
+            knob.hovered() || knob.dragged() || knob.has_focus(),
+            STOCK_VCA_KNOB_BODY,
+            z,
         );
 
         let state = self
@@ -278,6 +250,25 @@ impl Rack {
         {
             consume_parameter_activation(ui.ctx());
             self.open_precision_editor(stock_vca_edit(node, 0, revision), value_rect);
+        }
+        if let Some(cue) = self.construction_animation.parameter(&node.id, &node.kind, "level").cloned() {
+            self.register_construction_anchor(
+                ui,
+                node,
+                "level",
+                crate::construction_motion::Anchor {
+                    rect: knob_rect.union(value_rect),
+                    old_text: format!("{:.0}%", cue.old * 100.0),
+                    new_text: format!("{:.0}%", cue.new * 100.0),
+                    marker: Some(crate::construction_motion::Marker::Rotary {
+                        center: knob_rect.center(),
+                        radius: 30.0 * z,
+                        old: cue.old.clamp(0.0, 1.0),
+                        new: cue.new.clamp(0.0, 1.0),
+                    }),
+                },
+                &[knob.id, value.id],
+            );
         }
         value.on_hover_text(
             "Click for exact level in percent or expressions. Tab applies and moves to response.",

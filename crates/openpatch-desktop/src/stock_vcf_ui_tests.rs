@@ -101,13 +101,13 @@ fn stock_vcf_exact_units_and_bounds_round_trip_to_source_parameters() {
     }
 }
 #[test]
-fn stock_vcf_all_six_sliders_accept_real_pointer_drags_and_group_history() {
+fn stock_vcf_all_six_rotaries_accept_relative_pointer_drags_and_group_history() {
     for (i, parameter) in STOCK_VCF_PARAMS.iter().enumerate() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
         let patch = patch();
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-        let start = at(stock_vcf_slider_rect(i).center());
+        let start = at(stock_vcf_knob_rect(i).center());
         frame_revision_state(
             &ctx,
             &mut rack,
@@ -118,7 +118,7 @@ fn stock_vcf_all_six_sliders_accept_real_pointer_drags_and_group_history() {
             true,
             29,
         );
-        let end = start + vec2(if i >= 3 { -22.0 } else { 22.0 }, 0.0);
+        let end = start + vec2(0.0, if i >= 3 { 15.0 } else { -15.0 });
         let action = frame_revision_state(
             &ctx,
             &mut rack,
@@ -131,19 +131,257 @@ fn stock_vcf_all_six_sliders_accept_real_pointer_drags_and_group_history() {
         )
         .0;
         let Some(RackAction::Command("set_parameter", args)) = action else {
-            panic!("slider {i}")
+            panic!("rotary {i}")
         };
         assert_eq!(args["parameter"], *parameter);
         assert_eq!(args["expected_revision"], 29);
         assert!(args["history_group"]
             .as_str()
             .unwrap()
-            .starts_with("rack-stock-vcf-slider-"));
+            .starts_with("rack-fader-"));
         let value = args["value"].as_f64().unwrap();
         assert!(
             if i >= 3 { value < 0.0 } else { value > 0.0 },
             "{parameter} = {value}"
         );
+    }
+}
+#[test]
+fn stock_vcf_rotary_center_click_fine_keys_and_modal_guard_keep_units() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    patch.nodes[0].params.insert("resonance".into(), 0.5);
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+    let center = at(stock_vcf_knob_rect(1).center());
+    let press = frame_revision_state(&ctx, &mut rack, &patch, 1.0,
+        vec![egui::Event::PointerMoved(center), button(center, true)], true, true, 29).0;
+    assert!(press.is_none(), "center press must not write a new resonance");
+    let release = frame_revision_state(&ctx, &mut rack, &patch, 1.1,
+        vec![button(center, false)], true, true, 29).0;
+    assert!(release.is_none(), "center click must not set an absolute value");
+    let knob_id = egui::Id::new(("stock-vcf-knob", "filter", "resonance"));
+    assert!(ctx.memory(|memory| memory.has_focus(knob_id)));
+    let end = frame_revision_state(&ctx, &mut rack, &patch, 1.2,
+        vec![key(egui::Key::End, false)], true, true, 29).0;
+    assert!(matches!(end, Some(RackAction::Command("set_parameter", ref args))
+        if args["parameter"] == "resonance" && args["value"] == 1.0));
+    let home = frame_revision_state(&ctx, &mut rack, &patch, 1.3,
+        vec![key(egui::Key::Home, false)], true, true, 29).0;
+    assert!(matches!(home, Some(RackAction::Command("set_parameter", ref args))
+        if args["value"] == 0.0));
+    assert!(ctx.memory(|memory| memory.has_focus(knob_id)));
+
+    rack.set_shortcuts_enabled(false);
+    let blocked = frame_revision_state(&ctx, &mut rack, &patch, 1.4,
+        vec![egui::Event::PointerMoved(center), button(center, true)], true, true, 29).0;
+    assert!(blocked.is_none());
+    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.5,
+        vec![egui::Event::PointerMoved(center - vec2(0.0, 30.0))], true, true, 29).0.is_none());
+    frame_revision_state(&ctx, &mut rack, &patch, 1.6,
+        vec![button(center - vec2(0.0, 30.0), false)], true, true, 29);
+}
+
+#[test]
+fn stock_vcf_focused_arrow_edits_do_not_pan_and_idle_arrows_still_pan() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    patch.nodes[0].params.insert("resonance".into(), 0.5);
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+    let center = at(stock_vcf_knob_rect(1).center());
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![egui::Event::PointerMoved(center), button(center, true)],
+        true,
+        true,
+        29,
+    );
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![button(center, false)],
+        true,
+        true,
+        29,
+    );
+    let knob_id = egui::Id::new(("stock-vcf-knob", "filter", "resonance"));
+    assert!(ctx.memory(|memory| memory.has_focus(knob_id)));
+    for (index, modifiers) in [egui::Modifiers::NONE, egui::Modifiers::CTRL]
+        .into_iter()
+        .enumerate()
+    {
+        let time = 2.0 + index as f64;
+        let held_pan = rack.pan;
+        let held_viewport = rack.viewport;
+        let arrow = egui::Event::Key {
+            key: egui::Key::ArrowDown,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        };
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            time,
+            vec![arrow],
+            true,
+            true,
+            30 + index as u64,
+        )
+        .0;
+        let Some(RackAction::Command("set_parameter", args)) = action else {
+            panic!("focused resonance rotary must accept arrow edit {index}")
+        };
+        assert_eq!(args["parameter"], "resonance");
+        assert_eq!(args["expected_revision"], 30 + index as u64);
+        let next = args["value"].as_f64().unwrap() as f32;
+        assert!(next < patch.nodes[0].params["resonance"]);
+        assert_eq!(rack.pan, held_pan, "focused arrow moved the rack camera");
+        assert_eq!(rack.viewport, held_viewport);
+        assert!(ctx.memory(|memory| memory.has_focus(knob_id)));
+        patch.nodes[0].params.insert("resonance".into(), next);
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            time + 0.1,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowDown,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers,
+            }],
+            true,
+            true,
+            31 + index as u64,
+        );
+        assert_eq!(rack.pan, held_pan, "releasing the arrow moved the rack camera");
+    }
+    ctx.memory_mut(|memory| memory.surrender_focus(knob_id));
+    frame_revision_state(&ctx, &mut rack, &patch, 4.0, vec![], true, true, 32);
+    assert!(!ctx.memory(|memory| memory.has_focus(knob_id)));
+    let idle_pan = rack.pan;
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        4.1,
+        vec![key(egui::Key::ArrowRight, false)],
+        true,
+        true,
+        32,
+    );
+    assert!(rack.pan.x < idle_pan.x, "idle right arrow must still pan the rack");
+}
+
+#[test]
+fn stock_vcf_signed_depth_ctrl_drag_is_fine_and_modifier_release_stays_relative() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+    let center = at(stock_vcf_knob_rect(3).center());
+    let fine = egui::Modifiers { ctrl: true, ..Default::default() };
+    let press = egui::Event::PointerButton {
+        pos:center, button:PointerButton::Primary, pressed:true, modifiers:fine,
+    };
+    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.0,
+        vec![egui::Event::PointerMoved(center), press], true, true, 29).0.is_none());
+    let carrier = |modifiers| egui::Event::Key { key:egui::Key::F12,
+        physical_key:None, pressed:false, repeat:false, modifiers };
+    let fine_end = center - vec2(0.0, 15.0);
+    let fine_action = frame_revision_state(&ctx, &mut rack, &patch, 1.1,
+        vec![egui::Event::PointerMoved(fine_end), carrier(fine)], true, true, 29).0;
+    let Some(RackAction::Command("set_parameter", args)) = fine_action else {
+        panic!("fine depth movement must edit its raw parameter")
+    };
+    assert_eq!(args["parameter"], "cutoff_cv_amount");
+    assert!((args["value"].as_f64().unwrap() - 0.02).abs() < 1e-6);
+    let group = args["history_group"].clone();
+    patch.nodes[0].params.insert("cutoff_cv_amount".into(), args["value"].as_f64().unwrap() as f32);
+    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.2,
+        vec![egui::Event::PointerMoved(fine_end), carrier(egui::Modifiers::NONE)],
+        true, true, 29).0.is_none());
+    let next = fine_end - vec2(0.0, 15.0);
+    let resumed = frame_revision_state(&ctx, &mut rack, &patch, 1.3,
+        vec![egui::Event::PointerMoved(next)], true, true, 29).0;
+    let Some(RackAction::Command("set_parameter", args)) = resumed else {
+        panic!("normal movement must continue the same depth gesture")
+    };
+    assert!((args["value"].as_f64().unwrap() - 0.22).abs() < 1e-6);
+    assert_eq!(args["history_group"], group);
+    patch.nodes[0].params.insert("cutoff_cv_amount".into(), args["value"].as_f64().unwrap() as f32);
+    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.4,
+        vec![button(next, false)], true, true, 29).0.is_none());
+}
+
+#[test]
+fn stock_vcf_drive_rotary_double_click_restores_nominal_one_hundred_percent() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    patch.nodes[0].params.insert("drive".into(), 0.5);
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
+    let center = at(stock_vcf_knob_rect(2).center());
+    let mut actions = vec![];
+    for (time, pressed) in [(1.0, true), (1.1, false), (1.2, true), (1.3, false)] {
+        actions.push(frame_revision_state(&ctx, &mut rack, &patch, time,
+            vec![egui::Event::PointerMoved(center), button(center, pressed)],
+            true, true, 29).0);
+    }
+    assert!(actions[..3].iter().all(Option::is_none), "single click never jumps");
+    let Some(RackAction::Command("set_parameter", args)) = actions.pop().unwrap() else {
+        panic!("double click must reset drive")
+    };
+    assert_eq!(args["parameter"], "drive");
+    assert_eq!(args["value"], 0.0);
+    assert_eq!(args["expected_revision"], 29);
+    assert_eq!(stock_vcf_readout(2, 0.0), "100%");
+}
+
+#[test]
+fn stock_vcf_accepted_edits_have_six_angular_construction_anchors() {
+    use crate::construction_motion::{Marker, MotionMode};
+    for (index, parameter) in STOCK_VCF_PARAMS.iter().enumerate() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch();
+        let mut after = before.clone();
+        let old = stock_vcf_default(index);
+        let new = if index == 0 { 0.8 } else { 0.5 };
+        after.nodes[0].params.insert((*parameter).into(), new);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let now = std::time::Instant::now();
+        let receipt = json!({"plan_id":19,"completed_steps":1,"last_revision":10,"current_revision":10,
+            "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":19,
+            "step_index":0,"before_revision":9,"revision":10,"label":"Shape filter",
+            "new_modules":[],"new_cables":[],"parameter_changes":[{"id":"filter",
+            "kind":"stock_vcf","parameter":parameter,"old_effective":old,"new_effective":new}]}});
+        rack.observe_construction_transition_at(
+            &before, &after, 9, 10, &receipt, MotionMode::Full, now,
+        );
+        rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+        let (action, _) = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+        assert!(action.is_none());
+        let anchor = &rack.construction_anchors[&("filter".into(), (*parameter).into())];
+        assert_eq!(anchor.old_text, stock_vcf_readout(index, old));
+        assert_eq!(anchor.new_text, stock_vcf_readout(index, new));
+        let Some(Marker::Rotary { center, radius, old: from, new: to }) = anchor.marker.as_ref() else {
+            panic!("{parameter}: accepted edit needs angular cue");
+        };
+        assert!(center.distance(at(stock_vcf_knob_rect(index).center())) < 0.001);
+        assert!((*radius - 23.0 * rack.zoom).abs() < 0.001);
+        assert!(from < to, "{parameter}: saved value moves clockwise");
+        assert!(anchor.rect.contains_rect(Rect::from_center_size(*center, Vec2::splat(46.0))));
     }
 }
 #[test]
@@ -233,7 +471,7 @@ fn stock_vcf_tab_order_covers_six_controls_and_wraps_both_directions() {
 fn stock_vcf_controls_and_six_jacks_are_inside_and_separate() {
     let bounds = Rect::from_min_size(Pos2::ZERO, vec2(panel_width("stock_vcf"), PANEL_HEIGHT));
     let controls = (0..6)
-        .flat_map(|i| [stock_vcf_slider_rect(i), stock_vcf_value_rect(i)])
+        .flat_map(|i| [stock_vcf_knob_rect(i), stock_vcf_value_rect(i)])
         .collect::<Vec<_>>();
     for (i, a) in controls.iter().enumerate() {
         assert!(bounds.contains_rect(*a));
@@ -278,7 +516,7 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
         .iter()
         .find(|m| m["kind"] == "stock_vcf")
         .unwrap();
-    for scale in [0.42, 0.85, 1.0] {
+    for scale in [0.25, 0.35, 0.5, 1.0] {
         let mut surfaces = vec![];
         for browser in [false, true] {
             let ctx = egui::Context::default();
@@ -307,6 +545,15 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
                     frame_output(&ctx, &mut rack, &patch(), 0.0, vec![]).1
                 };
                 drawn.clear();
+                fn count_faces(shape: &egui::Shape) -> usize {
+                    match shape {
+                        egui::Shape::Vec(shapes) => shapes.iter().map(count_faces).sum(),
+                        egui::Shape::Circle(circle) if circle.fill == Color32::from_rgb(56, 59, 57) => 1,
+                        _ => 0,
+                    }
+                }
+                let rotary_faces: usize = output.shapes.iter().map(|shape| count_faces(&shape.shape)).sum();
+                assert_eq!(rotary_faces, 6, "{scale} browser={browser}: six actual rotary faces");
                 for shape in output.shapes {
                     texts(&shape.shape, &mut drawn);
                 }
@@ -316,14 +563,15 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
                 "CUTOFF",
                 "RESONANCE",
                 "DRIVE",
-                "CV DEPTH",
+                "FREQ CV DEPTH",
+                "RES CV DEPTH",
+                "DRIVE CV DEPTH",
                 "FREQ CV",
                 "RES CV",
                 "DRIVE CV",
                 "IN",
                 "LP",
                 "HP",
-                "8 Hz – 22 kHz",
                 "262 Hz",
                 "0%",
                 "100%",
@@ -333,6 +581,21 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
                     drawn.iter().any(|(t, _)| t == required),
                     "{scale} browser={browser}: missing {required}"
                 );
+            }
+            let first_caption = drawn.iter().find(|(label, _)| label == "CUTOFF").unwrap().1;
+            let header_divider_y = bounds.top() + 65.0 * scale;
+            assert!(first_caption.top() >= header_divider_y + 1.0 * scale,
+                "{scale} browser={browser}: cutoff caption touches the header divider");
+            for index in 0..6 {
+                let local = stock_vcf_knob_rect(index);
+                let hit = Rect::from_min_max(
+                    bounds.min + local.min.to_vec2() * scale,
+                    bounds.min + local.max.to_vec2() * scale,
+                );
+                for (label, text_rect) in &drawn {
+                    assert!(!hit.intersects(*text_rect),
+                        "{scale} browser={browser}: {label:?} overlaps rotary {index} hit target");
+                }
             }
             for (i, (label, a)) in drawn.iter().enumerate() {
                 assert!(
@@ -365,7 +628,7 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
 }
 
 #[test]
-fn stock_vcf_held_slider_keeps_node_and_history_identity_across_graph_edits() {
+fn stock_vcf_held_rotary_keeps_node_and_history_identity_across_graph_edits() {
     for change in ["remove", "insert", "reorder"] {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
@@ -377,7 +640,7 @@ fn stock_vcf_held_slider_keeps_node_and_history_identity_across_graph_edits() {
         rack.positions.insert("earlier".into(), pos2(0.0, 0.0));
         rack.positions.insert("held".into(), pos2(330.0, 0.0));
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-        let start = at(stock_vcf_slider_rect(0).center() + vec2(330.0, 0.0));
+        let start = at(stock_vcf_knob_rect(0).center() + vec2(330.0, 0.0));
         frame_revision_state(
             &ctx,
             &mut rack,
@@ -388,7 +651,7 @@ fn stock_vcf_held_slider_keeps_node_and_history_identity_across_graph_edits() {
             true,
             29,
         );
-        let moved = start + vec2(15.0, 0.0);
+        let moved = start - vec2(0.0, 15.0);
         let before = frame_revision_state(
             &ctx,
             &mut rack,
@@ -424,18 +687,18 @@ fn stock_vcf_held_slider_keeps_node_and_history_identity_across_graph_edits() {
             &mut rack,
             &patch,
             1.2,
-            vec![egui::Event::PointerMoved(moved + vec2(15.0, 0.0))],
+            vec![egui::Event::PointerMoved(moved - vec2(0.0, 15.0))],
             true,
             true,
             30,
         )
         .0;
         let Some(RackAction::Command("set_parameter", after)) = after else {
-            panic!("held slider lost after {change}")
+            panic!("held rotary lost after {change}")
         };
         assert_eq!(
             after["id"], "held",
-            "active slider transferred after {change}"
+            "active rotary transferred after {change}"
         );
         assert_eq!(
             after["parameter"], "frequency",
@@ -451,7 +714,7 @@ fn stock_vcf_held_slider_keeps_node_and_history_identity_across_graph_edits() {
 }
 
 #[test]
-fn stock_vcf_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
+fn stock_vcf_deleted_held_rotary_never_transfers_drag_to_remaining_filter() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
@@ -462,7 +725,7 @@ fn stock_vcf_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     rack.positions.insert("held".into(), pos2(0.0, 0.0));
     rack.positions.insert("remaining".into(), pos2(330.0, 0.0));
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-    let start = at(stock_vcf_slider_rect(0).center());
+    let start = at(stock_vcf_knob_rect(0).center());
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -478,7 +741,7 @@ fn stock_vcf_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
         &mut rack,
         &patch,
         1.1,
-        vec![egui::Event::PointerMoved(start + vec2(15.0, 0.0))],
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 15.0))],
         true,
         true,
         29,
@@ -493,7 +756,7 @@ fn stock_vcf_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
         &mut rack,
         &patch,
         1.2,
-        vec![egui::Event::PointerMoved(start + vec2(30.0, 0.0))],
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 30.0))],
         true,
         true,
         30,
@@ -501,14 +764,14 @@ fn stock_vcf_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     .0;
     assert!(
         after.is_none(),
-        "a deleted slider's drag must not edit the remaining node"
+        "a deleted rotary's drag must not edit the remaining node"
     );
     let released = frame_revision_state(
         &ctx,
         &mut rack,
         &patch,
         1.3,
-        vec![button(start + vec2(30.0, 0.0), false)],
+        vec![button(start - vec2(0.0, 30.0), false)],
         true,
         true,
         30,

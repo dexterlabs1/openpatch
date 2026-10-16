@@ -72,6 +72,43 @@ fn signal_atlas_generic_rotary_kind(kind: &str) -> bool {
     )
 }
 
+fn oscillator_voice_rotary_parameter(kind: &str, parameter: &str) -> bool {
+    match kind {
+        "multi_vco" | "multi_lfo" => {
+            matches!(
+                parameter,
+                "frequency" | "pulse_width" | "fm_amount" | "pwm_amount"
+            )
+        }
+        "wavetable_vco" => {
+            matches!(
+                parameter,
+                "tune" | "position" | "fm_amount" | "position_cv_amount"
+            )
+        }
+        "wavetable_lfo" => {
+            matches!(
+                parameter,
+                "rate" | "position" | "fm_amount" | "position_cv_amount"
+            )
+        }
+        _ => false,
+    }
+}
+
+fn signal_atlas_face_kind(kind: &str) -> bool {
+    signal_atlas_generic_rotary_kind(kind)
+        || matches!(
+            kind,
+            "multi_vco"
+                | "multi_lfo"
+                | "wavetable_vco"
+                | "wavetable_lfo"
+                | "stock_vcf"
+                | "stock_vca"
+        )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GenericParameterHardware {
     Choice,
@@ -97,6 +134,20 @@ fn generic_parameter_hardware(
         GenericParameterHardware::Rotary {
             body_radius: 27.0,
             target_half: 34.0,
+        }
+    } else if matches!(kind, "multi_vco" | "multi_lfo")
+        && oscillator_voice_rotary_parameter(kind, parameter)
+    {
+        GenericParameterHardware::Rotary {
+            body_radius: 26.0,
+            target_half: 29.0,
+        }
+    } else if matches!(kind, "wavetable_vco" | "wavetable_lfo")
+        && oscillator_voice_rotary_parameter(kind, parameter)
+    {
+        GenericParameterHardware::Rotary {
+            body_radius: 19.5,
+            target_half: 22.0,
         }
     } else if signal_atlas_generic_rotary_kind(kind) {
         GenericParameterHardware::Rotary {
@@ -3749,10 +3800,17 @@ impl Rack {
                     }
                     continue;
                 }
-                let mut label_gap = if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
-                    10.0
-                } else {
-                    13.0
+                let mut label_gap = match node.kind.as_str() {
+                    "stock_lfo" | "stock_vco" => 10.0,
+                    // The two rotary rows share a compact 300-point face.
+                    // Place captions just above their hit regions so the
+                    // preceding row's readout clears the next caption at 25%.
+                    "multi_lfo" | "multi_vco" => 9.0,
+                    // The wavetable display and its five observed lamps end
+                    // above the first row. Seven points keep each caption
+                    // clear of its rotary target and the prior row's readout.
+                    "wavetable_vco" | "wavetable_lfo" => 7.0,
+                    _ => 13.0,
                 };
                 let (knob_position, radius) = if let Some((row, column)) = sequence_cell(name)
                     .filter(|_| matches!(node.kind.as_str(), "seq3" | "stock_seq3"))
@@ -4053,6 +4111,10 @@ impl Rack {
                 };
                 let value_offset = if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
                     16.0
+                } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
+                    18.0
+                } else if is_wavetable(&node.kind) {
+                    15.0
                 } else if node.kind == "vca_mix" {
                     11.0
                 } else if node.kind == "fade" {
@@ -8919,7 +8981,7 @@ fn is_wavetable(kind: &str) -> bool {
 fn wavetable_parameter_position(index: usize) -> Pos2 {
     pos2(
         60.0 + (index % 3) as f32 * 120.0,
-        205.0 + (index / 3) as f32 * 90.0,
+        205.0 + (index / 3) as f32 * 85.0,
     )
 }
 fn wavetable_parameter_label(name: &str) -> &str {
@@ -12433,7 +12495,7 @@ fn paint_panel(
 ) {
     if matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
-    } else if node.kind == "stock_noise" || signal_atlas_generic_rotary_kind(&node.kind) {
+    } else if node.kind == "stock_noise" || signal_atlas_face_kind(&node.kind) {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
         crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
     } else {
@@ -13946,14 +14008,7 @@ mod tests {
         .enumerate()
         {
             let time = 12.0 + index as f64;
-            let track = crate::panel_skin::parameter_fader_track(position, 23.0, rack.zoom);
-            // Start farther down the track to cross egui's drag threshold;
-            // the final absolute position is one octave above its midpoint.
-            let pressed = if name == "frequency" {
-                position + vec2(0.0, track.height() / 4.0)
-            } else {
-                position
-            };
+            let pressed = position;
             frame(
                 &ctx,
                 &mut rack,
@@ -13961,13 +14016,15 @@ mod tests {
                 time,
                 vec![egui::Event::PointerMoved(pressed), button(pressed, true)],
             );
+            // A rotary uses 150 logical points of relative vertical travel.
+            // One ninth of that range moves the nine-octave frequency one octave.
             let moved = position
                 - vec2(
                     0.0,
                     if name == "frequency" {
-                        track.height() / 9.0
+                        150.0 / 9.0
                     } else {
-                        10.0
+                        15.0
                     },
                 );
             let action = frame(
@@ -13984,7 +14041,7 @@ mod tests {
             if name == "frequency" {
                 assert!(
                     (args["value"].as_f64().unwrap() - 523.25116).abs() < 0.02,
-                    "One-ninth of the painted nine-octave fader travel must double Hz"
+                    "one ninth of relative rotary travel must double Hz"
                 );
             } else {
                 assert!(

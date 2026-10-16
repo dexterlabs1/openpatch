@@ -78,11 +78,7 @@ impl FaderFixture {
             .find(|n| n.id == id)
             .unwrap();
         let width = module_width(node);
-        let (local, radius) = if node.kind == "multi_vco" {
-            (pos2(width * 0.25, 125.0), 23.0)
-        } else {
-            parameter_position(1, 0, width)
-        };
+        let (local, radius) = parameter_position(1, 0, width);
         let center = self.rack.viewport.unwrap().min
             + self.rack.pan
             + (self.rack.positions[id].to_vec2() + local.to_vec2()) * self.rack.zoom;
@@ -111,6 +107,25 @@ impl FaderFixture {
             + self.rack.pan
             + (self.rack.positions["target"].to_vec2() + local.to_vec2()) * self.rack.zoom;
         (center, center + vec2(0.0, (radius + 15.0) * self.rack.zoom))
+    }
+    fn oscillator_rotary_center(&self, kind: &str, parameter: &str) -> Pos2 {
+        let node = self
+            .session
+            .patch()
+            .nodes
+            .iter()
+            .find(|node| node.id == "target")
+            .unwrap();
+        assert_eq!(node.kind, kind);
+        let local = match (kind, parameter) {
+            ("multi_vco" | "multi_lfo", "frequency") => pos2(75.0, 125.0),
+            ("multi_vco" | "multi_lfo", "pulse_width") => pos2(225.0, 125.0),
+            ("wavetable_vco" | "wavetable_lfo", "position") => pos2(180.0, 205.0),
+            _ => panic!("unsupported oscillator test target: {kind}.{parameter}"),
+        };
+        self.rack.viewport.unwrap().min
+            + self.rack.pan
+            + (self.rack.positions["target"].to_vec2() + local.to_vec2()) * self.rack.zoom
     }
     fn press(&mut self, at: Pos2, modifiers: egui::Modifiers) -> Option<Value> {
         self.draw(
@@ -285,14 +300,13 @@ fn generic_fader_absolute_track_clicks_reach_limits_at_rack_scales() {
 }
 
 #[test]
-fn generic_fader_geometric_frequency_drag_moves_one_octave_over_actual_travel() {
+fn multi_vco_rotary_geometric_frequency_drag_moves_one_octave_over_relative_travel() {
     let c4 = 261.625_58;
     let mut f = FaderFixture::new("multi_vco", "frequency", c4, 2.0);
-    let track = f.track("target");
-    // The oscillator's full range spans nine octaves. At 200% zoom one octave
-    // exceeds the pointer drag threshold and uses the painted track's travel.
-    let from = track.center();
-    let to = from - vec2(0.0, track.height() / 9.0);
+    // The saved frequency spans nine octaves. Knob input has 150 logical
+    // points of relative travel, independent of its painted body and target.
+    let from = f.oscillator_rotary_center("multi_vco", "frequency");
+    let to = from - vec2(0.0, 150.0 * f.rack.zoom / 9.0);
     f.time = 1.0;
     f.press(from, egui::Modifiers::NONE);
     let moved = f
@@ -302,6 +316,41 @@ fn generic_fader_geometric_frequency_drag_moves_one_octave_over_actual_travel() 
     f.release(to, egui::Modifiers::NONE);
     near(f.value("target", "frequency"), c4 * 2.0);
     assert_eq!(f.value("other", "value"), 9.0);
+}
+
+#[test]
+fn multi_and_wavetable_rotaries_click_without_jump_then_drag_through_session() {
+    for (kind, parameter, expected) in [
+        ("multi_vco", "pulse_width", 0.696),
+        ("multi_lfo", "pulse_width", 0.696),
+        ("wavetable_vco", "position", 0.7),
+        ("wavetable_lfo", "position", 0.7),
+    ] {
+        for zoom in [0.35, 0.5, 1.0] {
+            let mut f = FaderFixture::new(kind, parameter, 0.5, zoom);
+            let center = f.oscillator_rotary_center(kind, parameter);
+            let initial_revision = f.session.revision();
+            let initial_history = f.undo_steps();
+            f.time = 1.0;
+            assert!(f.press(center, egui::Modifiers::NONE).is_none());
+            assert!(f.release(center, egui::Modifiers::NONE).is_none());
+            assert_eq!(f.value("target", parameter), 0.5);
+            assert_eq!(f.session.revision(), initial_revision);
+
+            f.time = 2.0;
+            assert!(f.press(center, egui::Modifiers::NONE).is_none());
+            let end = center - vec2(0.0, 30.0 * zoom);
+            let edit = f.move_to(end, egui::Modifiers::NONE).expect("relative knob edit");
+            assert_eq!(edit["parameter"], parameter);
+            assert_eq!(edit["expected_revision"], initial_revision);
+            assert!(edit["history_group"].as_str().is_some());
+            near(f.value("target", parameter), expected);
+            f.release(end, egui::Modifiers::NONE);
+            assert_eq!(f.undo_steps(), initial_history + 1);
+            f.session.execute("undo", json!({})).unwrap();
+            assert_eq!(f.value("target", parameter), 0.5);
+        }
+    }
 }
 
 #[test]

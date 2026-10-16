@@ -24,7 +24,7 @@
 ![OpenPatch native rack with a VCO, ladder filter, OTA VCA, ADSR, gate clock, and audio output](docs/images/openpatch-rack.png)
 <p align="center"><sub>Studio Rack panels, transport toolbar and analysis dock in the native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
 
-- **An instrument you can patch.** Set values with direct faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
+- **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
 - **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with sliders and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
 - **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
@@ -76,7 +76,7 @@ This is a **v0.2 development preview**, built from source. The local `.app` is a
 | Bring a buried plug forward | Right-click its jack → select the cable → **Move this cable**, then return it to the same jack; the opposite end keeps its order |
 | Edit cable bundles / colours | Right-click either jack → **Move all cables**, individual cable actions, or **Custom RGB…**; each operation is undoable |
 | Choose the next cable colour | Toolbar **Cable** swatch; **[ / ]** cycle while the rack is idle. **Edit palettes…** saves personal sets |
-| Adjust a numeric fader | Click or drag vertically; hold **Cmd/Ctrl** for fine adjustment; double-click to reset |
+| Adjust a rotary or numeric fader | Click or drag vertically; hold **Cmd/Ctrl** for fine adjustment; double-click to reset |
 | Choose a categorical state | Click its segment; clicking or double-clicking the selected state leaves it selected. [Five shared choice controls and keyboard actions →](docs/RACK_EDITING.md#parameter-faders) |
 | Type a value or expression | Right-click a parameter control, or click a printed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
 | Quantize a sequence and see the notes it plays | **File → Quantized stock voice**; [keyboard, pre-offset and exact stock behavior](docs/STOCK_QUANTIZER.md) |
@@ -417,6 +417,14 @@ to ten more voice and utility kinds, using the same face in rack and browser.
 **80 installed built-in kinds in 0.2.2 build 4.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
 
 The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The signed macOS ARM app is installed with all four visualizers, including Ferrofluid.
+
+The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) brings back prominent black
+knobs on warm ivory, with the same artwork in the rack and library. The first ten
+voice/utility conversions passed platform and native-render checks in
+[PR23](https://github.com/dexterlabs1/openpatch/pull/23). A six-panel oscillator,
+filter and amplifier pass is in development; these staged updates have not yet
+replaced the installed 0.2.2 build 4 app. Larger sockets across the remaining
+catalog are still in progress.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

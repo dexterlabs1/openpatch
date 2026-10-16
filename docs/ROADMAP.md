@@ -30,9 +30,9 @@ Keep familiar rack patching and a single shared
 module/browser renderer, while improving controls for a computer: ordinary
 click and keyboard value entry, direct sliders or other appropriate editors,
 clear signal flow, readable typography and fewer decorative hardware cues.
-The existing shared generic controls use direct vertical faders with numeric entry,
-plus catalog-defined labeled choices for waveform, law, DC filtering, Score run
-state and drum type.
+Shared generic controls use larger rotary knobs on converted panels and direct
+vertical faders where appropriate, with numeric entry and labeled choices for
+waveform, law, DC filtering, Score run state and drum type.
 Signal-driven top-plug lights now observe actual input summation and mono/poly
 signals, with dark-room emission and bounded audio observation.
 See [the detector and transport contract](PORT_LIGHTS.md).
@@ -45,13 +45,13 @@ The newly selected **Signal Atlas** direction restores larger rotary knobs and
 ports, removes colored header bands and uses strong black graphics on warm
 ivory. Every diagram must correspond to actual signal flow, a control dependency
 or a labeled scale; decorative pseudo-circuit markings are excluded. Stock VCA
-Mix is the first conversion; Stock VCO/LFO rotary and Stock Noise process faces
-extend it in the development branch, with their new combined application review
-pending. A further ten voice/utility panels now use the same shared black rotaries and
-warm ivory face in development. Their 1,028 Desktop tests, strict Clippy and
-formatting pass; platform/native render delivery gates remain open. The rest
-of the catalog and larger sockets remain an incremental design/qualification
-task. See [module design rules](MODULE_DESIGN.md).
+Mix is the first conversion; Stock VCO/LFO and Stock Noise extend it in the
+installed baseline. Ten more voice/utility panels passed their local, platform
+and native-render checks before [PR23](https://github.com/dexterlabs1/openpatch/pull/23)
+merged. Their 0.2.3 build 5 app is staged. Multi VCO/LFO, wavetable VCO/LFO,
+Stock VCF and Stock VCA form the next six-panel candidate, preserving existing
+panel widths, observed meters and exact editing. The rest of the catalog and
+larger sockets remain an incremental design task. See [module design rules](MODULE_DESIGN.md).
 The latest shared rack/browser header pass removes brand/description headers
 and makes module names prominent and left-aligned. Local layout checks and the
 Mac ARM candidate build pass; capture review and native window/input
