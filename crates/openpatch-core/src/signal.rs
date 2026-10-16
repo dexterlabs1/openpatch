@@ -14,6 +14,9 @@ pub struct ModuleControlState {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
+    /// Stock Octave's actual last processed channel-zero offset; no LED implied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub octave_shift: Option<i32>,
     /// STOCK QUANTIZER display data, C..B bits; no actual Light objects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playing_notes: Option<u16>,
@@ -522,6 +525,7 @@ impl Signal {
     }
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
+            octave_shift: None,
             input_channels: None,
             output_channels: None,
             automatic_channels: None,

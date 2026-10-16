@@ -69,6 +69,7 @@ impl Sum {
     }
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
+            octave_shift: None,
             count: 6,
             input_channels: Some(self.channels),
             output_channels: None,

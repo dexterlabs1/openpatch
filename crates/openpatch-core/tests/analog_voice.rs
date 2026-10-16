@@ -36,7 +36,15 @@ fn catalog_defaults_compile_and_invalid_reference_parameters_fail() {
         };
         assert!(patch.compile().is_ok(), "{kind}");
         for (name, spec) in module["params"].as_object().unwrap() {
-            for value in [f32::NAN, spec["max"].as_f64().unwrap() as f32 + 1.0] {
+            // Some processors preserve a broader raw saved-parameter domain
+            // than their UI editing range. Its upper invalid boundary is then
+            // nonfinite, rather than one past the last visible selector.
+            let above_max = if spec.get("raw_max").is_some() {
+                f32::INFINITY
+            } else {
+                spec["max"].as_f64().unwrap() as f32 + 1.0
+            };
+            for value in [f32::NAN, above_max] {
                 let mut invalid = patch.clone();
                 invalid.nodes[0].params = BTreeMap::from([(name.clone(), value)]);
                 assert!(invalid.validate().is_err(), "{kind}.{name}={value}");

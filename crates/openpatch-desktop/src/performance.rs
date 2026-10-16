@@ -56,6 +56,7 @@ enum ModuleKind {
     StockVca,
     StockDelay,
     StockLfo,
+    StockOctave,
     StockVco,
     WavetableVco,
     WavetableLfo,
@@ -89,6 +90,7 @@ impl ModuleKind {
             "stock_vca" => Some(Self::StockVca),
             "stock_delay" => Some(Self::StockDelay),
             "stock_lfo" => Some(Self::StockLfo),
+            "stock_octave" => Some(Self::StockOctave),
             "stock_vco" => Some(Self::StockVco),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
@@ -123,6 +125,7 @@ impl ModuleKind {
             Self::StockVca => "stock_vca",
             Self::StockDelay => "stock_delay",
             Self::StockLfo => "stock_lfo",
+            Self::StockOctave => "stock_octave",
             Self::StockVco => "stock_vco",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
@@ -308,6 +311,7 @@ struct Meter {
     waveform_position: AtomicU32,
     clock_frequency: AtomicU32,
     playing_notes: AtomicU32,
+    octave_shift: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -334,6 +338,7 @@ impl Meter {
             waveform_position: AtomicU32::new(f32::NAN.to_bits()),
             clock_frequency: AtomicU32::new(f32::NAN.to_bits()),
             playing_notes: AtomicU32::new(u32::MAX),
+            octave_shift: AtomicU32::new(0),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -454,6 +459,12 @@ impl Meter {
             .filter(|mask| *mask <= 4095);
         self.playing_notes
             .store(playing.map(u32::from).unwrap_or(u32::MAX), Ordering::SeqCst);
+        let octave_shift = snapshot.lights.and_then(|lights| lights.octave_shift);
+        self.octave_shift
+            .store(octave_shift.unwrap_or(0) as u32, Ordering::SeqCst);
+        if octave_shift.is_some() {
+            flags |= 1 << 5;
+        }
         // Counts are independent optional fields in the same serial boundary.
         // Clear absent and invalid values on every packet, including no lights.
         for (slot, count) in [
@@ -530,6 +541,7 @@ impl Meter {
             let waveform_position = f32::from_bits(self.waveform_position.load(Ordering::SeqCst));
             let clock_frequency = f32::from_bits(self.clock_frequency.load(Ordering::SeqCst));
             let playing_notes = self.playing_notes.load(Ordering::SeqCst);
+            let octave_shift = self.octave_shift.load(Ordering::SeqCst) as i32;
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -595,6 +607,9 @@ impl Meter {
                         waveform_position: (waveform_position.is_finite()
                             && (0.0..=1.0).contains(&waveform_position))
                         .then_some(waveform_position),
+                        octave_shift: (entry.kind == ModuleKind::StockOctave
+                            && flags & (1 << 5) != 0)
+                            .then_some(octave_shift),
                     }),
                     midi_learning: (cc_serial != 0 && cc_cell < 16)
                         .then_some((cc_serial, cc_cell as u8)),
@@ -1990,6 +2005,7 @@ mod tests {
     include!("stock_vco_performance_tests.rs");
     include!("stock_seq3_performance_tests.rs");
     include!("stock_quantizer_performance_tests.rs");
+    include!("stock_octave_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
@@ -2257,6 +2273,7 @@ mod tests {
                         controls: None,
                         midi_learning: None,
                         lights: (frame % 3 != 0).then_some(ModuleLightState {
+                            octave_shift: None,
                             clock_frequency: None,
                             playing_notes: None,
                             count: 5,

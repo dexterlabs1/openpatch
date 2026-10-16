@@ -2779,6 +2779,13 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_octave" {
+                if let Some(edit) =
+                    self.stock_octave_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "stock_seq3" {
                 if let Some(edit) = self.stock_seq3_panel(
                     ui,
@@ -3096,6 +3103,7 @@ impl Rack {
                     || node.kind == "stock_vcf"
                     || node.kind == "stock_delay"
                     || node.kind == "stock_vca"
+                    || node.kind == "stock_octave"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -4186,7 +4194,9 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
-                        if node.kind == "stock_vca" {
+                        if node.kind == "stock_octave" {
+                            stock_octave_port_label(port)
+                        } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
@@ -4215,7 +4225,9 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_vca" {
+                    if node.kind == "stock_octave" {
+                        stock_octave_port_label(port)
+                    } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
@@ -4333,6 +4345,8 @@ impl Rack {
                         output_point,
                         if node.kind == "adsr_eg" {
                             "ENV"
+                        } else if node.kind == "stock_octave" {
+                            stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
@@ -4372,6 +4386,8 @@ impl Rack {
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "adsr_eg" {
                         "ENV"
+                    } else if node.kind == "stock_octave" {
+                        stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
@@ -8768,6 +8784,7 @@ include!("adsr_eg_panel.rs");
 include!("stock_vcf_panel.rs");
 include!("stock_delay_panel.rs");
 include!("stock_vca_panel.rs");
+include!("stock_octave_panel.rs");
 include!("midi_cc_panel.rs");
 include!("midi_gate_panel.rs");
 include!("midi_assignment_panel.rs");
@@ -9651,6 +9668,16 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
         "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
+        "stock_octave" => {
+            return pos2(
+                if input {
+                    45.0 + index as f32 * 90.0
+                } else {
+                    90.0
+                },
+                376.0,
+            )
+        }
         "stock_seq3" => {
             return if input {
                 pos2(28.0 + index as f32 * 37.5, 382.0)
@@ -10859,6 +10886,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "stock_vcf" => HP * 18.0,
         "stock_delay" | "stock_lfo" | "stock_vco" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
         "stock_vca" => HP * 12.0,
+        "stock_octave" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
         "audio_out" => HP * 8.0,
@@ -10931,6 +10959,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_vco" => "STOCK VCO",
         "stock_seq3" => "STOCK SEQ3",
         "stock_quantizer" => "STOCK QUANTIZER",
+        "stock_octave" => "STOCK OCTAVE",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -11167,7 +11196,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         ],
         "mid_side" | "stock_mid_side" => &["encode_width", "decode_width"],
         "mix6" | "stock_mix" => &["level", "average", "invert"],
-        "octave" => &["octaves"],
+        "octave" | "stock_octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
         "random" => &[
             "rate",
@@ -13051,7 +13080,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            75,
+            76,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19736,6 +19765,9 @@ mod tests {
     }
     mod stock_quantizer_ui_tests {
         include!("stock_quantizer_ui_tests.rs");
+    }
+    mod stock_octave_ui_tests {
+        include!("stock_octave_ui_tests.rs");
     }
     mod stock_seq3_ui_tests {
         include!("stock_seq3_ui_tests.rs");

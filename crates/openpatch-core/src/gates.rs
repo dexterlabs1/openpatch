@@ -255,6 +255,7 @@ impl Gates {
     }
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
+            octave_shift: None,
             input_channels: None,
             output_channels: None,
             automatic_channels: None,

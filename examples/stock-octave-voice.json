@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {"id":"chord","kind":"poly_constant","params":{"channels":3,"v1":0,"v2":0.3333333333333333,"v3":0.5833333333333334}},
+    {"id":"motion","kind":"stock_lfo","params":{"rate":-3,"offset":0,"invert":0}},
+    {"id":"octave","kind":"stock_octave","params":{"octaves":0}},
+    {"id":"voice","kind":"stock_vco","params":{"frequency":-12,"pulse_width":0.38,"fm_amount":0}},
+    {"id":"clock","kind":"gate","params":{"frequency":1.5,"duty":0.35}},
+    {"id":"envelope","kind":"adsr_eg","params":{"attack":0.15,"decay":0.4,"sustain":0.3,"release":0.45}},
+    {"id":"amplifier","kind":"stock_vca","params":{"level":0.3,"response":1}},
+    {"id":"out","kind":"audio_stereo","params":{"gain":0.12,"dc_block":1}},
+    {"id":"scope","kind":"scope","params":{"time":0.25,"trigger_enabled":0,"x_scale":1,"y_scale":1}},
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"STOCK OCTAVE VOICE\n\nThree pitch lanes feed the fixed octave shifter.\nThe LFO adds quantized octave CV.\nShifted pitch drives the polyphonic stock VCO.\n\nTry the nine authored detents.\nThe display separates saved setting\nfrom the last processed channel 0 offset.\n\nClock → ADSR → attenuated VCA.\nScope X/Y: pitch before / after shift.\n\nSelect a detent, or click the saved value\nto type an exact shift."}}
+  ],
+  "cables": [
+    {"from":"chord","to":"octave","input":"pitch"},
+    {"from":"motion","output":"sine","to":"octave","input":"shift_cv"},
+    {"from":"octave","output":"out","to":"voice","input":"pitch"},
+    {"from":"chord","to":"scope","input":"x"},
+    {"from":"octave","to":"scope","input":"y"},
+    {"from":"voice","output":"saw","to":"amplifier","input":"signal"},
+    {"from":"clock","output":"out","to":"envelope","input":"gate"},
+    {"from":"envelope","output":"out","to":"amplifier","input":"cv"},
+    {"from":"amplifier","output":"out","to":"out","input":"left"},
+    {"from":"amplifier","output":"out","to":"out","input":"right"}
+  ],
+  "output": "out"
+}

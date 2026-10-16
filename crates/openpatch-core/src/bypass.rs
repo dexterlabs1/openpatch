@@ -23,7 +23,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
             ("in9", "out9"),
             ("in10", "out10"),
         ],
-        "octave" | "quantizer" => &[("pitch", "out")],
+        "octave" | "stock_octave" | "quantizer" => &[("pitch", "out")],
         "stock_quantizer" => &[("pitch", "pitch")],
         "gain" | "lowpass" | "ladder_vcf" | "analog_vca" | "attenuverter" | "rescale" => {
             &[("signal", "out")]
@@ -47,6 +47,11 @@ pub(crate) fn annotate(module: &mut Value) {
         module["bypass"]["module_actions"] = json!(
             "no performance actions; durable bank edits remain normal revisioned state assignments"
         );
+    }
+    if kind == "stock_octave" {
+        module["bypass"]["output_policy"] = json!("Module::processBypass copies each active raw pitch lane then calls SDK setChannels with raw pitch width, including zero; disconnected output retains raw storage");
+        module["bypass"]["state_policy"] = json!("skip Octave process and freeze channel-zero lastOctave; canonical host output transition lifecycle still applies");
+        module["bypass"]["compatibility"] = json!("Fundamental configBypass pitch-to-output route with Rack Module::processBypass raw port copy semantics");
     }
     if kind == "midi_gate" {
         module["bypass"]["state_policy"] = json!("ignores MIDI and freezes DSP; transitions clear cell gates/timers and armed Learn, retaining owned completion and velocity");
