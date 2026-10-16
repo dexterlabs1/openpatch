@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 74)
+        self.assertEqual(len(catalog["modules"]), 75)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 74)
+        self.assertEqual(len(catalog["modules"]), 75)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 74)
+        self.assertEqual(len(catalog["modules"]), 75)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,125 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_mix_raw_poly_lanes_connected_zero_divisor_and_ordered_sum(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_mix"]
+        self.assertIn("mix6", modules, "Legacy mixer remains independently available")
+        self.assertEqual(descriptor["inputs"], [f"in{i}" for i in range(1, 7)])
+        self.assertEqual(descriptor["outputs"], ["out"])
+        self.assertEqual(descriptor["light_names"], [])
+        self.assertEqual(descriptor["bypass"]["routes"], [])
+        self.assertEqual([descriptor["params"]["level"][k] for k in ("min", "max", "default")], [0, 1, 1])
+        for flag in ("invert", "average"):
+            self.assertEqual([descriptor["params"][flag][k] for k in ("min", "max", "default")], [0, 1, 0])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "poly", "kind": "poly_constant", "params": {"channels": 3, "v1": 6, "v2": -3, "v3": 9}},
+            {"id": "mono", "kind": "constant", "params": {"value": 2}},
+            {"id": "zero", "kind": "constant", "params": {"value": 0}},
+            {"id": "mix", "kind": "stock_mix", "params": {"level": .5, "average": 1, "invert": 1}}],
+            "cables": [{"from": node, "to": "mix", "input": f"in{i}"}
+                       for i, node in enumerate(("poly", "mono", "zero"), start=1)]}})
+        before = self.patch_snapshot()
+        analyzed = self.payload(self.require_tool_success("analyze_signal", {"id": "mix", "seconds": .002}))
+        self.assertEqual((analyzed["frames"], analyzed["min_channels"], analyzed["max_channels"]), (96, 1, 3))
+        # Fixed hand anchors: connected zero counts in divisor3; mono2 adds only
+        # lane0. Ordered sum [8,-3,9] multiplies signed gain f32(-.5/3).
+        first = struct.unpack("<f", struct.pack("<f", -4 / 3))[0]
+        self.assertEqual([v["active_frames"] for v in analyzed["channels"]], [96, 95, 95])
+        self.assertEqual([v["mean"] for v in analyzed["channels"]], [first * 95 / 96, .5, -1.5])
+        self.assertEqual([v["peak"] for v in analyzed["channels"]], [abs(first), .5, 1.5])
+        for channel, value in enumerate((first, .5, -1.5), start=1):
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "mix", "channel": channel, "seconds": .002, "points": 96}))
+            self.assertEqual([point["mean"] for point in trace["bins"]], [0 if channel == 1 else None] + [value] * 95)
+        self.assertEqual(self.patch_snapshot(), before)
+        # Nonassociative hand anchor: source-order (1 + 2^-25) + -1 rounds to0;
+        # moving the tiny value to the third jack instead retains exactly2^-25.
+        edits = [("poly", "channels", 1), ("poly", "v1", 1), ("mono", "value", 2**-25),
+                 ("zero", "value", -1), ("mix", "level", 1), ("mix", "invert", 0), ("mix", "average", 0)]
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": node, "parameter": param, "value": value}}
+            for node, param, value in edits]})
+        first_order = self.payload(self.require_tool_success("analyze_signal", {"id": "mix", "seconds": .002}))
+        self.assertEqual(first_order["channels"][0]["peak"], 0)
+        self.require_tool_success("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "mono", "parameter": "value", "value": -1}},
+            {"tool": "set_parameter", "arguments": {"id": "zero", "parameter": "value", "value": 2**-25}}]})
+        second_order = self.payload(self.require_tool_success("analyze_signal", {"id": "mix", "seconds": .002}))
+        self.assertEqual(second_order["channels"][0]["mean"], 2**-25 * 95 / 96)
+        self.assertEqual(second_order["channels"][0]["peak"], 2**-25)
+
+    def test_stock_mix_pre_rounding_boundary_survives_mcp_numeric_transport(self) -> None:
+        def value(bits: int) -> float:
+            return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+        # Fixed anchors from the independent genuine-Engine supplement. Use the
+        # real MCP JSON number path and keep the initial zero sample in capture.
+        for source_bits, level_bits, average, expected_bits in [
+            (0x00800000, 0x3f7fffff, False, 0),
+            (0x00800000, 0x3f800000, False, 0x00800000),
+            (0x00800001, 0x3f7fffff, False, 0x00800000),
+            (0x3f800000, 0x00ffffff, True, 0),
+            (0x3f800000, 0x01000000, True, 0x01000000),
+        ]:
+            with self.subTest(source=source_bits, level=level_bits, average=average):
+                nodes = [
+                    {"id": "source", "kind": "poly_constant", "params": {
+                        "channels": 1, "v1": value(source_bits)}},
+                    {"id": "mix", "kind": "stock_mix", "params": {
+                        "level": value(level_bits), "average": int(average)}},
+                ]
+                cables = [{"from": "source", "to": "mix", "input": "in1"}]
+                if average:
+                    nodes.append({"id": "second", "kind": "poly_constant", "params": {
+                        "channels": 1, "v1": 1}})
+                    cables.append({"from": "second", "to": "mix", "input": "in2"})
+                self.require_tool_success("replace_patch", {"patch": {
+                    "version": 2, "sample_rate": 48000, "nodes": nodes, "cables": cables}})
+                before = self.patch_snapshot()
+                trace = self.payload(self.require_tool_success("capture_signal", {
+                    "id": "mix", "channel": 1, "seconds": .002, "points": 96}))
+                self.assertEqual([point["mean"] for point in trace["bins"]],
+                                 [0] + [value(expected_bits)] * 95)
+                self.assertEqual(self.patch_snapshot(), before)
+
+    def test_stock_mix_durable_flags_presets_initialize_randomize_and_atomic_persistence(self) -> None:
+        parameters = {"level": .25, "invert": 1, "average": 1}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "mix", "kind": "stock_mix", "params": parameters, "bypassed": True}]}})
+        captured = self.payload(self.require_tool_success("capture_module_preset", {"id": "mix"}))
+        self.assertEqual(captured["preset"]["params"], parameters)
+        self.assertIs(captured["preset"]["bypassed"], True)
+        self.require_tool_success("save_module_preset", {"filename": "stock-mix.opreset", "preset": captured["preset"]})
+        preset = self.payload(self.require_tool_success("read_module_preset", {"filename": "stock-mix.opreset"}))["preset"]
+        self.assertEqual(preset, captured["preset"])
+        self.require_tool_success("initialize_modules", {"ids": ["mix"]})
+        initialized = self.patch_snapshot()["patch"]["nodes"][0]
+        self.assertEqual(initialized["params"], {"level": 1, "invert": 1, "average": 1})
+        self.assertIs(initialized["bypassed"], True)
+        self.require_tool_success("randomize_modules", {"ids": ["mix"], "seed": 123})
+        randomized = self.patch_snapshot()["patch"]["nodes"][0]["params"]
+        self.assertEqual((randomized["invert"], randomized["average"]), (1, 1))
+        self.assertTrue(0 <= randomized["level"] <= 1)
+        self.require_tool_success("apply_module_preset", {"id": "mix", "preset": preset})
+        stable = self.patch_snapshot()
+        self.assertEqual(stable["patch"]["nodes"][0]["params"], parameters)
+        for param, invalid in [("level", -.01), ("level", 1.01), ("invert", .5), ("average", .5), ("average", 2)]:
+            self.require_tool_error("apply_edits", {"expected_revision": stable["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "mix", "parameter": "level", "value": .75}},
+                {"tool": "set_parameter", "arguments": {"id": "mix", "parameter": param, "value": invalid}}]})
+            self.assertEqual(self.patch_snapshot(), stable)
+        project = self.payload(self.require_tool_success("capture_project_patch"))
+        self.assertEqual(project["patch"], stable["patch"])
+        self.assertIsNone(project["frame"], "No transient DSP or host-port history is claimed by this saved graph")
+        self.require_tool_success("save_patch", {"filename": "stock-mix.json"})
+        self.require_tool_success("set_bypass", {"id": "mix", "bypassed": False})
+        self.require_tool_success("set_parameter", {"id": "mix", "parameter": "average", "value": 0})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-mix.json"}))
+        self.assertEqual(loaded["patch"], project["patch"])
+        self.require_tool_success("replace_patch", {"patch": project["patch"]})
+        self.assertEqual(self.patch_snapshot()["patch"], stable["patch"])
 
     def test_stock_mid_side_named_ports_additive_cv_and_reset_analysis_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

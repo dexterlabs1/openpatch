@@ -1,0 +1,114 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "bass",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -12
+      }
+    },
+    {
+      "id": "fifth",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -5
+      }
+    },
+    {
+      "id": "upper",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": 0,
+        "fm_amount": 0.04
+      }
+    },
+    {
+      "id": "mix",
+      "kind": "stock_mix",
+      "params": {
+        "level": 0.75,
+        "average": 1,
+        "invert": 0
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.25,
+        "trigger_enabled": 0,
+        "x_scale": 1,
+        "y_scale": 1
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -2,
+        "offset": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.25,
+        "dc_block": 1
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "bass",
+      "output": "sine",
+      "to": "mix",
+      "input": "in1"
+    },
+    {
+      "from": "fifth",
+      "output": "sine",
+      "to": "mix",
+      "input": "in2"
+    },
+    {
+      "from": "upper",
+      "output": "sine",
+      "to": "mix",
+      "input": "in3"
+    },
+    {
+      "from": "motion",
+      "output": "sine",
+      "to": "upper",
+      "input": "fm"
+    },
+    {
+      "from": "mix",
+      "output": "out",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "bass",
+      "output": "sine",
+      "to": "scope",
+      "input": "y"
+    },
+    {
+      "from": "mix",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "mix",
+      "output": "out",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

@@ -1,0 +1,28 @@
+{
+  "format_version": 1,
+  "status": "REVIEWED before first supplemental SDK/Core execution; external hash lock required",
+  "target": "Actual Fundamental Mixer in genuine Rack Engine 2.6.6 on the retained Arm FZ environment; actual Core graph counterpart",
+  "original_gate": "scripts/stock_mix_reference remains unchanged; all original cases must be rerun after any production fix",
+  "primary_arm_source": "https://documentation-service.arm.com/static/63eb50c09567172d4e2aa777",
+  "primary_arm_reference": "Arm Compiler armasm User Guide Version 6.6, flush-to-zero sections; before-rounding single-precision result flushing and preserved zero sign",
+  "sample_rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "families": {
+    "multiply": 32,
+    "divide": 32
+  },
+  "case_count": 192,
+  "event_count_excluding_initial": 384,
+  "snapshot_count": 576,
+  "hand_anchor_count": 1728,
+  "constructor": "Same frozen host protocol: six sources, Mixer and two sinks; configure controls, connect declared cables, initial snapshot before DSP",
+  "events": "Exactly two one-frame step events per case; preserve initial, first and second snapshots with zero discarded samples",
+  "comparison": "Unchanged original full-port/state/control/topology validator plus exact complete-object paired equality; no filtered fields or tolerances",
+  "ordinary_domain": "Finite normal source operands within [-16,16], finite normal level in [0,1], signed results including zero; no source subnormal needed to expose tiny exact results rounding back to normal",
+  "anchors": "Eight explicit magnitude examples expanded only by source sign, invert, average and sample rate; fixed hexadecimal tables, no general Mixer arithmetic model",
+  "freeze": "External lock must bind these four files, original acceptance.json and verify.py, exact generated inputs, and reviewed_before_first_execution=true; Root separately retains original SDK and production executable hashes/build provenance",
+  "failure_policy": "Retain every attempt, original passed reports and original freeze. No anchor/input changes after observed results; a necessary revision requires a separate reviewed superseding declaration, retaining all failures"
+}

@@ -34,7 +34,11 @@ mod stock_vco;
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
 mod host_ports;
+mod native_float;
 mod stock_mid_side;
+mod stock_mix;
+#[doc(hidden)]
+pub use stock_mix::StockMixSnapshot;
 mod stock_quantizer;
 #[doc(hidden)]
 pub use host_ports::{HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot};
@@ -365,6 +369,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_mid_side::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_mix::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1390,6 +1398,40 @@ impl Engine {
             generation: self.identity,
             node,
         })
+    }
+    /// Inspect actual Stock Mix controls without consuming an output.
+    #[doc(hidden)]
+    pub fn stock_mix_snapshot(&self, handle: ModuleHandle) -> Option<StockMixSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_mix_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Load actual legacy module data. This mutates runtime controls, not the
+    /// source Patch; importers should persist the returned actual flag snapshot.
+    #[doc(hidden)]
+    pub fn load_stock_mix_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.load_stock_mix_legacy_data(handle.node, value),
+            _ => false,
+        }
+    }
+    /// Serialize the actual source-style Boolean data flags on a control thread.
+    #[doc(hidden)]
+    pub fn stock_mix_legacy_data(&self, handle: ModuleHandle) -> Option<Value> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_mix_legacy_data(handle.node),
+            _ => None,
+        }
     }
     /// Passive host storage inspection. This never adds an output consumer or
     /// transfers a cable. Available for every version-2 graph.

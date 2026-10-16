@@ -174,7 +174,7 @@ fn click(
 fn library_zoom_metadata_agrees_with_all_actual_default_panel_sizes_and_assignment_is_not_a_ui_edit(
 ) {
     let catalog = openpatch_core::catalog();
-    assert_eq!(modules(&catalog).count(), 74);
+    assert_eq!(modules(&catalog).count(), 75);
     let stock_lfo = modules(&catalog).find(|module| module["kind"] == "stock_lfo").expect("Stock LFO is covered by library metadata");
     assert_eq!(ModulePreview::new(stock_lfo).size(), vec2(360.0, PANEL_HEIGHT));
     let stock_vco = modules(&catalog).find(|module| module["kind"] == "stock_vco").expect("Stock VCO is covered by library metadata");
@@ -1051,4 +1051,14 @@ fn library_zoom_tab_and_shift_tab_reveal_offscreen_favorite_and_inspect_at_two_h
     }
     assert!(library.favorites().is_empty());
     assert!(library.inspected.is_none());
+}
+
+#[test]
+fn stock_mix_is_a_mixing_module_without_replacing_legacy_mix6() {
+    assert_eq!(Category::of_kind("stock_mix"), Category::Mixing);
+    assert_eq!(Category::of_kind("mix6"), Category::Mixing);
+    let catalog = openpatch_core::catalog();
+    for kind in ["stock_mix", "mix6"] {
+        assert!(modules(&catalog).any(|module| module["kind"] == kind));
+    }
 }

@@ -114,7 +114,7 @@
     }
   },
   "actual_engine_dsp_frames": 0,
-  "artifact_manifest_sha256": "ec22442eec6483abb779e0a1b1eeffc34d855c39d56797e0789f3c8129791e50",
+  "artifact_manifest_sha256": "24ed4de0f9a02a4c9ac1c410287b222e046a27f62555c739a32383a05fd69021",
   "build_commands": {
     "cpp_argv": [
       "c++",
@@ -127,21 +127,21 @@
       "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1",
       "-I/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK/include",
       "-I/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK/dep/include",
-      "-I/Users/dbrewer/Projects/openpatch-stock-mid-side/native-test-output/stock-mid-side/output-lifecycle/attempt-002",
-      "/Users/dbrewer/Projects/openpatch-stock-mid-side/scripts/output_lifecycle_reference/sdk_probe.cpp",
+      "-I/Users/dbrewer/Projects/openpatch-stock-mix/native-test-output/stock-mix/output-lifecycle/attempt-002",
+      "/Users/dbrewer/Projects/openpatch-stock-mix/scripts/output_lifecycle_reference/sdk_probe.cpp",
       "-L/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
       "-lRack",
       "-Wl,-rpath,/Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK",
       "-o",
-      "/Users/dbrewer/Projects/openpatch-stock-mid-side/native-test-output/stock-mid-side/output-lifecycle/attempt-002/sdk_probe"
+      "/Users/dbrewer/Projects/openpatch-stock-mix/native-test-output/stock-mix/output-lifecycle/attempt-002/sdk_probe"
     ],
     "external_rust_command": "cargo build --locked --release -p openpatch-core --example output_lifecycle_reference_probe",
-    "external_rust_executable": "/Users/dbrewer/Projects/openpatch-stock-mid-side/native-test-output/stock-mid-side/performance/candidate-target/release/examples/output_lifecycle_reference_probe",
+    "external_rust_executable": "/Users/dbrewer/Projects/openpatch-stock-mix/native-test-output/stock-mix/target-core-001/release/examples/output_lifecycle_reference_probe",
     "runner_invokes_cargo_or_rustc": false
   },
   "cases": 224988,
   "compiled_prefix_sha256": "ed8fb0075d1431ae010370597c662ed359f5894426628afb282572e305c8ac01",
-  "evidence_directory": "native-test-output/stock-mid-side/output-lifecycle/attempt-002",
+  "evidence_directory": "native-test-output/stock-mix/output-lifecycle/attempt-002",
   "frozen_five": {
     "README.md": "e547325773b1e8890be6c0c534a0dc7c7673eaf612e0edb0cc9a0828aac36d7d",
     "acceptance.json": "a66fb8df2ca5d31b842feddbc30303b103e719c449b19bc7616989c9c1b242d2",
@@ -161,7 +161,7 @@
   ],
   "passed": true,
   "probe_binary_sha256": {
-    "rust": "9559c4e7d97f29bd187bd9e59419a74393cff83c6d839c112517bdf7a55a50e8",
+    "rust": "42f216a76d2ef30e154ae3d5508b1d5e9d0a41a7fa14ff4489435b21d50ce87d",
     "sdk": "c4b8062d18aa6818451a9d9f55b94423f41d871de100e5680cb8bc33be46b8e9"
   },
   "production_source_sha256": {
@@ -179,12 +179,12 @@
     "crates/openpatch-core/src/colored_noise_gray.rs": "ac84139c0675f05745b05aa8d44d77363fac737728be2acafe7a8ed59af7bc1a",
     "crates/openpatch-core/src/content.rs": "cab3f5769149b9787009efb09a9129092f1ab9a6245eb8f9c8f04ebf72c080c0",
     "crates/openpatch-core/src/gates.rs": "67afef4d04cfc57d3362440a0a3727e3d58cfe5c3924f37c2e1df11d3f230c88",
-    "crates/openpatch-core/src/host_ports.rs": "3df22b51a2d371aa0461de7888124e8f55b6401fb673e0dc37a76b29eb514718",
+    "crates/openpatch-core/src/host_ports.rs": "3f56f839d29da207506111dcd3cf38ae4df5fe2ecabec06bbcdfb00e6a7f1fbe",
     "crates/openpatch-core/src/input_lifecycle.rs": "9a19d30ab8d3f7a75867c338d7bb3b3f862734c3fdabd39820d6852cd2fc74aa",
     "crates/openpatch-core/src/ladder.rs": "a6f157e6b317285468f825be3607a48d23d1e8e6126a844080cf6c7d0b5de714",
     "crates/openpatch-core/src/ladder/optimization_reference.rs": "1a8d4adcbc1f0e58e21d0feafadc0446cc8f1f371d7f3290fda605abaa7c6442",
     "crates/openpatch-core/src/ladder/pair_tests.rs": "64a0a7d8f9dc64b488da7e88e4ca8f108e125cfa22f75ecd69d3c373ef08e304",
-    "crates/openpatch-core/src/lib.rs": "e2fe952bfb85e32a3d6760d16f0f8c06694dc1d5adb7dec4a4e1cdd66aae24f9",
+    "crates/openpatch-core/src/lib.rs": "62a9d29e5a01540c3b3d9bc3012e1c939e74defdde0b3b64c1ef171cc0a469ec",
     "crates/openpatch-core/src/macro_voice.rs": "b1d9122e2dce971b0bcd2c56aa54fff7869df048df4ca1d2b29d82f76012b030",
     "crates/openpatch-core/src/macro_voice/tests.rs": "6a917fa2599bb1ce566bc197f31ebeea80d86a07a839165a71dcfc49bf4929cc",
     "crates/openpatch-core/src/merge.rs": "1a3fa0c18e7a429b11e2072a597522e19bbcce5fda64f86dde5fe4eb7e9dda7d",
@@ -197,8 +197,9 @@
     "crates/openpatch-core/src/modal_resonator/tests.rs": "64d68d78ff9966e0fc71154a6956a5fbcd71d2f7963b17f29cd78604a43de2bb",
     "crates/openpatch-core/src/multi_lfo.rs": "7d4a9c1700cca6077f04c2763f5998ffb3b7a4af14077994f5a649de43cc8dcd",
     "crates/openpatch-core/src/multi_vco.rs": "d65a2cf74334c576562b930c249c9409bdfa8bf9f8aa3f1a9aa942e88c8e7c6c",
-    "crates/openpatch-core/src/parameter_actions.rs": "f21242adfb2938c48b3c5bd2e6c561e414d77f893d1372dfda4b7c9c1486c25e",
-    "crates/openpatch-core/src/poly.rs": "e1fa1debbb1b702d7e77344f8473140a03c6156184c67f13963bbeada2ff9a92",
+    "crates/openpatch-core/src/native_float.rs": "be52b6c0dcedacf73fdac63d1a43a7f52fc9ca0fe8b0cd22704126bbf1ddf557",
+    "crates/openpatch-core/src/parameter_actions.rs": "f93d3b1d26f954155b41c68466f8e659e0771adb2680aab2d8713fd8918fbf48",
+    "crates/openpatch-core/src/poly.rs": "847d55dc9d4a3ce6860bc307d96d618ad7d9e716cca1a0914984756d070c1f3a",
     "crates/openpatch-core/src/port_lifecycle.rs": "56f6c325b1f109a7eaa7e733ba4fed8a776f3fb581ab937a8a3930ba3dae0f1d",
     "crates/openpatch-core/src/port_lights.rs": "bc0e36bad4337a964f367637dc720ee845a196d54584255c770b61489c6920ea",
     "crates/openpatch-core/src/pulses.rs": "f5a5d52707366b4413bb15055fcfca60edf5e475690bca4b5915c3459a36fc9e",
@@ -220,6 +221,7 @@
     "crates/openpatch-core/src/stock_delay/sinc.rs": "ac05cd834c8424655632f2f868c3dda9dcdadafb7ed741adf88337426a2a97d7",
     "crates/openpatch-core/src/stock_lfo.rs": "dd6a20f931276056899415f540b50b71c0fb8484a0a87d044fbb150c11dfacfa",
     "crates/openpatch-core/src/stock_mid_side.rs": "7963b55801399c245793d04dedbad66c586af73e6b5b501f61510846d1d3a664",
+    "crates/openpatch-core/src/stock_mix.rs": "cf158273dc47312f93c93bad10a93d5975b4564b4cd8857f83dd493f56a1d7f0",
     "crates/openpatch-core/src/stock_quantizer.rs": "09030cbf725f071ba7a6a339f795c5452aed1f72f94dc4354c095ca6d9cc9795",
     "crates/openpatch-core/src/stock_seq3.rs": "8979476e28de1783c292ed38e08008d52e4bcf196748f0c52d1d613ddc637019",
     "crates/openpatch-core/src/stock_vca.rs": "0e5d573f5ef8e8128b8d889f1e973a7f5a2bb2e7187090d3141fe160b422f967",

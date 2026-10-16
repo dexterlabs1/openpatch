@@ -93,6 +93,7 @@ impl Category {
             | "analog_vca"
             | "stock_vca"
             | "mix6"
+            | "stock_mix"
             | "cv_mix"
             | "vca_mix"
             | "fade"

@@ -3344,7 +3344,9 @@ impl Rack {
                     });
                     continue;
                 }
-                if node.kind == "mix6" && matches!(*name, "invert" | "average") {
+                if matches!(node.kind.as_str(), "mix6" | "stock_mix")
+                    && matches!(*name, "invert" | "average")
+                {
                     let value = node.params.get(*name).copied().unwrap_or(0.0);
                     let x = if *name == "average" {
                         20.0
@@ -3366,14 +3368,25 @@ impl Rack {
                         value >= 0.5,
                         self.zoom,
                     );
-                    if button.clicked() {
+                    if button.clicked()
+                        && (node.kind == "mix6"
+                            || (interactive
+                                && self.shortcuts_enabled
+                                && self.editing.is_none()
+                                && self.annotation_edit.is_none()
+                                && !popup_open_at_frame_start
+                                && !egui::Popup::is_any_open(ui.ctx())))
+                    {
                         self.select_primary(node.id.clone());
-                        action = Some(RackAction::Command(
-                            "set_parameter",
-                            json!({"id":node.id,"parameter":name,"value":if value >= 0.5 { 0.0 } else { 1.0 }}),
-                        ));
+                        let mut args = json!({"id":node.id,"parameter":name,"value":if value >= 0.5 { 0.0 } else { 1.0 }});
+                        if node.kind == "stock_mix" {
+                            args["expected_revision"] = json!(revision);
+                        }
+                        action = Some(RackAction::Command("set_parameter", args));
                     }
-                    button.on_hover_text(if *name == "average" {
+                    button.on_hover_text(if *name == "average" && node.kind == "stock_mix" {
+                        "Divide by the number of inputs with channels, including connected mono 0 V."
+                    } else if *name == "average" {
                         "Divide by the number of active input jacks, including patched 0 V."
                     } else {
                         "Reverse the output polarity."
@@ -3556,7 +3569,7 @@ impl Rack {
                     // distinct lines above the unchanged fader and value well.
                     label_gap = 5.0;
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
-                } else if node.kind == "mix6" {
+                } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     (pos2(width * 0.5, 125.0), 32.0)
                 } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf") {
                     voice_parameter_position(index, width)
@@ -9896,7 +9909,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
             pos2(width * [0.15, 0.35, 0.65, 0.85][index], 374.0)
         };
     }
-    if kind == "mix6" && input {
+    if matches!(kind, "mix6" | "stock_mix") && input {
         return pos2(
             width * ((index % 3) + 1) as f32 / 4.0,
             270.0 + (index / 3) as f32 * 52.0,
@@ -10833,7 +10846,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "midi_cc" | "midi_gate" => HP * 32.0,
         "audio_stereo" | "octave" | "push" => HP * 12.0,
         "mid_side" | "stock_mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
-        "mix6" => HP * 16.0,
+        "mix6" | "stock_mix" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
         "poly_viz" => HP * 12.0,
@@ -10885,6 +10898,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "mid_side" => "MID / SIDE",
         "stock_mid_side" => "STOCK MID/SIDE",
         "mix6" => "MIX 6",
+        "stock_mix" => "STOCK MIX",
         "octave" => "OCTAVE",
         "mult" => "MULT",
         "poly_split" => "SPLIT",
@@ -11152,7 +11166,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "high_resolution",
         ],
         "mid_side" | "stock_mid_side" => &["encode_width", "decode_width"],
-        "mix6" => &["level", "average", "invert"],
+        "mix6" | "stock_mix" => &["level", "average", "invert"],
         "octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
         "random" => &[
@@ -13037,7 +13051,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            74,
+            75,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -13155,6 +13169,7 @@ mod tests {
         for kind in [
             "macro_voice",
             "mix6",
+            "stock_mix",
             "multi_lfo",
             "stock_lfo",
             "stock_vco",
@@ -13206,7 +13221,7 @@ mod tests {
                     for (name, _) in ordered_parameters(&preview.patch.nodes[0], Some(module)) {
                         if matches!(
                             (kind, name),
-                            ("mix6", "average" | "invert")
+                            ("mix6" | "stock_mix", "average" | "invert")
                                 | ("multi_lfo", "unipolar" | "invert")
                                 | ("stock_lfo", "offset" | "invert")
                                 | ("stock_vco", "linear_fm" | "soft_sync")
@@ -19712,6 +19727,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_mix_ui_tests {
+        include!("stock_mix_ui_tests.rs");
     }
     mod stock_mid_side_ui_tests {
         include!("stock_mid_side_ui_tests.rs");

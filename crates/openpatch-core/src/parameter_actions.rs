@@ -48,6 +48,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_quantizer", "offset") => Linear,
         ("stock_quantizer", "scale_mask") => InclusiveInteger,
         ("stock_mid_side", "encode_width" | "decode_width") => Linear,
+        ("stock_mix", "level") => Linear,
+        ("stock_mix", "invert" | "average") => Disabled,
         ("stock_vco", "frequency" | "pulse_width") => Linear,
         ("stock_vco", "linear_fm" | "soft_sync") => Enum,
         ("stock_vco", _) => Disabled,
@@ -142,7 +144,8 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             !((matches!(kind.as_str(), "random_values" | "sh_asr")
                 && descriptor["hidden"] == true)
                 || (matches!(kind.as_str(), "seq3" | "stock_seq3") && name == "running")
-                || (kind == "mix6" && (name == "invert" || name == "average")))
+                || (matches!(kind.as_str(), "mix6" | "stock_mix")
+                    && (name == "invert" || name == "average")))
         );
         descriptor["randomization"] = json!(policy(&kind, name).name());
     }
