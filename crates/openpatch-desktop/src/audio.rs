@@ -663,11 +663,31 @@ impl Audio {
     pub(super) fn press_gate_with_ticket(&self, id: &str) -> Result<ManualReleaseTicket, String> {
         self.performance.press_gate_with_ticket(id)
     }
+    pub(super) fn press_manual_with_ticket(
+        &self,
+        id: &str,
+        press: openpatch_core::ModuleAction,
+        release: openpatch_core::ModuleAction,
+    ) -> Result<ManualReleaseTicket, String> {
+        self.performance
+            .press_manual_with_ticket(id, press, release)
+    }
     /// Actual DSP telemetry; step is ONE-based and length is the active count.
     /// Read-only sequencer or sequential-switch state from the current graph.
     /// Unavailable while a newer registry revision awaits audio publication.
     pub fn sequence_state(&self, id: &str) -> Option<SequenceTelemetry> {
         self.performance.sequence_state(id)
+    }
+
+    /// Actual durable flags from one coherent callback publication, not saved defaults.
+    pub fn stock_seq3_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| module["kind"] == "stock_seq3" && module["available"] == true)
+            .map(|(id, module)| (id.clone(), module["state"].clone()))
+            .collect()
     }
 
     pub fn random_values_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
@@ -1442,6 +1462,38 @@ pub(crate) fn test_manual_release_ticket() -> (ManualReleaseTicket, impl Fn() ->
         let _keep_reader_alive = &reader;
         performance.snapshot()
     })
+}
+
+#[cfg(test)]
+pub(crate) fn test_stock_seq3_manual_release_ticket(
+    press: &str,
+    release: &str,
+) -> (
+    ManualReleaseTicket,
+    impl FnMut(usize) -> serde_json::Value,
+    impl Fn() -> Result<ManualReleaseTicket, String>,
+) {
+    let patch:Patch=serde_json::from_value(serde_json::json!({"version":2,"nodes":[{"id":"seq","kind":"stock_seq3"}],"output":"seq","output_port":"cv1"})).unwrap();
+    let (mut callback, _updates, _disposal) = tests::sequence_callback(&patch);
+    callback.shared.playing.store(false, Ordering::SeqCst);
+    callback.render(&mut [0.0_f32; 64], 1);
+    let press =
+        serde_json::from_value::<openpatch_core::ModuleAction>(serde_json::json!(press)).unwrap();
+    let release =
+        serde_json::from_value::<openpatch_core::ModuleAction>(serde_json::json!(release)).unwrap();
+    let performance = callback.performance.clone();
+    let ticket = performance
+        .press_manual_with_ticket("seq", press, release)
+        .unwrap();
+    (
+        ticket,
+        move |frames| {
+            let mut output = vec![0.0_f32; frames];
+            callback.render(&mut output, 1);
+            callback.performance.snapshot()
+        },
+        move || performance.press_manual_with_ticket("seq", press, release),
+    )
 }
 
 #[cfg(test)]
@@ -5754,6 +5806,7 @@ mod tests {
     include!("stock_delay_audio_tests.rs");
     include!("stock_lfo_audio_tests.rs");
     include!("stock_vco_audio_tests.rs");
+    include!("stock_seq3_audio_tests.rs");
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
 }

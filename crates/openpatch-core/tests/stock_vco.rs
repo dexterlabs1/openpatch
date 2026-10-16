@@ -20,7 +20,10 @@ fn named_outputs_taps_consumers_and_five_actual_lamps_are_integrated() {
     p.output_port = "out".into();
     let mut engine = p.compile().unwrap();
     assert_eq!(lights(&engine).count, 5);
-    assert_eq!(lights(&engine).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&engine).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     assert_eq!(lights(&engine).clock_frequency, None);
     assert!(engine.resolve_tap("vco", "out", 0).is_err());
     assert!(engine.resolve_module_control("vco").is_err());
@@ -77,7 +80,10 @@ fn engine_initialize_preserves_signal_history_and_bypass_freezes_it() {
     fresh.sample_rate = 96000;
     let mut changed = fresh.compile().unwrap();
     changed.adopt_state_from(&old);
-    assert_eq!(lights(&changed).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&changed).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
 }
 #[test]
 fn receiving_controls_win_and_changed_sync_routing_keeps_native_detector_history() {

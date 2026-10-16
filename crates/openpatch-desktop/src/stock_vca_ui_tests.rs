@@ -712,7 +712,7 @@ fn stock_vca_bypassed_unavailable_meter_remains_explicitly_offline() {
         Some(ModuleLightState {
             count: 16,
             input_channels: None,
-            brightness: [[1.0, 0.0]; 16],
+            brightness: [[1.0, 0.0]; openpatch_core::MAX_MODULE_LIGHTS],
             ..Default::default()
         }),
     ] {

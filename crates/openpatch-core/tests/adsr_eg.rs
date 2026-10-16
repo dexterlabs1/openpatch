@@ -255,7 +255,10 @@ fn initialize_and_reset_clear_envelopes_dividers_lamps_and_held_actions() {
             e.reset_module_state(h)
         });
         assert!(!e.module_control_state(h).unwrap().pressed);
-        assert_eq!(e.module_lights(h).unwrap().brightness, [[0.0; 2]; 16]);
+        assert_eq!(
+            e.module_lights(h).unwrap().brightness,
+            [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+        );
         assert_eq!(sample(&mut e), PortFrame::mono(0.0));
         press(&mut e);
         for _ in 0..14 {

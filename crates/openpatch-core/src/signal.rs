@@ -4,7 +4,7 @@ use crate::{
 };
 use serde_json::{json, Value};
 
-pub const MAX_MODULE_LIGHTS: usize = 16;
+pub const MAX_MODULE_LIGHTS: usize = 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct ModuleControlState {

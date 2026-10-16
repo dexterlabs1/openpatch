@@ -418,7 +418,10 @@ fn stock_vca_first_processing_taps_lights_adoption_and_reset_allocate_nothing() 
     assert_eq!(published.brightness[0], [0.0625, 0.0]);
     assert_eq!(published.brightness[15], [1.0, 0.0]);
     assert_eq!(cleared.input_channels, Some(1));
-    assert_eq!(cleared.brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        cleared.brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     assert!(samples[0][0].active && samples[0][1].active);
     assert_eq!(samples[0][0].value, 0.125);
     assert_eq!(samples[0][1].value, 2.0);

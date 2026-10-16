@@ -267,7 +267,15 @@ impl CommitReceipt {
                 if remaining == 0 {
                     return receipt;
                 }
-                if descriptor["hidden"] == true {
+                // These durable fields have real native button targets even
+                // though they are omitted from generic parameter inspectors.
+                let stock_button = node.kind == "stock_seq3"
+                    && (parameter == "running"
+                        || parameter
+                            .strip_prefix("gate")
+                            .and_then(|s| s.parse::<u8>().ok())
+                            .is_some_and(|i| (1..=8).contains(&i)));
+                if descriptor["hidden"] == true && !stock_button {
                     continue;
                 }
                 let Some(default) = descriptor["default"].as_f64().map(|value| value as f32) else {

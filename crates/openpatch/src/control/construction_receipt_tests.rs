@@ -938,3 +938,55 @@ fn successful_plan_admission_clears_direct_move_without_revision_but_failed_pref
     assert_eq!(live.patch.cables[0].to, "b");
     assert_eq!(live.patch.nodes[0].params["value"], 4.0);
 }
+
+#[test]
+fn stock_seq3_real_buttons_receive_construction_cues_despite_hidden_inspector_fields() {
+    let session = shared();
+    setup(
+        &session,
+        json!([{"tool":"add_module","arguments":{"id":"seq","kind":"stock_seq3"}}]),
+    );
+    let session = controlled_steps(
+        session,
+        vec![step(
+            "Set visible stock buttons",
+            json!([
+                {"tool":"set_parameter","arguments":{"id":"seq","parameter":"running","value":0}},
+                {"tool":"set_parameter","arguments":{"id":"seq","parameter":"gate8","value":0}},
+                {"tool":"set_parameter","arguments":{"id":"seq","parameter":"gate1","value":0}},
+                {"tool":"set_parameter","arguments":{"id":"seq","parameter":"passthrough","value":1}}
+            ]),
+        )],
+    );
+    let result = advance_one(&session);
+    assert_eq!(result["status"], "completed");
+    let changes = result["last_commit"]["parameter_changes"]
+        .as_array()
+        .unwrap();
+    assert_eq!(
+        changes
+            .iter()
+            .map(|c| c["parameter"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["gate1", "gate8", "passthrough", "running"]
+    );
+    for c in changes {
+        assert_eq!(c["kind"], "stock_seq3");
+        assert_eq!(
+            c["old_effective"],
+            if c["parameter"] == "passthrough" {
+                0.0
+            } else {
+                1.0
+            }
+        );
+        assert_eq!(
+            c["new_effective"],
+            if c["parameter"] == "passthrough" {
+                1.0
+            } else {
+                0.0
+            }
+        );
+    }
+}

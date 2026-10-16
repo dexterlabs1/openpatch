@@ -31,6 +31,7 @@ struct Event {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModuleKind {
     Sequence,
+    StockSeq3,
     Switch1To4,
     Switch4To1,
     Logic,
@@ -62,6 +63,7 @@ impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
         match name {
             "seq3" => Some(Self::Sequence),
+            "stock_seq3" => Some(Self::StockSeq3),
             "switch_1to4" => Some(Self::Switch1To4),
             "switch_4to1" => Some(Self::Switch4To1),
             "logic" => Some(Self::Logic),
@@ -94,6 +96,7 @@ impl ModuleKind {
     fn name(self) -> &'static str {
         match self {
             Self::Sequence => "seq3",
+            Self::StockSeq3 => "stock_seq3",
             Self::Switch1To4 => "switch_1to4",
             Self::Switch4To1 => "switch_4to1",
             Self::Logic => "logic",
@@ -131,7 +134,8 @@ impl ModuleKind {
     fn manual(self) -> bool {
         matches!(
             self,
-            Self::Logic
+            Self::StockSeq3
+                | Self::Logic
                 | Self::Process
                 | Self::Pulses
                 | Self::Push
@@ -142,7 +146,10 @@ impl ModuleKind {
         )
     }
     fn sequential(self) -> bool {
-        matches!(self, Self::Sequence | Self::Switch1To4 | Self::Switch4To1)
+        matches!(
+            self,
+            Self::Sequence | Self::StockSeq3 | Self::Switch1To4 | Self::Switch4To1
+        )
     }
     fn accepts(self, action: ModuleAction) -> bool {
         match self {
@@ -150,6 +157,20 @@ impl ModuleKind {
                 action,
                 ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
             ),
+            Self::StockSeq3 => {
+                matches!(
+                    action,
+                    ModuleAction::Clock
+                        | ModuleAction::Run
+                        | ModuleAction::Reset
+                        | ModuleAction::ClockPress
+                        | ModuleAction::ClockRelease
+                        | ModuleAction::RunPress
+                        | ModuleAction::RunRelease
+                        | ModuleAction::ResetPress
+                        | ModuleAction::ResetRelease
+                ) || action.seq_gate_button().is_some()
+            }
             Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
             Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
             Self::Pulses => action.pulse_button().is_some(),
@@ -188,6 +209,9 @@ fn is_release(action: ModuleAction) -> bool {
             | ModuleAction::HoldRelease
             | ModuleAction::ResetRelease
             | ModuleAction::MidiPanic
+            | ModuleAction::ClockRelease
+            | ModuleAction::RunRelease
+            | ModuleAction::SeqGateRelease(_)
     ) || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]
@@ -209,6 +233,7 @@ struct StateEntry {
     saved_generation: u64,
     saved_revision: u64,
     desired_state: Option<SavedModuleState>,
+    stock_field_generations: [u64; 10],
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -246,6 +271,7 @@ struct Control {
     next_sequence: u64,
     midi_learns: BTreeMap<String, MidiLearnControl>,
     next_learn_serial: u64,
+    stock_click_releases: BTreeMap<String, StockClickRelease>,
 }
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
@@ -323,8 +349,30 @@ impl Meter {
         }
         self.saved_state.store(
             match snapshot.saved_state {
-                Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 3),
-                Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 3),
+                Some(SavedModuleState::StockSeq3 {
+                    running,
+                    gates,
+                    passthrough,
+                }) => {
+                    7 | (u32::from(running) << 4)
+                        | (u32::from(gates) << 5)
+                        | (u32::from(passthrough) << 13)
+                }
+                Some(SavedModuleState::StockSeq3Fields {
+                    running,
+                    gates,
+                    gate_mask,
+                    passthrough,
+                }) => {
+                    8 | (u32::from(running.is_some()) << 4)
+                        | (u32::from(running.unwrap_or(false)) << 5)
+                        | (u32::from(passthrough.is_some()) << 6)
+                        | (u32::from(passthrough.unwrap_or(false)) << 7)
+                        | (u32::from(gate_mask) << 8)
+                        | (u32::from(gates) << 16)
+                }
+                Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 4),
+                Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 4),
                 Some(SavedModuleState::RandomValues { values, rng }) => {
                     for (row, values) in self.random_values.iter().zip(values) {
                         for (slot, value) in row.iter().zip(values) {
@@ -433,7 +481,7 @@ impl Meter {
             let value = self.value.load(Ordering::SeqCst);
             let flags = self.flags.load(Ordering::SeqCst);
             let saved_state = self.saved_state.load(Ordering::SeqCst);
-            let random_state = (saved_state & 7 == 3).then(|| SavedModuleState::RandomValues {
+            let random_state = (saved_state & 15 == 3).then(|| SavedModuleState::RandomValues {
                 values: std::array::from_fn(|row| {
                     std::array::from_fn(|channel| {
                         self.random_values[row][channel].load(Ordering::SeqCst)
@@ -441,17 +489,17 @@ impl Meter {
                 }),
                 rng: self.random_rng.load(Ordering::SeqCst),
             });
-            let shift_state = (saved_state & 7 == 4).then(|| SavedModuleState::ShiftRegister {
+            let shift_state = (saved_state & 15 == 4).then(|| SavedModuleState::ShiftRegister {
                 values: std::array::from_fn(|row| self.shift_values[row].load(Ordering::SeqCst)),
                 rng: self.shift_rng.load(Ordering::SeqCst),
             });
-            let cc_state = (saved_state & 7 == 5).then(|| SavedModuleState::MidiCc {
+            let cc_state = (saved_state & 15 == 5).then(|| SavedModuleState::MidiCc {
                 assignments: std::array::from_fn(|i| {
                     self.cc_assignments[i].load(Ordering::SeqCst) as u16 as i16
                 }),
                 values: std::array::from_fn(|i| self.cc_values[i].load(Ordering::SeqCst) as u8),
             });
-            let gate_state = (saved_state & 7 == 6).then(|| {
+            let gate_state = (saved_state & 15 == 6).then(|| {
                 SavedModuleState::MidiGateMappings(std::array::from_fn(|i| {
                     self.cc_assignments[i].load(Ordering::SeqCst) as u16 as i16
                 }))
@@ -481,13 +529,24 @@ impl Meter {
                         length: (value >> 8) as u8,
                         running: value & (1 << 16) != 0,
                     }),
-                    saved_state: match saved_state & 7 {
-                        1 => Some(SavedModuleState::Seq3Run(saved_state & 8 != 0)),
-                        2 => Some(SavedModuleState::PushHold(saved_state & 8 != 0)),
+                    saved_state: match saved_state & 15 {
+                        1 => Some(SavedModuleState::Seq3Run(saved_state & 16 != 0)),
+                        2 => Some(SavedModuleState::PushHold(saved_state & 16 != 0)),
                         3 => random_state,
                         4 => shift_state,
                         5 => cc_state,
                         6 => gate_state,
+                        7 => Some(SavedModuleState::StockSeq3 {
+                            running: saved_state & 16 != 0,
+                            gates: ((saved_state >> 5) & 255) as u8,
+                            passthrough: saved_state & (1 << 13) != 0,
+                        }),
+                        8 => Some(SavedModuleState::StockSeq3Fields {
+                            running: (saved_state & 16 != 0).then_some(saved_state & 32 != 0),
+                            gates: (saved_state >> 16) as u8,
+                            gate_mask: (saved_state >> 8) as u8,
+                            passthrough: (saved_state & 64 != 0).then_some(saved_state & 128 != 0),
+                        }),
                         _ => None,
                     },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
@@ -520,6 +579,109 @@ impl Meter {
         None
     }
 }
+struct StateAcknowledgment {
+    serial: AtomicU64,
+    token: AtomicU64,
+    generation: AtomicU64,
+}
+impl StateAcknowledgment {
+    fn new() -> Self {
+        Self {
+            serial: AtomicU64::new(0),
+            token: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
+        }
+    }
+    fn write(&self, token: u64, generation: u64) {
+        self.serial.fetch_add(1, Ordering::SeqCst);
+        self.token.store(token, Ordering::SeqCst);
+        self.generation.store(generation, Ordering::SeqCst);
+        self.serial.fetch_add(1, Ordering::SeqCst);
+    }
+    fn read(&self, token: u64) -> Option<u64> {
+        for _ in 0..4 {
+            let serial = self.serial.load(Ordering::SeqCst);
+            if serial & 1 != 0 {
+                continue;
+            }
+            let actual = self.token.load(Ordering::SeqCst);
+            let generation = self.generation.load(Ordering::SeqCst);
+            if serial == self.serial.load(Ordering::SeqCst) {
+                return (actual == token).then_some(generation);
+            }
+        }
+        None
+    }
+}
+// Preserve unconsumed assignment intents without capturing unrelated live flags.
+fn stock_assignment_fields(
+    value: SavedModuleState,
+) -> Option<(Option<bool>, u8, u8, Option<bool>)> {
+    match value {
+        SavedModuleState::StockSeq3 {
+            running,
+            gates,
+            passthrough,
+        } => Some((Some(running), gates, 255, Some(passthrough))),
+        SavedModuleState::StockSeq3Fields {
+            running,
+            gates,
+            gate_mask,
+            passthrough,
+        } => Some((running, gates, gate_mask, passthrough)),
+        _ => None,
+    }
+}
+fn merge_stock_assignment(previous: SavedModuleState, next: SavedModuleState) -> SavedModuleState {
+    let (Some((old_run, old_gates, old_mask, old_pass)), Some((run, gates, mask, pass))) = (
+        stock_assignment_fields(previous),
+        stock_assignment_fields(next),
+    ) else {
+        return next;
+    };
+    SavedModuleState::StockSeq3Fields {
+        running: run.or(old_run),
+        gates: (old_gates & !mask) | (gates & mask),
+        gate_mask: old_mask | mask,
+        passthrough: pass.or(old_pass),
+    }
+}
+fn unconsumed_stock_assignment(
+    value: SavedModuleState,
+    generations: &[u64; 10],
+    applied: u64,
+) -> SavedModuleState {
+    let Some((running, gates, mask, passthrough)) = stock_assignment_fields(value) else {
+        return value;
+    };
+    let mut gate_mask = 0;
+    for i in 0..8 {
+        if mask & (1 << i) != 0 && generations[i + 1] > applied {
+            gate_mask |= 1 << i;
+        }
+    }
+    SavedModuleState::StockSeq3Fields {
+        running: running.filter(|_| generations[0] > applied),
+        gates,
+        gate_mask,
+        passthrough: passthrough.filter(|_| generations[9] > applied),
+    }
+}
+// Wire visibility follows logical light groups, never the fixed callback storage
+// capacity. Keep the derived optional metadata representation unchanged.
+fn module_lights_value(lights: ModuleLightState) -> Option<Value> {
+    let count = usize::from(lights.count);
+    if count > MAX_MODULE_LIGHTS {
+        return None;
+    }
+    let mut value =
+        serde_json::to_value(lights).expect("finite module light packet is serializable");
+    value["brightness"]
+        .as_array_mut()
+        .expect("module light brightness is an array")
+        .truncate(count);
+    Some(value)
+}
 struct Shared {
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
@@ -528,6 +690,8 @@ struct Shared {
     emergency_release_requests: AtomicU64,
     emergency_release_applied: AtomicU64,
     meters: Box<[Meter; MAX_NODES]>,
+    saved_acknowledgments: Box<[StateAcknowledgment; MAX_NODES]>,
+    sampled_sequence: AtomicU64,
     backend: u64,
     closed: AtomicBool,
     // One writer (the audio callback) surrounds the complete meter batch.
@@ -577,6 +741,7 @@ pub(super) struct StateBinding {
     saved_generation: u64,
     applied_saved: u64,
     desired_state: Option<SavedModuleState>,
+    stock_field_generations: [u64; 10],
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -670,6 +835,11 @@ impl ModulePlan {
             let Some(state) = binding.desired_state else {
                 continue;
             };
+            let state = unconsumed_stock_assignment(
+                state,
+                &binding.stock_field_generations,
+                binding.applied_saved,
+            );
             if engine.set_module_saved_state(binding.handle, state) {
                 binding.applied_saved = binding.saved_generation;
                 if let Some((old, old_engine)) = old {
@@ -817,6 +987,14 @@ impl Performance {
                 .try_into()
                 .ok()
                 .expect("fixed meter capacity"),
+            saved_acknowledgments: (0..MAX_NODES)
+                .map(|_| StateAcknowledgment::new())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+                .try_into()
+                .ok()
+                .expect("fixed state acknowledgment capacity"),
+            sampled_sequence: AtomicU64::new(0),
             backend: NEXT_MIDI_BACKEND.fetch_add(1, Ordering::Relaxed),
             closed: AtomicBool::new(false),
             publish_serial: AtomicU64::new(0),
@@ -858,6 +1036,7 @@ impl Performance {
                     next_sequence: 1,
                     midi_learns: BTreeMap::new(),
                     next_learn_serial: 1,
+                    stock_click_releases: BTreeMap::new(),
                 }),
                 shared,
                 diagnostics,
@@ -901,6 +1080,7 @@ impl Performance {
                     },
                     applied_saved: 0,
                     desired_state: entry.desired_state,
+                    stock_field_generations: entry.stock_field_generations,
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
@@ -1057,10 +1237,38 @@ impl Performance {
             }) else {
                 continue;
             };
+            let pending = state.saved_generation != 0
+                && self.shared.saved_acknowledgments[state.slot]
+                    .read(state.token)
+                    .is_none_or(|applied| state.saved_generation > applied);
             state.saved_generation = state.saved_generation.saturating_add(1);
             state.saved_revision = revision;
-            state.desired_state = Some(*value);
-            if let Some(entry) = control.entries.get_mut(id) {
+            let assignment = if pending {
+                state
+                    .desired_state
+                    .map_or(*value, |previous| merge_stock_assignment(previous, *value))
+            } else {
+                *value
+            };
+            if let Some((running, _, mask, passthrough)) = stock_assignment_fields(*value) {
+                if running.is_some() {
+                    state.stock_field_generations[0] = state.saved_generation;
+                }
+                if passthrough.is_some() {
+                    state.stock_field_generations[9] = state.saved_generation;
+                }
+                for i in 0..8 {
+                    if mask & (1 << i) != 0 {
+                        state.stock_field_generations[i + 1] = state.saved_generation;
+                    }
+                }
+            }
+            state.desired_state = Some(assignment);
+            if let Some(entry) = control
+                .entries
+                .get_mut(id)
+                .filter(|_| !matches!(value, SavedModuleState::StockSeq3Fields { .. }))
+            {
                 entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
                 self.shared.action_epochs[entry.slot].store(entry.action_epoch, Ordering::Release);
             }
@@ -1376,6 +1584,7 @@ impl LiveModuleEvents for Performance {
                     saved_generation: 0,
                     saved_revision: revision,
                     desired_state: SavedModuleState::from_node(node),
+                    stock_field_generations: [0; 10],
                 },
             );
         }
@@ -1443,6 +1652,16 @@ impl LiveModuleEvents for Performance {
                 self.shared.desired[slot].store(token, Ordering::Release);
             }
         }
+        let Control {
+            entries,
+            stock_click_releases,
+            ..
+        } = &mut *control;
+        stock_click_releases.retain(|id, release| {
+            entries
+                .get(id)
+                .is_some_and(|entry| entry.token == release.token)
+        });
         self.sync_midi_learns(&mut control, patch, revision);
         control.revision = revision;
     }
@@ -1483,7 +1702,10 @@ impl LiveModuleEvents for Performance {
         let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
                 "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
-                    if let Some(SavedModuleState::PushHold(holding)) = snapshot.saved_state {
+                    if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
+                        Some(json!({"running":running,"gates":std::array::from_fn::<_,8,_>(|i| gates & (1 << i) != 0),
+                            "passthrough":passthrough,"step":snapshot.state.map(|s|s.step),"length":snapshot.state.map(|s|s.length)}))
+                    } else if let Some(SavedModuleState::PushHold(holding)) = snapshot.saved_state {
                         Some(json!({"holding":holding}))
                     } else if let Some(SavedModuleState::RandomValues { values, rng }) = snapshot.saved_state {
                         let values = values.map(|row| row.map(f32::from_bits));
@@ -1498,7 +1720,7 @@ impl LiveModuleEvents for Performance {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
                 }),
-                "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights)}))
+                "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
         json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
@@ -1654,6 +1876,16 @@ impl EventReader {
     }
     pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
         self.shared.publish_frame(frame, || {
+            for (slot, binding) in plan.states.iter().enumerate() {
+                if let Some(binding) = binding {
+                    self.shared.saved_acknowledgments[slot]
+                        .write(binding.token, binding.applied_saved);
+                }
+            }
+            self.shared.sampled_sequence.store(
+                self.shared.last_applied_sequence.load(Ordering::Acquire),
+                Ordering::Release,
+            );
             for (slot, binding) in plan.bindings.iter().enumerate() {
                 if let Some(binding) = binding {
                     self.shared.meters[slot].write(
@@ -1676,7 +1908,9 @@ impl EventReader {
                                 .kind
                                 .learn_kind()
                                 .and_then(|kind| engine.midi_learning(binding.handle, kind)),
-                            lights: if !binding.kind.sequential() {
+                            lights: if !binding.kind.sequential()
+                                || binding.kind == ModuleKind::StockSeq3
+                            {
                                 engine.module_lights(binding.handle).map(|mut lights| {
                                     if binding.kind != ModuleKind::StockLfo {
                                         lights.clock_frequency = None;
@@ -1710,6 +1944,7 @@ mod tests {
     include!("split_performance_tests.rs");
     include!("stock_lfo_performance_tests.rs");
     include!("stock_vco_performance_tests.rs");
+    include!("stock_seq3_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {

@@ -185,9 +185,13 @@ fn mpe_all_cells_all_lanes_and_actual_lights_follow_published_amplitudes() {
     }
     let lights = m.lights();
     assert_eq!(lights.count, 16);
-    for light in lights.brightness {
-        assert_eq!(light, [121.0 / 127.0 * 10.0 / 10.0, 0.0]);
+    for light in &lights.brightness[..usize::from(lights.count)] {
+        assert_eq!(*light, [121.0 / 127.0 * 10.0 / 10.0, 0.0]);
     }
+    assert!(lights.brightness[usize::from(lights.count)..]
+        .iter()
+        .flatten()
+        .all(|v| v.to_bits() == 0));
     for note in DEFAULT_ASSIGNMENTS {
         m.handle_midi(off(15, note as u8));
     }
@@ -351,7 +355,10 @@ fn panic_action_is_typed_immediate_bypass_safe_and_never_queue_limited() {
     assert!(!bypass.arm_midi_gate_learn(h, 2, 0));
     bypass.handle_midi(on(0, 48, 127));
     assert_eq!(frame(&mut bypass), PortFrame::mono(0.0));
-    assert_eq!(bypass.module_lights(h).unwrap().brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        bypass.module_lights(h).unwrap().brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     let mut cc = patch(&[]);
     cc.nodes[0].kind = "midi_cc".into();
     cc.output_port = "out1".into();

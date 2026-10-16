@@ -106,6 +106,33 @@ pub(super) fn live_saved(
                 values,
             }
         }
+        SavedModuleState::StockSeq3 { .. } => {
+            let state = &module["state"];
+            let running = state["running"]
+                .as_bool()
+                .ok_or_else(|| format!("live Stock SEQ3 Run unavailable for module '{id}'"))?;
+            let passthrough = state["passthrough"].as_bool().ok_or_else(|| {
+                format!("live Stock SEQ3 passthrough unavailable for module '{id}'")
+            })?;
+            let flags = state["gates"]
+                .as_array()
+                .filter(|flags| flags.len() == 8)
+                .ok_or_else(|| format!("live Stock SEQ3 gates unavailable for module '{id}'"))?;
+            let mut gates = 0_u8;
+            for (index, flag) in flags.iter().enumerate() {
+                if flag
+                    .as_bool()
+                    .ok_or_else(|| format!("invalid live Stock SEQ3 gate for module '{id}'"))?
+                {
+                    gates |= 1 << index;
+                }
+            }
+            SavedModuleState::StockSeq3 {
+                running,
+                gates,
+                passthrough,
+            }
+        }
         SavedModuleState::ShiftRegister { .. } => {
             let rows = module["state"]["values"]
                 .as_array()
@@ -506,10 +533,21 @@ impl Session {
                 })
                 .collect(),
             "apply_module_preset" | "remove_module" => vec![string(args, "id")?.to_owned()],
+            "rotate_sequence"
+                if candidate.nodes.iter().any(|node| {
+                    node.id == args["id"].as_str().unwrap_or("") && node.kind == "stock_seq3"
+                }) =>
+            {
+                vec![string(args, "id")?.to_owned()]
+            }
             "set_parameter"
                 if candidate.nodes.iter().any(|node| {
                     node.id == args["id"].as_str().unwrap_or("")
-                        && matches!(node.kind.as_str(), "random_values" | "sh_asr")
+                        && (matches!(node.kind.as_str(), "random_values" | "sh_asr")
+                            || (node.kind == "stock_seq3"
+                                && args["parameter"]
+                                    .as_str()
+                                    .is_some_and(stock_seq3_saved_parameter)))
                 }) || args["parameter"] == "running"
                     || args["parameter"] == "holding"
                     || args["parameter"] == "seed"
@@ -522,7 +560,18 @@ impl Session {
             _ => Vec::new(),
         };
         for id in &targets {
-            self.state_for_edit(candidate, id, effects, true)?;
+            let state = self.state_for_edit(candidate, id, effects, true)?;
+            // Project one coherent bank before editing a Stock SEQ3 durable
+            // field. Rotation, partial presets and randomization must not use
+            // stale gate/Run/passthrough parameters from the original graph.
+            if let Some(state @ SavedModuleState::StockSeq3 { .. }) = state {
+                let node = candidate
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.id == *id)
+                    .unwrap();
+                state.write_params(&mut node.params);
+            }
         }
         // Intermediate duplicate IDs are legal until final graph validation.
         // If a later removal deletes both copies, undo must still restore the
@@ -575,6 +624,84 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
+                    if let SavedModuleState::StockSeq3 {
+                        mut running,
+                        gates,
+                        passthrough,
+                    } = current
+                    {
+                        if name == "initialize_modules" {
+                            let Some(SavedModuleState::StockSeq3 {
+                                running: previous, ..
+                            }) = effects.working_saved.get(&id)
+                            else {
+                                return Err("Stock SEQ3 state kind mismatch".into());
+                            };
+                            running = *previous;
+                        }
+                        let full = SavedModuleState::StockSeq3 {
+                            running,
+                            gates,
+                            passthrough,
+                        };
+                        full.write_params(
+                            &mut candidate
+                                .nodes
+                                .iter_mut()
+                                .find(|node| node.id == id)
+                                .unwrap()
+                                .params,
+                        );
+                        effects.working_saved.insert(id.clone(), full);
+                        effects.after_saved.insert(id.clone(), full);
+                        // Loading only explicitly edited flags after adoption
+                        // preserves CV/button edges that arrive after capture.
+                        let requested = |parameter: &str| {
+                            name == "set_parameter" && args["parameter"] == parameter
+                                || name == "apply_module_preset"
+                                    && args["preset"]["params"].get(parameter).is_some()
+                        };
+                        let gate_mask = if matches!(
+                            name,
+                            "rotate_sequence" | "randomize_modules" | "initialize_modules"
+                        ) {
+                            255
+                        } else {
+                            (0..8).fold(0_u8, |mask, i| {
+                                mask | if requested(&format!("gate{}", i + 1)) {
+                                    1 << i
+                                } else {
+                                    0
+                                }
+                            })
+                        };
+                        let assignment = SavedModuleState::StockSeq3Fields {
+                            running: requested("running").then_some(running),
+                            gates,
+                            gate_mask,
+                            passthrough: (requested("passthrough") || name == "initialize_modules")
+                                .then_some(passthrough),
+                        };
+                        if let SavedModuleState::StockSeq3Fields {
+                            running,
+                            gate_mask,
+                            passthrough,
+                            ..
+                        } = assignment
+                        {
+                            if running.is_some() || gate_mask != 0 || passthrough.is_some() {
+                                let combined = merge_stock_seq3_assignments(
+                                    effects.load_saved.get(&id).copied(),
+                                    assignment,
+                                )?;
+                                effects.load_saved.insert(id.clone(), combined);
+                            }
+                        }
+                        if name == "apply_module_preset" {
+                            effects.release_controls.insert(id);
+                        }
+                        continue;
+                    }
                     let explicit = if current.kind() == "midi_gate" {
                         if matches!(name, "initialize_modules" | "apply_module_preset") {
                             Some(current)
@@ -764,7 +891,7 @@ impl Session {
                     if let Some(value) = explicit {
                         if matches!(
                             value.kind(),
-                            "random_values" | "sh_asr" | "midi_cc" | "midi_gate"
+                            "random_values" | "sh_asr" | "midi_cc" | "midi_gate" | "stock_seq3"
                         ) {
                             let node = candidate
                                 .nodes
@@ -822,4 +949,48 @@ impl Session {
         }
         Ok(())
     }
+}
+
+fn stock_seq3_saved_parameter(name: &str) -> bool {
+    matches!(name, "running" | "passthrough")
+        || name
+            .strip_prefix("gate")
+            .and_then(|value| value.parse::<u8>().ok())
+            .is_some_and(|value| (1..=8).contains(&value))
+}
+
+fn merge_stock_seq3_assignments(
+    previous: Option<SavedModuleState>,
+    next: SavedModuleState,
+) -> Result<SavedModuleState, String> {
+    let SavedModuleState::StockSeq3Fields {
+        running,
+        gates,
+        gate_mask,
+        passthrough,
+    } = next
+    else {
+        return Err("expected Stock SEQ3 field assignment".into());
+    };
+    let (old_run, old_gates, old_mask, old_pass) = match previous {
+        None => (None, 0, 0, None),
+        Some(SavedModuleState::StockSeq3Fields {
+            running,
+            gates,
+            gate_mask,
+            passthrough,
+        }) => (running, gates, gate_mask, passthrough),
+        Some(SavedModuleState::StockSeq3 {
+            running,
+            gates,
+            passthrough,
+        }) => (Some(running), gates, 255, Some(passthrough)),
+        _ => return Err("Stock SEQ3 pending assignment kind mismatch".into()),
+    };
+    Ok(SavedModuleState::StockSeq3Fields {
+        running: running.or(old_run),
+        gates: (old_gates & !gate_mask) | (gates & gate_mask),
+        gate_mask: old_mask | gate_mask,
+        passthrough: passthrough.or(old_pass),
+    })
 }

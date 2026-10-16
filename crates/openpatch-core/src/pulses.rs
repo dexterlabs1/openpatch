@@ -105,7 +105,7 @@ impl Pulses {
             count: 10,
             brightness: std::array::from_fn(|button| {
                 [
-                    if self.held & (1 << button) != 0 {
+                    if button < 10 && self.held & (1 << button) != 0 {
                         1.0
                     } else {
                         0.0

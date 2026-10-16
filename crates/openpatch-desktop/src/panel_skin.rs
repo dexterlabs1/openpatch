@@ -35,7 +35,7 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "random_values" | "sh_asr" | "sample_hold" | "pulses" | "push" | "gates" => {
             Color32::from_rgb(108, 99, 168)
         }
-        "seq3" | "score_sequencer" => Color32::from_rgb(143, 104, 28),
+        "seq3" | "stock_seq3" | "score_sequencer" => Color32::from_rgb(143, 104, 28),
         "gain" | "analog_vca" | "stock_vca" | "mixer" | "mix6" | "poly_sum" | "cv_mix"
         | "vca_mix" | "fade" | "crossfade" | "attenuverter" | "attenuverter8" | "mutes10" => {
             Color32::from_rgb(65, 121, 77)

@@ -174,11 +174,13 @@ fn click(
 fn library_zoom_metadata_agrees_with_all_actual_default_panel_sizes_and_assignment_is_not_a_ui_edit(
 ) {
     let catalog = openpatch_core::catalog();
-    assert_eq!(modules(&catalog).count(), 71);
+    assert_eq!(modules(&catalog).count(), 72);
     let stock_lfo = modules(&catalog).find(|module| module["kind"] == "stock_lfo").expect("Stock LFO is covered by library metadata");
     assert_eq!(ModulePreview::new(stock_lfo).size(), vec2(360.0, PANEL_HEIGHT));
     let stock_vco = modules(&catalog).find(|module| module["kind"] == "stock_vco").expect("Stock VCO is covered by library metadata");
     assert_eq!(ModulePreview::new(stock_vco).size(), vec2(360.0, PANEL_HEIGHT));
+    let stock_seq3 = modules(&catalog).find(|module| module["kind"] == "stock_seq3").expect("Stock SEQ3 is covered by library metadata");
+    assert_eq!(ModulePreview::new(stock_seq3).size(), vec2(780.0, PANEL_HEIGHT));
     for module in modules(&catalog) {
         let kind = module["kind"].as_str().unwrap();
         let preview = ModulePreview::new(module);

@@ -117,7 +117,7 @@ impl MidiGate {
     pub fn host_panic(&mut self) {
         self.panic();
         self.learning = None;
-        self.lights.brightness = [[0.0; 2]; 16];
+        self.lights.brightness = [[0.0; 2]; crate::MAX_MODULE_LIGHTS];
     }
     pub fn handle_midi(&mut self, event: MidiEvent) {
         if !event.is_valid() {

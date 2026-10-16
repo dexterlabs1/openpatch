@@ -100,7 +100,7 @@ impl StockVca {
             ..PortFrame::default()
         };
         self.lights.input_channels = Some(channels);
-        self.lights.brightness = [[0.0; 2]; 16];
+        self.lights.brightness = [[0.0; 2]; crate::MAX_MODULE_LIGHTS];
         for channel in 0..usize::from(channels) {
             let mut gain = self.level;
             if inputs[0].channels != 0 {
@@ -231,7 +231,7 @@ mod tests {
     fn silent_audio_observes_gain_and_shrinking_clears_inactive() {
         let mut m = model(&[]);
         assert_eq!(m.lights().input_channels, Some(1));
-        assert_eq!(m.lights().brightness, [[0.0; 2]; 16]);
+        assert_eq!(m.lights().brightness, [[0.0; 2]; crate::MAX_MODULE_LIGHTS]);
         for width in [16, 1, 5, 16] {
             let out = m.process(&[port(width, 5.0), port(0, 0.0)]);
             assert!(out.values.iter().all(|value| *value == 0.0));
@@ -254,9 +254,15 @@ mod tests {
         let mut fresh = StockVca::build(&node(&[]), 96_000).unwrap();
         fresh.adopt(&old);
         assert_eq!(fresh.lights().input_channels, Some(1));
-        assert_eq!(fresh.lights().brightness, [[0.0; 2]; 16]);
+        assert_eq!(
+            fresh.lights().brightness,
+            [[0.0; 2]; crate::MAX_MODULE_LIGHTS]
+        );
         next.initialize_state();
         assert_eq!(next.lights().input_channels, Some(1));
-        assert_eq!(next.lights().brightness, [[0.0; 2]; 16]);
+        assert_eq!(
+            next.lights().brightness,
+            [[0.0; 2]; crate::MAX_MODULE_LIGHTS]
+        );
     }
 }

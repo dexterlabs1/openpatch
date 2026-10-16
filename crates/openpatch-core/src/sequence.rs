@@ -43,6 +43,26 @@ pub const MODULE_ACTION_NAMES: &[&str] = &[
     "reset_press",
     "reset_release",
     "midi_panic",
+    "clock_press",
+    "clock_release",
+    "run_press",
+    "run_release",
+    "seq_gate1_press",
+    "seq_gate1_release",
+    "seq_gate2_press",
+    "seq_gate2_release",
+    "seq_gate3_press",
+    "seq_gate3_release",
+    "seq_gate4_press",
+    "seq_gate4_release",
+    "seq_gate5_press",
+    "seq_gate5_release",
+    "seq_gate6_press",
+    "seq_gate6_release",
+    "seq_gate7_press",
+    "seq_gate7_release",
+    "seq_gate8_press",
+    "seq_gate8_release",
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleAction {
@@ -64,8 +84,23 @@ pub enum ModuleAction {
     ResetPress,
     ResetRelease,
     MidiPanic,
+    ClockPress,
+    ClockRelease,
+    RunPress,
+    RunRelease,
+    /// One-based Stock SEQ 3 gate button, valid only in1..=8.
+    SeqGatePress(u8),
+    SeqGateRelease(u8),
 }
 impl ModuleAction {
+    /// Zero-based Stock SEQ 3 gate button and whether this is a press.
+    pub fn seq_gate_button(self) -> Option<(usize, bool)> {
+        match self {
+            Self::SeqGatePress(n @ 1..=8) => Some((usize::from(n - 1), true)),
+            Self::SeqGateRelease(n @ 1..=8) => Some((usize::from(n - 1), false)),
+            _ => None,
+        }
+    }
     /// Validated zero-based PULSES button and whether this is a press.
     pub fn pulse_button(self) -> Option<(usize, bool)> {
         match self {
@@ -90,6 +125,14 @@ impl ModuleAction {
             Self::ResetPress => 31,
             Self::ResetRelease => 32,
             Self::MidiPanic => 33,
+            Self::ClockPress => 34,
+            Self::ClockRelease => 35,
+            Self::RunPress => 36,
+            Self::RunRelease => 37,
+            action @ (Self::SeqGatePress(_) | Self::SeqGateRelease(_)) => {
+                let (button, press) = action.seq_gate_button()?;
+                38 + 2 * button + usize::from(!press)
+            }
             action => {
                 let (button, press) = action.pulse_button()?;
                 7 + 2 * button + usize::from(!press)
@@ -129,6 +172,18 @@ impl<'de> Deserialize<'de> for ModuleAction {
             31 => Self::ResetPress,
             32 => Self::ResetRelease,
             33 => Self::MidiPanic,
+            34 => Self::ClockPress,
+            35 => Self::ClockRelease,
+            36 => Self::RunPress,
+            37 => Self::RunRelease,
+            38..=53 => {
+                let n = ((index - 38) / 2 + 1) as u8;
+                if (index - 38) % 2 == 0 {
+                    Self::SeqGatePress(n)
+                } else {
+                    Self::SeqGateRelease(n)
+                }
+            }
             _ => {
                 let button = ((index - 7) / 2 + 1) as u8;
                 if (index - 7) % 2 == 0 {

@@ -140,7 +140,7 @@ strict Clippy/formatting and the ARM workspace release build pass. The separate
 Mac app bundle passes deep strict ad-hoc signing, ARM64, exact font/notices/icon
 and runtime dependency checks, with all executable file-backed sections and
 UUIDs matching the tested releases. It was not installed or launched.
-Platform CI and the 121 native captures remain pending for this change.
+Both exact-source CI runs passed all eight platform/visualizer jobs in [PR12](https://github.com/dexterlabs1/openpatch/pull/12). All 121 native captures passed inventory and PNG integrity checks; eight actual views were reviewed and ten prior reviewed views were byte-identical. Native Mac input and audio-device qualification remain open.
 [Reproduction instructions](../scripts/stock_vco_reference/RUNNING.md) explain
 fresh comparisons and complete retained-trace revalidation.
 

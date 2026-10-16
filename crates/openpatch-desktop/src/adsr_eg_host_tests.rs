@@ -67,7 +67,7 @@ fn adsr_eg_host_real_poly_gate_lamps_controls_and_revision_publication() {
     adsr_eg_host_render(&mut callback, 127);
     let before = callback.performance.module_lights("envelope").unwrap();
     assert_eq!(before.count, 5);
-    assert_eq!(before.brightness, [[0.0; 2]; 16]);
+    assert_eq!(before.brightness, [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]);
     adsr_eg_host_render(&mut callback, 1);
     let published = callback.performance.snapshot();
     assert_eq!(published["coherent"], true);
@@ -191,7 +191,7 @@ fn adsr_eg_host_simultaneous_ticket_press_release_samples_zero_without_a_ghost_e
     assert_eq!(status["pending"], 0);
     let lights = callback.performance.module_lights("envelope").unwrap();
     assert!(!lights.manual);
-    assert_eq!(lights.brightness, [[0.0; 2]; 16]);
+    assert_eq!(lights.brightness, [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]);
     let mut frames = [openpatch_core::PortFrame::default(); 16];
     without_heap_activity(|| {
         callback

@@ -1,0 +1,4886 @@
+{
+  "acceptance_sha256": "630f0d719f6cf94cae007a01c8dfd52833dbea9f453b0a662ee5b87d650c845f",
+  "declared_before_any_comparison": true,
+  "generator_sha256": "8b3afa772863705f413d1a6678cc7cbe5a2e10354a07a6c7bf7cf244b4f17f5d",
+  "rates": {
+    "44100": {
+      "reference": {
+        "case_manifest": [
+          {
+            "anchors": [
+              {
+                "frame": 198586,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 198587,
+            "frames": 198587,
+            "name": "internal_t-2.0_pass0",
+            "start_row": 0,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 198586,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 397174,
+            "frames": 198587,
+            "name": "internal_t-2.0_pass1",
+            "start_row": 198587,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 99361,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 496536,
+            "frames": 99362,
+            "name": "internal_t-1.0_pass0",
+            "start_row": 397174,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 99361,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 595898,
+            "frames": 99362,
+            "name": "internal_t-1.0_pass1",
+            "start_row": 496536,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 49749,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 645648,
+            "frames": 49750,
+            "name": "internal_t0.0_pass0",
+            "start_row": 595898,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 49749,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 695398,
+            "frames": 49750,
+            "name": "internal_t0.0_pass1",
+            "start_row": 645648,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 24943,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 720342,
+            "frames": 24944,
+            "name": "internal_t1.0_pass0",
+            "start_row": 695398,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 24943,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 745286,
+            "frames": 24944,
+            "name": "internal_t1.0_pass1",
+            "start_row": 720342,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 12540,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 757827,
+            "frames": 12541,
+            "name": "internal_t2.0_pass0",
+            "start_row": 745286,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 12540,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 770368,
+            "frames": 12541,
+            "name": "internal_t2.0_pass1",
+            "start_row": 757827,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 3237,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 773606,
+            "frames": 3238,
+            "name": "internal_t4.0_pass0",
+            "start_row": 770368,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 3237,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 776844,
+            "frames": 3238,
+            "name": "internal_t4.0_pass1",
+            "start_row": 773606,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 777710,
+            "frames": 866,
+            "name": "all_cells_length1_pass0",
+            "start_row": 776844,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 778576,
+            "frames": 866,
+            "name": "all_cells_length1_pass1",
+            "start_row": 777710,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 779442,
+            "frames": 866,
+            "name": "all_cells_length2_pass0",
+            "start_row": 778576,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 780308,
+            "frames": 866,
+            "name": "all_cells_length2_pass1",
+            "start_row": 779442,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 781174,
+            "frames": 866,
+            "name": "all_cells_length3_pass0",
+            "start_row": 780308,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 782040,
+            "frames": 866,
+            "name": "all_cells_length3_pass1",
+            "start_row": 781174,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 782906,
+            "frames": 866,
+            "name": "all_cells_length4_pass0",
+            "start_row": 782040,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 783772,
+            "frames": 866,
+            "name": "all_cells_length4_pass1",
+            "start_row": 782906,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 784638,
+            "frames": 866,
+            "name": "all_cells_length5_pass0",
+            "start_row": 783772,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 785504,
+            "frames": 866,
+            "name": "all_cells_length5_pass1",
+            "start_row": 784638,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 786370,
+            "frames": 866,
+            "name": "all_cells_length6_pass0",
+            "start_row": 785504,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 787236,
+            "frames": 866,
+            "name": "all_cells_length6_pass1",
+            "start_row": 786370,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 788102,
+            "frames": 866,
+            "name": "all_cells_length7_pass0",
+            "start_row": 787236,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 788968,
+            "frames": 866,
+            "name": "all_cells_length7_pass1",
+            "start_row": 788102,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 789834,
+            "frames": 866,
+            "name": "all_cells_length8_pass0",
+            "start_row": 788968,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 790700,
+            "frames": 866,
+            "name": "all_cells_length8_pass1",
+            "start_row": 789834,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 790766,
+            "frames": 66,
+            "name": "thresholds_clock_w1",
+            "start_row": 790700,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 790832,
+            "frames": 66,
+            "name": "thresholds_clock_w3",
+            "start_row": 790766,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 790898,
+            "frames": 66,
+            "name": "thresholds_clock_w16",
+            "start_row": 790832,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 790964,
+            "frames": 66,
+            "name": "thresholds_run_w1",
+            "start_row": 790898,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791030,
+            "frames": 66,
+            "name": "thresholds_run_w3",
+            "start_row": 790964,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791096,
+            "frames": 66,
+            "name": "thresholds_run_w16",
+            "start_row": 791030,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791162,
+            "frames": 66,
+            "name": "thresholds_reset_w1",
+            "start_row": 791096,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791228,
+            "frames": 66,
+            "name": "thresholds_reset_w3",
+            "start_row": 791162,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791294,
+            "frames": 66,
+            "name": "thresholds_reset_w16",
+            "start_row": 791228,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791445,
+            "frames": 151,
+            "name": "startup_held0",
+            "start_row": 791294,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791596,
+            "frames": 151,
+            "name": "startup_held1",
+            "start_row": 791445,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791747,
+            "frames": 151,
+            "name": "startup_held2",
+            "start_row": 791596,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 791898,
+            "frames": 151,
+            "name": "startup_held4",
+            "start_row": 791747,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792049,
+            "frames": 151,
+            "name": "startup_held7",
+            "start_row": 791898,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792200,
+            "frames": 151,
+            "name": "startup_held2047",
+            "start_row": 792049,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792340,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_0",
+            "start_row": 792200,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792480,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_1",
+            "start_row": 792340,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792620,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_2",
+            "start_row": 792480,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792760,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_3",
+            "start_row": 792620,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 792900,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_4",
+            "start_row": 792760,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793040,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_5",
+            "start_row": 792900,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793180,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_6",
+            "start_row": 793040,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793320,
+            "frames": 140,
+            "name": "gate_and_clock_same_frame_7",
+            "start_row": 793180,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793354,
+            "frames": 34,
+            "name": "cell_voltage_endpoints",
+            "start_row": 793320,
+            "tags": [
+              "all24cells",
+              "both_voltage_endpoints"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793497,
+            "frames": 143,
+            "name": "button0_hold",
+            "start_row": 793354,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793640,
+            "frames": 143,
+            "name": "button1_hold",
+            "start_row": 793497,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793783,
+            "frames": 143,
+            "name": "button2_hold",
+            "start_row": 793640,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 793926,
+            "frames": 143,
+            "name": "button3_hold",
+            "start_row": 793783,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794069,
+            "frames": 143,
+            "name": "button4_hold",
+            "start_row": 793926,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794212,
+            "frames": 143,
+            "name": "button5_hold",
+            "start_row": 794069,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794355,
+            "frames": 143,
+            "name": "button6_hold",
+            "start_row": 794212,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794498,
+            "frames": 143,
+            "name": "button7_hold",
+            "start_row": 794355,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794641,
+            "frames": 143,
+            "name": "button8_hold",
+            "start_row": 794498,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794784,
+            "frames": 143,
+            "name": "button9_hold",
+            "start_row": 794641,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 794927,
+            "frames": 143,
+            "name": "button10_hold",
+            "start_row": 794784,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 795230,
+            "frames": 303,
+            "name": "reset_collisions_index0_pass0",
+            "start_row": 794927,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 795535,
+            "frames": 305,
+            "name": "reset_collisions_index1_pass0",
+            "start_row": 795230,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 795848,
+            "frames": 313,
+            "name": "reset_collisions_index5_pass0",
+            "start_row": 795535,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796165,
+            "frames": 317,
+            "name": "reset_collisions_index7_pass0",
+            "start_row": 795848,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796468,
+            "frames": 303,
+            "name": "reset_collisions_index0_pass1",
+            "start_row": 796165,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796773,
+            "frames": 305,
+            "name": "reset_collisions_index1_pass1",
+            "start_row": 796468,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 797086,
+            "frames": 313,
+            "name": "reset_collisions_index5_pass1",
+            "start_row": 796773,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 797403,
+            "frames": 317,
+            "name": "reset_collisions_index7_pass1",
+            "start_row": 797086,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 797557,
+            "frames": 154,
+            "name": "stop_resume_ext0_pass0",
+            "start_row": 797403,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 797711,
+            "frames": 154,
+            "name": "stop_resume_ext0_pass1",
+            "start_row": 797557,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 797865,
+            "frames": 154,
+            "name": "stop_resume_ext1_pass0",
+            "start_row": 797711,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798019,
+            "frames": 154,
+            "name": "stop_resume_ext1_pass1",
+            "start_row": 797865,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798113,
+            "frames": 94,
+            "name": "effective_pitch_-127.0",
+            "start_row": 798019,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798207,
+            "frames": 94,
+            "name": "effective_pitch_-126.99999237060547",
+            "start_row": 798113,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798301,
+            "frames": 94,
+            "name": "effective_pitch_-20.0",
+            "start_row": 798207,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798395,
+            "frames": 94,
+            "name": "effective_pitch_-0.5",
+            "start_row": 798301,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798489,
+            "frames": 94,
+            "name": "effective_pitch_0.0",
+            "start_row": 798395,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798583,
+            "frames": 94,
+            "name": "effective_pitch_0.5",
+            "start_row": 798489,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798677,
+            "frames": 94,
+            "name": "effective_pitch_10.0",
+            "start_row": 798583,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798771,
+            "frames": 94,
+            "name": "effective_pitch_20.0",
+            "start_row": 798677,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798865,
+            "frames": 94,
+            "name": "effective_pitch_100.0",
+            "start_row": 798771,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 798959,
+            "frames": 94,
+            "name": "effective_pitch_127.0",
+            "start_row": 798865,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 799053,
+            "frames": 94,
+            "name": "effective_pitch_127.99998474121094",
+            "start_row": 798959,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 799698,
+            "frames": 645,
+            "name": "tempo_cv_amount0.0",
+            "start_row": 799053,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 800343,
+            "frames": 645,
+            "name": "tempo_cv_amount0.25",
+            "start_row": 799698,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 800988,
+            "frames": 645,
+            "name": "tempo_cv_amount1.0",
+            "start_row": 800343,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801096,
+            "frames": 108,
+            "name": "steps_boundaries_base1",
+            "start_row": 800988,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801204,
+            "frames": 108,
+            "name": "steps_boundaries_base2",
+            "start_row": 801096,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801312,
+            "frames": 108,
+            "name": "steps_boundaries_base3",
+            "start_row": 801204,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801420,
+            "frames": 108,
+            "name": "steps_boundaries_base4",
+            "start_row": 801312,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801528,
+            "frames": 108,
+            "name": "steps_boundaries_base5",
+            "start_row": 801420,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801636,
+            "frames": 108,
+            "name": "steps_boundaries_base6",
+            "start_row": 801528,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801744,
+            "frames": 108,
+            "name": "steps_boundaries_base7",
+            "start_row": 801636,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 801852,
+            "frames": 108,
+            "name": "steps_boundaries_base8",
+            "start_row": 801744,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 803226,
+            "frames": 1374,
+            "name": "clock_reconnect_and_phase_retention",
+            "start_row": 801852,
+            "tags": [
+              "external_freezes_phase",
+              "disconnected_detector_retention",
+              "clock_width0"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 803632,
+            "frames": 406,
+            "name": "lifecycle_pulse_pass0",
+            "start_row": 803226,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804038,
+            "frames": 406,
+            "name": "lifecycle_pulse_pass1",
+            "start_row": 803632,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804047,
+            "frames": 9,
+            "name": "durable_missing_and_rotation",
+            "start_row": 804038,
+            "tags": [
+              "durable_running_gates_pass",
+              "missing_legacy_pass_true",
+              "rotation_all_rows_gates",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 2,
+                "gates_mask": 3,
+                "outputs": {
+                  "0": -4.625,
+                  "1": 1.375,
+                  "2": 7.375
+                }
+              },
+              {
+                "frame": 4,
+                "gates_mask": 129,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                }
+              }
+            ],
+            "end_row_exclusive": 804053,
+            "frames": 6,
+            "name": "rotation_composition_persistence",
+            "start_row": 804047,
+            "tags": [
+              "rotation_composition",
+              "persistent_cell_and_gate_rotation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804110,
+            "frames": 57,
+            "name": "gates_bypass_adopt_0",
+            "start_row": 804053,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804167,
+            "frames": 57,
+            "name": "gates_bypass_adopt_1",
+            "start_row": 804110,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804224,
+            "frames": 57,
+            "name": "gates_bypass_adopt_85",
+            "start_row": 804167,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804281,
+            "frames": 57,
+            "name": "gates_bypass_adopt_170",
+            "start_row": 804224,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 804338,
+            "frames": 57,
+            "name": "gates_bypass_adopt_255",
+            "start_row": 804281,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 66,
+                "gates_mask": 255,
+                "index": 0,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                },
+                "passthrough": 0,
+                "phase": 0.0,
+                "running": 0
+              }
+            ],
+            "end_row_exclusive": 804405,
+            "frames": 67,
+            "name": "analytic_static_stopped",
+            "start_row": 804338,
+            "tags": [
+              "independent_anchor"
+            ]
+          }
+        ],
+        "cases": 108,
+        "input_sha256": "98f4faf9b7bb8c3b4da43c418098592f8bbfada68d8c5bd458a2d5f9cd7a45fa",
+        "observed_frames": 804405,
+        "processed_frames": 804405
+      },
+      "safety": {
+        "case_manifest": [
+          {
+            "anchors": [],
+            "end_row_exclusive": 199,
+            "frames": 199,
+            "name": "safety_0",
+            "start_row": 0,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 398,
+            "frames": 199,
+            "name": "safety_1",
+            "start_row": 199,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 597,
+            "frames": 199,
+            "name": "safety_2",
+            "start_row": 398,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796,
+            "frames": 199,
+            "name": "safety_3",
+            "start_row": 597,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 995,
+            "frames": 199,
+            "name": "safety_4",
+            "start_row": 796,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1194,
+            "frames": 199,
+            "name": "safety_5",
+            "start_row": 995,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1393,
+            "frames": 199,
+            "name": "safety_6",
+            "start_row": 1194,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1592,
+            "frames": 199,
+            "name": "safety_7",
+            "start_row": 1393,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1791,
+            "frames": 199,
+            "name": "safety_8",
+            "start_row": 1592,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1990,
+            "frames": 199,
+            "name": "safety_9",
+            "start_row": 1791,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          }
+        ],
+        "cases": 10,
+        "input_sha256": "4bce1fa662a466e64d8b441d66f0eeddb2c873303000e0aa41caf62172c8aacf",
+        "observed_frames": 1990,
+        "processed_frames": 1990
+      }
+    },
+    "48000": {
+      "reference": {
+        "case_manifest": [
+          {
+            "anchors": [
+              {
+                "frame": 216147,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 216148,
+            "frames": 216148,
+            "name": "internal_t-2.0_pass0",
+            "start_row": 0,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 216147,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 432296,
+            "frames": 216148,
+            "name": "internal_t-2.0_pass1",
+            "start_row": 216148,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 108147,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 540444,
+            "frames": 108148,
+            "name": "internal_t-1.0_pass0",
+            "start_row": 432296,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 108147,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 648592,
+            "frames": 108148,
+            "name": "internal_t-1.0_pass1",
+            "start_row": 540444,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 54147,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 702740,
+            "frames": 54148,
+            "name": "internal_t0.0_pass0",
+            "start_row": 648592,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 54147,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 756888,
+            "frames": 54148,
+            "name": "internal_t0.0_pass1",
+            "start_row": 702740,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 27147,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 784036,
+            "frames": 27148,
+            "name": "internal_t1.0_pass0",
+            "start_row": 756888,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 27147,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 811184,
+            "frames": 27148,
+            "name": "internal_t1.0_pass1",
+            "start_row": 784036,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 13647,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 824832,
+            "frames": 13648,
+            "name": "internal_t2.0_pass0",
+            "start_row": 811184,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 13647,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 838480,
+            "frames": 13648,
+            "name": "internal_t2.0_pass1",
+            "start_row": 824832,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 3522,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 842003,
+            "frames": 3523,
+            "name": "internal_t4.0_pass0",
+            "start_row": 838480,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 3522,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 845526,
+            "frames": 3523,
+            "name": "internal_t4.0_pass1",
+            "start_row": 842003,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 846446,
+            "frames": 920,
+            "name": "all_cells_length1_pass0",
+            "start_row": 845526,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 847366,
+            "frames": 920,
+            "name": "all_cells_length1_pass1",
+            "start_row": 846446,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 848286,
+            "frames": 920,
+            "name": "all_cells_length2_pass0",
+            "start_row": 847366,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 849206,
+            "frames": 920,
+            "name": "all_cells_length2_pass1",
+            "start_row": 848286,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 850126,
+            "frames": 920,
+            "name": "all_cells_length3_pass0",
+            "start_row": 849206,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 851046,
+            "frames": 920,
+            "name": "all_cells_length3_pass1",
+            "start_row": 850126,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 851966,
+            "frames": 920,
+            "name": "all_cells_length4_pass0",
+            "start_row": 851046,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 852886,
+            "frames": 920,
+            "name": "all_cells_length4_pass1",
+            "start_row": 851966,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 853806,
+            "frames": 920,
+            "name": "all_cells_length5_pass0",
+            "start_row": 852886,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 854726,
+            "frames": 920,
+            "name": "all_cells_length5_pass1",
+            "start_row": 853806,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 855646,
+            "frames": 920,
+            "name": "all_cells_length6_pass0",
+            "start_row": 854726,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 856566,
+            "frames": 920,
+            "name": "all_cells_length6_pass1",
+            "start_row": 855646,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 857486,
+            "frames": 920,
+            "name": "all_cells_length7_pass0",
+            "start_row": 856566,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 858406,
+            "frames": 920,
+            "name": "all_cells_length7_pass1",
+            "start_row": 857486,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 859326,
+            "frames": 920,
+            "name": "all_cells_length8_pass0",
+            "start_row": 858406,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860246,
+            "frames": 920,
+            "name": "all_cells_length8_pass1",
+            "start_row": 859326,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860312,
+            "frames": 66,
+            "name": "thresholds_clock_w1",
+            "start_row": 860246,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860378,
+            "frames": 66,
+            "name": "thresholds_clock_w3",
+            "start_row": 860312,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860444,
+            "frames": 66,
+            "name": "thresholds_clock_w16",
+            "start_row": 860378,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860510,
+            "frames": 66,
+            "name": "thresholds_run_w1",
+            "start_row": 860444,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860576,
+            "frames": 66,
+            "name": "thresholds_run_w3",
+            "start_row": 860510,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860642,
+            "frames": 66,
+            "name": "thresholds_run_w16",
+            "start_row": 860576,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860708,
+            "frames": 66,
+            "name": "thresholds_reset_w1",
+            "start_row": 860642,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860774,
+            "frames": 66,
+            "name": "thresholds_reset_w3",
+            "start_row": 860708,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 860840,
+            "frames": 66,
+            "name": "thresholds_reset_w16",
+            "start_row": 860774,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861002,
+            "frames": 162,
+            "name": "startup_held0",
+            "start_row": 860840,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861164,
+            "frames": 162,
+            "name": "startup_held1",
+            "start_row": 861002,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861326,
+            "frames": 162,
+            "name": "startup_held2",
+            "start_row": 861164,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861488,
+            "frames": 162,
+            "name": "startup_held4",
+            "start_row": 861326,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861650,
+            "frames": 162,
+            "name": "startup_held7",
+            "start_row": 861488,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861812,
+            "frames": 162,
+            "name": "startup_held2047",
+            "start_row": 861650,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 861963,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_0",
+            "start_row": 861812,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862114,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_1",
+            "start_row": 861963,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862265,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_2",
+            "start_row": 862114,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862416,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_3",
+            "start_row": 862265,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862567,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_4",
+            "start_row": 862416,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862718,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_5",
+            "start_row": 862567,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 862869,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_6",
+            "start_row": 862718,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863020,
+            "frames": 151,
+            "name": "gate_and_clock_same_frame_7",
+            "start_row": 862869,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863054,
+            "frames": 34,
+            "name": "cell_voltage_endpoints",
+            "start_row": 863020,
+            "tags": [
+              "all24cells",
+              "both_voltage_endpoints"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863208,
+            "frames": 154,
+            "name": "button0_hold",
+            "start_row": 863054,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863362,
+            "frames": 154,
+            "name": "button1_hold",
+            "start_row": 863208,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863516,
+            "frames": 154,
+            "name": "button2_hold",
+            "start_row": 863362,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863670,
+            "frames": 154,
+            "name": "button3_hold",
+            "start_row": 863516,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863824,
+            "frames": 154,
+            "name": "button4_hold",
+            "start_row": 863670,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 863978,
+            "frames": 154,
+            "name": "button5_hold",
+            "start_row": 863824,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 864132,
+            "frames": 154,
+            "name": "button6_hold",
+            "start_row": 863978,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 864286,
+            "frames": 154,
+            "name": "button7_hold",
+            "start_row": 864132,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 864440,
+            "frames": 154,
+            "name": "button8_hold",
+            "start_row": 864286,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 864594,
+            "frames": 154,
+            "name": "button9_hold",
+            "start_row": 864440,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 864748,
+            "frames": 154,
+            "name": "button10_hold",
+            "start_row": 864594,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 865069,
+            "frames": 321,
+            "name": "reset_collisions_index0_pass0",
+            "start_row": 864748,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 865392,
+            "frames": 323,
+            "name": "reset_collisions_index1_pass0",
+            "start_row": 865069,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 865723,
+            "frames": 331,
+            "name": "reset_collisions_index5_pass0",
+            "start_row": 865392,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 866058,
+            "frames": 335,
+            "name": "reset_collisions_index7_pass0",
+            "start_row": 865723,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 866379,
+            "frames": 321,
+            "name": "reset_collisions_index0_pass1",
+            "start_row": 866058,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 866702,
+            "frames": 323,
+            "name": "reset_collisions_index1_pass1",
+            "start_row": 866379,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 867033,
+            "frames": 331,
+            "name": "reset_collisions_index5_pass1",
+            "start_row": 866702,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 867368,
+            "frames": 335,
+            "name": "reset_collisions_index7_pass1",
+            "start_row": 867033,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 867533,
+            "frames": 165,
+            "name": "stop_resume_ext0_pass0",
+            "start_row": 867368,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 867698,
+            "frames": 165,
+            "name": "stop_resume_ext0_pass1",
+            "start_row": 867533,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 867863,
+            "frames": 165,
+            "name": "stop_resume_ext1_pass0",
+            "start_row": 867698,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868028,
+            "frames": 165,
+            "name": "stop_resume_ext1_pass1",
+            "start_row": 867863,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868129,
+            "frames": 101,
+            "name": "effective_pitch_-127.0",
+            "start_row": 868028,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868230,
+            "frames": 101,
+            "name": "effective_pitch_-126.99999237060547",
+            "start_row": 868129,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868331,
+            "frames": 101,
+            "name": "effective_pitch_-20.0",
+            "start_row": 868230,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868432,
+            "frames": 101,
+            "name": "effective_pitch_-0.5",
+            "start_row": 868331,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868533,
+            "frames": 101,
+            "name": "effective_pitch_0.0",
+            "start_row": 868432,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868634,
+            "frames": 101,
+            "name": "effective_pitch_0.5",
+            "start_row": 868533,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868735,
+            "frames": 101,
+            "name": "effective_pitch_10.0",
+            "start_row": 868634,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868836,
+            "frames": 101,
+            "name": "effective_pitch_20.0",
+            "start_row": 868735,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 868937,
+            "frames": 101,
+            "name": "effective_pitch_100.0",
+            "start_row": 868836,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 869038,
+            "frames": 101,
+            "name": "effective_pitch_127.0",
+            "start_row": 868937,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 869139,
+            "frames": 101,
+            "name": "effective_pitch_127.99998474121094",
+            "start_row": 869038,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 869784,
+            "frames": 645,
+            "name": "tempo_cv_amount0.0",
+            "start_row": 869139,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 870429,
+            "frames": 645,
+            "name": "tempo_cv_amount0.25",
+            "start_row": 869784,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871074,
+            "frames": 645,
+            "name": "tempo_cv_amount1.0",
+            "start_row": 870429,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871182,
+            "frames": 108,
+            "name": "steps_boundaries_base1",
+            "start_row": 871074,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871290,
+            "frames": 108,
+            "name": "steps_boundaries_base2",
+            "start_row": 871182,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871398,
+            "frames": 108,
+            "name": "steps_boundaries_base3",
+            "start_row": 871290,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871506,
+            "frames": 108,
+            "name": "steps_boundaries_base4",
+            "start_row": 871398,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871614,
+            "frames": 108,
+            "name": "steps_boundaries_base5",
+            "start_row": 871506,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871722,
+            "frames": 108,
+            "name": "steps_boundaries_base6",
+            "start_row": 871614,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871830,
+            "frames": 108,
+            "name": "steps_boundaries_base7",
+            "start_row": 871722,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 871938,
+            "frames": 108,
+            "name": "steps_boundaries_base8",
+            "start_row": 871830,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 873312,
+            "frames": 1374,
+            "name": "clock_reconnect_and_phase_retention",
+            "start_row": 871938,
+            "tags": [
+              "external_freezes_phase",
+              "disconnected_detector_retention",
+              "clock_width0"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 873751,
+            "frames": 439,
+            "name": "lifecycle_pulse_pass0",
+            "start_row": 873312,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874190,
+            "frames": 439,
+            "name": "lifecycle_pulse_pass1",
+            "start_row": 873751,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874199,
+            "frames": 9,
+            "name": "durable_missing_and_rotation",
+            "start_row": 874190,
+            "tags": [
+              "durable_running_gates_pass",
+              "missing_legacy_pass_true",
+              "rotation_all_rows_gates",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 2,
+                "gates_mask": 3,
+                "outputs": {
+                  "0": -4.625,
+                  "1": 1.375,
+                  "2": 7.375
+                }
+              },
+              {
+                "frame": 4,
+                "gates_mask": 129,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                }
+              }
+            ],
+            "end_row_exclusive": 874205,
+            "frames": 6,
+            "name": "rotation_composition_persistence",
+            "start_row": 874199,
+            "tags": [
+              "rotation_composition",
+              "persistent_cell_and_gate_rotation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874262,
+            "frames": 57,
+            "name": "gates_bypass_adopt_0",
+            "start_row": 874205,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874319,
+            "frames": 57,
+            "name": "gates_bypass_adopt_1",
+            "start_row": 874262,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874376,
+            "frames": 57,
+            "name": "gates_bypass_adopt_85",
+            "start_row": 874319,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874433,
+            "frames": 57,
+            "name": "gates_bypass_adopt_170",
+            "start_row": 874376,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 874490,
+            "frames": 57,
+            "name": "gates_bypass_adopt_255",
+            "start_row": 874433,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 66,
+                "gates_mask": 255,
+                "index": 0,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                },
+                "passthrough": 0,
+                "phase": 0.0,
+                "running": 0
+              }
+            ],
+            "end_row_exclusive": 874557,
+            "frames": 67,
+            "name": "analytic_static_stopped",
+            "start_row": 874490,
+            "tags": [
+              "independent_anchor"
+            ]
+          }
+        ],
+        "cases": 108,
+        "input_sha256": "47900b1733f70728d7fc4ee06ee2bae2ffc223a15ed6b8adab9250403c1b17f3",
+        "observed_frames": 874557,
+        "processed_frames": 874557
+      },
+      "safety": {
+        "case_manifest": [
+          {
+            "anchors": [],
+            "end_row_exclusive": 199,
+            "frames": 199,
+            "name": "safety_0",
+            "start_row": 0,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 398,
+            "frames": 199,
+            "name": "safety_1",
+            "start_row": 199,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 597,
+            "frames": 199,
+            "name": "safety_2",
+            "start_row": 398,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796,
+            "frames": 199,
+            "name": "safety_3",
+            "start_row": 597,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 995,
+            "frames": 199,
+            "name": "safety_4",
+            "start_row": 796,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1194,
+            "frames": 199,
+            "name": "safety_5",
+            "start_row": 995,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1393,
+            "frames": 199,
+            "name": "safety_6",
+            "start_row": 1194,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1592,
+            "frames": 199,
+            "name": "safety_7",
+            "start_row": 1393,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1791,
+            "frames": 199,
+            "name": "safety_8",
+            "start_row": 1592,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1990,
+            "frames": 199,
+            "name": "safety_9",
+            "start_row": 1791,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          }
+        ],
+        "cases": 10,
+        "input_sha256": "4bce1fa662a466e64d8b441d66f0eeddb2c873303000e0aa41caf62172c8aacf",
+        "observed_frames": 1990,
+        "processed_frames": 1990
+      }
+    },
+    "96000": {
+      "reference": {
+        "case_manifest": [
+          {
+            "anchors": [
+              {
+                "frame": 432291,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 432292,
+            "frames": 432292,
+            "name": "internal_t-2.0_pass0",
+            "start_row": 0,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 432291,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 864584,
+            "frames": 432292,
+            "name": "internal_t-2.0_pass1",
+            "start_row": 432292,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 216291,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1080876,
+            "frames": 216292,
+            "name": "internal_t-1.0_pass0",
+            "start_row": 864584,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 216291,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 1297168,
+            "frames": 216292,
+            "name": "internal_t-1.0_pass1",
+            "start_row": 1080876,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 108291,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1405460,
+            "frames": 108292,
+            "name": "internal_t0.0_pass0",
+            "start_row": 1297168,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 108291,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 1513752,
+            "frames": 108292,
+            "name": "internal_t0.0_pass1",
+            "start_row": 1405460,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 54291,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1568044,
+            "frames": 54292,
+            "name": "internal_t1.0_pass0",
+            "start_row": 1513752,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 54291,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 1622336,
+            "frames": 54292,
+            "name": "internal_t1.0_pass1",
+            "start_row": 1568044,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 27291,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1649628,
+            "frames": 27292,
+            "name": "internal_t2.0_pass0",
+            "start_row": 1622336,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 27291,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 1676920,
+            "frames": 27292,
+            "name": "internal_t2.0_pass1",
+            "start_row": 1649628,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 7041,
+                "index": 1,
+                "outputs": {
+                  "13": 0.0,
+                  "3": 0.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1683962,
+            "frames": 7042,
+            "name": "internal_t4.0_pass0",
+            "start_row": 1676920,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 7041,
+                "index": 1
+              }
+            ],
+            "end_row_exclusive": 1691004,
+            "frames": 7042,
+            "name": "internal_t4.0_pass1",
+            "start_row": 1683962,
+            "tags": [
+              "full_internal_period",
+              "tempo_range",
+              "pulse_tails",
+              "phase_convention"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1692788,
+            "frames": 1784,
+            "name": "all_cells_length1_pass0",
+            "start_row": 1691004,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1694572,
+            "frames": 1784,
+            "name": "all_cells_length1_pass1",
+            "start_row": 1692788,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1696356,
+            "frames": 1784,
+            "name": "all_cells_length2_pass0",
+            "start_row": 1694572,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1698140,
+            "frames": 1784,
+            "name": "all_cells_length2_pass1",
+            "start_row": 1696356,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1699924,
+            "frames": 1784,
+            "name": "all_cells_length3_pass0",
+            "start_row": 1698140,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1701708,
+            "frames": 1784,
+            "name": "all_cells_length3_pass1",
+            "start_row": 1699924,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1703492,
+            "frames": 1784,
+            "name": "all_cells_length4_pass0",
+            "start_row": 1701708,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1705276,
+            "frames": 1784,
+            "name": "all_cells_length4_pass1",
+            "start_row": 1703492,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1707060,
+            "frames": 1784,
+            "name": "all_cells_length5_pass0",
+            "start_row": 1705276,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1708844,
+            "frames": 1784,
+            "name": "all_cells_length5_pass1",
+            "start_row": 1707060,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1710628,
+            "frames": 1784,
+            "name": "all_cells_length6_pass0",
+            "start_row": 1708844,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1712412,
+            "frames": 1784,
+            "name": "all_cells_length6_pass1",
+            "start_row": 1710628,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1714196,
+            "frames": 1784,
+            "name": "all_cells_length7_pass0",
+            "start_row": 1712412,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1715980,
+            "frames": 1784,
+            "name": "all_cells_length7_pass1",
+            "start_row": 1714196,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1717764,
+            "frames": 1784,
+            "name": "all_cells_length8_pass0",
+            "start_row": 1715980,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719548,
+            "frames": 1784,
+            "name": "all_cells_length8_pass1",
+            "start_row": 1717764,
+            "tags": [
+              "all24cells",
+              "all16outputs",
+              "length1",
+              "wrap",
+              "step_gates"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719614,
+            "frames": 66,
+            "name": "thresholds_clock_w1",
+            "start_row": 1719548,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719680,
+            "frames": 66,
+            "name": "thresholds_clock_w3",
+            "start_row": 1719614,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719746,
+            "frames": 66,
+            "name": "thresholds_clock_w16",
+            "start_row": 1719680,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719812,
+            "frames": 66,
+            "name": "thresholds_run_w1",
+            "start_row": 1719746,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719878,
+            "frames": 66,
+            "name": "thresholds_run_w3",
+            "start_row": 1719812,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1719944,
+            "frames": 66,
+            "name": "thresholds_run_w16",
+            "start_row": 1719878,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1720010,
+            "frames": 66,
+            "name": "thresholds_reset_w1",
+            "start_row": 1719944,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1720076,
+            "frames": 66,
+            "name": "thresholds_reset_w3",
+            "start_row": 1720010,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1720142,
+            "frames": 66,
+            "name": "thresholds_reset_w16",
+            "start_row": 1720076,
+            "tags": [
+              "threshold_neighbors",
+              "mono_first_lane",
+              "detector_hysteresis"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1720448,
+            "frames": 306,
+            "name": "startup_held0",
+            "start_row": 1720142,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1720754,
+            "frames": 306,
+            "name": "startup_held1",
+            "start_row": 1720448,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1721060,
+            "frames": 306,
+            "name": "startup_held2",
+            "start_row": 1720754,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1721366,
+            "frames": 306,
+            "name": "startup_held4",
+            "start_row": 1721060,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1721672,
+            "frames": 306,
+            "name": "startup_held7",
+            "start_row": 1721366,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1721978,
+            "frames": 306,
+            "name": "startup_held2047",
+            "start_row": 1721672,
+            "tags": [
+              "startup_uninitialized",
+              "held_controls",
+              "release_rearm",
+              "simultaneous_cv_button"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1722273,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_0",
+            "start_row": 1721978,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1722568,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_1",
+            "start_row": 1722273,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1722863,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_2",
+            "start_row": 1722568,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1723158,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_3",
+            "start_row": 1722863,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1723453,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_4",
+            "start_row": 1723158,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1723748,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_5",
+            "start_row": 1723453,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1724043,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_6",
+            "start_row": 1723748,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1724338,
+            "frames": 295,
+            "name": "gate_and_clock_same_frame_7",
+            "start_row": 1724043,
+            "tags": [
+              "gate_clock_same_sample",
+              "initialize_held_detector_retention",
+              "selected_gate_during_pulse"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1724372,
+            "frames": 34,
+            "name": "cell_voltage_endpoints",
+            "start_row": 1724338,
+            "tags": [
+              "all24cells",
+              "both_voltage_endpoints"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1724670,
+            "frames": 298,
+            "name": "button0_hold",
+            "start_row": 1724372,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1724968,
+            "frames": 298,
+            "name": "button1_hold",
+            "start_row": 1724670,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1725266,
+            "frames": 298,
+            "name": "button2_hold",
+            "start_row": 1724968,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1725564,
+            "frames": 298,
+            "name": "button3_hold",
+            "start_row": 1725266,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1725862,
+            "frames": 298,
+            "name": "button4_hold",
+            "start_row": 1725564,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1726160,
+            "frames": 298,
+            "name": "button5_hold",
+            "start_row": 1725862,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1726458,
+            "frames": 298,
+            "name": "button6_hold",
+            "start_row": 1726160,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1726756,
+            "frames": 298,
+            "name": "button7_hold",
+            "start_row": 1726458,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1727054,
+            "frames": 298,
+            "name": "button8_hold",
+            "start_row": 1726756,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1727352,
+            "frames": 298,
+            "name": "button9_hold",
+            "start_row": 1727054,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1727650,
+            "frames": 298,
+            "name": "button10_hold",
+            "start_row": 1727352,
+            "tags": [
+              "all_buttons",
+              "held_not_retriggered",
+              "exact_pulse_decay",
+              "gate_toggles"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1728259,
+            "frames": 609,
+            "name": "reset_collisions_index0_pass0",
+            "start_row": 1727650,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1728870,
+            "frames": 611,
+            "name": "reset_collisions_index1_pass0",
+            "start_row": 1728259,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1729489,
+            "frames": 619,
+            "name": "reset_collisions_index5_pass0",
+            "start_row": 1728870,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1730112,
+            "frames": 623,
+            "name": "reset_collisions_index7_pass0",
+            "start_row": 1729489,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1730721,
+            "frames": 609,
+            "name": "reset_collisions_index0_pass1",
+            "start_row": 1730112,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1731332,
+            "frames": 611,
+            "name": "reset_collisions_index1_pass1",
+            "start_row": 1730721,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1731951,
+            "frames": 619,
+            "name": "reset_collisions_index5_pass1",
+            "start_row": 1731332,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1732574,
+            "frames": 623,
+            "name": "reset_collisions_index7_pass1",
+            "start_row": 1731951,
+            "tags": [
+              "reset_index_pulse",
+              "manual_bypasses_guard",
+              "simultaneous_run_reset_clock",
+              "reset_window"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1732883,
+            "frames": 309,
+            "name": "stop_resume_ext0_pass0",
+            "start_row": 1732574,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1733192,
+            "frames": 309,
+            "name": "stop_resume_ext0_pass1",
+            "start_row": 1732883,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1733501,
+            "frames": 309,
+            "name": "stop_resume_ext1_pass0",
+            "start_row": 1733192,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1733810,
+            "frames": 309,
+            "name": "stop_resume_ext1_pass1",
+            "start_row": 1733501,
+            "tags": [
+              "stopped_detector_freeze",
+              "held_clock_resume",
+              "source_not_queue",
+              "passthrough"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734007,
+            "frames": 197,
+            "name": "effective_pitch_-127.0",
+            "start_row": 1733810,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734204,
+            "frames": 197,
+            "name": "effective_pitch_-126.99999237060547",
+            "start_row": 1734007,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734401,
+            "frames": 197,
+            "name": "effective_pitch_-20.0",
+            "start_row": 1734204,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734598,
+            "frames": 197,
+            "name": "effective_pitch_-0.5",
+            "start_row": 1734401,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734795,
+            "frames": 197,
+            "name": "effective_pitch_0.0",
+            "start_row": 1734598,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1734992,
+            "frames": 197,
+            "name": "effective_pitch_0.5",
+            "start_row": 1734795,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1735189,
+            "frames": 197,
+            "name": "effective_pitch_10.0",
+            "start_row": 1734992,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1735386,
+            "frames": 197,
+            "name": "effective_pitch_20.0",
+            "start_row": 1735189,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1735583,
+            "frames": 197,
+            "name": "effective_pitch_100.0",
+            "start_row": 1735386,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1735780,
+            "frames": 197,
+            "name": "effective_pitch_127.0",
+            "start_row": 1735583,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1735977,
+            "frames": 197,
+            "name": "effective_pitch_127.99998474121094",
+            "start_row": 1735780,
+            "tags": [
+              "defined_scalar_exp_domain",
+              "zero_high_finite",
+              "reset_phase_accumulation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1736622,
+            "frames": 645,
+            "name": "tempo_cv_amount0.0",
+            "start_row": 1735977,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1737267,
+            "frames": 645,
+            "name": "tempo_cv_amount0.25",
+            "start_row": 1736622,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1737912,
+            "frames": 645,
+            "name": "tempo_cv_amount1.0",
+            "start_row": 1737267,
+            "tags": [
+              "tempo_cv_depth",
+              "first_lane",
+              "disconnect_internal"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738020,
+            "frames": 108,
+            "name": "steps_boundaries_base1",
+            "start_row": 1737912,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738128,
+            "frames": 108,
+            "name": "steps_boundaries_base2",
+            "start_row": 1738020,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738236,
+            "frames": 108,
+            "name": "steps_boundaries_base3",
+            "start_row": 1738128,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738344,
+            "frames": 108,
+            "name": "steps_boundaries_base4",
+            "start_row": 1738236,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738452,
+            "frames": 108,
+            "name": "steps_boundaries_base5",
+            "start_row": 1738344,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738560,
+            "frames": 108,
+            "name": "steps_boundaries_base6",
+            "start_row": 1738452,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738668,
+            "frames": 108,
+            "name": "steps_boundaries_base7",
+            "start_row": 1738560,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1738776,
+            "frames": 108,
+            "name": "steps_boundaries_base8",
+            "start_row": 1738668,
+            "tags": [
+              "length_rounding_half_neighbors",
+              "clamp",
+              "changing_length_while_clocked"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1740150,
+            "frames": 1374,
+            "name": "clock_reconnect_and_phase_retention",
+            "start_row": 1738776,
+            "tags": [
+              "external_freezes_phase",
+              "disconnected_detector_retention",
+              "clock_width0"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1741021,
+            "frames": 871,
+            "name": "lifecycle_pulse_pass0",
+            "start_row": 1740150,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1741892,
+            "frames": 871,
+            "name": "lifecycle_pulse_pass1",
+            "start_row": 1741021,
+            "tags": [
+              "pulse_remaining_frozen_passthrough",
+              "initialize_retained_history",
+              "explicit_adoption"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1741901,
+            "frames": 9,
+            "name": "durable_missing_and_rotation",
+            "start_row": 1741892,
+            "tags": [
+              "durable_running_gates_pass",
+              "missing_legacy_pass_true",
+              "rotation_all_rows_gates",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 2,
+                "gates_mask": 3,
+                "outputs": {
+                  "0": -4.625,
+                  "1": 1.375,
+                  "2": 7.375
+                }
+              },
+              {
+                "frame": 4,
+                "gates_mask": 129,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                }
+              }
+            ],
+            "end_row_exclusive": 1741907,
+            "frames": 6,
+            "name": "rotation_composition_persistence",
+            "start_row": 1741901,
+            "tags": [
+              "rotation_composition",
+              "persistent_cell_and_gate_rotation"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1741964,
+            "frames": 57,
+            "name": "gates_bypass_adopt_0",
+            "start_row": 1741907,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1742021,
+            "frames": 57,
+            "name": "gates_bypass_adopt_1",
+            "start_row": 1741964,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1742078,
+            "frames": 57,
+            "name": "gates_bypass_adopt_85",
+            "start_row": 1742021,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1742135,
+            "frames": 57,
+            "name": "gates_bypass_adopt_170",
+            "start_row": 1742078,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1742192,
+            "frames": 57,
+            "name": "gates_bypass_adopt_255",
+            "start_row": 1742135,
+            "tags": [
+              "all_gate_patterns",
+              "bypass_host_shim",
+              "adoption",
+              "initialize"
+            ]
+          },
+          {
+            "anchors": [
+              {
+                "frame": 66,
+                "gates_mask": 255,
+                "index": 0,
+                "outputs": {
+                  "0": -9.0,
+                  "1": -3.0,
+                  "2": 3.0
+                },
+                "passthrough": 0,
+                "phase": 0.0,
+                "running": 0
+              }
+            ],
+            "end_row_exclusive": 1742259,
+            "frames": 67,
+            "name": "analytic_static_stopped",
+            "start_row": 1742192,
+            "tags": [
+              "independent_anchor"
+            ]
+          }
+        ],
+        "cases": 108,
+        "input_sha256": "a8ef17630eb865baf8307a944dc723d1964c865ac85c17bbeddaee66a38b090a",
+        "observed_frames": 1742259,
+        "processed_frames": 1742259
+      },
+      "safety": {
+        "case_manifest": [
+          {
+            "anchors": [],
+            "end_row_exclusive": 199,
+            "frames": 199,
+            "name": "safety_0",
+            "start_row": 0,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 398,
+            "frames": 199,
+            "name": "safety_1",
+            "start_row": 199,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 597,
+            "frames": 199,
+            "name": "safety_2",
+            "start_row": 398,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 796,
+            "frames": 199,
+            "name": "safety_3",
+            "start_row": 597,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 995,
+            "frames": 199,
+            "name": "safety_4",
+            "start_row": 796,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1194,
+            "frames": 199,
+            "name": "safety_5",
+            "start_row": 995,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1393,
+            "frames": 199,
+            "name": "safety_6",
+            "start_row": 1194,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1592,
+            "frames": 199,
+            "name": "safety_7",
+            "start_row": 1393,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1791,
+            "frames": 199,
+            "name": "safety_8",
+            "start_row": 1592,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          },
+          {
+            "anchors": [],
+            "end_row_exclusive": 1990,
+            "frames": 199,
+            "name": "safety_9",
+            "start_row": 1791,
+            "tags": [
+              "rust_only",
+              "nonfinite_extreme",
+              "recovery"
+            ]
+          }
+        ],
+        "cases": 10,
+        "input_sha256": "4bce1fa662a466e64d8b441d66f0eeddb2c873303000e0aa41caf62172c8aacf",
+        "observed_frames": 1990,
+        "processed_frames": 1990
+      }
+    }
+  },
+  "schema": 1
+}

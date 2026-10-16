@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 71)
+        self.assertEqual(len(catalog["modules"]), 72)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 71)
+        self.assertEqual(len(catalog["modules"]), 72)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 71)
+        self.assertEqual(len(catalog["modules"]), 72)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,67 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_seq3_physical_buttons_and_all_named_outputs_through_mcp(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_seq3"]
+        self.assertEqual(descriptor["inputs"], ["tempo", "clock", "run", "reset", "steps"])
+        expected = ["cv1", "cv2", "cv3", "trigger"] + [f"step{i}" for i in range(1, 9)] + ["steps", "clock", "run", "reset"]
+        self.assertEqual(descriptor["outputs"], expected)
+        self.assertEqual([descriptor["params"]["tempo"][k] for k in ("min", "max", "default")], [-2, 4, 1])
+        parameters = {f"row{row}_{step}": row + step / 10 for row in range(1, 4) for step in range(1, 9)}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "seq", "kind": "stock_seq3", "params": parameters}]}})
+        before = self.patch_snapshot()
+        events = [{"frame": 10, "id": "seq", "action": "clock_press"},
+                  {"frame": 20, "id": "seq", "action": "clock_release"},
+                  {"frame": 40, "id": "seq", "action": "reset_press"},
+                  {"frame": 41, "id": "seq", "action": "reset_release"}]
+        for port in expected:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "seq", "port": port, "seconds": .002, "points": 96,
+                "module_events": events, "expected_revision": before["revision"]}))
+            self.assertEqual(trace["module_event_count"], 4)
+            self.assertEqual(trace["summary"]["active_frames"], 96)
+            values = [point["mean"] for point in trace["bins"]]
+            self.assertTrue(all(math.isfinite(value) for value in values))
+            if port == "cv1":
+                self.assertAlmostEqual(values[0], 1.1, places=6)
+                self.assertAlmostEqual(values[10], 1.2, places=6)
+                self.assertAlmostEqual(values[40], 1.1, places=6)
+            if port == "clock":
+                self.assertEqual(values[0], 0)
+                self.assertEqual(values[10], 10)
+                self.assertEqual(values[40], 10, "reset to another index triggers the source clock pulse")
+        self.assertEqual(self.patch_snapshot(), before)
+
+    def test_stock_seq3_rotation_presets_initialize_and_atomic_validation(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2,
+            "nodes": [{"id": "seq", "kind": "stock_seq3", "params": {
+                "running": 0, "gate1": 0, "passthrough": 1, "row1_1": 3, "row3_8": -4}}]}})
+        before = self.patch_snapshot()
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "seq"}))["preset"]
+        self.assertEqual(preset["params"]["running"], 0)
+        self.assertEqual(preset["params"]["gate1"], 0)
+        self.assertEqual(preset["params"]["passthrough"], 1)
+        self.require_tool_success("rotate_sequence", {"id": "seq", "direction": "right", "expected_revision": before["revision"]})
+        rotated = self.patch_snapshot()["patch"]["nodes"][0]["params"]
+        self.assertEqual(rotated["row1_2"], 3)
+        self.assertEqual(rotated["row3_1"], -4)
+        self.assertEqual(rotated["gate2"], 0)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("initialize_modules", {"ids": ["seq"]})
+        initialized = self.payload(self.require_tool_success("capture_module_preset", {"id": "seq"}))["preset"]["params"]
+        self.assertEqual(initialized["running"], 0, "Initialize preserves source Run")
+        self.assertEqual(initialized["passthrough"], 0)
+        self.assertTrue(all(initialized[f"gate{i}"] == 1 for i in range(1, 9)))
+        self.assertTrue(all(initialized[f"row{r}_{i}"] == 0 for r in range(1, 4) for i in range(1, 9)))
+        stable = self.patch_snapshot()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "seq", "parameter": "row1_1", "value": 8}},
+            {"tool": "set_parameter", "arguments": {"id": "seq", "parameter": "gate2", "value": .5}}]})
+        self.assertEqual(self.patch_snapshot(), stable)
 
     def test_stock_vco_named_outputs_and_semitone_controls_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

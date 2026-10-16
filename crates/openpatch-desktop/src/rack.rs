@@ -19,6 +19,7 @@ include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
 include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
+include!("stock_seq3_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -408,6 +409,7 @@ pub struct Rack {
     layout_revision: u64,
     scope_states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
+    stock_seq3_states: BTreeMap<String, Value>,
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
     port_lights: Option<Arc<crate::audio::PortLightFrame>>,
@@ -464,6 +466,7 @@ impl Default for Rack {
             layout_revision: 0,
             scope_states: BTreeMap::new(),
             sequence_states: BTreeMap::new(),
+            stock_seq3_states: BTreeMap::new(),
             performance_available: false,
             module_lights: BTreeMap::new(),
             port_lights: None,
@@ -1037,6 +1040,10 @@ impl Rack {
         self.performance_available = available;
     }
 
+    pub fn set_stock_seq3_states(&mut self, states: BTreeMap<String, Value>) {
+        self.stock_seq3_states = states;
+    }
+
     pub fn set_module_states(
         &mut self,
         lights: BTreeMap<String, ModuleLightState>,
@@ -1092,7 +1099,13 @@ impl Rack {
                     && !i.pointer.button_released(PointerButton::Primary)
                     && (!matches!(
                         held.kind.as_str(),
-                        "pulses" | "push" | "gates" | "random_values" | "sh_asr" | "adsr_eg"
+                        "pulses"
+                            | "push"
+                            | "gates"
+                            | "random_values"
+                            | "sh_asr"
+                            | "adsr_eg"
+                            | "stock_seq3"
                     ) || i
                         .pointer
                         .latest_pos()
@@ -2513,7 +2526,7 @@ impl Rack {
                         ui.close();
                     }
                     utility_menu(ui, node, &mut action);
-                    if node.kind == "seq3" {
+                    if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
                         for (direction, label) in [
                             ("left", "Rotate pattern left"),
                             ("right", "Rotate pattern right"),
@@ -2521,7 +2534,7 @@ impl Rack {
                             if ui.button(label).clicked() {
                                 action = Some(RackAction::Command(
                                     "rotate_sequence",
-                                    json!({"id":node.id,"direction":direction}),
+                                    json!({"id":node.id,"direction":direction,"expected_revision":revision}),
                                 ));
                                 ui.close();
                             }
@@ -2688,7 +2701,7 @@ impl Rack {
                         ui.close();
                     }
                     utility_menu(ui, node, &mut action);
-                    if node.kind == "seq3" {
+                    if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
                         for (direction, label) in [
                             ("left", "Rotate pattern left"),
                             ("right", "Rotate pattern right"),
@@ -2696,7 +2709,7 @@ impl Rack {
                             if ui.button(label).clicked() {
                                 action = Some(RackAction::Command(
                                     "rotate_sequence",
-                                    json!({"id":node.id,"direction":direction}),
+                                    json!({"id":node.id,"direction":direction,"expected_revision":revision}),
                                 ));
                                 ui.close();
                             }
@@ -2740,6 +2753,18 @@ impl Rack {
             }
             if node.kind == "seq3" {
                 if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "stock_seq3" {
+                if let Some(edit) = self.stock_seq3_panel(
+                    ui,
+                    node,
+                    rect,
+                    revision,
+                    allow_manual_press,
+                    mode.is_interactive(),
+                ) {
                     action = Some(edit);
                 }
             }
@@ -3056,6 +3081,7 @@ impl Rack {
                         && matches!(*name, "multiplier" | "reflect_min" | "reflect_max"))
                     || is_sequential_switch(&node.kind)
                     || (node.kind == "seq3" && sequence_cell(name).is_none())
+                    || (node.kind == "stock_seq3" && !stock_seq3_scalar(name))
                 {
                     continue;
                 }
@@ -3391,13 +3417,24 @@ impl Rack {
                     continue;
                 }
                 let mut label_gap = 13.0;
-                let (knob_position, radius) = if let Some((row, column)) =
-                    sequence_cell(name).filter(|_| node.kind == "seq3")
+                let (knob_position, radius) = if let Some((row, column)) = sequence_cell(name)
+                    .filter(|_| matches!(node.kind.as_str(), "seq3" | "stock_seq3"))
                 {
                     (
-                        pos2(238.0 + column as f32 * 67.0, 123.0 + row as f32 * 73.0),
+                        pos2(
+                            238.0 + column as f32 * 67.0,
+                            123.0
+                                + row as f32
+                                    * if node.kind == "stock_seq3" {
+                                        71.5
+                                    } else {
+                                        73.0
+                                    },
+                        ),
                         17.0,
                     )
+                } else if node.kind == "stock_seq3" {
+                    (stock_seq3_parameter_position(name), 18.0)
                 } else if node.kind == "audio_stereo" {
                     (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
@@ -3519,6 +3556,7 @@ impl Rack {
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
                 let stock_pitch = node.kind == "stock_vco" && *name == "frequency";
+                let stock_tempo = node.kind == "stock_seq3" && *name == "tempo";
                 let observed_clock = stock_lfo_clock(self.module_lights.get(&node.id));
                 let hz_rate = wave_rate || stock_rate || (node.kind == "random" && *name == "rate");
                 let clock_ratio = (stock_rate && observed_clock.is_some_and(|clock| clock != 2.0))
@@ -3532,7 +3570,9 @@ impl Rack {
                 } else {
                     2.0
                 });
-                let fade_percent = node.kind == "fade"
+                let fade_percent = (node.kind == "stock_seq3"
+                    && matches!(*name, "tempo_amount" | "steps_amount"))
+                    || node.kind == "fade"
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
                     (matches!(node.kind.as_str(), "multi_vco" | "stock_lfo" | "stock_vco")
@@ -3555,7 +3595,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if node.kind == "stock_vco" {
+                let display_value = if stock_tempo {
+                    stock_seq3_tempo_value(value)
+                } else if node.kind == "stock_vco" {
                     stock_vco_parameter_value(name, value)
                 } else if node.kind == "stock_lfo" {
                     stock_lfo_parameter_value(name, value, observed_clock)
@@ -3590,7 +3632,9 @@ impl Rack {
                     surface,
                     menu_popup: None,
                     stale: false,
-                    text: if stock_pitch {
+                    text: if stock_tempo {
+                        (60.0 * value.exp2()).to_string()
+                    } else if stock_pitch {
                         stock_vco_frequency_hz(value).to_string()
                     } else if node.kind == "random" && hz_rate {
                         value.exp2().clamp(0.002, 2000.0).to_string()
@@ -3603,7 +3647,9 @@ impl Rack {
                             .map_or(value * display_scale, |min| slew_display(value, min))
                             .to_string()
                     },
-                    min: if stock_pitch {
+                    min: if stock_tempo {
+                        60.0 * min.exp2()
+                    } else if stock_pitch {
                         stock_vco_frequency_hz(min)
                     } else if node.kind == "random" && hz_rate {
                         0.002
@@ -3616,7 +3662,9 @@ impl Rack {
                     } else {
                         min * display_scale
                     },
-                    max: if stock_pitch {
+                    max: if stock_tempo {
+                        60.0 * max.exp2()
+                    } else if stock_pitch {
                         stock_vco_frequency_hz(max)
                     } else if node.kind == "random" && hz_rate {
                         2000.0
@@ -3631,7 +3679,9 @@ impl Rack {
                     },
                     step: step.map(|step| step * display_scale),
                     display_scale,
-                    display_unit: if stock_pitch {
+                    display_unit: if stock_tempo {
+                        "BPM"
+                    } else if stock_pitch {
                         "Hz"
                     } else if gain_power.is_some() {
                         "dB"
@@ -3681,8 +3731,12 @@ impl Rack {
                     width / 3.0 - 12.0
                 } else if node.kind == "vca_mix" {
                     70.0
-                } else if node.kind == "seq3" {
-                    54.0
+                } else if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
+                    if node.kind == "stock_seq3" && sequence_cell(name).is_none() {
+                        78.0
+                    } else {
+                        54.0
+                    }
                 } else if node.kind == "gates" {
                     110.0
                 } else if count >= 4
@@ -3933,8 +3987,12 @@ impl Rack {
                 crate::panel_skin::control_label(
                     &painter,
                     center - vec2(0.0, (radius + label_gap) * self.zoom),
-                    if node.kind == "seq3" {
+                    if matches!(node.kind.as_str(), "seq3" | "stock_seq3")
+                        && sequence_cell(name).is_some()
+                    {
                         ""
+                    } else if node.kind == "stock_seq3" {
+                        stock_seq3_parameter_label(name)
                     } else if node.kind == "stock_vco" {
                         stock_vco_parameter_label(name)
                     } else if node.kind == "stock_lfo" {
@@ -3986,7 +4044,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if node.kind == "stock_vco" {
+                        let old_text = if stock_tempo {
+                            stock_seq3_tempo_value(old)
+                        } else if node.kind == "stock_vco" {
                             stock_vco_parameter_value(name, old)
                         } else if node.kind == "stock_lfo" {
                             stock_lfo_parameter_value(name, old, observed_clock)
@@ -4089,7 +4149,8 @@ impl Rack {
                         false,
                         false,
                         self.zoom,
-                        is_voltage_utility(&node.kind) || node.kind == "sh_asr",
+                        is_voltage_utility(&node.kind)
+                            || matches!(node.kind.as_str(), "sh_asr" | "stock_seq3"),
                     );
                     continue;
                 }
@@ -4114,7 +4175,8 @@ impl Rack {
                     connected,
                     false,
                     self.zoom,
-                    is_voltage_utility(&node.kind) || node.kind == "sh_asr",
+                    is_voltage_utility(&node.kind)
+                        || matches!(node.kind.as_str(), "sh_asr" | "stock_seq3"),
                     if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
                         12.0
                     } else {
@@ -4232,6 +4294,7 @@ impl Rack {
                             || matches!(
                                 node.kind.as_str(),
                                 "pulses"
+                                    | "stock_seq3"
                                     | "colored_noise"
                                     | "random_values"
                                     | "sh_asr"
@@ -4269,6 +4332,7 @@ impl Rack {
                         || matches!(
                             node.kind.as_str(),
                             "pulses"
+                                | "stock_seq3"
                                 | "colored_noise"
                                 | "random_values"
                                 | "sh_asr"
@@ -8688,6 +8752,8 @@ fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
         && edit.parameter == "rate"
     {
         (parsed / edit.display_scale).log2()
+    } else if edit.kind == "stock_seq3" && edit.parameter == "tempo" {
+        (parsed / 60.0).log2()
     } else if edit.kind == "stock_vco" && edit.parameter == "frequency" {
         stock_vco_frequency_raw(parsed)
     } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
@@ -9275,6 +9341,21 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if edit.kind == "stock_seq3" {
+        let suffix = if edit.parameter == "tempo" {
+            "BPM"
+        } else if matches!(edit.parameter.as_str(), "tempo_amount" | "steps_amount") {
+            "%"
+        } else {
+            "V"
+        };
+        if text
+            .get(text.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     if edit.kind == "stock_vco" {
         let suffix = if edit.parameter == "frequency" {
             "Hz"
@@ -9497,6 +9578,28 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "stock_seq3" => {
+            return if input {
+                pos2(28.0 + index as f32 * 37.5, 382.0)
+            } else {
+                pos2(
+                    238.0
+                        + (if (4..12).contains(&index) {
+                            index - 4
+                        } else if index < 4 {
+                            index
+                        } else {
+                            index - 8
+                        }) as f32
+                            * 67.0,
+                    if (4..12).contains(&index) {
+                        382.0
+                    } else {
+                        341.0
+                    },
+                )
+            }
+        }
         "stock_lfo" | "stock_vco" => {
             return pos2(
                 width * (index + 1) as f32 / 5.0,
@@ -10658,7 +10761,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
         "attenuverter8" | "mutes10" | "cv_mix" | "pulses" | "gates" => HP * 16.0,
-        "seq3" => HP * 52.0,
+        "seq3" | "stock_seq3" => HP * 52.0,
         "switch_1to4" | "switch_4to1" => HP * 12.0,
         "poly_constant" => HP * 24.0,
         "midi_cv" => HP * 24.0,
@@ -10745,6 +10848,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_vca" => "VCA",
         "stock_lfo" => "STOCK LFO",
         "stock_vco" => "STOCK VCO",
+        "stock_seq3" => "STOCK SEQ3",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -12865,7 +12969,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            71,
+            72,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19540,6 +19644,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_seq3_ui_tests {
+        include!("stock_seq3_ui_tests.rs");
     }
     mod stock_vco_ui_tests {
         include!("stock_vco_ui_tests.rs");

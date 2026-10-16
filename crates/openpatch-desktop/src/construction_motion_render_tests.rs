@@ -652,3 +652,42 @@ fn accepted_stock_vco_construction_edits_anchor_all_six_controls_and_manual_togg
     }
     assert_eq!(serde_json::to_value(shared.lock().unwrap().patch()).unwrap(), serde_json::to_value(&after).unwrap(), "Presentation and manual actions await host publication");
 }
+
+#[test]
+fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_press_takes_over() {
+    let mut changes = vec![("tempo".to_owned(),2.0),("steps".into(),5.0),("tempo_amount".into(),0.5),("steps_amount".into(),0.5)];
+    for row in 1..=3 { for step in 1..=8 { changes.push((format!("row{row}_{step}"),1.25)); } }
+    for gate in 1..=8 { changes.push((format!("gate{gate}"),0.0)); }
+    changes.extend([("running".into(),0.0),("passthrough".into(),1.0)]);
+    assert_eq!(changes.len(),38);
+    for batch in changes.chunks(8) {
+        let workspace=tempfile::tempdir().unwrap();let mut session=openpatch::control::Session::new(workspace.path()).unwrap();
+        let before=patch("stock_seq3","tempo",1.0);session.replace_patch(before.clone(),None).unwrap();let previous=session.revision();let shared=session.into_shared();
+        let edits=batch.iter().map(|(name,value)|json!({"tool":"set_parameter","arguments":{"id":"target","parameter":name,"value":value}})).collect::<Vec<_>>();
+        openpatch::control::execute_shared(&shared,"start_construction",json!({"expected_revision":previous,"title":"Shape Stock SEQ3","interval_ms":100,"steps":[{"label":"Set actual panel controls","edits":edits}]})).unwrap();
+        let deadline=Instant::now()+Duration::from_secs(5);
+        let (after,revision,receipt)=loop{let session=shared.lock().unwrap();let receipt=session.construction_snapshot();if receipt["completed_steps"]==1{break(session.patch().clone(),session.revision(),receipt);}assert!(Instant::now()<deadline,"Construction did not commit: {receipt}");drop(session);std::thread::sleep(Duration::from_millis(1));};
+        assert_eq!(receipt["last_commit"]["parameter_changes"].as_array().unwrap().len(),batch.len(),"Every requested value actually changes: {batch:?}; receipt {receipt}");
+        let ctx=egui::Context::default();crate::panel_skin::install_fonts(&ctx);let mut rack=Rack::default();rack.set_sequence_states(BTreeMap::new(),true);
+        frame_revision_state(&ctx,&mut rack,&before,0.0,vec![],true,true,previous);let now=Instant::now();rack.observe_construction_transition_at(&before,&after,previous,revision,&receipt,MotionMode::Full,now);rack.set_construction_clock_override(Some(now+Duration::from_millis(160)));
+        let (action,_)=frame_revision_state(&ctx,&mut rack,&after,0.1,vec![],true,true,revision);assert!(action.is_none());assert_eq!(rack.construction_anchors.len(),batch.len());
+        let mut targets=vec![];
+        for (name,_) in batch {
+            let anchor=rack.construction_anchors[&("target".into(),name.clone())].clone();
+            if stock_seq3_scalar(name) {assert!(anchor.rect.width()>=32.0);assert!(anchor.rect.height()>=19.0);}
+            else {assert!(anchor.marker.is_none());assert!(anchor.rect.height()<=25.1);}
+            assert!(anchor.rect.top()>70.0,"{name}: actual control, not header badge");targets.push((name.clone(),anchor.rect.center()));
+        }
+        let catalog=openpatch_core::catalog();let module=catalog["modules"].as_array().unwrap().iter().find(|m|m["kind"]=="stock_seq3").unwrap();let mut preview=ModulePreview::new(module);preview.patch=after.clone();preview.renderer.positions.clear();preview.renderer.positions.insert("target".into(),Pos2::ZERO);preview.renderer.observe_construction_transition_at(&before,&after,previous,revision,&receipt,MotionMode::Full,now);
+        let preview_ctx=egui::Context::default();let out=preview_ctx.run(egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,vec2(1000.0,600.0))),..Default::default()},|ctx|{egui::CentralPanel::default().show(ctx,|ui|preview.show(ui,Rect::from_min_size(pos2(24.0,12.0),preview.size()),&catalog));});
+        assert!(preview.renderer.construction_anchors.is_empty());assert!(!text(&out).iter().any(|t|t.contains(" → ")));
+        // A pointer press on the real control cancels the corresponding cue.
+        // Faders use their actual track center, not the union's lower readout.
+        for (index,(name,mut at)) in targets.into_iter().enumerate(){
+            if stock_seq3_scalar(&name){let local=sequence_cell(&name).map_or_else(||stock_seq3_parameter_position(&name),|(row,col)|pos2(238.0+col as f32*67.0,123.0+row as f32*71.5));at=pos2(24.0,12.0)+local.to_vec2();}
+            let t=0.3+index as f64*0.3;frame_revision_state(&ctx,&mut rack,&after,t,vec![egui::Event::PointerMoved(at),button(at,true)],true,true,revision);
+            assert!(rack.construction_animation.parameter("target","stock_seq3",&name).is_none(),"{name} manual takeover");frame_revision_state(&ctx,&mut rack,&after,t+0.1,vec![button(at,false)],true,true,revision);
+            if name=="passthrough"{egui::Popup::close_all(&ctx);}
+        }
+    }
+}

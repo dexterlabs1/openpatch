@@ -85,7 +85,7 @@ impl Category {
             | "wavetable_vco" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
-            "seq3" | "score_sequencer" => Self::Sequencers,
+            "seq3" | "stock_seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
             | "random_values" | "sh_asr" => Self::Modulation,
             "gain"

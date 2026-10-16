@@ -76,13 +76,15 @@ impl Session {
             };
             saved_states.insert(node.id.clone(), state);
             match state {
-                SavedModuleState::Seq3Run(value) => {
+                SavedModuleState::Seq3Run(value)
+                | SavedModuleState::StockSeq3 { running: value, .. } => {
                     running.insert(node.id.clone(), value);
                 }
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
-                SavedModuleState::RandomValues { .. }
+                SavedModuleState::StockSeq3Fields { .. }
+                | SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
                 | SavedModuleState::MidiCc { .. }
                 | SavedModuleState::MidiCcMappings(_)

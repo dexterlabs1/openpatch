@@ -87,7 +87,21 @@ fn effective(patch: &Patch, id: &str, kind: &str, param: &str, catalog: &Value) 
         .iter()
         .find(|m| m["kind"] == kind)?["params"]
         .get(param)?;
-    if spec["hidden"] == true {
+    if spec["hidden"] == true
+        && !(kind == "stock_seq3"
+            && matches!(
+                param,
+                "running"
+                    | "gate1"
+                    | "gate2"
+                    | "gate3"
+                    | "gate4"
+                    | "gate5"
+                    | "gate6"
+                    | "gate7"
+                    | "gate8"
+            ))
+    {
         return None;
     }
     let value = node

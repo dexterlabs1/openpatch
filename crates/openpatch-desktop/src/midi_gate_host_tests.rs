@@ -70,7 +70,7 @@ fn midi_gate_host_immediate_note_off_has_exact_minimum_pulse_on_the_event_sample
             .module_lights("gate")
             .unwrap()
             .brightness,
-        [[0.0; 2]; 16]
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
     );
 }
 #[test]
@@ -200,7 +200,7 @@ fn midi_gate_host_remapping_keeps_cell_gate_until_panic_and_panic_works_with_ful
             .module_lights("gate")
             .unwrap()
             .brightness,
-        [[0.0; 2]; 16]
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
     );
     assert_eq!(
         gate_host_state(&callback)["learning"],
@@ -336,7 +336,7 @@ fn midi_gate_host_coalesced_bypass_resume_clears_held_gates_short_timers_and_arm
         gate_host_render(&mut callback, 1);
         let lights = callback.performance.module_lights("gate").unwrap();
         assert_eq!(
-            lights.brightness, [[0.0; 2]; 16],
+            lights.brightness, [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS],
             "coalesced bypass must clear held={held}"
         );
         assert_eq!(
@@ -390,7 +390,7 @@ fn midi_gate_host_learn_requested_after_bypass_resume_is_not_cancelled_by_the_ol
             .module_lights("gate")
             .unwrap()
             .brightness,
-        [[0.0; 2]; 16]
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
     );
     assert_eq!(
         gate_host_state(&callback)["learning"]["cell"],
@@ -446,7 +446,7 @@ fn midi_gate_host_delayed_module_panic_preserves_only_later_learn_requests() {
                     .module_lights("gate")
                     .unwrap()
                     .brightness,
-                [[0.0; 2]; 16]
+                [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
             );
             assert_eq!(
                 gate_host_state(&callback)["learning"]["cell"].as_u64(),

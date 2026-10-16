@@ -25,6 +25,7 @@ use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
 use crate::stock_delay::{self, StockDelay};
 use crate::stock_lfo::{self, StockLfo};
+use crate::stock_seq3::{self, StockSeq3};
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
 use crate::stock_vco::{self, StockVco};
@@ -103,6 +104,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "audio_stereo"
                 | "multi_lfo"
                 | "multi_vco"
+                | "stock_seq3"
                 | "seq3"
                 | "pulses"
                 | "push"
@@ -163,6 +165,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
+        "stock_seq3" => stock_seq3::INPUTS.iter().position(|port| *port == name),
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
@@ -248,6 +251,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         push::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "gates" {
         gates::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_seq3" {
+        stock_seq3::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_vco" {
@@ -404,6 +409,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "gates" {
         gates::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_seq3" {
+        stock_seq3::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -617,6 +627,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "macro_voice" {
         macro_voice::annotate(module);
     }
+    if kind == "stock_seq3" {
+        stock_seq3::annotate(module);
+    }
     if kind == "seq3" {
         sequence::annotate(module);
     }
@@ -689,6 +702,7 @@ enum Model {
     MultiVco(Box<MultiVco>),
     Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
+    StockSeq3(Box<StockSeq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
     AdsrEg(Box<AdsrEg>),
@@ -782,6 +796,9 @@ impl Model {
         }
         if node.kind == "pulses" {
             return Ok(Self::Pulses(Box::new(Pulses::build(node, rate)?)));
+        }
+        if node.kind == "stock_seq3" {
+            return Ok(Self::StockSeq3(Box::new(StockSeq3::build(node, rate)?)));
         }
         if node.kind == "seq3" {
             return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
@@ -1060,6 +1077,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(p)) => Some(p.controls()),
             Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
+            Some(Model::StockSeq3(seq)) => Some(seq.controls()),
             _ => None,
         }
     }
@@ -1085,6 +1103,7 @@ impl PolyEngine {
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
+            Some(Model::StockSeq3(seq)) => Some(seq.lights()),
             Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
             Some(Model::Sum(s)) => Some(s.lights()),
@@ -1096,6 +1115,10 @@ impl PolyEngine {
     }
     pub(crate) fn release_module_controls(&mut self, index: usize) -> bool {
         match self.nodes.get_mut(index).map(|n| &mut n.model) {
+            Some(Model::StockSeq3(seq)) => {
+                seq.release();
+                true
+            }
             Some(Model::MidiGate(m)) => {
                 m.host_panic();
                 true
@@ -1130,6 +1153,7 @@ impl PolyEngine {
     }
     pub(crate) fn supports_module_action(&self, index: usize, action: ModuleAction) -> bool {
         match self.nodes.get(index).map(|n| &n.model) {
+            Some(Model::StockSeq3(_)) => StockSeq3::supports(action),
             Some(Model::Seq3(_)) => matches!(
                 action,
                 ModuleAction::Clock | ModuleAction::Run | ModuleAction::Reset
@@ -1162,7 +1186,10 @@ impl PolyEngine {
                 | ModuleAction::HoldRelease
                 | ModuleAction::ResetRelease
                 | ModuleAction::MidiPanic
-        ) || action.pulse_button().is_some_and(|(_, press)| !press);
+                | ModuleAction::ClockRelease
+                | ModuleAction::RunRelease
+        ) || action.pulse_button().is_some_and(|(_, press)| !press)
+            || action.seq_gate_button().is_some_and(|(_, press)| !press);
         if !self.supports_module_action(index, action) || (self.nodes[index].bypassed && !release) {
             return Err(format!(
                 "module '{id}' does not support this action in its current state"
@@ -1175,7 +1202,10 @@ impl PolyEngine {
             .node_lookup
             .get(id)
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
-        if !matches!(self.nodes[node].model, Model::Seq3(_) | Model::Switch(_)) {
+        if !matches!(
+            self.nodes[node].model,
+            Model::Seq3(_) | Model::StockSeq3(_) | Model::Switch(_)
+        ) {
             return Err(format!("module '{id}' does not expose runtime telemetry"));
         }
         Ok(node)
@@ -1187,7 +1217,7 @@ impl PolyEngine {
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
         if !matches!(self.nodes[node].model, Model::MidiGate(_))
             && (self.nodes[node].bypassed
-                || !(matches!(self.nodes[node].model, Model::Seq3(_))
+                || !(matches!(self.nodes[node].model, Model::Seq3(_) | Model::StockSeq3(_))
                     || self.module_control_state(node).is_some()))
         {
             return Err(format!("module '{id}' does not support runtime actions"));
@@ -1202,6 +1232,9 @@ impl PolyEngine {
             });
         }
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if let Model::StockSeq3(seq) = &mut self.nodes[node].model {
+                return seq.release_action(action);
+            }
             if matches!(
                 action,
                 ModuleAction::PushRelease | ModuleAction::ResetRelease
@@ -1253,6 +1286,7 @@ impl PolyEngine {
         }
         match self.nodes.get_mut(node).map(|node| &mut node.model) {
             Some(Model::Seq3(seq)) => seq.enqueue(action),
+            Some(Model::StockSeq3(seq)) => seq.enqueue(action),
             Some(Model::Signal(s)) => s.enqueue(action),
             Some(Model::Pulses(p)) => p.enqueue(action),
             Some(Model::Push(p)) => p.enqueue(action),
@@ -1266,6 +1300,7 @@ impl PolyEngine {
     pub(crate) fn module_telemetry(&self, node: usize) -> Option<ModuleTelemetry> {
         match self.nodes.get(node).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(seq.telemetry()),
+            Some(Model::StockSeq3(seq)) => Some(seq.telemetry()),
             Some(Model::Switch(switch)) => Some(switch.telemetry()),
             _ => None,
         }
@@ -1359,6 +1394,10 @@ impl PolyEngine {
                 p.reset_state();
                 pulses::OUTPUTS.len()
             }
+            Model::StockSeq3(seq) => {
+                seq.reset_state();
+                stock_seq3::OUTPUTS.len()
+            }
             Model::Seq3(seq) => {
                 seq.reset_state();
                 sequence::OUTPUTS.len()
@@ -1398,6 +1437,7 @@ impl PolyEngine {
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Wavetable(oscillator) => oscillator.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
+            Model::StockSeq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
             Model::AdsrEg(p) => p.initialize_state(),
@@ -1423,6 +1463,10 @@ impl PolyEngine {
             return false;
         };
         match &mut node.model {
+            Model::StockSeq3(seq) => {
+                seq.set_running(running);
+                true
+            }
             Model::Seq3(seq) => {
                 seq.set_running(running);
                 true
@@ -1433,6 +1477,7 @@ impl PolyEngine {
     pub(crate) fn module_saved_state(&self, index: usize) -> Option<SavedModuleState> {
         match self.nodes.get(index).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
+            Some(Model::StockSeq3(seq)) => Some(seq.saved_state()),
             Some(Model::Push(push)) => Some(SavedModuleState::PushHold(push.holding())),
             Some(Model::ShiftRegister(p)) => Some(p.saved_state()),
             Some(Model::RandomValues(p)) => Some(p.saved_state()),
@@ -1442,10 +1487,12 @@ impl PolyEngine {
         }
     }
     pub(crate) fn set_module_saved_state(&mut self, index: usize, state: SavedModuleState) -> bool {
-        if let SavedModuleState::Seq3Run(running) = state {
-            return self.set_module_running(index, running);
-        }
         match (self.nodes.get_mut(index).map(|node| &mut node.model), state) {
+            (Some(Model::Seq3(seq)), SavedModuleState::Seq3Run(running)) => {
+                seq.set_running(running);
+                true
+            }
+            (Some(Model::StockSeq3(seq)), state) => seq.set_saved_state(state),
             (Some(Model::Push(push)), SavedModuleState::PushHold(holding)) => {
                 push.set_holding(holding);
                 true
@@ -1558,6 +1605,7 @@ impl PolyEngine {
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
+                    "stock_seq3" => stock_seq3::OUTPUTS.len(),
                     "pulses" => pulses::OUTPUTS.len(),
                     "push" => push::OUTPUTS.len(),
                     "adsr_eg" => adsr_eg::OUTPUTS.len(),
@@ -2120,6 +2168,19 @@ impl PolyEngine {
                         &mut self.outputs[node.output_start..node.output_start + count],
                     );
                 }
+                Model::StockSeq3(seq) => {
+                    let mut inputs = [PortFrame::default(); 5];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    seq.process(
+                        &inputs,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + stock_seq3::OUTPUTS.len()],
+                    );
+                }
                 Model::Seq3(seq) => {
                     let mut inputs = [PortFrame::default(); 5];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2551,6 +2612,12 @@ impl PolyEngine {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
+                (Model::StockSeq3(seq), Model::StockSeq3(old)) => {
+                    seq.adopt(old);
+                    if bypass_changed {
+                        seq.discard_actions();
+                    }
+                }
                 (Model::Split(s), Model::Split(old)) => s.adopt(old),
                 (Model::Merge(m), Model::Merge(old)) => m.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
