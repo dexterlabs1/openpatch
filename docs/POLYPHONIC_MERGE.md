@@ -61,7 +61,7 @@ channel count. Active signal interpretation is the comparison target.
 
 The [reference harness](../scripts/merge_reference/README.md) compares the actual
 pinned class with production Engine output, with fixtures frozen before the
-first comparison. The [recorded macOS ARM run](benchmarks/merge-reference.json) passed 16,416 rows at 44.1, 48 and 96 kHz: all output/automatic counts and 132,081 active voltage values matched exactly. All 769 retained evidence files and the 72-file production closure passed independent hash checks. Native capture qualification is pending.
+first comparison. The [recorded macOS ARM run](benchmarks/merge-reference.json) passed 16,416 rows at 44.1, 48 and 96 kHz: all output/automatic counts and 132,081 active voltage values matched exactly. All 769 retained evidence files and the 72-file production closure passed independent hash checks. All 112 native capture files passed integrity checks; the actual Merge normal/dark/browser views were visually reviewed, and macOS/Windows/Linux CI passed in [PR9](https://github.com/dexterlabs1/openpatch/pull/9).
 Separate host tests cover cable delay, adoption, bypass, allocation-free callback
 publication, persistence, and revision handling. These checks do not establish
 hardware, native input/device, unrestricted headroom, or complete Rack import

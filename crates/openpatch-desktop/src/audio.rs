@@ -4787,6 +4787,7 @@ mod tests {
 
     include!("sum_audio_tests.rs");
     include!("merge_audio_tests.rs");
+    include!("split_audio_tests.rs");
     include!("viz_audio_tests.rs");
     include!("rack_scope_audio_tests.rs");
 

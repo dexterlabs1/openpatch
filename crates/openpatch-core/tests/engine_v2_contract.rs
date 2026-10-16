@@ -1555,3 +1555,52 @@ fn annotation_content_edits_preserve_synthesis_and_callbacks_never_allocate_or_f
     assert_eq!(after, baseline_after);
     assert!(after.iter().any(|f| f.values[0].abs() > 0.001));
 }
+
+#[test]
+fn split_first_callback_count_adoption_initialize_and_bypass_use_no_heap() {
+    let p = patch(
+        vec![
+            node("source", "poly_constant", &[("channels", 16.0)]),
+            node("split", "poly_split", &[]),
+        ],
+        vec![cable("source", "out", "split", "signal")],
+        "split",
+    );
+    let mut p = p;
+    p.output_port = "out16".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let mut bypass_patch = p.clone();
+    bypass_patch.nodes[1].bypassed = true;
+    let mut bypassed = bypass_patch.compile().unwrap();
+    let old_handle = old.resolve_module_lights("split").unwrap();
+    let replacement_handle = replacement.resolve_module_lights("split").unwrap();
+    let bypass_handle = bypassed.resolve_module_lights("split").unwrap();
+    let mut output = [PortFrame::default(); 129];
+    let mut observations = [None; 3];
+    let mut initialized = [false; 2];
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_poly_block(&mut output[..length]);
+        observations[0] = old.module_lights(old_handle);
+        replacement.adopt_state_from(&old);
+        initialized[0] = replacement.initialize_module_state(replacement_handle);
+        replacement.process_poly_block(&mut output[..length]);
+        observations[1] = replacement.module_lights(replacement_handle);
+        bypassed.adopt_state_from(&old);
+        initialized[1] = bypassed.initialize_module_state(bypass_handle);
+        bypassed.process_poly_block(&mut output[..length]);
+        observations[2] = bypassed.module_lights(bypass_handle);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(initialized, [true, true]);
+    for state in observations {
+        let state = state.unwrap();
+        assert_eq!(state.input_channels, Some(16));
+        assert_eq!(state.count, 0);
+        assert_eq!(state.brightness, [[0.0; 2]; 16]);
+    }
+    assert!(output.iter().all(|frame| *frame == PortFrame::mono(0.0)));
+}

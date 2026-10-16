@@ -129,7 +129,7 @@ panels or configuration menus. They require version 2.
 | Kind | Ports and parameters | Behavior |
 |---|---|---|
 | `poly_constant` | `out`; integer `channels` 0–16 (default 3); `v1`…`v16` | Configured voltage per active channel; channels may explicitly be zero. |
-| `poly_split` | `signal`; `out1`…`out16` | Every output is mono; indices beyond the input count produce 0 V. |
+| `poly_split` | `signal`; `out1`…`out16` | Every output is mono; ordinary zero-padded inputs yield 0 V beyond the input width. Raw module slots are copied without broadcast or arithmetic. Measured input count is updated each processed frame. [Routing and observation contract](POLYPHONIC_SPLIT.md). |
 | `poly_merge` | `in1`…`in16`; `out`; integer `channels` −1–16 | `channels=0` selects automatic highest occupied input index; −1 forces zero; 1–16 forces that count. Holes remain zero; each input contributes channel 0. No connected signals in automatic mode produces zero channels. |
 | `poly_viz` | `signal`; no outputs | Input-only 16-channel polarity display; sampled signed smoothing and latched channel count every 16 frames. [State and telemetry contract](POLYPHONIC_VIZ.md). |
 | `scope` | `x`, `y`, `trigger`; outputs `x`, `y` | Independent raw 0–16-channel passthrough with 256 min/max bins per axis/lane. Literal seconds timebase, external-trigger normaling, bypass freeze and allocation-free borrowed snapshots; [contract](RACK_SCOPE.md). |

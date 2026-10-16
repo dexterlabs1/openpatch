@@ -40,6 +40,7 @@ enum ModuleKind {
     VcaMix,
     Sum,
     Merge,
+    Split,
     Viz,
     Pulses,
     Push,
@@ -68,6 +69,7 @@ impl ModuleKind {
             "vca_mix" => Some(Self::VcaMix),
             "poly_sum" => Some(Self::Sum),
             "poly_merge" => Some(Self::Merge),
+            "poly_split" => Some(Self::Split),
             "poly_viz" => Some(Self::Viz),
             "pulses" => Some(Self::Pulses),
             "push" => Some(Self::Push),
@@ -97,6 +99,7 @@ impl ModuleKind {
             Self::VcaMix => "vca_mix",
             Self::Sum => "poly_sum",
             Self::Merge => "poly_merge",
+            Self::Split => "poly_split",
             Self::Viz => "poly_viz",
             Self::Pulses => "pulses",
             Self::Push => "push",
@@ -1681,6 +1684,8 @@ mod midi_cc_performance_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    include!("split_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {

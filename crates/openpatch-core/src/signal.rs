@@ -14,7 +14,8 @@ pub struct ModuleControlState {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
-    /// Input channel count for SUM and VIZ, latched with their published lights.
+    /// Processed input count for SPLIT (each frame), SUM and VIZ (latched
+    /// with their published lights); no signal lamps are implied by a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
     /// MERGE's emitted channel count, 0..=16; initially zero, updated each frame.
