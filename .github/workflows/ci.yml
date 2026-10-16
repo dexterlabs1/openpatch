@@ -1,28 +1,28 @@
 name: Build and test
 on:
-  push:
+  # Validate the PR merge tree once; avoid push/PR/merge duplicates.
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
   workflow_dispatch:
+    inputs:
+      full_validation:
+        description: 'Also validate Linux and Windows and run throughput benchmarks'
+        type: boolean
+        default: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   test:
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: linux-x86_64
-            binary: openpatch
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: windows-x86_64
-            binary: openpatch.exe
-          - os: macos-14
-            target: aarch64-apple-darwin
-            artifact: macos-arm64
-            binary: openpatch
+      # Daily development targets the user's Mac. Other platforms are opt-in.
+      matrix: ${{ fromJSON(inputs.full_validation && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,19 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: ${{ matrix.target }}
+      - name: Identify Rust toolchain for cache
+        shell: bash
+        run: rustc -vV > rust-toolchain-cache-key.txt
+      - name: Cache Rust dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/src
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-rust-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rust-toolchain-cache-key.txt') }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -66,6 +79,7 @@ jobs:
           OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
         run: python -m unittest discover -s scripts -v
       - name: Throughput benchmark
+        if: inputs.full_validation
         run: cargo bench --locked -p openpatch-core
       - uses: actions/upload-artifact@v4
         with:
@@ -87,7 +101,7 @@ jobs:
           name: repository-snapshot
           path: openpatch.bundle
   visualizer:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

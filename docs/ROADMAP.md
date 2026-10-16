@@ -1,5 +1,7 @@
 # Roadmap: Rack functionality, then measurable improvements
 
+Current execution policy and milestone: [WORKPLAN.md](WORKPLAN.md). macOS ARM validation comes first; other platforms and routine benchmarks are deferred. OpenPatch 0.2.5 build 7 remains the stable installed release.
+
 Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 80 built-in module kinds; the qualified 0.2.4 build 6 rotary release is merged, and 0.2.5 build 7 adds the next socket pass. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid was restored through PR21. Stock Process passed its frozen source/host comparison, local application checks, platform CI and native render review before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
