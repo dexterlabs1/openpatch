@@ -1001,6 +1001,8 @@ pub(crate) struct PolyEngine {
     nodes: Vec<PolyNode>,
     node_lookup: BTreeMap<String, usize>,
     edges: Vec<Edge>,
+    // Hot publication reads only source indices, not route strings/identities.
+    edge_source_ports: Vec<usize>,
     edge_lookup: BTreeMap<EdgeIdentity, usize>,
     route_counts: BTreeMap<EdgeKey, usize>,
     unique_legacy_routes: BTreeMap<EdgeKey, Option<usize>>,
@@ -1014,6 +1016,9 @@ pub(crate) struct PolyEngine {
     host: Option<HostPorts>,
     host_context_dirty: bool,
     host_sources: Vec<usize>,
+    // All logical producer ports, including disconnected ones. Native raw
+    // producers retain their own storage and must never enter these spans.
+    logical_output_spans: Vec<std::ops::Range<usize>>,
     selected: Option<usize>,
     stereo: bool,
     pub(crate) port_lights: crate::port_lights::Observer,
@@ -2031,15 +2036,29 @@ impl PolyEngine {
             .iter()
             .map(|&edge| edges[edge].source_port)
             .collect();
+        let edge_source_ports = edges.iter().map(|edge| edge.source_port).collect();
+        let mut logical_output_spans: Vec<std::ops::Range<usize>> = Vec::new();
+        for node in &nodes {
+            if node.model.native_host() || node.output_count == 0 {
+                continue;
+            }
+            let end = node.output_start + node.output_count;
+            match logical_output_spans.last_mut() {
+                Some(span) if span.end == node.output_start => span.end = end,
+                _ => logical_output_spans.push(node.output_start..end),
+            }
+        }
         let mut engine = Self {
             host: Some(HostPorts::new(nodes.len(), output_count)),
             host_context_dirty: false,
             host_sources,
+            logical_output_spans,
             port_lights,
             rate: patch.sample_rate,
             nodes,
             node_lookup,
             edges,
+            edge_source_ports,
             edge_lookup,
             route_counts,
             unique_legacy_routes,
@@ -2642,11 +2661,12 @@ impl PolyEngine {
             }
         }
         if let Some(host) = &mut self.host {
-            for node in &self.nodes {
-                if !node.model.native_host() {
-                    for port in node.output_start..node.output_start + node.output_count {
-                        host.outputs[port].write_logical(&self.outputs[port]);
-                    }
+            for span in &self.logical_output_spans {
+                for (raw, frame) in host.outputs[span.clone()]
+                    .iter_mut()
+                    .zip(&self.outputs[span.clone()])
+                {
+                    raw.write_logical(frame);
                 }
             }
         }
@@ -2677,8 +2697,8 @@ impl PolyEngine {
         self.port_lights.advance(1);
         // Publish counts and values only after every node has completed. All
         // cycles, including self-loops, therefore have a defined sample delay.
-        for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
-            *frame = self.outputs[edge.source_port];
+        for (&source, frame) in self.edge_source_ports.iter().zip(&mut self.edge_frames) {
+            *frame = self.outputs[source];
         }
         if let Some(host) = &mut self.host {
             for group in &self.input_groups {
@@ -3220,6 +3240,59 @@ impl PolyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mixed_producers_publish_disconnected_logical_slots_without_erasing_native_raw_tails() {
+        let nodes = vec![
+            json!({"id":"native_first","kind":"stock_mix"}),
+            json!({"id":"blank","kind":"blank"}),
+            json!({"id":"source","kind":"poly_constant","params":{"channels":1,"v1":2.5}}),
+            json!({"id":"split","kind":"poly_split"}),
+            json!({"id":"native_middle","kind":"stock_mid_side"}),
+            json!({"id":"notes","kind":"notes"}),
+            json!({"id":"gain","kind":"gain"}),
+            json!({"id":"native_last","kind":"stock_mix"}),
+        ];
+        // Move native producers and zero-output annotations through every
+        // boundary. Multi-output Split must publish even its unplugged ports.
+        for rotation in 0..nodes.len() {
+            let mut reordered = nodes.clone();
+            reordered.rotate_left(rotation);
+            let patch: Patch = serde_json::from_value(json!({"version":2,
+            "nodes":reordered,
+            "cables":[
+                {"id":"a","from":"source","to":"native_first","input":"in1"},
+                {"id":"b","from":"source","to":"split","input":"signal"},
+                {"id":"c","from":"native_first","to":"gain","input":"signal"}
+            ]}))
+            .unwrap();
+            let mut engine = PolyEngine::compile(&patch).unwrap();
+            let tail = 0x7fc1_2345;
+            for output in &mut engine.host.as_mut().unwrap().outputs {
+                output.values[15] = f32::from_bits(tail);
+            }
+            for _ in 0..3 {
+                engine.process_sample();
+                let host = engine.host.as_ref().unwrap();
+                for node in &engine.nodes {
+                    for port in node.output_start..node.output_start + node.output_count {
+                        if node.model.native_host() {
+                            assert_eq!(host.outputs[port].values[15].to_bits(), tail);
+                        } else {
+                            assert_eq!(
+                                host.outputs[port].values.map(f32::to_bits),
+                                engine.outputs[port].values.map(f32::to_bits)
+                            );
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                engine.outputs[engine.resolve_tap("gain", "out").unwrap()].values[0],
+                2.5
+            );
+        }
+    }
+
     #[test]
     fn input_route_comparison_respects_stack_order_and_identity() {
         let mut patch = Patch {

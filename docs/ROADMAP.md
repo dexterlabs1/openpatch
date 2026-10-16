@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 75 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof; its delivery gates are tracked below. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 75 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof and merged platform/capture evidence; its remaining gates are tracked below. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -256,9 +256,12 @@ snapshots and the unchanged original gate. The corrected Rust workspace passes
 2,016 tests (six existing ignored), strict Clippy and formatting. All 99
 Python/MCP checks pass. The final four-workload experiment reports
 +5.34% mono-routing and +0.80% 16-voice routing cost versus PR15; mixed-voice
-medians remain near parity. Both attempts are retained. Final-head CI and all
-133 native captures are separate pre-merge gates. Native devices and hardware
-accuracy remain unqualified; no speed advantage is claimed.
+medians remain near parity. Both attempts are retained. [PR16](https://github.com/dexterlabs1/openpatch/pull/16)
+merged after all eight exact-head push/PR CI jobs passed and both 133-capture
+sets were validated and reviewed. The qualified ARM app is installed, with
+its signature and executable hashes verified; it has not been launched for
+native input/device qualification. Hardware accuracy remains unqualified; no
+speed advantage is claimed.
 
 ## Clocked routing
 
