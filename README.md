@@ -410,9 +410,13 @@ after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
 passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-**80 built-in kinds in development.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+The next module-design pass brings black rotary controls and warm ivory panels
+to ten more voice and utility kinds, using the same face in rack and browser.
+[Design progress and validation](docs/MODULE_DESIGN.md).
 
-The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded local release checks pass; platform and native render checks remain delivery gates.
+**80 installed built-in kinds in 0.2.2 build 4.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+
+The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The signed macOS ARM app is installed with all four visualizers, including Ferrofluid.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

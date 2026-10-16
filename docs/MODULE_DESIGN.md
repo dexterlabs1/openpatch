@@ -93,3 +93,23 @@ library membership and search match tags case-insensitively, while existing
 modules keep their kind-based category. Tags describe where a module belongs;
 they do not assert Rack or hardware equivalence. [Studio Mixer](STUDIO_MIXER.md)
 documents the console's source-backed meters and signal contract.
+
+## Next rotary rollout
+
+The development branch extends the shared black rotary hardware to ten more
+voice and utility panels: analog VCO, ladder VCF, FADE, Compare, legacy Process,
+Rescale, Gate, Attenuverter, White Noise and Oscillator. Their continuous knobs
+use relative adjustment, separate exact-value fields and angular MCP edit cues.
+Waveform/law choices remain labeled choices; the noise seed retains its discrete
+editor. Knob sizes follow each control cell, with larger primary controls and
+smaller secondary controls rather than overlapping neighboring readouts.
+
+These panels share the warm ivory face in the rack and browser. Their existing
+signal annotations and logical port endpoints are retained. Increasing socket
+sizes on the remaining catalog needs a separate clearance pass. Mixer strips,
+envelope stages, sequencer cells and dense effects retain their existing
+controls in this slice. The [local qualification report](benchmarks/module-rotary-rollout-local-qualification.json)
+records 1,028 passing Desktop tests, strict Clippy, formatting, 114 MCP checks,
+an optimized workspace build and a verified signed ARM bundle. Platform CI
+and native render review remain required before this incremental development
+change replaces installed 0.2.2 build 4.

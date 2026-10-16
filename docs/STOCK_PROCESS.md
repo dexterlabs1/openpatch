@@ -129,6 +129,11 @@ Python/MCP checks; strict Clippy and formatting; and all seven prior frozen
 Core reference gates. The [release record](benchmarks/stock-process-release-qualification.json)
 binds the exact optimized 0.2.2 build 4 binaries and source closure. Static ARM
 packaging verifies the signature, code sections, fonts, notices and all four
-visualizers, including Ferrofluid. Platform CI and native render review are
-required delivery gates, tracked in the pull request checks. This bounded source/host evidence is not a hardware calibration,
+visualizers, including Ferrofluid. Both exact-source CI runs passed all four
+jobs (macOS ARM, Linux, Windows and browser visualizer). Both 149-capture
+native sets were validated and visually reviewed before
+[PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The signed
+0.2.2 build 4 app was installed after a safe quit, with the previous installed
+bundle removed and user patches/settings preserved. This bounded source/host
+evidence is not a hardware calibration,
 universal numerical proof or official plugin-binary equivalence claim.

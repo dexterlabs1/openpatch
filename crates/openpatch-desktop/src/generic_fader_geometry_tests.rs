@@ -11,6 +11,7 @@ enum Position {
 #[derive(Debug)]
 enum Presentation {
     Fader,
+    Rotary,
     Choices {
         labels: Vec<String>,
         selected: usize,
@@ -35,6 +36,7 @@ struct PaintedSurface {
     bounds: Rect,
     scale: f32,
     thumbs: Vec<Rect>,
+    rotary_faces: Vec<(Pos2, f32)>,
     choices: Vec<Rect>,
     readouts: Vec<Rect>,
     fills: Vec<(Rect, Color32)>,
@@ -82,6 +84,9 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
                 color: text.override_text_color.unwrap_or(text.fallback_color),
             });
         }
+        egui::Shape::Circle(circle) if circle.fill == Color32::from_rgb(56, 59, 57) => {
+            surface.rotary_faces.push((circle.center, circle.radius));
+        }
         _ => {}
     }
 }
@@ -125,6 +130,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
         bounds: fitted,
         scale: fitted_scale,
         thumbs: vec![],
+        rotary_faces: vec![],
         choices: vec![],
         readouts: vec![],
         fills: vec![],
@@ -175,17 +181,17 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
                                     let value = ctx.read_response(value_id).unwrap_or_else(|| {
                                         panic!("{}: missing numeric target for {name}", node.kind)
                                     });
-                                    let presentation = ParameterChoices::from_spec(spec).map_or(
-                                        Presentation::Fader,
-                                        |choices| Presentation::Choices {
-                                            labels: choices
-                                                .labels
-                                                .iter()
-                                                .map(|s| s.as_str().unwrap().to_owned())
-                                                .collect(),
+                                    let presentation = if let Some(choices) = ParameterChoices::from_spec(spec) {
+                                        Presentation::Choices {
+                                            labels: choices.labels.iter().map(|s| s.as_str().unwrap().to_owned()).collect(),
                                             selected: choices.index(node.params[name]),
-                                        },
-                                    );
+                                        }
+                                    } else if matches!(generic_parameter_hardware(
+                                        &node.kind, name, 24.0, false), GenericParameterHardware::Rotary { .. }) {
+                                        Presentation::Rotary
+                                    } else {
+                                        Presentation::Fader
+                                    };
                                     surface.controls.push(ControlGeometry {
                                         name: name.to_owned(),
                                         presentation,
@@ -201,6 +207,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
             },
         );
         surface.thumbs.clear();
+        surface.rotary_faces.clear();
         surface.choices.clear();
         surface.readouts.clear();
         surface.fills.clear();
@@ -230,29 +237,34 @@ fn own_choice_label(control: &ControlGeometry, text: &PaintedText) -> bool {
             labels.contains(&text.text) && control.painted_area.contains_rect(text.bounds)
         }
         Presentation::Fader => false,
+        Presentation::Rotary => false,
     }
 }
 
 #[test]
 fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_separate() {
     let catalog = openpatch_core::catalog();
-    // Exact continuous/choice counts prevent missing paint, accidental fallback
-    // to a thumb, or missing actual response registration from passing.
-    for (kind, faders, choices) in [
-        ("gate", 2, &[][..]),
-        ("attenuverter", 2, &[][..]),
-        ("white_noise", 2, &[][..]),
-        ("oscillator", 2, &[][..]),
-        ("lfo", 3, &[][..]),
-        ("seq3", 24, &[][..]),
-        ("stereo_delay", 10, &[][..]),
-        ("analog_vco", 2, &["waveform"][..]),
-        ("ladder_vcf", 3, &[][..]),
-        ("vca_mix", 5, &[][..]),
-        ("crossfade", 1, &["law"][..]),
-        ("audio_stereo", 1, &["dc_block"][..]),
-        ("score_sequencer", 2, &["running"][..]),
-        ("drum_voice", 5, &["mode"][..]),
+    // Counts include unchanged fader-only modules and the integer noise seed.
+    // Explicit choices remain independent of the hardware for continuous values.
+    for (kind, faders, rotaries, choices) in [
+        ("gate", 0, 2, &[][..]),
+        ("attenuverter", 0, 2, &[][..]),
+        ("white_noise", 1, 1, &[][..]),
+        ("oscillator", 0, 2, &[][..]),
+        ("lfo", 3, 0, &[][..]),
+        ("seq3", 24, 0, &[][..]),
+        ("stereo_delay", 10, 0, &[][..]),
+        ("analog_vco", 0, 2, &["waveform"][..]),
+        ("ladder_vcf", 0, 3, &[][..]),
+        ("fade", 0, 2, &[][..]),
+        ("compare", 0, 1, &[][..]),
+        ("process", 0, 1, &[][..]),
+        ("rescale", 0, 4, &[][..]),
+        ("vca_mix", 5, 0, &[][..]),
+        ("crossfade", 1, 0, &["law"][..]),
+        ("audio_stereo", 1, 0, &["dc_block"][..]),
+        ("score_sequencer", 2, 0, &["running"][..]),
+        ("drum_voice", 5, 0, &["mode"][..]),
     ] {
         let module = catalog["modules"]
             .as_array()
@@ -265,7 +277,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 let rack = paint(module, position, scale, false);
                 let browser = paint(module, position, scale, true);
                 let context = format!("{kind} scale={scale} position={position:?}");
-                let count = faders + choices.len();
+                let count = faders + rotaries + choices.len();
                 assert_eq!(
                     rack.controls.len(),
                     count,
@@ -281,6 +293,16 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                     actual_choices, choices,
                     "{context}: categorical target identity"
                 );
+                let actual_rotaries = rack.controls.iter().filter(|control| matches!(control.presentation, Presentation::Rotary)).count();
+                assert_eq!(actual_rotaries, rotaries, "{context}: continuous rotary identity");
+                if kind == "white_noise" {
+                    assert!(rack.controls.iter().any(|control|
+                        control.name == "seed" && matches!(control.presentation, Presentation::Fader)),
+                        "{context}: the discrete 24-bit seed keeps its fader and exact-value path");
+                    assert!(rack.controls.iter().any(|control|
+                        control.name == "level" && matches!(control.presentation, Presentation::Rotary)),
+                        "{context}: continuous noise level uses the rotary path");
+                }
                 for (name, surface) in [("rack", &rack), ("browser", &browser)] {
                     assert_eq!(
                         surface.thumbs.len(),
@@ -292,6 +314,8 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                         choices.len(),
                         "{context}: {name} categorical backgrounds"
                     );
+                    assert_eq!(surface.rotary_faces.len(), rotaries,
+                        "{context}: {name} must paint every continuous rotary face");
                     assert!(
                         surface.readouts.len() >= count,
                         "{context}: {name} numeric wells missing"
@@ -300,6 +324,12 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 assert_rects_near(&rack.thumbs, &browser.thumbs, &context);
                 assert_rects_near(&rack.choices, &browser.choices, &context);
                 assert_rects_near(&rack.readouts, &browser.readouts, &context);
+                for ((rack_center, rack_radius), (browser_center, browser_radius)) in
+                    rack.rotary_faces.iter().zip(&browser.rotary_faces) {
+                    assert!(rack_center.distance(*browser_center) < 0.001 &&
+                        (rack_radius - browser_radius).abs() < 0.001,
+                        "{context}: rack/browser rotary face geometry differs");
+                }
                 assert_eq!(
                     rack.texts.len(),
                     browser.texts.len(),
@@ -445,6 +475,38 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                                 "{context}: {} target must have one actual thumb",
                                 control.name
                             );
+                        }
+                        Presentation::Rotary => {
+                            assert!(control.senses_drag,
+                                "{context}: {} rotary lost drag sense", control.name);
+                            assert!((control.hit.width() - control.hit.height()).abs() < 0.001,
+                                "{context}: {} rotary target must be square", control.name);
+                            let faces: Vec<_> = rack.rotary_faces.iter().filter(|(center, radius)|
+                                center.distance(control.hit.center()) < 0.001 &&
+                                *radius > 8.0 * scale &&
+                                *radius < control.hit.width() * 0.5).collect();
+                            assert_eq!(faces.len(), 1,
+                                "{context}: {} target must contain one actual rotary face", control.name);
+                            let face = Rect::from_center_size(faces[0].0,
+                                Vec2::splat(faces[0].1 * 2.0));
+                            let expected_target_and_face = match (kind, control.name.as_str()) {
+                                ("gate", "duty") | ("white_noise", "level") => Some((60.0, 22.9)),
+                                ("analog_vco", "pulse_width") => Some((42.0, 13.9)),
+                                ("rescale", "gain") => Some((46.0, 15.9)),
+                                _ => None,
+                            };
+                            if let Some((target, face_radius)) = expected_target_and_face {
+                                assert!((control.hit.width() / scale - target).abs() < 0.01,
+                                    "{context}: {} target size", control.name);
+                                assert!((faces[0].1 / scale - face_radius).abs() < 0.01,
+                                    "{context}: {} painted face size", control.name);
+                            }
+                            assert!(rack.bounds.contains_rect(face),
+                                "{context}: {} rotary face escapes panel", control.name);
+                            for well in rack.readouts.iter().chain(&rack.choices) {
+                                assert!(!face.intersects(*well),
+                                    "{context}: {} rotary face overlaps entry/choice", control.name);
+                            }
                         }
                         Presentation::Choices { .. } => {
                             assert!(
