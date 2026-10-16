@@ -5,6 +5,10 @@ import pathlib
 import plistlib
 import shutil
 import subprocess
+import tomllib
+
+root = pathlib.Path(__file__).resolve().parents[1]
+version = tomllib.loads((root / "crates/openpatch-desktop/Cargo.toml").read_text())["package"]["version"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--binary", default="target/release/openpatch-desktop")
@@ -40,8 +44,8 @@ with (contents / "Info.plist").open("wb") as stream:
         "CFBundleName": "OpenPatch",
         "CFBundleDisplayName": "OpenPatch",
         "CFBundleIdentifier": "org.openpatch.desktop",
-        "CFBundleVersion": "2",
-        "CFBundleShortVersionString": "0.2.0",
+        "CFBundleVersion": "3",
+        "CFBundleShortVersionString": version,
         "CFBundleExecutable": "openpatch-desktop",
         "CFBundleIconFile": "OpenPatch.icns",
         "CFBundlePackageType": "APPL",
