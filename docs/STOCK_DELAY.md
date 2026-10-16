@@ -177,9 +177,12 @@ ignored tests; strict Clippy also passes. The release workspace build and all
 signature is verified and its bundled notices match the source notices; that
 bundle has not been installed or launched.
 
-Platform CI and native capture verification are release gates; the smoke
-sequence is configured for 97 screenshots, not an assertion that they have
-been executed or reviewed for this change. Full callback-deadline measurement
-and native macOS ARM window/input/playback qualification remain open. There
+[PR #4](https://github.com/dexterlabs1/openpatch/pull/4) merged after the
+[exact-source three-platform CI run](https://github.com/dexterlabs1/openpatch/actions/runs/38814707288)
+passed. All 97 native PNGs passed integrity checks and the three Delay views
+were visually reviewed. The subsequent header/wavetable milestone expanded this
+to 100 checked captures with the shared left-aligned module titles.
+Full callback-deadline measurement and native macOS ARM window/input/playback
+qualification remain open. There
 is no hardware calibration, physical audio/MIDI test, VCV import or
 plugin-binary compatibility claim.

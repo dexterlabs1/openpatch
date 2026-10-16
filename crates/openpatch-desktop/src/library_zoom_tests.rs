@@ -174,7 +174,7 @@ fn click(
 fn library_zoom_metadata_agrees_with_all_actual_default_panel_sizes_and_assignment_is_not_a_ui_edit(
 ) {
     let catalog = openpatch_core::catalog();
-    assert_eq!(modules(&catalog).count(), 68);
+    assert_eq!(modules(&catalog).count(), 69);
     for module in modules(&catalog) {
         let kind = module["kind"].as_str().unwrap();
         let preview = ModulePreview::new(module);
@@ -631,84 +631,86 @@ fn library_zoom_disabling_an_already_open_popup_closes_the_actual_owned_menu() {
 
 #[test]
 fn library_zoom_actual_card_response_keeps_click_drag_and_focus_at_all_scales() {
-    let catalog = catalog(&["stock_vca"]);
-    for zoom in [0.25, 0.5, 1.0, 2.0] {
-        let ctx = context();
-        let mut library = ModuleLibrary::default();
-        let mut open = true;
-        library.set_preview_zoom(zoom);
-        draw(
-            &ctx,
-            &mut library,
-            &mut open,
-            &catalog,
-            vec2(940.0, 680.0),
-            0.0,
-            vec![],
-            true,
-        );
-        let (_, output) = draw(
-            &ctx,
-            &mut library,
-            &mut open,
-            &catalog,
-            vec2(940.0, 680.0),
-            0.1,
-            vec![],
-            true,
-        );
-        let card = cards(&output)[0];
-        let target = card.min + vec2(12.0, 12.0);
-        let (action, _) = click(&ctx, &mut library, &mut open, &catalog, target, 1.0, true);
-        assert_eq!(
-            action,
-            Some(LibraryAction::Add("stock_vca".into())),
-            "click at zoom {zoom}"
-        );
-        assert_eq!(library.focused_last_frame, Some(FocusKind::Tile));
-        let response = ctx
-            .read_response(ctx.memory(|memory| memory.focused()).unwrap())
-            .unwrap();
-        assert_eq!(
-            response.rect,
-            Rect::from_min_max(card.min, card.max - vec2(0.0, 32.0))
-        );
-        draw(
-            &ctx,
-            &mut library,
-            &mut open,
-            &catalog,
-            vec2(940.0, 680.0),
-            2.0,
-            vec![egui::Event::PointerMoved(target), pointer(target, true)],
-            true,
-        );
-        let (action, _) = draw(
-            &ctx,
-            &mut library,
-            &mut open,
-            &catalog,
-            vec2(940.0, 680.0),
-            2.1,
-            vec![egui::Event::PointerMoved(target + vec2(35.0, 24.0))],
-            true,
-        );
-        assert!(action.is_none());
-        assert_eq!(
-            egui::DragAndDrop::payload::<LibraryDrag>(&ctx).map(|payload| payload.kind.clone()),
-            Some("stock_vca".into())
-        );
-        let (action, _) = draw(
-            &ctx,
-            &mut library,
-            &mut open,
-            &catalog,
-            vec2(940.0, 680.0),
-            2.2,
-            vec![pointer(target + vec2(35.0, 24.0), false)],
-            true,
-        );
-        assert!(action.is_none(), "drag release cannot become click add");
+    for kind in ["stock_vca", "random"] {
+        let catalog = catalog(&[kind]);
+        for zoom in [0.25, 0.5, 0.72, 1.0, 2.0] {
+            let ctx = context();
+            let mut library = ModuleLibrary::default();
+            let mut open = true;
+            library.set_preview_zoom(zoom);
+            draw(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                vec2(940.0, 680.0),
+                0.0,
+                vec![],
+                true,
+            );
+            let (_, output) = draw(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                vec2(940.0, 680.0),
+                0.1,
+                vec![],
+                true,
+            );
+            let card = cards(&output)[0];
+            let target = card.min + vec2(12.0, 12.0);
+            let (action, _) = click(&ctx, &mut library, &mut open, &catalog, target, 1.0, true);
+            assert_eq!(
+                action,
+                Some(LibraryAction::Add(kind.into())),
+                "click at zoom {zoom}"
+            );
+            assert_eq!(library.focused_last_frame, Some(FocusKind::Tile));
+            let response = ctx
+                .read_response(ctx.memory(|memory| memory.focused()).unwrap())
+                .unwrap();
+            assert_eq!(
+                response.rect,
+                Rect::from_min_max(card.min, card.max - vec2(0.0, 32.0))
+            );
+            draw(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                vec2(940.0, 680.0),
+                2.0,
+                vec![egui::Event::PointerMoved(target), pointer(target, true)],
+                true,
+            );
+            let (action, _) = draw(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                vec2(940.0, 680.0),
+                2.1,
+                vec![egui::Event::PointerMoved(target + vec2(35.0, 24.0))],
+                true,
+            );
+            assert!(action.is_none());
+            assert_eq!(
+                egui::DragAndDrop::payload::<LibraryDrag>(&ctx).map(|payload| payload.kind.clone()),
+                Some(kind.into())
+            );
+            let (action, _) = draw(
+                &ctx,
+                &mut library,
+                &mut open,
+                &catalog,
+                vec2(940.0, 680.0),
+                2.2,
+                vec![pointer(target + vec2(35.0, 24.0), false)],
+                true,
+            );
+            assert!(action.is_none(), "drag release cannot become click add");
+        }
     }
 }
 

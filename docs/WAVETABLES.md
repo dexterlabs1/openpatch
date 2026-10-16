@@ -141,6 +141,15 @@ Public Engine, callback heap guards, Session/history/file/preset and panel tests
 exercise separate local host contracts. The shared rack/browser title layout
 uses prominent left-aligned module names without brand/description headers.
 The macOS ARM release candidate builds and its ad-hoc bundle signature verifies.
-New presentation captures, supported-platform CI and native macOS
-window/input/device/playback qualification remain separate gates. The candidate
-has not replaced the installed app or been interactively verified on macOS.
+[PR #5](https://github.com/dexterlabs1/openpatch/pull/5) merged after
+[exact-source CI](https://github.com/dexterlabs1/openpatch/actions/runs/38833771005)
+passed on macOS ARM, Linux and Windows, including strict Clippy, release builds
+and 81 Python/MCP tests per platform. Mac/Linux passed 1,673 Rust unit/integration
+tests and Windows 1,646; existing ignored/export fixtures remain separate.
+All 100 native PNG captures passed exact-set, chunk CRC and decoded-row checks.
+The normal/dark wavetable rack, shared browser, legacy utility rack and compact
+rack/browser images were visually reviewed: headings are prominent and
+left-aligned, static branding/descriptions are absent, and live lamps/Scope
+remain visible in dark mode. These Linux-rendered captures do not qualify native
+macOS window/input/device/playback. The candidate has not replaced the installed
+app or been interactively verified on macOS.

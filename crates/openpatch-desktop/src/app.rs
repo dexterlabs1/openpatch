@@ -1945,6 +1945,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::mixing_layout())
                 .expect("bundled mixer layout");
+        } else if title == "Random motion voice" {
+            self.rack
+                .restore_layout(&Self::random_motion_layout())
+                .expect("bundled Random motion layout");
         } else if title == "Wavetable voice" {
             self.rack
                 .restore_layout(&Self::wavetable_voice_layout())
@@ -1983,6 +1987,13 @@ impl OpenPatch {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "values":[0,0],"scope":[330,0],"clock":[0,420],
             "notes":[330,420],"vco":[600,420],"out":[930,420]
+        }})
+    }
+
+    fn random_motion_layout() -> Value {
+        json!({"version":1,"zoom":0.65,"pan":[24,12],"positions":{
+            "motion":[0,0],"range":[390,0],"notes":[570,0],"voice":[840,0],"out":[1170,0],
+            "filter":[0,420],"envelope":[330,420],"amplifier":[720,420],"scope":[930,420],"guide":[1590,420]
         }})
     }
 
@@ -2983,6 +2994,13 @@ impl OpenPatch {
                                     "../../../examples/stock-vca-voice.json"
                                 )).expect("valid stock VCA voice");
                                 self.replace_from_menu(patch, "Stock VCA voice");
+                                ui.close();
+                            }
+                            if ui.button("Random motion voice").clicked() {
+                                let patch: Patch = serde_json::from_str(include_str!(
+                                    "../../../examples/random-motion-voice.json"
+                                )).expect("bundled Random motion voice");
+                                self.replace_from_menu(patch, "Random motion voice");
                                 ui.close();
                             }
                             if ui.button("Wavetable voice").clicked() {
@@ -4760,6 +4778,72 @@ impl OpenPatch {
         self.status = "Actual DSP snapshot · proof lanes 0 / 6.25 / 50 / 100 / 100% · fifth input silent, full gain · no live audio".into();
     }
 
+    fn prepare_random_fixture(&mut self) {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/random-motion-voice.json"))
+                .expect("valid Random motion voice");
+        let mut engine = patch.compile().expect("Random motion fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let motion = engine.resolve_module_lights("motion").unwrap();
+        let mut frames = 0;
+        loop {
+            let mut audio = [[0.0; 2]; 128];
+            engine.process_audio_block(&mut audio);
+            assert!(audio.iter().flatten().all(|value| value.is_finite()));
+            frames += audio.len();
+            let state = engine.module_lights(motion).unwrap();
+            if state.brightness[2][0] > 1.0
+                && audio.iter().flatten().any(|value| value.abs() > 0.001)
+            {
+                break;
+            }
+            assert!(
+                frames < 96_000,
+                "Random fixture needs a real accepted event and audible envelope"
+            );
+        }
+        let lights = ["motion", "envelope", "amplifier"]
+            .into_iter()
+            .map(|id| {
+                (
+                    id.to_owned(),
+                    engine
+                        .module_lights(engine.resolve_module_lights(id).unwrap())
+                        .unwrap(),
+                )
+            })
+            .collect();
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        assert!(scope.x[0].iter().any(|point| point.max.abs() > 0.001));
+        assert!(scope.y[0].iter().any(|point| point.max.abs() > 0.001));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.preset_dialog = None;
+        self.file_mode = None;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::random_motion_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.browser_open = false;
+        self.title = "Random motion voice".into();
+        self.status = "Actual offline DSP snapshot · accepted events, envelope and interpolated Scope traces · no live audio".into();
+    }
+
     fn prepare_wavetable_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
@@ -6368,6 +6452,23 @@ impl OpenPatch {
             self.title = "Wavetable · shared library faceplates".into();
             self.status = "Both wavetable modules use the same faceplates and table previews in the library and rack".into();
         }
+        if frame == 2284 {
+            egui::Popup::close_all(ctx);
+            self.prepare_random_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2300 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Random motion · lights out · real probability/rate events and captured interpolation curves".into();
+        }
+        if frame == 2316 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.5);
+            self.browse();
+            assert!(self.library.inspect("random", &self.catalog));
+            self.title = "Random · shared library faceplate".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -6481,6 +6582,9 @@ impl OpenPatch {
                 | 2240
                 | 2256
                 | 2276
+                | 2292
+                | 2308
+                | 2328
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -6598,7 +6702,10 @@ impl OpenPatch {
                 96 => path.with_file_name("stock-delay-library.png"),
                 97 => path.with_file_name("rack-wavetable.png"),
                 98 => path.with_file_name("rack-wavetable-lights-out.png"),
-                _ => path.with_file_name("wavetable-library.png"),
+                99 => path.with_file_name("wavetable-library.png"),
+                100 => path.with_file_name("rack-random.png"),
+                101 => path.with_file_name("rack-random-lights-out.png"),
+                _ => path.with_file_name("random-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -6615,12 +6722,12 @@ impl OpenPatch {
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 100 {
+            if captures == 103 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2290, "Native screenshot timeout");
+        assert!(frame < 2350, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6893,6 +7000,9 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod random_factory_tests {
+        include!("random_factory_tests.rs");
+    }
     mod wavetable_factory_tests {
         include!("wavetable_factory_tests.rs");
     }

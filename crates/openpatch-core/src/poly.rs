@@ -14,6 +14,7 @@ use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
+use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
@@ -108,6 +109,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_vca"
                 | "stock_delay"
                 | "random_values"
+                | "random"
                 | "sh_asr"
                 | "scope"
                 | "gates"
@@ -164,6 +166,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "push" => push::INPUTS.iter().position(|port| *port == name),
         "sh_asr" => shift_register::INPUTS.iter().position(|port| *port == name),
         "random_values" => random_values::INPUTS.iter().position(|port| *port == name),
+        "random" => random_modulation::INPUTS
+            .iter()
+            .position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
         "poly_constant" | "midi_cv" | "midi_cc" | "midi_gate" | "pulses" | "colored_noise" => None,
         "audio_stereo" => match name {
@@ -219,6 +224,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         pulses::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "sh_asr" {
         shift_register::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
+    } else if kind == "random" {
+        random_modulation::OUTPUTS
             .iter()
             .position(|port| *port == name)
     } else if kind == "random_values" {
@@ -298,7 +307,7 @@ fn voice_policy(kind: &str) -> VoicePolicy {
     match kind {
         "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
-        "stock_vcf" => VoicePolicy::Primary(3),
+        "stock_vcf" | "random" => VoicePolicy::Primary(3),
         "mixer" | "crossfade" | "modal_resonator" | "stock_vca" | "wavetable_vco" => {
             VoicePolicy::Maximum
         }
@@ -350,6 +359,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "sh_asr" {
         shift_register::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "random" {
+        random_modulation::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -580,6 +594,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "sh_asr" {
         shift_register::annotate(module);
     }
+    if kind == "random" {
+        random_modulation::annotate(module);
+    }
     if kind == "random_values" {
         random_values::annotate(module);
     }
@@ -628,6 +645,7 @@ enum Model {
     StockVca(Box<StockVca>),
     ShiftRegister(Box<ShiftRegister>),
     RandomValues(Box<RandomValues>),
+    Random(Box<Random>),
     Scope(Box<Scope>),
     Gates(Box<Gates>),
     Switch(SequentialSwitch),
@@ -688,6 +706,9 @@ impl Model {
         }
         if node.kind == "sh_asr" {
             return Ok(Self::ShiftRegister(Box::new(ShiftRegister::build(node)?)));
+        }
+        if node.kind == "random" {
+            return Ok(Self::Random(Box::new(Random::build(node, rate)?)));
         }
         if node.kind == "random_values" {
             return Ok(Self::RandomValues(Box::new(RandomValues::build(node)?)));
@@ -989,6 +1010,7 @@ impl PolyEngine {
             Some(Model::Push(p)) => Some(p.lights()),
             Some(Model::AdsrEg(p)) => Some(p.lights()),
             Some(Model::StockVca(p)) => Some(p.lights()),
+            Some(Model::Random(p)) => Some(p.lights()),
             Some(Model::StockDelay(p)) => {
                 let mut lights = ModuleLightState {
                     count: 1,
@@ -1245,6 +1267,10 @@ impl PolyEngine {
                 p.reset_state();
                 random_values::OUTPUTS.len()
             }
+            Model::Random(p) => {
+                p.reset_state();
+                random_modulation::OUTPUTS.len()
+            }
             Model::StockVca(p) => {
                 p.initialize_state();
                 stock_vca::OUTPUTS.len()
@@ -1469,6 +1495,7 @@ impl PolyEngine {
                     "stock_delay" => stock_delay::OUTPUTS.len(),
                     "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
+                    "random" => random_modulation::OUTPUTS.len(),
                     "scope" => scope::OUTPUTS.len(),
                     "gates" => gates::OUTPUTS.len(),
                     _ => 1,
@@ -1798,6 +1825,16 @@ impl PolyEngine {
                     a,
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
                 ),
+                Model::Random(p) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    self.outputs[node.output_start..node.output_start + 5]
+                        .copy_from_slice(&p.process(&inputs));
+                }
                 Model::StockVca(p) => {
                     self.outputs[node.output_start] = p.process(&[a, b]);
                 }
@@ -2476,6 +2513,10 @@ impl PolyEngine {
                 if bypass_changed {
                     p.release();
                 }
+            }
+            if let (Model::Random(p), Model::Random(previous)) = (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
             }
             if let (Model::StockVca(p), Model::StockVca(previous)) =
                 (&mut node.model, &previous.model)
