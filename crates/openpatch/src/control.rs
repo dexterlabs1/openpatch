@@ -53,6 +53,8 @@ mod stack_tests;
 #[cfg(test)]
 mod stock_octave_tests;
 #[cfg(test)]
+mod stock_process_tests;
+#[cfg(test)]
 mod stock_quantizer_tests;
 #[cfg(test)]
 mod stock_seq3_tests;
@@ -1134,7 +1136,7 @@ impl Session {
                             | ModuleAction::SeqGateRelease(1..=8)
                     ),
                     "logic" => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
-                    "process" => {
+                    "process" | "stock_process" => {
                         matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease)
                     }
                     "pulses" => action.pulse_button().is_some(),
@@ -1162,7 +1164,7 @@ impl Session {
                     _ => false,
                 };
                 if !supported {
-                    return Err("module action requires a seq3 or stock_seq3 module for clock/run/reset; stock_seq3 also supports clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic".into());
+                    return Err("module action requires a seq3 or stock_seq3 module for clock/run/reset; stock_seq3 also supports clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release, logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic".into());
                 }
                 if node.bypassed
                     && !matches!(
@@ -2007,6 +2009,14 @@ fn apply_edit(
                         .into(),
                 );
             }
+            if node.kind == "stock_process"
+                && parameter == "slew"
+                && (!raw_value.is_finite()
+                    || !(f64::from(1e-3_f32.log2())..=f64::from(10.0_f32.log2()))
+                        .contains(&raw_value))
+            {
+                return Err("Stock Process slew is outside its authored editing range".into());
+            }
             if node.kind == "stock_vca_mix" {
                 let maximum = match parameter {
                     "mix_level" => Some(2.0),
@@ -2323,7 +2333,7 @@ pub fn tools() -> Value {
         tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
-        tool("trigger_module","Queue a live module action: seq3 or stock_seq3 clock/run/reset; stock_seq3 physical clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release; logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
+        tool("trigger_module","Queue a live module action: seq3 or stock_seq3 clock/run/reset; stock_seq3 physical clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release; logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_scope","Read a coherent live rack Scope capture for one voice (1..16). Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, applied revision and callback frame. Empty bins are null. Includes raw minimum/maximum/peak-to-peak statistics for the selected voice and all active voices, configured manual volts/screen, and actual trigger-source channels. The native display may independently calibrate its automatic span when the scope node auto_range parameter is enabled; this capture does not report that temporary view span. Statistics cover stored completed bins, which may mix successive sweeps; they are not RMS or a timestamped sample window. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never performs an offline render or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
         tool("learn_midi_gate","Arm a MIDI Gate cell (1..16) to learn the next accepted positive-velocity NoteOn on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),

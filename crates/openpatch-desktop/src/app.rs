@@ -2191,6 +2191,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::stock_noise_layout())
                 .expect("bundled Stock Noise resonator layout");
+        } else if title == "Stock Process voice" {
+            self.rack
+                .restore_layout(&Self::stock_process_layout())
+                .expect("bundled Stock Process voice layout");
         } else if title == "Stock VCA Mix voice" {
             self.rack
                 .restore_layout(&Self::stock_vca_mix_voice_layout())
@@ -2261,6 +2265,20 @@ impl OpenPatch {
             "amplifier":[noise+clock+envelope,0],
             "body":[0,420],"scope":[body,420],"out":[body+scope,420],
             "guide":[body+scope+output,420]
+        }})
+    }
+    fn stock_process_layout() -> Value {
+        let motion = crate::rack::panel_width("stock_lfo");
+        let range = crate::rack::panel_width("gain");
+        let clock = crate::rack::panel_width("gate");
+        let voice = crate::rack::panel_width("stock_vco");
+        let scope = crate::rack::panel_width("scope");
+        let output = crate::rack::panel_width("audio_stereo");
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "pitch-motion":[0,0],"pitch-range":[motion,0],
+            "gate-clock":[motion+range,0],"process":[motion+range+clock,0],
+            "voice":[0,420],"scope":[voice,420],
+            "out":[voice+scope,420],"guide":[voice+scope+output,420]
         }})
     }
     fn stock_vca_mix_voice_layout() -> Value {
@@ -3357,6 +3375,14 @@ impl OpenPatch {
                 ))
                 .expect("valid Stock Noise resonator");
                 self.replace_from_menu(patch, "Noise into matter");
+                ui.close();
+            }
+            if ui.button("Stock Process voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stock-process-voice.json"
+                ))
+                .expect("valid Stock Process voice");
+                self.replace_from_menu(patch, "Stock Process voice");
                 ui.close();
             }
             if ui.button("Stock VCA Mix voice").clicked() {
@@ -8554,7 +8580,7 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/146 at frame {frame}: {}",
+                "Native smoke: capture {}/149 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
@@ -8565,6 +8591,7 @@ impl OpenPatch {
     }
 }
 include!("stock_noise_fixture.rs");
+include!("stock_process_fixture.rs");
 include!("ferrofluid_fixture.rs");
 include!("studio_mixer_fixture.rs");
 impl eframe::App for OpenPatch {
@@ -8942,6 +8969,9 @@ mod project_workflow_tests {
     }
     mod stock_noise_factory_tests {
         include!("stock_noise_factory_tests.rs");
+    }
+    mod stock_process_factory_tests {
+        include!("stock_process_factory_tests.rs");
     }
     mod stock_vca_mix_factory_tests {
         include!("stock_vca_mix_factory_tests.rs");

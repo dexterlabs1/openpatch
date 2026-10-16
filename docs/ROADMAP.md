@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 79 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix, Stock Octave and Stock VCA Mix have merged bounded evidence; the separate Stock Noise has passed its controlled-draw SDK/Core reference gate, with combined application qualification pending. Studio Mixer is a new original custom module with targeted Core tests passing; combined desktop, release and CI qualification remain pending. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 79 installed built-in module kinds and a separate Stock Process bringing the development catalog to 80. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid is restored in installed 0.2.1 build 3 through PR21. Stock Process has passed its frozen source/host reference comparison; its local combined application qualification passes, with platform/native render delivery checks required. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -319,7 +319,7 @@ Regression/performance audit and both platform CI runs passed before
 configured native captures were verified and reviewed. Native Mac window/input,
 device qualification, general Rack import and hardware claims remain open.
 
-## Stock Noise: controlled source gate passed; application qualification pending
+## Stock Noise: bounded source and application qualification merged
 
 Separate [Stock Noise](STOCK_NOISE.md) preserves the original `colored_noise`
 contract while adding seven mono, consumer-gated outputs without controls,
@@ -330,14 +330,13 @@ unused-scratch variants. The explicit source scratch initialization is an
 erratum; this does not prove unmodified-source, uncontrolled Rack PRNG,
 distributed plugin-binary or hardware equivalence. The **File → Noise into
 matter** factory connects Stock Noise to the modal resonator. Combined app/UI,
-callback, native capture and platform qualification remain pending.
+callback, native capture and platform qualification passed in [PR20](https://github.com/dexterlabs1/openpatch/pull/20); physical-device and local Mac window checks remain open.
 
-## Studio Mixer: original custom module; combined qualification pending
+## Studio Mixer: original custom module; application qualification merged
 
 [Studio Mixer](STUDIO_MIXER.md) ports the user's original module from its stable
 snapshot, with 1–16 strips and FX A/B. Its catalog metadata places it in both
-Custom and Mixing. Targeted Core tests pass; combined desktop, release and CI
-qualification remain pending. This original-module work is separate from the
+Custom and Mixing. Combined Core, desktop, release and CI qualification passed in [PR20](https://github.com/dexterlabs1/openpatch/pull/20). This original-module work is separate from the
 49 VCV Core/Free targets and does not claim VCV equivalence.
 
 ## Clocked routing
@@ -650,3 +649,12 @@ and 82 MCP tests, strict Clippy and a separate Mac ARM release build pass.
 Platform CI/capture review and native interaction remain separate gates in
 the [Random contract](RANDOM.md). This does not complete
 all 49 stock module/host targets. MIDI/live-performance work remains last.
+
+## Stock Process: frozen source/host comparison passed
+
+The separate [Stock Process](STOCK_PROCESS.md) preserves legacy `process` patches.
+Its actual Core/genuine SDK comparison passes 3,444 cases and 13,599 full
+snapshots without discarded fields at three sample rates. All six outputs,
+polyphonic state, gate thresholds, slew/glide timing and host lifecycle are
+included. Safety, realtime allocation, shared rack/browser UI, connected factory, MCP and local release qualification pass. Platform/native render delivery checks remain required. Rack Scope is
+the next non-MIDI reference target; MIDI/live performance remain last.

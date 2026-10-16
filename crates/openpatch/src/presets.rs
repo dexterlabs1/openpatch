@@ -79,9 +79,10 @@ pub fn validate(preset: &Value) -> Result<(), String> {
         // Validate in the same f32 domain as Node/core parameter parsing.
         let value = value as f32;
         // These native models distinguish interactive ranges from finite raw
-        // storage. Retain loaded values without narrowing the gain/shift state;
+        // storage. Retain loaded values without narrowing gain, shift or slew;
         // the Boolean response aliases still use their ordinary enum checks.
         if (kind == "stock_octave" && name == "octaves")
+            || (kind == "stock_process" && name == "slew")
             || (kind == "stock_vca_mix"
                 && matches!(
                     name.as_str(),

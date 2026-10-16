@@ -41,10 +41,16 @@ mod native_float;
 mod stock_mid_side;
 mod stock_mix;
 mod stock_octave;
+mod stock_process;
 mod stock_vca_mix;
 #[doc(hidden)]
 pub use stock_mix::StockMixSnapshot;
 pub use stock_octave::StockOctaveSnapshot;
+#[doc(hidden)]
+pub use stock_process::{
+    StockProcessEngineBits, StockProcessEngineSnapshot, StockProcessSnapshot,
+    StockProcessSnapshotBits,
+};
 pub use stock_vca_mix::{StockVcaMixMeterSnapshot, StockVcaMixSnapshot};
 mod stock_quantizer;
 #[doc(hidden)]
@@ -392,6 +398,10 @@ pub fn catalog() -> Value {
     result["modules"]
         .as_array_mut()
         .unwrap()
+        .push(stock_process::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
         .push(stock_vca_mix::catalog());
     result["modules"]
         .as_array_mut()
@@ -499,7 +509,13 @@ pub fn catalog() -> Value {
         }
         poly::annotate_catalog(module);
         bypass::annotate(module);
+        if module["kind"].as_str() == Some("stock_process") {
+            stock_process::annotate_bypass(module);
+        }
         parameter_actions::annotate_catalog(module);
+        if module["kind"].as_str() == Some("stock_process") {
+            module["params"]["slew"]["randomization"] = json!("linear");
+        }
     }
     result["signal_conventions"] = json!({"reference_modules":"volts; audio_out converts 10 V to 1.0 digital","legacy_modules":"unchanged normalized utilities; no automatic voltage conversion","functional_modules":"volts; white_noise.level is RMS volts; colored_noise.level is a multiplier of normalized color voltages; no automatic antialiasing for discontinuous quantizer/sample_hold outputs","physical_modules":"volts; modal_resonator excite uses 1 N/V and out is a velocity pickup at 25 V*s/m before level", "pitch":"1 V/oct for analog_vco.pitch, ladder_vcf.cutoff_cv and modal_resonator.pitch"});
     result
@@ -1515,6 +1531,66 @@ impl Engine {
             _ => None,
         }
     }
+    /// Copy all sixteen actual Process engines and controls without consuming
+    /// any output. Inactive voices and disconnected port storage are retained.
+    #[doc(hidden)]
+    pub fn stock_process_snapshot(&self, handle: ModuleHandle) -> Option<StockProcessSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_process_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Lossless float bit pattern for independent SDK trace comparison.
+    #[doc(hidden)]
+    pub fn stock_process_snapshot_bits(
+        &self,
+        handle: ModuleHandle,
+    ) -> Option<StockProcessSnapshotBits> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_process_snapshot_bits(handle.node),
+            _ => None,
+        }
+    }
+    /// Write the actual raw GATE_PARAM of the compiled Process instance. The
+    /// normal UI uses gate_press/gate_release actions; this is a diagnostic seam.
+    #[doc(hidden)]
+    pub fn set_stock_process_gate_value(&mut self, handle: ModuleHandle, value: f32) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.set_stock_process_gate_value(handle.node, value),
+            _ => false,
+        }
+    }
+    /// The source has no module-specific JSON data; parameter JSON is separate.
+    #[doc(hidden)]
+    pub fn stock_process_legacy_data(&self, handle: ModuleHandle) -> Option<Value> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_process_legacy_data(handle.node),
+            _ => None,
+        }
+    }
+    /// Source dataFromJson has no Process-specific callback.
+    #[doc(hidden)]
+    pub fn load_stock_process_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.load_stock_process_legacy_data(handle.node, value),
+            _ => false,
+        }
+    }
     /// Apply the source's legacy root-level octave migration to actual runtime state.
     #[doc(hidden)]
     pub fn load_stock_octave_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
@@ -1554,6 +1630,18 @@ impl Engine {
         match &self.inner {
             EngineKind::Poly(engine) => Some(engine.host_reference_timing()),
             _ => None,
+        }
+    }
+    /// Apply a Rack-like sample-rate event to one live Stock Process host
+    /// graph. Accepted graphs contain exactly one stock_process and otherwise
+    /// only poly_constant sources and mult sinks. Rejected calls change nothing.
+    /// This mutates actual engine timing in place and preserves all raw ports,
+    /// cable frames, source controls, Process histories and observer frame.
+    #[doc(hidden)]
+    pub fn stock_process_sample_rate_event(&mut self, sample_rate: u32) -> bool {
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.stock_process_sample_rate_event(sample_rate),
+            _ => false,
         }
     }
     /// Apply VCMixer's source-style chExp/mixExp JSON to actual runtime flags.
@@ -1857,7 +1945,8 @@ impl Engine {
             EngineKind::Poly(engine) => {
                 let preserve_history = engine
                     .stock_vca_mix_preserves_initialize_history(handle.node)
-                    || engine.stock_noise_preserves_reset_history(handle.node);
+                    || engine.stock_noise_preserves_reset_history(handle.node)
+                    || engine.stock_process_preserves_initialize_history(handle.node);
                 let initialized = engine.initialize_module_state(handle.node);
                 if initialized && !preserve_history {
                     engine.port_lights.clear_node(handle.node);

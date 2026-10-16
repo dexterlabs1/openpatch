@@ -34,7 +34,7 @@
 - **Explore macro synthesis.** MACRO VOICE offers eight engines: detuned analog, wavefolding, feedback FM, harmonic spectra, spectral wavetables, four-note chords, swarm, and metallic tones. It supports 16 independent voices, OUT/AUX outputs, three timbral CVs, and a trigger-driven decaying low-pass gate. Leave TRIG unpatched for sustained sounds. Its FM and additive shaping adapt MIT-licensed Plaits algorithms; this native instrument is not a sample-identical Plaits port. [Signal contract and validation →](docs/MACRO_VOICE.md)
 - **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
 - **Build longer arrangements.** Use SCORE through MCP for chords, ratchets and automation, then shape the mix with native drums, stereo delay, reverb and sidechain compression. A [bounded patch reconstruction](docs/STIW_RECONSTRUCTION.md) now maps matching VCA, ADSR and VCF roles to the qualified stock models. [Scores and studio modules →](docs/SCORE_AND_STUDIO.md)
-- **Mix a performance.** The original [Studio Mixer](docs/STUDIO_MIXER.md) grows from 1 to 16 channels with two stereo FX sends and returns, strip mute/solo and meters backed by live signal state. Its channel buttons retain hidden settings and cables; **File → New File → Studio Mixer FX** opens the factory routing example. Qualification is pending.
+- **Mix a performance.** The original [Studio Mixer](docs/STUDIO_MIXER.md) grows from 1 to 16 channels with two stereo FX sends and returns, strip mute/solo and meters backed by live signal state. Its channel buttons retain hidden settings and cables; **File → New File → Studio Mixer FX** opens the factory routing example. Bounded application and platform qualification passed; physical-device checks remain open.
 - **Clock an echo.** Stock Delay adds a mono clock-synchronized delay with tone, feedback, independent MIX/WET outputs and four signed CV depths. Its shared rack/browser panel accepts milliseconds or seconds directly. The final guarded DSP matrix passes; native device and remaining host qualification are tracked in the [Delay contract](docs/STOCK_DELAY.md).
 - **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
 - **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
@@ -46,7 +46,7 @@
 
 ## Get started on macOS
 
-For Apple Silicon, install stable [Rust](https://rustup.rs), Xcode Command Line Tools (`xcode-select --install`), and Python 3. Build a native application bundle:
+For Apple Silicon, install stable [Rust](https://rustup.rs), Xcode Command Line Tools (`xcode-select --install`), and Python 3.11 or later. Build a native application bundle:
 
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
@@ -408,9 +408,11 @@ and [session controls](docs/MCP_SESSIONS.md).
 [Stock VCA Mix](docs/STOCK_VCA_MIX.md) merged at `95b47` in [PR19](https://github.com/dexterlabs1/openpatch/pull/19)
 after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
-passes; its combined application, UI and release qualification is pending.
+passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-**79 built-in kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+**80 built-in kinds in development.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+
+The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded local release checks pass; platform and native render checks remain delivery gates.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

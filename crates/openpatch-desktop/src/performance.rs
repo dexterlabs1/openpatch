@@ -38,6 +38,7 @@ enum ModuleKind {
     Logic,
     Compare,
     Process,
+    StockProcess,
     Rescale,
     VcaMix,
     StockVcaMix,
@@ -74,6 +75,7 @@ impl ModuleKind {
             "logic" => Some(Self::Logic),
             "compare" => Some(Self::Compare),
             "process" => Some(Self::Process),
+            "stock_process" => Some(Self::StockProcess),
             "rescale" => Some(Self::Rescale),
             "vca_mix" => Some(Self::VcaMix),
             "stock_vca_mix" => Some(Self::StockVcaMix),
@@ -111,6 +113,7 @@ impl ModuleKind {
             Self::Logic => "logic",
             Self::Compare => "compare",
             Self::Process => "process",
+            Self::StockProcess => "stock_process",
             Self::Rescale => "rescale",
             Self::VcaMix => "vca_mix",
             Self::StockVcaMix => "stock_vca_mix",
@@ -149,6 +152,7 @@ impl ModuleKind {
             Self::StockSeq3
                 | Self::Logic
                 | Self::Process
+                | Self::StockProcess
                 | Self::Pulses
                 | Self::Push
                 | Self::Gates
@@ -184,7 +188,9 @@ impl ModuleKind {
                 ) || action.seq_gate_button().is_some()
             }
             Self::Logic => matches!(action, ModuleAction::BPress | ModuleAction::BRelease),
-            Self::Process => matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease),
+            Self::Process | Self::StockProcess => {
+                matches!(action, ModuleAction::GatePress | ModuleAction::GateRelease)
+            }
             Self::Pulses => action.pulse_button().is_some(),
             Self::Gates => matches!(
                 action,
