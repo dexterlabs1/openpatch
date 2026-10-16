@@ -6,7 +6,7 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 
 - Keep the installed 0.2.5 build 7 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
 - Validate macOS ARM only by default. Linux/Windows and throughput benchmarks are deferred to an explicitly requested full-platform milestone. MIDI and live performance remain last.
-- Work on one product milestone at a time. The broad goal is paused at a design approval checkpoint. The only authorized current task is two Signal Atlas review panels: analog ADSR and Ladder VCF, with matching browser thumbnails. Wait for user approval before native integration or further catalog rollout. Keep Stock Scope checkpointed.
+- Work on one product milestone at a time. The user approved the two Signal Atlas prototypes. Integrate and validate only analog ADSR and Ladder VCF in the native rack/browser renderer. The broader catalog rollout and Stock Scope remain checkpointed; do not expand this pass or install a new release automatically.
 - Each work item needs one user-visible outcome and a short done checklist. Avoid expanding acceptance into unrelated cleanup or exhaustive internal equivalence. Preserve existing frozen references and honest fidelity claims.
 - Do not touch user patches/settings or replace a running app. Preserve existing computer-use restrictions; headless validation does not establish a native device test.
 

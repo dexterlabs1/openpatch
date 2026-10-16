@@ -37,7 +37,8 @@ impl SocketSpec {
 }
 
 // Independent saved-panel port contracts. The new presentation may move a
-// caption, but must preserve port identity and panel width. Effect outputs move
+// caption, but must preserve port identity and panel width. The approved ADSR
+// and Ladder review places all three sockets on a common row. Effect outputs move
 // up from y382 to y374 so their larger rims fit inside the bottom rack rail.
 fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
     use SocketSpec as S;
@@ -65,7 +66,7 @@ fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
         "lfo" => (180.0, vec![S::input("fm", "FM", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
         "lowpass" => (180.0, vec![S::input("signal", "IN", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
         "gain" | "analog_vca" => (150.0, vec![S::input("signal", "IN", 50.0, 332.0), S::input("cv", "CV", 100.0, 332.0), S::output("out", "OUT", 75.0, 374.0)]),
-        "adsr" => (240.0, vec![S::input("gate", "GATE", 80.0, 332.0), S::input("retrigger", "RETRIG", 160.0, 332.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "adsr" => (240.0, vec![S::input("gate", "GATE", 49.714287, 335.5), S::input("retrigger", "RETRIG", 120.0, 335.5), S::output("out", "ENV", 190.28572, 335.5)]),
         "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "V/OCT", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
         "analog_vco" => (210.0, vec![
             S::input("pitch", "V/OCT", 70.0, 332.0),
@@ -73,9 +74,9 @@ fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
             S::output("out", "OUT", 105.0, 374.0),
         ]),
         "ladder_vcf" => (210.0, vec![
-            S::input("signal", "IN", 70.0, 332.0),
-            S::input("cutoff_cv", "V/OCT", 140.0, 332.0),
-            S::output("out", "OUT", 105.0, 374.0),
+            S::input("signal", "IN", 43.5, 335.5),
+            S::input("cutoff_cv", "V/OCT", 105.0, 335.5),
+            S::output("out", "OUT", 166.5, 335.5),
         ]),
         "fade" => (240.0, vec![
             S::input("a", "A", 45.0, 330.0),
@@ -192,7 +193,7 @@ fn collect(shape: &egui::Shape, painted: &mut Painted) {
             text.galley.text().into(), text.galley.rect.translate(text.pos.to_vec2()),
         )),
         egui::Shape::Rect(rect) if rect.fill == crate::panel_skin::INK => painted.plates.push(rect.rect),
-        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(47, 55, 48) => painted.wells.push(rect.rect),
+        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(47, 55, 48) || rect.fill == Color32::from_rgb(222, 212, 184) => painted.wells.push(rect.rect),
         _ => {}
     }
 }
@@ -207,7 +208,7 @@ fn rendered(kind: &str, value_case: &str, zoom: f32, browser: bool) -> Painted {
         .find(|module| module["kind"] == kind).unwrap();
     let (width, sockets) = contract(kind);
     assert_eq!(panel_width(kind), width, "{kind}: saved face width");
-    assert_eq!(port_material_scale(kind), if kind == "stock_delay" { 1.20 } else { 1.30 }, "{kind}: material scale");
+    assert_eq!(port_material_scale(kind), match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 }, "{kind}: material scale");
     let mut preview = ModulePreview::new(module);
     preview.patch.nodes[0].id = "subject".into();
     preview.renderer.positions.clear();
@@ -298,7 +299,8 @@ fn separated_from_ring(rect: Rect, center: Pos2, radius: f32, margin: f32) -> bo
 
 fn assert_large_socket_kind(kind: &str) {
     let catalog = openpatch_core::catalog();
-    let material_scale = if kind == "stock_delay" { 1.20 } else { 1.30 };
+    let approved_voice = matches!(kind, "adsr" | "ladder_vcf");
+    let material_scale = match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 };
         let (width, sockets) = contract(kind);
         let module = catalog["modules"].as_array().unwrap().iter()
             .find(|module| module["kind"] == kind).unwrap();
@@ -338,11 +340,11 @@ fn assert_large_socket_kind(kind: &str) {
                         assert!(!control.contains(center),
                             "{context}.{}: control owns exact jack center", socket.name);
                     }
-                    let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
+                    let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
-                    let rim_color = if socket.output { crate::panel_skin::INK }
+                    let rim_color = if approved_voice { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
                         else { Color32::from_rgb(190, 191, 182) };
                     assert!(rack.rings.iter().any(|(painted, radius, color)|
                         painted.distance(center) < 0.02
@@ -374,7 +376,7 @@ fn assert_large_socket_kind(kind: &str) {
                             "{context}.{}: output caption plate leaves face", socket.name);
                         for other in &sockets {
                             let other_center = socket_center(bounds, zoom, *other);
-                            let other_rim = if other.output { 13.0 } else { 10.3 } * material_scale * zoom;
+                            let other_rim = if other.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                             assert!(separated_from_ring(*plate, other_center, other_rim, 0.0),
                                 "{context}.{}: plate crosses {} surround", socket.name, other.name);
                         }
@@ -383,7 +385,7 @@ fn assert_large_socket_kind(kind: &str) {
                 for well in &rack.wells {
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
+                        let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*well, center, rim, 0.0),
                             "{context}: numeric well crosses {} enlarged surround", socket.name);
                     }
@@ -393,7 +395,7 @@ fn assert_large_socket_kind(kind: &str) {
                         "{context}: print {text:?} leaves original face: {rect:?}");
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
+                        let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*rect, center, rim, 0.0),
                             "{context}: print {text:?} crosses {} enlarged surround", socket.name);
                     }

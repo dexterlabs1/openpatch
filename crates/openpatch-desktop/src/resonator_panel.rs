@@ -72,7 +72,7 @@ fn paint_resonator_configuration(
         print(311.0, 164.0, "Configuration unavailable".into(), 9.0, MUTED);
         return;
     };
-    let plot = Rect::from_min_max(point(313.0, 118.0), point(456.0, 210.0));
+    let plot = Rect::from_min_max(point(313.0, 118.0), point(456.0, 204.0));
     painter.rect_filled(
         plot.expand(7.0 * zoom),
         2.0 * zoom,

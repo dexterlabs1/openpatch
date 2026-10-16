@@ -57,7 +57,7 @@ fn accepted_stock_quantizer_construction_edits_anchor_actual_keyboard_and_offset
     assert_eq!(keyboard.old_text, "Chromatic");
     assert_eq!(keyboard.new_text, "C D E F G A B");
     let offset = &rack.construction_anchors[&("target".into(), "offset".into())];
-    assert!(matches!(offset.marker, Some(Marker::VerticalSlider { .. })));
+    assert!(matches!(offset.marker, Some(Marker::Rotary { .. })));
     assert!(text(&output).iter().any(|label| label == "+3.00 st"));
     let catalog = openpatch_core::catalog();
     let module = catalog["modules"]

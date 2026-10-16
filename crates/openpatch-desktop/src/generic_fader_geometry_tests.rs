@@ -57,6 +57,11 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
             if rect.fill == Color32::from_rgb(235, 231, 216) {
                 surface.thumbs.push(rect.rect);
             }
+            if rect.fill == Color32::from_rgb(222, 212, 184) {
+                assert!((rect.rect.height() / surface.scale - 14.0).abs() < 0.001,
+                    "approved analog-panel numeric field height");
+                surface.readouts.push(rect.rect);
+            }
             if rect.fill == Color32::from_rgb(47, 55, 48) {
                 // Numeric wells now use the dark entry material. Keep checking
                 // their painted height rather than counting arbitrary dark fills.

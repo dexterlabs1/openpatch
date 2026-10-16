@@ -766,7 +766,13 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("lowpass", "cutoff", 1000.0, pos2(90.0, 183.0)),
         ("gain", "gain", 1.0, pos2(75.0, 183.0)),
         ("analog_vca", "gain", 1.0, pos2(75.0, 183.0)),
-        ("adsr", "attack", 0.01, pos2(60.0, 139.0)),
+        ("adsr", "attack", 0.01, pos2(53.714287, 91.3)),
+        ("adsr", "decay", 0.2, pos2(186.28572, 91.3)),
+        ("adsr", "sustain", 0.5, pos2(53.714287, 198.0)),
+        ("adsr", "release", 0.3, pos2(186.28572, 198.0)),
+        ("ladder_vcf", "cutoff", 1200.0, pos2(65.5, 93.5)),
+        ("ladder_vcf", "resonance", 0.3, pos2(47.0, 198.0)),
+        ("ladder_vcf", "drive", 1.0, pos2(163.0, 198.0)),
         ("adsr_eg", "attack", 0.5, pos2(58.0, 136.0)),
         ("lfo", "frequency", 2.0, pos2(90.0, 138.0)),
         ("svf_filter", "cutoff", 1000.0, pos2(67.5, 139.0)),
@@ -792,5 +798,35 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         near(f.value("target", parameter), initial);
         f.session.execute("redo", json!({})).unwrap();
         near(f.value("target", parameter), after_second);
+    }
+}
+
+#[test]
+fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
+    for (kind, parameter, initial, local, text, expected) in [
+        ("adsr", "attack", 0.01, pos2(53.714287,145.2), "0.075", 0.075),
+        ("adsr", "decay", 0.2, pos2(186.28572,145.2), "0.8", 0.8),
+        ("adsr", "sustain", 0.5, pos2(53.714287,251.9), "75", 0.75),
+        ("adsr", "release", 0.3, pos2(186.28572,251.9), "1.2", 1.2),
+        ("ladder_vcf", "cutoff", 1200.0, pos2(65.5,151.15), "2500", 2500.0),
+        ("ladder_vcf", "resonance", 0.3, pos2(47.0,249.65), "80", 0.8),
+        ("ladder_vcf", "drive", 1.0, pos2(163.0,249.65), "2", 2.0),
+    ] {
+        let mut f = FaderFixture::new(kind,parameter,initial,1.0);
+        let target = f.rack.viewport.unwrap().min + f.rack.pan
+            + f.rack.positions["target"].to_vec2() + local.to_vec2();
+        let baseline = f.undo_steps();
+        f.time=1.0;
+        f.draw(vec![egui::Event::PointerMoved(target)],true);
+        f.click(target);
+        let edit = f.rack.editing.as_mut().expect("approved numeric field opens");
+        assert_eq!(edit.parameter,parameter,"{kind}");
+        edit.text=text.into();
+        f.draw(vec![key_event(egui::Key::Enter,true,false,egui::Modifiers::NONE)],true)
+            .expect("typed setting commits through Session");
+        near(f.value("target",parameter),expected);
+        assert_eq!(f.undo_steps(),baseline+1);
+        f.session.execute("undo",json!({})).unwrap();
+        near(f.value("target",parameter),initial);
     }
 }

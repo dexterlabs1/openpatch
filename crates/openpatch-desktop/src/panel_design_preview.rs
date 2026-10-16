@@ -23,12 +23,16 @@ fn export_panel_design_preview() {
             )
         })
         .collect();
+    let light = std::env::var("OPENPATCH_PANEL_LIGHT").ok().and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
+    for preview in &mut previews { preview.renderer.lighting.set(light); }
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);
+    let review_scale = std::env::var("OPENPATCH_PANEL_SCALE").ok()
+        .and_then(|s| s.parse::<f32>().ok()).filter(|s| s.is_finite()).unwrap_or(1.0).clamp(0.5,3.0);
     let size = vec2(
         previews.iter().map(|p| p.size().x + 12.0).sum::<f32>() + 28.0,
         650.0,
-    );
+    ) * review_scale;
     let mut texture = None;
     let mut output = None;
     for frame in 0..2 {
@@ -44,8 +48,8 @@ fn export_panel_design_preview() {
                     .show(ctx, |ui| {
                         ui.painter()
                             .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(28, 31, 31));
-                        for (scale, y) in [(1.0, 26.0), (0.42, 456.0)] {
-                            let mut x = 20.0;
+                        for (scale, y) in [(review_scale, 26.0 * review_scale), (0.42 * review_scale, 456.0 * review_scale)] {
+                            let mut x = 20.0 * review_scale;
                             for preview in &mut previews {
                                 let bounds =
                                     Rect::from_min_size(pos2(x, y), preview.size() * scale);
@@ -55,7 +59,7 @@ fn export_panel_design_preview() {
                                         preview.show(ui, bounds, &catalog);
                                     },
                                 );
-                                x = bounds.right() + 12.0;
+                                x = bounds.right() + 12.0 * review_scale;
                             }
                         }
                     });

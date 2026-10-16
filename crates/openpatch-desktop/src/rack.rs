@@ -26,6 +26,7 @@ include!("stock_process_panel.rs");
 include!("stock_noise_panel.rs");
 include!("studio_mixer_panel.rs");
 include!("resonator_panel.rs");
+include!("atlas_voice_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -48,6 +49,13 @@ const STOCK_PROCESS_PORT_SCALE: f32 = 1.30;
 const REDESIGNED_PORT_SCALE: f32 = 1.30;
 fn port_material_scale(kind: &str) -> f32 {
     match kind {
+        "adsr" | "ladder_vcf" => {
+            32.0 * AtlasVoiceLayout {
+                width: panel_width(kind),
+            }
+            .unit()
+                / 10.3
+        }
         "stock_vca_mix" => STOCK_VCA_MIX_PORT_SCALE,
         "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
         "stock_noise" => STOCK_NOISE_PORT_SCALE,
@@ -57,7 +65,6 @@ fn port_material_scale(kind: &str) -> f32 {
         "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side"
         | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
         "analog_vco"
-        | "ladder_vcf"
         | "fade"
         | "compare"
         | "process"
@@ -76,7 +83,6 @@ fn port_material_scale(kind: &str) -> f32 {
         | "lowpass"
         | "gain"
         | "analog_vca"
-        | "adsr"
         | "adsr_eg"
         | "svf_filter"
         | "stereo_delay"
@@ -232,6 +238,11 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
+    } else if atlas_voice(kind) {
+        GenericParameterHardware::Rotary {
+            body_radius: layout_radius,
+            target_half: layout_radius + 3.0,
+        }
     } else if kind == "white_noise" && parameter == "seed" {
         // This 24-bit integer restarts the noise sequence; it is not a
         // continuous setting and retains its existing exact-entry path.
@@ -2983,7 +2994,7 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        69.0,
+                        if atlas_voice(&node.kind) { 43.0 } else { 69.0 },
                     ),
                 );
                 if interactive
@@ -3083,7 +3094,7 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        69.0,
+                        if atlas_voice(&node.kind) { 43.0 } else { 69.0 },
                     ),
                 );
                 let header_response = ui.interact(
@@ -3556,6 +3567,32 @@ impl Rack {
             if node.kind == "stock_vcf" {
                 if let Some(edit) = self.stock_vcf_panel(ui, node, rect, revision) {
                     action = Some(edit);
+                }
+            }
+            if atlas_voice(&node.kind) {
+                paint_atlas_voice_configuration(
+                    &painter,
+                    node,
+                    rect,
+                    self.zoom,
+                    patch.sample_rate.min(device_rate),
+                    &self.lighting,
+                );
+                if mode.is_interactive() {
+                    let layout = AtlasVoiceLayout { width };
+                    let (min, max, help) = if node.kind == "adsr" {
+                        (layout.point(157.0,145.0), layout.point(263.0,390.0),
+                         "Configured RC envelope guide at the saved settings. Attack: time to 10 V; decay/release: 99% settling. A sample gate illustrates the hold and release. Stage lenses are inactive; this module has no stage telemetry.")
+                    } else {
+                        (layout.point(242.0,106.0), layout.point(384.0,276.0),
+                         "Configured zero-CV, small-signal response. Pole frequency is −12 dB at zero resonance. The linearized curve describes the equilibrium; at 100% resonance and above, the nonlinear model can self-oscillate. It is not a live spectrum.")
+                    };
+                    ui.interact(
+                        Rect::from_min_max(point(min.x, min.y), point(max.x, max.y)),
+                        ui.id().with(("atlas-configuration", &node.id)),
+                        Sense::hover(),
+                    )
+                    .on_hover_text(help);
                 }
             }
             if node.kind == "adsr_eg" {
@@ -4202,7 +4239,9 @@ impl Rack {
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     (pos2(width * 0.5, 125.0), 32.0)
-                } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf" | "lfo") {
+                } else if atlas_voice(&node.kind) {
+                    AtlasVoiceLayout { width }.control(&node.kind, name)
+                } else if matches!(node.kind.as_str(), "analog_vco" | "lfo") {
                     voice_parameter_position(index, width)
                 } else if matches!(node.kind.as_str(), "adsr" | "svf_filter") {
                     let (center, _) = parameter_position(count, index, width);
@@ -4226,8 +4265,9 @@ impl Rack {
                         .filter(|step| *step > 0.0)
                         .map(|step| step as f32)
                 };
-                let geometric =
-                    matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
+                let geometric = (matches!(node.kind.as_str(), "multi_lfo" | "multi_vco")
+                    && *name == "frequency")
+                    || (atlas_voice(&node.kind) && logarithmic);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
                 let stock_pitch = node.kind == "stock_vco" && *name == "frequency";
@@ -4257,22 +4297,27 @@ impl Rack {
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
-                let display_scale = if node.kind == "stock_quantizer" {
-                    12.0
-                } else if clock_ratio {
-                    0.5
-                } else if scaled_gain {
-                    if multiplier == 1.0 {
+                let display_scale =
+                    if atlas_voice(&node.kind) && matches!(*name, "sustain" | "resonance") {
+                        100.0
+                    } else if node.kind == "stock_quantizer" {
+                        12.0
+                    } else if clock_ratio {
+                        0.5
+                    } else if scaled_gain {
+                        if multiplier == 1.0 {
+                            100.0
+                        } else {
+                            multiplier
+                        }
+                    } else if fade_percent || vco_percent {
                         100.0
                     } else {
-                        multiplier
-                    }
-                } else if fade_percent || vco_percent {
-                    100.0
-                } else {
-                    1.0
-                };
-                let display_value = if node.kind == "stock_quantizer" {
+                        1.0
+                    };
+                let display_value = if atlas_voice(&node.kind) {
+                    atlas_voice_value(&node.kind, name, value, spec)
+                } else if node.kind == "stock_quantizer" {
                     stock_quantizer_offset_value(value)
                 } else if stock_tempo {
                     stock_seq3_tempo_value(value)
@@ -4402,8 +4447,15 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                let readout_width = if node.kind == "random" {
+                let value_center = if atlas_voice(&node.kind) {
+                    let local = AtlasVoiceLayout { width }.value_center(&node.kind, name);
+                    point(local.x, local.y)
+                } else {
+                    center + vec2(0.0, (radius + value_offset) * self.zoom)
+                };
+                let readout_width = if atlas_voice(&node.kind) {
+                    AtlasVoiceLayout { width }.value_width()
+                } else if node.kind == "random" {
                     if *name == "unipolar" {
                         120.0
                     } else {
@@ -4681,7 +4733,12 @@ impl Rack {
                         self.zoom,
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
-                    crate::panel_skin::signal_atlas_rotary(
+                    let paint_rotary = if atlas_voice(&node.kind) {
+                        paint_atlas_voice_rotary
+                    } else {
+                        crate::panel_skin::signal_atlas_rotary
+                    };
+                    paint_rotary(
                         &painter,
                         center,
                         normalized,
@@ -4699,44 +4756,53 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                crate::panel_skin::control_label(
-                    &painter,
-                    center - vec2(0.0, (radius + label_gap) * self.zoom),
-                    if matches!(node.kind.as_str(), "seq3" | "stock_seq3")
-                        && sequence_cell(name).is_some()
-                    {
-                        ""
-                    } else if node.kind == "stock_seq3" {
-                        stock_seq3_parameter_label(name)
-                    } else if node.kind == "stock_quantizer" {
-                        "OFFSET (SEMITONES)"
-                    } else if node.kind == "stock_vco" {
-                        stock_vco_parameter_label(name)
-                    } else if node.kind == "stock_lfo" {
-                        stock_lfo_parameter_label(name, clock_ratio)
-                    } else if node.kind == "random" {
-                        random_parameter_label(name)
-                    } else if wave_rate && clock_ratio {
-                        "CLOCK RATIO"
-                    } else if is_wavetable(&node.kind) {
-                        wavetable_parameter_label(name)
-                    } else if clock_ratio {
-                        "CLOCK RATIO"
-                    } else if node.kind == "vca_mix" {
-                        match *name {
-                            "level1" => "CH 1",
-                            "level2" => "CH 2",
-                            "level3" => "CH 3",
-                            "level4" => "CH 4",
-                            _ => "MASTER",
-                        }
-                    } else {
-                        parameter_label(name)
-                    },
-                    readout_width * self.zoom,
-                    self.zoom,
-                );
-                crate::panel_skin::readout(
+                if !atlas_voice(&node.kind) {
+                    crate::panel_skin::control_label(
+                        &painter,
+                        center - vec2(0.0, (radius + label_gap) * self.zoom),
+                        if matches!(node.kind.as_str(), "seq3" | "stock_seq3")
+                            && sequence_cell(name).is_some()
+                        {
+                            ""
+                        } else if node.kind == "stock_seq3" {
+                            stock_seq3_parameter_label(name)
+                        } else if node.kind == "stock_quantizer" {
+                            "OFFSET (SEMITONES)"
+                        } else if node.kind == "stock_vco" {
+                            stock_vco_parameter_label(name)
+                        } else if node.kind == "stock_lfo" {
+                            stock_lfo_parameter_label(name, clock_ratio)
+                        } else if node.kind == "random" {
+                            random_parameter_label(name)
+                        } else if wave_rate && clock_ratio {
+                            "CLOCK RATIO"
+                        } else if is_wavetable(&node.kind) {
+                            wavetable_parameter_label(name)
+                        } else if clock_ratio {
+                            "CLOCK RATIO"
+                        } else if node.kind == "vca_mix" {
+                            match *name {
+                                "level1" => "CH 1",
+                                "level2" => "CH 2",
+                                "level3" => "CH 3",
+                                "level4" => "CH 4",
+                                _ => "MASTER",
+                            }
+                        } else {
+                            parameter_label(name)
+                        },
+                        readout_width * self.zoom,
+                        self.zoom,
+                    );
+                } else {
+                    paint_atlas_voice_control_print(&painter, center, name, radius, self.zoom);
+                }
+                let paint_readout = if atlas_voice(&node.kind) {
+                    paint_atlas_voice_readout
+                } else {
+                    crate::panel_skin::readout
+                };
+                paint_readout(
                     &painter,
                     value_center,
                     &display_value,
@@ -4761,7 +4827,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if node.kind == "stock_quantizer" {
+                        let old_text = if atlas_voice(&node.kind) {
+                            atlas_voice_value(&node.kind, name, old, spec)
+                        } else if node.kind == "stock_quantizer" {
                             stock_quantizer_offset_value(old)
                         } else if stock_tempo {
                             stock_seq3_tempo_value(old)
@@ -10280,6 +10348,20 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "adsr" | "ladder_vcf" => {
+            return AtlasVoiceLayout { width }.point(
+                if input {
+                    if index == 0 {
+                        87.0
+                    } else {
+                        210.0
+                    }
+                } else {
+                    333.0
+                },
+                610.0,
+            )
+        }
         "studio_mixer" => return studio_mixer_port(input, index, width),
         "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
         "stock_vca_mix" if input => {
@@ -12431,33 +12513,37 @@ fn paint_panel(
 ) {
     // One faceplate material across the catalog and its browser previews.
     // Bespoke mixer/process layouts own their section dividers.
-    crate::panel_skin::signal_atlas_face(painter, rect, zoom);
-    if !matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
-        crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
-    }
-    // Reflective mounting hardware belongs to the panel paint, including
-    // browser thumbnails, and dims with the room like the rails behind it.
-    for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
-        for y in [rect.top() + 5.0 * zoom, rect.bottom() - 5.0 * zoom] {
-            let center = pos2(x, y);
-            painter.circle_filled(
-                center + vec2(0.0, 0.6) * zoom,
-                3.7 * zoom,
-                Color32::from_black_alpha(104),
-            );
-            painter.circle_filled(center, 3.2 * zoom, Color32::from_rgb(100, 103, 100));
-            painter.circle_stroke(
-                center,
-                3.2 * zoom,
-                Stroke::new(0.65 * zoom, Color32::from_rgb(143, 146, 140)),
-            );
-            painter.line_segment(
-                [
-                    center + vec2(-1.7, 1.0) * zoom,
-                    center + vec2(1.7, -1.0) * zoom,
-                ],
-                Stroke::new(1.0 * zoom, Color32::from_rgb(39, 42, 40)),
-            );
+    if atlas_voice(&node.kind) {
+        paint_atlas_voice_face(painter, rect, node, zoom);
+    } else {
+        crate::panel_skin::signal_atlas_face(painter, rect, zoom);
+        if !matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
+            crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
+        }
+        // Reflective mounting hardware belongs to the panel paint, including
+        // browser thumbnails, and dims with the room like the rails behind it.
+        for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
+            for y in [rect.top() + 5.0 * zoom, rect.bottom() - 5.0 * zoom] {
+                let center = pos2(x, y);
+                painter.circle_filled(
+                    center + vec2(0.0, 0.6) * zoom,
+                    3.7 * zoom,
+                    Color32::from_black_alpha(104),
+                );
+                painter.circle_filled(center, 3.2 * zoom, Color32::from_rgb(100, 103, 100));
+                painter.circle_stroke(
+                    center,
+                    3.2 * zoom,
+                    Stroke::new(0.65 * zoom, Color32::from_rgb(143, 146, 140)),
+                );
+                painter.line_segment(
+                    [
+                        center + vec2(-1.7, 1.0) * zoom,
+                        center + vec2(1.7, -1.0) * zoom,
+                    ],
+                    Stroke::new(1.0 * zoom, Color32::from_rgb(39, 42, 40)),
+                );
+            }
         }
     }
     if node.bypassed {
@@ -12486,6 +12572,17 @@ fn paint_panel(
             egui::StrokeKind::Inside,
         );
         lighting.preserve(painter, selection_start);
+    }
+    if atlas_voice(&node.kind) {
+        if master {
+            paint_jack_light(
+                painter,
+                rect.min + vec2(rect.width() / zoom - 27.0, 24.0) * zoom,
+                zoom * 0.45,
+                Color32::from_rgb(70, 180, 120),
+            );
+        }
+        return;
     }
     let point = |x, y| rect.min + vec2(x, y) * zoom;
     let width = rect.width() / zoom;
@@ -12691,6 +12788,10 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
+    if atlas_voice(kind) {
+        paint_atlas_voice_socket(painter, center, kind, port, connected, output, zoom);
+        return;
+    }
     if output {
         painter.circle_filled(center, 13.0 * zoom * port_scale, crate::panel_skin::INK);
         painter.circle_stroke(
@@ -13791,6 +13892,8 @@ mod tests {
         }
         let catalog = openpatch_core::catalog();
         for kind in [
+            "adsr",
+            "ladder_vcf",
             "macro_voice",
             "mix6",
             "stock_mix",
@@ -13856,7 +13959,9 @@ mod tests {
                         }
                         assert!(
                             texts.iter().any(|(text, _)| text
-                                == if kind == "stock_vco" {
+                                == if kind == "ladder_vcf" && name == "cutoff" {
+                                    "POLE FREQUENCY"
+                                } else if kind == "stock_vco" {
                                     stock_vco_parameter_label(name)
                                 } else if kind == "stock_lfo" {
                                     stock_lfo_parameter_label(name, false)
@@ -18339,9 +18444,27 @@ mod tests {
                     "nodes":[{"id":"voice","kind":kind}]}))
                 .unwrap();
                 frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
-                let target = [pos2(129.0, 150.0), pos2(76.5, 264.0), pos2(181.5, 264.0)][index];
+                let target = if kind == "ladder_vcf" {
+                    [pos2(89.5, 105.5), pos2(71.0, 210.0), pos2(187.0, 210.0)][index]
+                } else {
+                    [pos2(129.0, 150.0), pos2(76.5, 264.0), pos2(181.5, 264.0)][index]
+                };
                 if readout {
-                    let target = target + vec2(0.0, if index == 0 { 47.0 } else { 32.0 });
+                    let target = target
+                        + vec2(
+                            0.0,
+                            if kind == "ladder_vcf" {
+                                if index == 0 {
+                                    57.65
+                                } else {
+                                    51.65
+                                }
+                            } else if index == 0 {
+                                47.0
+                            } else {
+                                32.0
+                            },
+                        );
                     for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)]
                     {
                         frame_revision_state(

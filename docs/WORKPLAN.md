@@ -12,14 +12,16 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## Current approval checkpoint: two faithful Signal Atlas panels
+## Approved two-panel native integration
 
-The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). **The broad goal is paused.** The newly authorized bounded task is two panels for approval, before integrating a new design or extending the catalog.
+The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). **The broad goal is paused.** The user approved the two-panel preview (“Looks good”), authorizing native integration of analog ADSR and Ladder VCF. Broader catalog rollout remains checkpointed.
 
-The [interactive design review](../design/reviews/signal-atlas-two-modules-v1/index.html) contains analog ADSR and Ladder VCF studies. They use the existing modules' controls, ranges and ports, large tactile knobs, functional stage/feedback diagrams, metal sockets and identical scaled thumbnails. This is an isolated HTML/SVG review artifact; it does not replace the native application or change DSP. Configured plots are explicitly separate from live audio.
+The [interactive design review](../design/reviews/signal-atlas-two-modules-v1/index.html) contains analog ADSR and Ladder VCF studies. They use the existing modules' controls, ranges and ports, large tactile knobs, functional stage/feedback diagrams, metal sockets and identical scaled thumbnails. The HTML/SVG artifact records the approved direction; native implementation lives in `atlas_voice_panel.rs` and uses the real shared rack/browser renderer. Configured plots are explicitly separate from live audio. No DSP code changed.
 
-- **Done for this checkpoint:** render both panels and thumbnails, inspect legibility, verify review controls and save the review for user approval.
-- **Next:** collect approval or specific changes. Native integration, catalog rollout and installation wait for that approval. Keep 0.2.5 build 7 installed.
+- **Native scope:** tactile knobs, warm material, metal sockets, diagrams, static configured RC/linearized filter plots, scaled thumbnails, existing drag/fine/keyboard/numeric/context editing, undo and MCP motion anchors. Existing panel widths and port identities remain stable; the three sockets now share the approved bottom row.
+- **Validation:** actual Session gestures and numeric entry for all seven controls, cable target/label clearance, rack/browser geometry, response-guide contracts, native mesh previews and macOS desktop regression. No native window or physical audio-device qualification is claimed.
+- **Verified:** 1,081 macOS ARM desktop tests passed, 4 ignored; strict desktop Clippy and formatting passed. Native light/dark mesh captures were inspected. [Native panels and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-preview.png).
+- **Delivery:** publish the native source as a draft development PR. Keep 0.2.5 build 7 installed; no broad catalog conversion or automatic upgrade.
 
 The following catalog batches describe existing development source, not an approved final design.
 
