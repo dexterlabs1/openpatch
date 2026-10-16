@@ -12,7 +12,18 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## In-progress milestone: complete Stock Scope integration
+## Next product milestone: finish the approved module design
+
+The user wants the new module design soon. Extend the approved **01 Signal Atlas** direction across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
+
+- Warm ivory panels, black rotary knobs and larger ports; prominent top-left titles in the selected Rajdhani SemiBold font. No OpenPatch module branding, descriptions or colored header bands.
+- Markings describe actual ranges, units, routing and control behavior. Preserve meaningful differences between modules without decorative pseudo-circuitry or invented signal displays.
+- Rack panels and browser thumbnails share the same renderer. Keep titles, controls and jack labels legible at working zoom levels; retain useful weak-signal displays and genuine signal lights, including dark-room behavior.
+- Preserve numeric entry, fine adjustment, keyboard access, undo, cable hit areas and existing parameter behavior. Keep Ferrofluid, Studio Mixer FX sends/dynamic channels and Custom tags intact.
+- **Delivery:** inventory the remaining panels, apply shared controls first, then convert coherent layout families on one milestone branch. Review a representative changed panel early; avoid waiting for every catalog detail before making the design reviewable. Use focused UI/geometry checks and one Mac regression for the release candidate; unchanged DSP references do not need repeating.
+- **Done:** remaining supported catalog panels follow the approved design, browser previews match them, controls/labels remain usable, affected checks pass and the candidate is ready for one installation. Keep 0.2.5 installed during development.
+
+## Checkpointed: Stock Scope integration
 
 Feature implementation is paused. The current branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
 
@@ -26,16 +37,17 @@ The authoritative local evidence is `native-test-output/stock-scope/STATE.json` 
 
 ## Course to completion
 
-One focused Astra advisory reviewed the remaining scope and this execution policy. Finish Scope when development resumes, then prioritize making music with real imported patches. A performance defect that prevents those patches from running takes priority immediately.
+One focused Astra advisory reviewed the remaining scope and this execution policy. The user's subsequent priority puts the approved module redesign first. Resume the checkpointed Scope integration afterward, then prioritize making music with real imported patches. A blocking regression in the current instrument takes priority immediately.
 
 | Milestone | User-visible exit |
 |---|---|
-| 1. Scope integration | Connect, adjust and inspect Stock Scope reliably, including successive TIME drags, native AUTO view and real Callback → MCP publication. Focused safety/lifecycle/realtime and one Mac regression pass. |
-| 2. Real Rack patch workflows | Open, repair, play, save and reopen a declared collection of actual `.vcv` patches with routing, parameters, layout and assets preserved. Unsupported modules remain explicit, recoverable placeholders. Publish the supported mapping. |
-| 3. Complete non-MIDI Mac instrument | Close module gaps in coherent families, including hidden VCA-2/Unity compatibility; complete editing/history, project recovery, audio configuration and Audio 2/8/16 requirements. Qualify shared physical audio paths once at the host milestone. |
-| 4. Demonstrated performance/reliability | Comparable representative small, polyphonic, feedback, delay-heavy and large patch measurements support specific CPU/latency claims. Fix measured bottlenecks; verify callback deadlines, live graph changes, overload, installation/upgrade and recovery. |
-| 5. Distinctive creative workflow | MCP completes useful musical editing/project tasks with visible changes, coherent undo and conflict recovery; GLSL visuals persist assets and contain failures during audio use. General-purpose live DSP authoring stays a separate later feature. |
-| 6. Deferred portability, then MIDI/live | When authorized, qualify Linux/Windows against the finished baseline. Complete remaining MIDI conversion, mapping, timing, reconnect and stuck-note recovery last. These gates remain open until actually verified. |
+| 1. Signal Atlas module design | Complete the approved catalog rollout with larger knobs/ports, meaningful markings, readable titles and identical rack/browser rendering. Review representative panels early; qualify one Mac release candidate. |
+| 2. Scope integration | Connect, adjust and inspect Stock Scope reliably, including successive TIME drags, native AUTO view and real Callback → MCP publication. Focused safety/lifecycle/realtime and one Mac regression pass. |
+| 3. Real Rack patch workflows | Open, repair, play, save and reopen a declared collection of actual `.vcv` patches with routing, parameters, layout and assets preserved. Unsupported modules remain explicit, recoverable placeholders. Publish the supported mapping. |
+| 4. Complete non-MIDI Mac instrument | Close module gaps in coherent families, including hidden VCA-2/Unity compatibility; complete editing/history, project recovery, audio configuration and Audio 2/8/16 requirements. Qualify shared physical audio paths once at the host milestone. |
+| 5. Demonstrated performance/reliability | Comparable representative small, polyphonic, feedback, delay-heavy and large patch measurements support specific CPU/latency claims. Fix measured bottlenecks; verify callback deadlines, live graph changes, overload, installation/upgrade and recovery. |
+| 6. Distinctive creative workflow | MCP completes useful musical editing/project tasks with visible changes, coherent undo and conflict recovery; GLSL visuals persist assets and contain failures during audio use. General-purpose live DSP authoring stays a separate later feature. |
+| 7. Deferred portability, then MIDI/live | When authorized, qualify Linux/Windows against the finished baseline. Complete remaining MIDI conversion, mapping, timing, reconnect and stuck-note recovery last. These gates remain open until actually verified. |
 
 Keep frozen numerical contracts, state/event and realtime invariants, persistence/migration, representative native interactions and actual device qualification. Add cases for concrete uncovered behavior; do not multiply every parameter, platform, sample rate and gesture into an exhaustive Cartesian matrix. Numerical agreement alone is not application completion.
 
