@@ -485,7 +485,10 @@ five alternating pairs. Before timing, reported signal statistics match exactly;
 all warmup and timed checksums match. Actual catalogs and binary hashes are
 checked before any analysis or timing. Separate source/build manifests and
 both complete wire logs are retained in the
-[report](benchmarks/stock-mix-transport-overhead.json).
+[report](benchmarks/stock-mix-transport-overhead.json). The report keeps all raw
+timing pairs readable and binds the [complete RPC/catalog archive](benchmarks/stock-mix-transport-overhead-raw.json.gz)
+with compressed and uncompressed SHA-256 hashes. The archive preserves the
+original report byte-for-byte.
 
 | Workload | Paired median elapsed-time change from PR15 |
 |---|---:|
