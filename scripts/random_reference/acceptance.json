@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "declared_before_first_rust_comparison": "2026-10-15",
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "reference_source_sha256": "9f96040114a55c138fe6c5bfa9dc256e032f52dbb8f8541eea5c46e213b75d26",
+  "sdk_version": "2.6.6",
+  "sample_rates": [44100, 48000, 96000],
+  "frames_per_case": 4096,
+  "source_defaults_frames": "sample_rate + 512 (at least two default 2 Hz trigger events)",
+  "pointwise": {
+    "voltage_absolute": 0.00002,
+    "voltage_relative": 0.000002,
+    "phase_absolute": 0.000002,
+    "clock_frequency_absolute": 0.000002,
+    "clock_frequency_relative": 0.000002,
+    "timer_absolute_seconds": 0.00000002,
+    "pulse_absolute_seconds": 0.000000002,
+    "light_absolute": 0.000002,
+    "light_relative": 0.000002,
+    "first_frame": 0,
+    "warmup_frames": 0,
+    "alignment_search_frames": 0,
+    "all_five_outputs_all_sixteen_storage_lanes": true,
+    "all_sixteen_last_and_next_held_lanes": true,
+    "finite_all_observations": true
+  },
+  "exact": ["five_output_channel_counts", "mono_trigger_output", "schmitt_LOW_HIGH_UNINITIALIZED", "uniform_draw_count_each_frame", "raw_clock_events", "accepted_trigger_events", "trigger_output_voltage", "inactive_held_storage_bits", "inactive_output_zero_padding"],
+  "cases": [
+    "source_defaults", "external_voltage_probability_one", "startup_positive", "startup_between_thresholds", "schmitt_thresholds", "internal_clock", "internal_rate_cv", "clock_switch_gaps", "rejected_clock_updates", "probability_draw_boundaries", "random_target_draws", "spread_zero_one", "bipolar_unipolar", "shape_zero_tiny_one", "shape_linear_threshold", "shape_exponential_thresholds", "stepped_ceil_boundaries", "held_external_changes", "width_shrink_regrow", "poisoned_padding_raw_zero", "mono_cv_first_lane", "cv_saturation", "source_parameter_reset_retains_runtime", "fresh_identity_reset_state", "host_parameter_adoption"
+  ],
+  "uniform_policy": "Identical explicitly supplied f32 stream per frame, consumed only by the unchanged source call sites and the production Rust function. At most two draws: probability only when probability < 1; target only after acceptance with disconnected external voltage. No claim of parity with Rack's uncontrolled global PRNG.",
+  "lifecycle": "Event 1 is source/host Initialize: apply source parameter defaults while retaining runtime. Event 2 constructs a fresh identity with fresh runtime. Event 3 and ordinary parameter changes retain runtime through production adopt. Source has no custom onReset override.",
+  "source_input_boundary": "Rack cable bookkeeping zeroes all input slots at and above width, including slot zero of a disconnected port. The genuine class reads raw getVoltage(0); production receives poisoned inactive padding and must supply the equivalent zero boundary.",
+  "excluded_source_paths": "Nonfinite values and computed internal rate outside [-120,120] are rejected by fixtures and adapter. Rack scalar exp2Floor uses float-to-int and signed shifts and has no defined arbitrary-input contract. The finite suite never reaches those paths. Shape zero's IEEE float division is defined and is included.",
+  "rationale": "20 microvolts plus 2 ppm bounds source libm interpolation rounding; phase and light budgets are 2 micro-units. Timer and pulse budgets are tight absolute f32 budgets. Exact clock/acceptance events, draw counts, Schmitt state and widths prevent voltage tolerance from hiding clock or lifecycle errors. No per-case relaxation, warmup, alignment, frame-count override or partial-suite qualification."
+}

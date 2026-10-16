@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 68 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 69 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 68 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 68 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 69 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 69 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -444,9 +444,9 @@ deadline or Rack CPU comparison. Actual callback tests check no heap activity.
 The Rust checks pass 1,580 tests with six existing ignored tests, strict Clippy
 passes, the release workspace builds, and all 79 Python/MCP tests pass.
 The macOS ARM bundle's ad-hoc signature and notices are verified; the bundle
-has not been installed or launched. Platform CI and native capture verification
-are release gates, with 97 screenshots configured (the previous 94 plus three
-Delay views). Full callback-budget and macOS ARM window/input/playback
+has not been installed or launched. [PR #4](https://github.com/dexterlabs1/openpatch/pull/4)
+merged after three-platform CI and all 97 native captures passed, including
+visual review of the three Delay views. Full callback-budget and macOS ARM window/input/playback
 acceptance remain open.
 
 ## Wavetable family milestone
@@ -467,8 +467,25 @@ of two >=32; LFO lengths are integers >=2. Source Nyquist/rounded-endpoint
 compatibility and the independently tested safe through-zero extension have
 explicit boundaries in the [contract](WAVETABLES.md). The
 [production-hash proof](benchmarks/wavetable-reference.json) and local Mac ARM
-release build pass. New UI capture review and supported-platform CI remain
-pending.
+release build pass. [PR #5](https://github.com/dexterlabs1/openpatch/pull/5)
+merged after three-platform CI passed (81 Python/MCP tests per platform),
+all 100 native captures passed integrity checks and six normal/dark/browser/compact
+scenes were visually reviewed. Native Mac window/input/device qualification
+remains open.
 Neither this digital result nor local host tests qualify hardware behavior,
 an installed native app or complete Rack host/plugin parity. The full 49-module
 and host objective, with MIDI/live-performance work last, is unchanged.
+
+## Random modulation milestone
+
+`random` brings the catalog to **69 native kinds** with a separate, shared-clock
+modulation instrument: probability/spread, four interpolation outputs, external
+polyphonic targets and a mono accepted-event trigger. A native seed makes fresh
+renders reproducible without claiming Rack global-PRNG sequence identity.
+The checked actual-class run passes all 75 cases and 484,548 frames across
+44.1/48/96 kHz, with zero measured voltage/state error under the frozen gate.
+All 225 retained trace artifacts and 74 source hashes verify. Local host/heap
+and 82 MCP tests, strict Clippy and a separate Mac ARM release build pass.
+Platform CI/capture review and native interaction remain separate gates in
+the [Random contract](RANDOM.md). This does not complete
+all 49 stock module/host targets. MIDI/live-performance work remains last.

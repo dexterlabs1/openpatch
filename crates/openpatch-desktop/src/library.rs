@@ -87,9 +87,8 @@ impl Category {
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
-            "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "random_values" | "sh_asr" => {
-                Self::Modulation
-            }
+            "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "random" | "random_values"
+            | "sh_asr" => Self::Modulation,
             "gain"
             | "mixer"
             | "analog_vca"
@@ -1314,6 +1313,53 @@ mod tests {
             );
         }
         assert_eq!(Category::of_kind("sh_asr"), Category::Modulation);
+    }
+
+    #[test]
+    fn random_search_and_modulation_category_expose_the_native_control_and_jack_contract() {
+        let catalog = openpatch_core::catalog();
+        let module = modules(&catalog)
+            .find(|module| module["kind"] == "random")
+            .unwrap();
+        let mut library = ModuleLibrary {
+            category: Category::Modulation,
+            ..Default::default()
+        };
+        for name in [
+            "rate",
+            "probability",
+            "spread",
+            "shape",
+            "seed",
+            "unipolar",
+            "external",
+            "rate_cv",
+            "probability_cv",
+            "stepped",
+            "linear",
+            "smooth",
+            "exponential",
+            "trigger",
+        ] {
+            library.search = name.into();
+            assert!(
+                library.matches(module, name),
+                "Random {name} remains searchable"
+            );
+            assert!(
+                library
+                    .filtered(&catalog)
+                    .iter()
+                    .any(|module| module["kind"] == "random"),
+                "Random remains reachable in Modulation by {name}"
+            );
+        }
+        library.search.clear();
+        library.category = Category::Oscillators;
+        assert!(!library
+            .filtered(&catalog)
+            .iter()
+            .any(|module| module["kind"] == "random"));
     }
 
     #[test]

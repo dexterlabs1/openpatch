@@ -1197,7 +1197,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 68)
+        self.assertEqual(len(catalog["modules"]), 69)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1257,7 +1257,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 68)
+        self.assertEqual(len(catalog["modules"]), 69)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1350,7 +1350,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 68)
+        self.assertEqual(len(catalog["modules"]), 69)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2596,6 +2596,61 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_random_clock_interpolation_seed_presets_and_atomic_mcp_history(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["random"]
+        self.assertEqual(descriptor["inputs"], ["rate_cv", "shape_cv", "trigger", "external", "probability_cv", "spread_cv"])
+        self.assertEqual(descriptor["outputs"], ["stepped", "linear", "smooth", "exponential", "trigger"])
+        self.assertEqual(descriptor["min_patch_version"], 2)
+        params = {"rate": 7, "probability": 1, "spread": .75, "shape": .5,
+                  "rate_cv": -.5, "probability_cv": .25, "spread_cv": -.75,
+                  "shape_cv": .5, "unipolar": 1, "seed": 123}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 8000, "nodes": []}})
+        before = self.patch_snapshot()
+        configured = self.payload(self.require_tool_success("apply_edits", {"expected_revision": before["revision"], "edits": [
+            {"tool": "add_module", "arguments": {"id": "motion", "kind": "random", "params": params}},
+            {"tool": "set_output", "arguments": {"id": "motion", "port": "linear"}},
+        ]}))
+        self.assertEqual(configured["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        for port in descriptor["outputs"]:
+            args = {"id": "motion", "port": port, "seconds": .125, "points": 128,
+                    "expected_revision": configured["revision"]}
+            capture = self.payload(self.require_tool_success("capture_signal", args))
+            self.assertEqual(capture["frames"], 1000)
+            self.assertGreater(capture["summary"]["peak"], .001)
+            self.assertEqual(capture, self.payload(self.require_tool_success("capture_signal", args)))
+        self.assertEqual(self.patch_snapshot(), configured, "offline captures must not advance editable state/history")
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "motion"}))["preset"]
+        changed = self.payload(self.require_tool_success("set_parameter", {
+            "id": "motion", "parameter": "shape", "value": .25, "expected_revision": configured["revision"],
+        }))
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], configured["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        restored = self.payload(self.require_tool_success("apply_module_preset", {"id": "motion", "preset": preset}))
+        self.assertEqual(restored["patch"]["nodes"][0]["params"], params)
+        for key, value in [("shape", 1.1), ("seed", 1.5), ("unipolar", .5), ("rate_cv", -1.1)]:
+            self.require_tool_error("set_parameter", {"id": "motion", "parameter": key, "value": value})
+            self.assertEqual(self.patch_snapshot(), restored)
+        self.require_tool_success("save_patch", {"filename": "random-motion.json"})
+        self.assertEqual(json.loads((self.workspace / "random-motion.json").read_text()), restored["patch"])
+        self.require_tool_success("set_parameter", {"id": "motion", "parameter": "seed", "value": 456})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "random-motion.json"}))
+        self.assertEqual(loaded["patch"], restored["patch"])
+        # External CV controls four output widths; the accepted-event pulse stays mono.
+        external = {"version": 2, "sample_rate": 8000, "nodes": [
+            {"id": "external", "kind": "poly_constant", "params": {"channels": 5, "v1": .25, "v2": -.5, "v5": .75}},
+            {"id": "clock", "kind": "gate", "params": {"frequency": 13, "duty": .25}},
+            {"id": "motion", "kind": "random", "params": {"shape": 0}},
+        ], "cables": [{"from": "external", "to": "motion", "input": "external"},
+                       {"from": "clock", "to": "motion", "input": "trigger"}]}
+        self.require_tool_success("replace_patch", {"patch": external})
+        snapshot = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            analysis = self.payload(self.require_tool_success("analyze_signal", {"id": "motion", "port": port, "seconds": .125}))
+            self.assertEqual(analysis["max_channels"], 1 if port == "trigger" else 5)
+            self.assertGreater(analysis["channels"][0]["peak"], .001)
+        self.assertEqual(self.patch_snapshot(), snapshot)
 
     def test_stock_delay_signed_cv_edits_history_persistence_and_offline_render(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

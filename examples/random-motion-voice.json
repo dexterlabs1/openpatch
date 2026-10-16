@@ -1,0 +1,168 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "motion",
+      "kind": "random",
+      "params": {
+        "rate": 3,
+        "probability": 0.85,
+        "spread": 0.85,
+        "shape": 0.65,
+        "unipolar": 1,
+        "seed": 2026
+      }
+    },
+    {
+      "id": "range",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.1,
+        "offset": 0
+      }
+    },
+    {
+      "id": "notes",
+      "kind": "quantizer",
+      "params": {
+        "scale_mask": 1453
+      }
+    },
+    {
+      "id": "voice",
+      "kind": "multi_vco",
+      "params": {
+        "frequency": 130.81279
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "stock_vcf",
+      "params": {
+        "frequency": 0.5875530690739214,
+        "resonance": 0.35,
+        "drive": 0.1,
+        "cutoff_cv_amount": 0.15
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr_eg",
+      "params": {
+        "attack": 0,
+        "decay": 0.46,
+        "sustain": 0.18,
+        "release": 0.48
+      }
+    },
+    {
+      "id": "amplifier",
+      "kind": "stock_vca",
+      "params": {
+        "level": 0.8,
+        "response": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.12
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.1,
+        "trigger_enabled": 0,
+        "x_scale": 0,
+        "y_scale": 0
+      }
+    },
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "RANDOM MOTION\n\nSTEP \u2192 range \u2192 quantizer\nLIN + SMTH \u2192 Scope X/Y\nEXP \u2192 filter cutoff\nTRIG \u2192 envelope \u2192 VCA\n\nRATE sets the clock.\nPROB skips some changes.\nSPREAD limits each move.\nSHAPE changes the curves.\n\nPatch TRIG to sync to a clock.\nPatch EXT to interpolate\nyour own polyphonic CV."
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "motion",
+      "output": "stepped",
+      "to": "range",
+      "input": "signal"
+    },
+    {
+      "from": "range",
+      "output": "out",
+      "to": "notes",
+      "input": "pitch"
+    },
+    {
+      "from": "notes",
+      "output": "out",
+      "to": "voice",
+      "input": "pitch"
+    },
+    {
+      "from": "voice",
+      "output": "saw",
+      "to": "filter",
+      "input": "signal"
+    },
+    {
+      "from": "motion",
+      "output": "exponential",
+      "to": "filter",
+      "input": "cutoff_cv"
+    },
+    {
+      "from": "motion",
+      "output": "trigger",
+      "to": "envelope",
+      "input": "gate"
+    },
+    {
+      "from": "envelope",
+      "output": "out",
+      "to": "amplifier",
+      "input": "cv"
+    },
+    {
+      "from": "filter",
+      "output": "lowpass",
+      "to": "amplifier",
+      "input": "signal"
+    },
+    {
+      "from": "amplifier",
+      "output": "out",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "amplifier",
+      "output": "out",
+      "to": "out",
+      "input": "right"
+    },
+    {
+      "from": "motion",
+      "output": "linear",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "motion",
+      "output": "smooth",
+      "to": "scope",
+      "input": "y"
+    }
+  ],
+  "output": "out"
+}

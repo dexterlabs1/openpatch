@@ -2317,7 +2317,10 @@ impl Rack {
             self.precision_collect_id = self
                 .editing
                 .as_ref()
-                .filter(|edit| edit.surface == ParameterEditSurface::Window)
+                .filter(|edit| {
+                    edit.surface == ParameterEditSurface::Window
+                        && !(edit.kind == "random" && edit.parameter == "seed")
+                })
                 .map(|edit| edit.id.clone());
         }
         let interactive = mode.is_interactive() && ui.is_enabled();
@@ -2500,6 +2503,13 @@ impl Rack {
                         ui.close();
                     }
                     wavetable_menu(ui, node, patch, revision, &mut action);
+                    if node.kind == "random" && ui.button("Edit random seed…").clicked() {
+                        self.open_precision_editor(
+                            random_seed_edit(node, revision),
+                            Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0)),
+                        );
+                        ui.close();
+                    }
                     utility_menu(ui, node, &mut action);
                     if node.kind == "seq3" {
                         for (direction, label) in [
@@ -2668,6 +2678,13 @@ impl Rack {
                     ui.separator();
                     monitor_menu(ui, node, &output_ports, patch, &mut action);
                     wavetable_menu(ui, node, patch, revision, &mut action);
+                    if node.kind == "random" && ui.button("Edit random seed…").clicked() {
+                        self.open_precision_editor(
+                            random_seed_edit(node, revision),
+                            Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0)),
+                        );
+                        ui.close();
+                    }
                     utility_menu(ui, node, &mut action);
                     if node.kind == "seq3" {
                         for (direction, label) in [
@@ -2921,6 +2938,25 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "random" {
+                if self.editing.as_ref().is_some_and(|edit| {
+                    edit.id == node.id
+                        && edit.parameter == "seed"
+                        && edit.surface == ParameterEditSurface::Window
+                }) {
+                    self.precision_anchor = Some(Rect::from_min_max(
+                        point(15.0, 19.0),
+                        point(width - 15.0, 69.0),
+                    ));
+                }
+                paint_random_lights(
+                    &painter,
+                    rect,
+                    self.zoom,
+                    self.module_lights.get(&node.id),
+                    &self.lighting,
+                );
+            }
             if is_wavetable(&node.kind) {
                 paint_wavetable_display(
                     &painter,
@@ -3000,7 +3036,8 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if node.kind == "scope"
+                if (node.kind == "random" && *name == "seed")
+                    || node.kind == "scope"
                     || node.kind == "modal_resonator"
                     || node.kind == "colored_noise"
                     || node.kind == "random_values"
@@ -3338,6 +3375,11 @@ impl Rack {
                     )
                 } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
+                } else if node.kind == "random" {
+                    (
+                        random_parameter_position(index),
+                        if *name == "unipolar" { 10.0 } else { 14.0 },
+                    )
                 } else if is_wavetable(&node.kind) {
                     (wavetable_parameter_position(index), 18.0)
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
@@ -3370,6 +3412,7 @@ impl Rack {
                 let geometric =
                     matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
+                let hz_rate = wave_rate || (node.kind == "random" && *name == "rate");
                 let clock_ratio = ((node.kind == "multi_lfo" && geometric) || wave_rate)
                     && patch
                         .cables
@@ -3380,7 +3423,8 @@ impl Rack {
                 } else {
                     2.0
                 });
-                let fade_percent = node.kind == "fade";
+                let fade_percent = node.kind == "fade"
+                    || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent = (node.kind == "multi_vco"
                     && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
                     || (is_wavetable(&node.kind)
@@ -3401,7 +3445,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if wave_rate {
+                let display_value = if node.kind == "random" {
+                    random_parameter_value(name, value)
+                } else if wave_rate {
                     wavetable_rate_value(value, clock_ratio)
                 } else if is_wavetable(&node.kind) {
                     wavetable_parameter_value(name, value)
@@ -3430,7 +3476,9 @@ impl Rack {
                     surface,
                     menu_popup: None,
                     stale: false,
-                    text: if wave_rate {
+                    text: if node.kind == "random" && hz_rate {
+                        value.exp2().clamp(0.002, 2000.0).to_string()
+                    } else if hz_rate {
                         (value.exp2() * display_scale).to_string()
                     } else if let Some(power) = gain_power {
                         gain_db(value, power).to_string()
@@ -3439,7 +3487,9 @@ impl Rack {
                             .map_or(value * display_scale, |min| slew_display(value, min))
                             .to_string()
                     },
-                    min: if wave_rate {
+                    min: if node.kind == "random" && hz_rate {
+                        0.002
+                    } else if hz_rate {
                         min.exp2() * display_scale
                     } else if gain_power.is_some() {
                         f32::NEG_INFINITY
@@ -3448,7 +3498,9 @@ impl Rack {
                     } else {
                         min * display_scale
                     },
-                    max: if wave_rate {
+                    max: if node.kind == "random" && hz_rate {
+                        2000.0
+                    } else if hz_rate {
                         max.exp2() * display_scale
                     } else if let Some(power) = gain_power {
                         gain_db(max, power)
@@ -3465,7 +3517,7 @@ impl Rack {
                         "ms/V"
                     } else if clock_ratio || (scaled_gain && multiplier != 1.0) {
                         "x"
-                    } else if wave_rate {
+                    } else if hz_rate {
                         "Hz"
                     } else if display_scale == 100.0 {
                         "%"
@@ -3488,7 +3540,13 @@ impl Rack {
                     15.0
                 };
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                let readout_width = if is_wavetable(&node.kind) {
+                let readout_width = if node.kind == "random" {
+                    if *name == "unipolar" {
+                        120.0
+                    } else {
+                        78.0
+                    }
+                } else if is_wavetable(&node.kind) {
                     104.0
                 } else if node.kind == "score_sequencer" {
                     96.0
@@ -3513,7 +3571,13 @@ impl Rack {
                 } else {
                     width - 20.0
                 };
-                let wave_choices = wavetable_choice_spec(&node.kind, name);
+                let wave_choices = if node.kind == "random" && *name == "unipolar" {
+                    Some(
+                        json!({"min":0,"max":1,"step":1,"values":[0,1],"labels":["Bipolar","Offset"]}),
+                    )
+                } else {
+                    wavetable_choice_spec(&node.kind, name)
+                };
                 let choices = wave_choices
                     .as_ref()
                     .and_then(ParameterChoices::from_spec)
@@ -3564,13 +3628,17 @@ impl Rack {
                         } else {
                             egui::WidgetInfo::slider(
                                 true,
-                                if wave_rate {
+                                if hz_rate {
                                     f64::from(value.exp2() * display_scale)
+                                } else if node.kind == "random" {
+                                    f64::from(value * display_scale)
                                 } else {
                                     f64::from(value)
                                 },
-                                if wave_rate {
+                                if hz_rate {
                                     format!("{} rate: {}", node.id, display_value)
+                                } else if node.kind == "random" {
+                                    format!("{} {}: {}", node.id, name, display_value)
                                 } else {
                                     format!("{} {}", node.id, name)
                                 },
@@ -3606,7 +3674,11 @@ impl Rack {
                         }
                         self.editing.as_mut().unwrap().menu_popup = Some(knob.id.with("popup"));
                         ui.set_min_width(244.0);
-                        ui.strong(parameter_label(name));
+                        ui.strong(if node.kind == "random" {
+                            random_parameter_label(name)
+                        } else {
+                            parameter_label(name)
+                        });
                         ui.label(format!("Current: {display_value}"));
                         let outcome = parameter_editor_contents(ui, self.editing.as_mut().unwrap());
                         match outcome {
@@ -3737,6 +3809,8 @@ impl Rack {
                     Align2::CENTER_BOTTOM,
                     if node.kind == "seq3" {
                         ""
+                    } else if node.kind == "random" {
+                        random_parameter_label(name)
                     } else if wave_rate && clock_ratio {
                         "CLOCK RATIO"
                     } else if is_wavetable(&node.kind) {
@@ -3782,7 +3856,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if wave_rate {
+                        let old_text = if node.kind == "random" {
+                            random_parameter_value(name, old)
+                        } else if wave_rate {
                             wavetable_rate_value(old, clock_ratio)
                         } else if let Some(power) = gain_power {
                             gain_db_display(old, power)
@@ -3867,6 +3943,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if node.kind == "random" {
+                            random_port_label(port)
                         } else if is_wavetable(&node.kind) {
                             wavetable_port_label(port)
                         } else if node.kind == "stock_delay" {
@@ -3890,6 +3968,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if node.kind == "random" {
+                        random_port_label(port)
                     } else if is_wavetable(&node.kind) {
                         wavetable_port_label(port)
                     } else if node.kind == "stock_delay" {
@@ -3998,6 +4078,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if node.kind == "random" {
+                            random_port_label(port)
                         } else if is_wavetable(&node.kind) {
                             wavetable_port_label(port)
                         } else if node.kind == "stock_delay" {
@@ -4033,6 +4115,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if node.kind == "random" {
+                        random_port_label(port)
                     } else if is_wavetable(&node.kind) {
                         wavetable_port_label(port)
                     } else if node.kind == "stock_delay" {
@@ -7779,6 +7863,135 @@ impl Rack {
     }
 }
 
+// Original stock-family Random panel. Rack and browser use this same geometry.
+fn random_parameter_position(index: usize) -> Pos2 {
+    if index == 8 {
+        pos2(180.0, 276.0)
+    } else {
+        pos2(
+            45.0 + (index % 4) as f32 * 90.0,
+            128.0 + (index / 4) as f32 * 76.0,
+        )
+    }
+}
+fn random_parameter_label(name: &str) -> &str {
+    match name {
+        "rate" => "RATE",
+        "probability" => "PROBABILITY",
+        "spread" => "SPREAD",
+        "shape" => "SHAPE",
+        "rate_cv" => "RATE CV",
+        "probability_cv" => "PROB CV",
+        "spread_cv" => "SPREAD CV",
+        "shape_cv" => "SHAPE CV",
+        "unipolar" => "RANGE",
+        other => other,
+    }
+}
+fn random_parameter_value(name: &str, value: f32) -> String {
+    match name {
+        "rate" => {
+            let hz = value.exp2();
+            if hz < 1.0 {
+                format!("{hz:.4} Hz")
+            } else {
+                format!("{hz:.2} Hz")
+            }
+        }
+        "unipolar" => if value < 0.5 {
+            "−5 to +5 V"
+        } else {
+            "0 to 10 V"
+        }
+        .into(),
+        "seed" => format!("{value:.0}"),
+        "rate_cv" | "probability_cv" | "spread_cv" | "shape_cv" => {
+            format!("{:+.1}%", value * 100.0)
+        }
+        _ => format!("{:.1}%", value * 100.0),
+    }
+}
+fn random_port_label(port: &str) -> &str {
+    match port {
+        "rate_cv" => "RATE CV",
+        "shape_cv" => "SHAPE CV",
+        "trigger" => "TRIG",
+        "external" => "EXT",
+        "probability_cv" => "PROB CV",
+        "spread_cv" => "SPREAD CV",
+        "stepped" => "STEP",
+        "linear" => "LIN",
+        "smooth" => "SMOOTH",
+        "exponential" => "EXP",
+        other => other,
+    }
+}
+fn random_seed_edit(node: &Node, revision: u64) -> ParameterEdit {
+    ParameterEdit {
+        id: node.id.clone(),
+        kind: node.kind.clone(),
+        parameter: "seed".into(),
+        revision,
+        surface: ParameterEditSurface::Window,
+        menu_popup: None,
+        stale: false,
+        text: node.params.get("seed").copied().unwrap_or(1.0).to_string(),
+        min: 1.0,
+        max: 16_777_215.0,
+        step: Some(1.0),
+        display_scale: 1.0,
+        display_unit: String::new(),
+        slew_min: None,
+        gain_power: None,
+        raw_max: 16_777_215.0,
+        focus: true,
+    }
+}
+fn random_light_strengths(lights: Option<&ModuleLightState>) -> [f32; 5] {
+    std::array::from_fn(|index| {
+        let raw = lights
+            .filter(|state| index < usize::from(state.count))
+            .map_or(0.0, |state| state.brightness[index][0]);
+        if !raw.is_finite() {
+            return 0.0;
+        }
+        // Rate/probability are the engine's 0–3 trigger flashes. The other
+        // lights report modulation or offset state directly from the engine.
+        (raw / if matches!(index, 0 | 2) { 3.0 } else { 1.0 }).clamp(0.0, 1.0)
+    })
+}
+fn paint_random_lights(
+    painter: &egui::Painter,
+    rect: Rect,
+    zoom: f32,
+    lights: Option<&ModuleLightState>,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let strengths = random_light_strengths(lights);
+    for (index, label) in ["RATE", "SHAPE", "PROB", "SPREAD", "OFFSET"]
+        .iter()
+        .enumerate()
+    {
+        let center = rect.min + vec2(20.0 + index as f32 * 68.0, 78.0) * zoom;
+        let strength = strengths[index];
+        lighting.circle(
+            painter,
+            center,
+            2.5 * zoom,
+            Color32::from_rgb(207, 176, 83).gamma_multiply(0.12 + strength * 0.88),
+            strength,
+            0.12,
+        );
+        painter.text(
+            center + vec2(6.0, 0.0) * zoom,
+            Align2::LEFT_CENTER,
+            label,
+            crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
+            MUTED,
+        );
+    }
+}
+
 // Original 24 HP wavetable faceplate, shared by the rack and browser renderer.
 fn is_wavetable(kind: &str) -> bool {
     matches!(kind, "wavetable_vco" | "wavetable_lfo")
@@ -8141,7 +8354,7 @@ fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value
 }
 
 fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
-    if edit.kind == "wavetable_lfo" && edit.parameter == "rate" {
+    if matches!(edit.kind.as_str(), "wavetable_lfo" | "random") && edit.parameter == "rate" {
         (parsed / edit.display_scale).log2()
     } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
         stock_vcf_frequency_raw(parsed)
@@ -8227,6 +8440,15 @@ fn parameter_editor_contents_with_navigation(
     }
     if edit.kind == "stock_delay" {
         ui.label(if stock_delay_time_edit(edit) { "Enter delay time in milliseconds (1–10,000 ms), or add s for seconds. The clock input sets time from incoming edges." } else if edit.parameter == "tone" { "Tone −100% to +100%, dark to bright; center is neutral." } else if edit.parameter.ends_with("_cv_amount") { "CV depth −100% to +100%. Negative depth inverts modulation." } else { "Enter a value from 0% to 100%." });
+    }
+    if edit.kind == "random" {
+        ui.label(match edit.parameter.as_str() {
+            "rate" => "Enter the free-running rate in Hz (0.002–2,000 Hz). An external trigger replaces the internal clock.",
+            "unipolar" => "0 = bipolar (−5 to +5 V), 1 = offset (0 to 10 V).",
+            "seed" => "Enter an integer seed from 1 to 16,777,215.",
+            "rate_cv" | "probability_cv" | "spread_cv" | "shape_cv" => "Enter CV depth from −100% to +100%. Negative depth inverts modulation.",
+            _ => "Enter a value from 0% to 100%.",
+        });
     }
     if edit.kind == "stock_vca" {
         ui.label(if edit.parameter == "level" { "Level 0–100%. The meter shows effective gain, including silent voices." } else { "Response: 0 = EXP (fourth power), 1 = LIN. Bypass freezes gain telemetry and passes raw signal." });
@@ -8702,6 +8924,20 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if edit.kind == "random" {
+        let suffix = match edit.parameter.as_str() {
+            "rate" => "Hz",
+            "unipolar" | "seed" => "",
+            _ => "%",
+        };
+        if !suffix.is_empty()
+            && text
+                .get(text.len().saturating_sub(suffix.len())..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     if is_wavetable(&edit.kind) {
         let suffix = match edit.parameter.as_str() {
             "position" | "fm_amount" | "position_cv_amount" => "%",
@@ -8898,6 +9134,16 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "random" => {
+            return pos2(
+                if input {
+                    30.0 + index as f32 * 60.0
+                } else {
+                    36.0 + index as f32 * 72.0
+                },
+                if input { 341.0 } else { 382.0 },
+            );
+        }
         "macro_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
@@ -10018,6 +10264,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
         "notes" => HP * 16.0,
         "blank" => HP * 10.0,
+        "random" => HP * 24.0,
         "random_values" => HP * 20.0,
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
@@ -10098,6 +10345,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "quantizer" => "QUANTIZER",
         "white_noise" => "WHITE NOISE",
         "colored_noise" => "NOISE",
+        "random" => "RANDOM",
         "random_values" => "RANDOM VALUES",
         "sh_asr" => "SHIFT REGISTER",
         "sample_hold" => "S&H",
@@ -10354,6 +10602,18 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "mix6" => &["level", "average", "invert"],
         "octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
+        "random" => &[
+            "rate",
+            "probability",
+            "spread",
+            "shape",
+            "rate_cv",
+            "probability_cv",
+            "spread_cv",
+            "shape_cv",
+            "unipolar",
+            "seed",
+        ],
         "random_values" => &["range", "seed"],
         "sh_asr" => &["random", "range", "seed"],
         "attenuverter" => &["gain", "offset"],
@@ -11838,6 +12098,9 @@ mod tests {
     mod numeric_activation_ui_tests {
         include!("numeric_activation_ui_tests.rs");
     }
+    mod random_ui_tests {
+        include!("random_ui_tests.rs");
+    }
     mod random_values_ui_tests {
         include!("random_values_ui_tests.rs");
     }
@@ -12008,7 +12271,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            68,
+            69,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules

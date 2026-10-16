@@ -30,7 +30,9 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         }
         "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
         "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "seq3"
-        | "score_sequencer" | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
+        | "score_sequencer" | "random" | "random_values" | "sh_asr" => {
+            Color32::from_rgb(116, 96, 136)
+        }
         "gain"
         | "analog_vca"
         | "stock_vca"
