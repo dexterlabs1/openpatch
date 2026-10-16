@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 71 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 72 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 71 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 69 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 72 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 72 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -70,7 +70,7 @@ The third-party ecosystem is an ongoing compatibility program, not a finite “a
 This plan starts from the code inspected on the baseline date:
 
 - `openpatch-core`: version 1 preserves mono, same-sample DAG routing and cycle rejection. Version 2 implements named input/output ports and 0–16 channels per port, and a synchronous scheduler with one sample of delay per cable, including channel counts. Feedback cycles are supported in version 2. Limits remain 256 nodes and 1024 cables. See [ENGINE_V2.md](ENGINE_V2.md).
-- Audio oscillator: the existing multi-output model retains its older contract and measured differences; see [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). A separate [Stock VCO](STOCK_VCO.md) targets the newer pinned processor with slope correction, within-frame sync and retained quartet state; its bounded actual-class comparison passes under the documented float32 endpoint erratum; platform/native qualification is pending. [Stock LFO](STOCK_LFO.md) has passed its bounded actual-class, host, native-capture and platform gates in PR11.
+- Audio oscillator: the existing multi-output model retains its older contract and measured differences; see [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). A separate [Stock VCO](STOCK_VCO.md) targets the newer pinned processor with slope correction, within-frame sync and retained quartet state; its bounded actual-class comparison passes under the documented float32 endpoint erratum; bounded platform/native-capture gates passed in PR12; native Mac input/device qualification remains open. [Stock LFO](STOCK_LFO.md) has passed its bounded actual-class, host, native-capture and platform gates in PR11.
 - Wavetable family: separate audio/modulation oscillators, immutable custom assets, worker preparation and revision-checked publication, portable projects/presets and shared panels. The checked 153-case actual-class run qualifies bounded digital behavior; audio geometry, nonpositive-frequency safety policy and remaining platform/UI gates are explicit in [WAVETABLES.md](WAVETABLES.md).
 - Reference DSP: voltage-based VCO/ladder/OTA VCA/RC ADSR/gate/audio conversion, with documented idealizations and numerical tests. Ladder and VCA each add 64 samples of oversampling latency; parallel paths are not compensated. Legacy patches retain normalized semantics. See [ANALOG_MODELS.md](ANALOG_MODELS.md).
 - Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. SUM now adds output attenuation and revision-coherent six-band level/channel telemetry; [contract](POLYPHONIC_SUM.md). [VIZ](POLYPHONIC_VIZ.md) adds 16-channel signed indicators and genuine input-only modules, with primitive reference comparisons at three sample rates. Complete corresponding VCV module contracts remain open.
@@ -159,25 +159,29 @@ The next gates are:
    allocation belong to the final delivery phase. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
-## Three-row sequencer: implemented contract, partial parity
+## Three-row sequencer: Stock SEQ3 qualification in progress
 
-The 3×8 editor, all five inputs and sixteen outputs, pattern rotation, live
-step/run indicators, and bounded Clock/Run/Reset actions are implemented.
-Offline MCP renders/captures accept ordered module events alongside MIDI.
-[SEQUENCER.md](SEQUENCER.md) specifies timing, state, persistence, and explicit
-differences from the pinned reference. The connected example uses all three
-rows for pitch, filter movement, and accents.
+A separate [Stock SEQ3](STOCK_SEQ3.md) implements the pinned clock/reset order,
+float32 phase and pulse timers, physical held buttons, complete persistent
+Run/gate/passthrough state and all 27 source lamp components. Its original shared
+rack/browser faceplate provides 24 voltage editors, BPM entry, gate passthrough
+and atomic rotation. The connected factory example uses all three rows for
+pitch, filter cutoff and resonance. Existing `seq3` patches retain the explicit
+policies in [SEQUENCER.md](SEQUENCER.md).
 
-Acceptance tests cover reset/clock ordering, one-step patterns, dynamic length,
-stopped clocks, rewiring, exact pulses, adoption, chained sequences, callback
-heap activity, and module removal/recreation across coalesced graph updates.
-The queue distinguishes accepted actions from audio-applied actions and reports
-expiry, obsolete identities and backpressure.
+An independent precomparison matrix freezes 3,421,221 reference frames and 5,970
+Rust-only safety frames at three sample rates, with exact float32 checks of all
+90 output/state fields. All reference and safety frames pass, with all
+307,909,890 compared fields exact. Local host/UI tests pass; platform checks
+and native captures are reviewed separately for the pull request.
+Partial flag assignments preserve unrelated newer callback edges; short native
+clicks await actual callback acknowledgment before release. Those mechanisms
+require callback tests, alongside coherent saves/presets/history/duplication,
+chaining, Initialize, slot retirement and zero callback heap activity.
 
-Remaining gates are direct differential traces against the pinned VCV version,
-runtime state persistence, parameter/phase mapping alignment, and actual native
-playback/device qualification. Current policy differences remain explicit;
-passing OpenPatch tests does not promote SEQ 3 to complete VCV equivalence.
+Passing the bounded source contract does not establish hardware accuracy,
+complete `.vcv` conversion, native Mac input/audio-device qualification or all
+Rack host workflows. These remain explicit delivery gates.
 
 ## Clocked routing
 

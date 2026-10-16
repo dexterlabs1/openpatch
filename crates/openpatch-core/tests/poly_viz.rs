@@ -103,7 +103,10 @@ fn adoption_freeze_and_rate_reset() {
     let mut rate = rate.compile().unwrap();
     rate.adopt_state_from(&next);
     assert_eq!(lights(&rate).input_channels, Some(0));
-    assert_eq!(lights(&rate).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&rate).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     let catalog = catalog();
     let viz = catalog["modules"]
         .as_array()
@@ -138,5 +141,8 @@ fn delayed_cable_polarity_and_fresh_identity() {
         .module_lights(fresh.resolve_module_lights("new_viz").unwrap())
         .unwrap();
     assert_eq!(state.input_channels, Some(0));
-    assert_eq!(state.brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        state.brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
 }

@@ -66,6 +66,9 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_delay", _) => Disabled,
         ("adsr_eg", "attack" | "decay" | "sustain" | "release") => Linear,
         ("adsr_eg", _) => Disabled,
+        ("stock_seq3", name) if seq_row(name) => Linear,
+        ("stock_seq3", name) if numbered(name, "gate", 8) => Enum,
+        ("stock_seq3", _) => Disabled,
         ("seq3", name) if seq_row(name) => Linear,
         ("seq3", name) if numbered(name, "gate", 8) => Enum,
         ("seq3", _) => Disabled,
@@ -135,7 +138,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         descriptor["initialize"] = json!(
             !((matches!(kind.as_str(), "random_values" | "sh_asr")
                 && descriptor["hidden"] == true)
-                || (kind == "seq3" && name == "running")
+                || (matches!(kind.as_str(), "seq3" | "stock_seq3") && name == "running")
                 || (kind == "mix6" && (name == "invert" || name == "average")))
         );
         descriptor["randomization"] = json!(policy(&kind, name).name());

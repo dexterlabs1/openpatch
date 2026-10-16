@@ -428,7 +428,7 @@ mod tests {
         e.enqueue(ModuleAction::PushPress);
         for _ in 0..127 {
             step(&mut e, gate(1, 0.0));
-            assert_eq!(e.lights().brightness, [[0.0; 2]; 16]);
+            assert_eq!(e.lights().brightness, [[0.0; 2]; crate::MAX_MODULE_LIGHTS]);
         }
         step(&mut e, gate(1, 0.0));
         assert_eq!(e.lights().count, 5);

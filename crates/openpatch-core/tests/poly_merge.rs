@@ -95,7 +95,10 @@ fn empty_sources_and_unconsumed_outputs_publish_actual_counts() {
         assert_eq!(lights(&engine).automatic_channels, Some(automatic));
         assert_eq!(lights(&engine).output_channels, Some(0));
         assert_eq!(lights(&engine).count, 0);
-        assert_eq!(lights(&engine).brightness, [[0.0; 2]; 16]);
+        assert_eq!(
+            lights(&engine).brightness,
+            [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+        );
         let serialized = serde_json::to_value(lights(&engine)).unwrap();
         assert_eq!(serialized["automatic_channels"], automatic);
         assert_eq!(serialized["output_channels"], 0);

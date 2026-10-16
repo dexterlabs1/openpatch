@@ -33,6 +33,10 @@ mod stock_delay;
 mod stock_vco;
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
+mod stock_seq3;
+pub use stock_seq3::initial_stock_seq3_state;
+#[doc(hidden)]
+pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
 mod stock_lfo;
 #[doc(hidden)]
 pub use stock_lfo::{StockLfoProbe, StockLfoSnapshot};
@@ -333,6 +337,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(sequence::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_seq3::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

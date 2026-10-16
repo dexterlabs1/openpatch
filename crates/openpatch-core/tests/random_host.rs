@@ -202,7 +202,10 @@ fn adoption_bypass_resume_initialize_and_fresh_reset_have_distinct_temporal_cont
     let mut reset = p.compile().unwrap();
     reset.adopt_state_from(&old);
     assert!(reset.reset_module_state(reset.resolve_module_state("random").unwrap()));
-    assert_eq!(lights(&reset).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&reset).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     reset.process_poly_block(&mut actual);
     // Fresh runtime loses the held target and restarts the internal clock. It
     // must not produce the continued sample from the adopted envelope.

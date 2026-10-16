@@ -123,7 +123,10 @@ fn engine_adoption_new_controls_initialize_rate_exclusion_and_bypass_are_bounded
     let h = fresh.resolve_module_state("lfo").unwrap();
     fresh.adopt_state_from_excluding(&old, &[h]);
     assert_eq!(lights(&fresh).clock_frequency, Some(1.0));
-    assert_eq!(lights(&fresh).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&fresh).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     next.sample_rate = 96000;
     let mut changed_rate = next.compile().unwrap();
     changed_rate.adopt_state_from(&old);

@@ -177,6 +177,6 @@ mod tests {
         assert_eq!(receiving.process(&inputs).channels, 16);
         let lights = receiving.lights();
         assert_eq!(lights.count, 0);
-        assert_eq!(lights.brightness, [[0.0; 2]; 16]);
+        assert_eq!(lights.brightness, [[0.0; 2]; crate::MAX_MODULE_LIGHTS]);
     }
 }

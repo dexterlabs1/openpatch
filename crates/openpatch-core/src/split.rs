@@ -88,7 +88,7 @@ mod tests {
             let lights = split.lights();
             assert_eq!(lights.input_channels, Some(channels));
             assert_eq!(lights.count, 0);
-            assert_eq!(lights.brightness, [[0.0; 2]; MAX_CHANNELS]);
+            assert_eq!(lights.brightness, [[0.0; 2]; crate::MAX_MODULE_LIGHTS]);
             assert_eq!(lights.output_channels, None);
             assert_eq!(lights.automatic_channels, None);
             assert!(!lights.manual);

@@ -82,7 +82,7 @@ fn stock_vca_delayed_cv_sets_width_and_mono_audio_broadcasts() {
         for (i, v) in expected.iter().enumerate() {
             assert_eq!(g.brightness[i], [*v / 2.0, 0.0]);
         }
-        assert_eq!(g.brightness[5..], [[0.0; 2]; 11]);
+        assert_eq!(g.brightness[5..], [[0.0; 2]; MAX_MODULE_LIGHTS - 5]);
     }
 }
 #[test]
@@ -91,7 +91,10 @@ fn stock_vca_silent_unselected_module_still_reports_true_gain_and_zero_cv_differ
         serde_json::from_value(json!({"version":2,"nodes":[{"id":"vca","kind":"stock_vca"}]}))
             .unwrap();
     let mut e = p.compile().unwrap();
-    assert_eq!(gains(&e).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        gains(&e).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     e.process_block(&mut [0.0; 17]);
     assert_eq!(gains(&e).input_channels, Some(1));
     assert_eq!(gains(&e).brightness[0], [1.0, 0.0]);
@@ -147,16 +150,25 @@ fn stock_vca_reset_initialize_rate_identity_and_adoption_keep_meter_lifecycle_cl
     let h = same.resolve_module_state("vca").unwrap();
     assert!(same.initialize_module_state(h));
     assert_eq!(gains(&same).input_channels, Some(1));
-    assert_eq!(gains(&same).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        gains(&same).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     frame(&mut same);
     assert_eq!(gains(&same), before);
     assert!(same.reset_module_state(h));
-    assert_eq!(gains(&same).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        gains(&same).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     let mut other = p.clone();
     other.sample_rate = 96000;
     let mut other = other.compile().unwrap();
     other.adopt_state_from(&a);
-    assert_eq!(gains(&other).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        gains(&other).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     let mut renamed = p;
     renamed.nodes[2].id = "new".into();
     for cable in &mut renamed.cables {
@@ -169,6 +181,6 @@ fn stock_vca_reset_initialize_rate_identity_and_adoption_keep_meter_lifecycle_cl
         e.module_lights(e.resolve_module_lights("new").unwrap())
             .unwrap()
             .brightness,
-        [[0.0; 2]; 16]
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
     );
 }

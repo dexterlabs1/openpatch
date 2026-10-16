@@ -248,7 +248,10 @@ pub fn capture_state_with_assets(
     }
     if let Some(expected) = SavedModuleState::from_node(node) {
         let actual = state
-            .filter(|state| state.kind() == expected.kind())
+            .filter(|state| {
+                state.kind() == expected.kind()
+                    && !matches!(state, SavedModuleState::StockSeq3Fields { .. })
+            })
             .ok_or_else(|| {
                 format!(
                     "{} capture requires current persistent state",
@@ -308,7 +311,7 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
     if let Some(bypassed) = preset.get("bypassed") {
         node.bypassed = bypassed.as_bool().unwrap();
     }
-    Ok((node.kind == "seq3")
+    Ok(matches!(node.kind.as_str(), "seq3" | "stock_seq3")
         .then(|| {
             preset["params"]["running"]
                 .as_f64()

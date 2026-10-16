@@ -230,7 +230,10 @@ fn engine_named_outputs_bypass_and_initialize_preserve_actual_lights() {
     }
     let fresh_handle = bypass.resolve_module_state("r").unwrap();
     assert!(bypass.reset_module_state(fresh_handle));
-    assert_eq!(lights(&bypass).brightness, [[0.0; 2]; 16]);
+    assert_eq!(
+        lights(&bypass).brightness,
+        [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+    );
     patch.version = 1;
     assert!(patch.compile().is_err());
 }

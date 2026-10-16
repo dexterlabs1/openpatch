@@ -57,7 +57,10 @@ fn every_input_width_and_named_output_preserves_active_bits_and_observes_the_del
             let observed = lights(&engine);
             assert_eq!(observed.input_channels, Some(channels));
             assert_eq!(observed.count, 0);
-            assert_eq!(observed.brightness, [[0.0; 2]; 16]);
+            assert_eq!(
+                observed.brightness,
+                [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+            );
             assert_eq!(observed.output_channels, None);
             assert_eq!(observed.automatic_channels, None);
         }

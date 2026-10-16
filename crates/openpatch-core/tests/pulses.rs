@@ -44,7 +44,7 @@ fn catalog_twenty_mono_ports_no_saved_buttons_and_version_two_only() {
     assert_eq!(m["min_patch_version"], 2);
     assert_eq!(m["runtime_actions"], json!(&MODULE_ACTION_NAMES[7..27]));
     assert_eq!(m["light_names"].as_array().unwrap().len(), 10);
-    assert_eq!(MAX_MODULE_LIGHTS, 16);
+    assert_eq!(MAX_MODULE_LIGHTS, 32);
     for metadata in m["output_metadata"].as_array().unwrap() {
         assert_eq!(metadata["maximum_channels"], 1);
         assert_eq!(metadata["units"], "V");
@@ -287,4 +287,31 @@ fn compatible_adoption_bypass_freeze_release_rate_reset_and_initialization() {
     assert!(resumed.initialize_module_state(hr));
     assert_eq!(resumed.module_control_state(hr).unwrap().pressed_mask, 0);
     assert_eq!(sample(&mut resumed), PortFrame::mono(0.0));
+}
+
+#[test]
+fn expanded_lamp_capacity_does_not_shift_or_mirror_ten_button_bits() {
+    let mut engine = patch(48000, "trig1").compile().unwrap();
+    let action = engine.resolve_module_event("p").unwrap();
+    let meter = engine.resolve_module_lights("p").unwrap();
+    for button in 1..=10 {
+        assert!(engine.handle_module_event(action, ModuleAction::PulsePress(button)));
+        sample(&mut engine);
+        let lights = engine.module_lights(meter).unwrap();
+        assert_eq!(lights.count, 10);
+        assert_eq!(lights.brightness[usize::from(button - 1)], [1.0, 0.0]);
+        assert!(lights.brightness[10..]
+            .iter()
+            .flatten()
+            .all(|v| v.to_bits() == 0));
+        assert!(engine.handle_module_event(action, ModuleAction::PulseRelease(button)));
+        sample(&mut engine);
+        assert!(engine
+            .module_lights(meter)
+            .unwrap()
+            .brightness
+            .iter()
+            .flatten()
+            .all(|v| v.to_bits() == 0));
+    }
 }

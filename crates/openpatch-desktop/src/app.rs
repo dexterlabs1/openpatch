@@ -1329,50 +1329,83 @@ impl OpenPatch {
         self.sync();
         succeeded
     }
+    fn finish_previous_manual_click(&mut self) -> bool {
+        if let Some((_, ticket)) = self.deferred_manual_release.as_mut() {
+            if ticket.ready_to_release() {
+                ticket.begin_release();
+            }
+            if !ticket.is_finished() {
+                self.status="Previous button click is waiting for the audio engine to sample press and release; try again afterward".into();
+                return false;
+            }
+        }
+        self.deferred_manual_release.take();
+        true
+    }
     fn manual_gate_click(&mut self, ctx: &egui::Context, id: &str) {
+        self.manual_button_click(ctx, id, "push_press", "push_release");
+    }
+    fn manual_button_click(&mut self, ctx: &egui::Context, id: &str, press: &str, release: &str) {
         // Resolve the old ticket before accepting another press. The ticket
         // retains its backend and incarnation; it never retargets a reused ID.
-        self.deferred_manual_release.take();
+        if !self.finish_previous_manual_click() {
+            return;
+        }
         let result = self
             .shared
             .lock()
             .map_err(|_| "Session lock poisoned".to_owned())
             .and_then(|session| {
                 if session.revision() != self.revision
-                    || !session
-                        .patch()
-                        .nodes
-                        .iter()
-                        .any(|n| n.id == id && n.kind == "adsr_eg" && !n.bypassed)
+                    || !session.patch().nodes.iter().any(|n| {
+                        n.id == id
+                            && matches!(n.kind.as_str(), "adsr_eg" | "stock_seq3")
+                            && !n.bypassed
+                    })
                 {
-                    return Err("Module changed before PUSH could be queued".into());
+                    return Err("Module changed before its button could be queued".into());
                 }
-                self.audio
+                let press = serde_json::from_value::<openpatch_core::ModuleAction>(json!(press))
+                    .map_err(|e| e.to_string())?;
+                let release =
+                    serde_json::from_value::<openpatch_core::ModuleAction>(json!(release))
+                        .map_err(|e| e.to_string())?;
+                let audio = self
+                    .audio
                     .as_ref()
-                    .ok_or_else(|| "Audio is unavailable".to_owned())?
-                    .press_gate_with_ticket(id)
+                    .ok_or_else(|| "Audio is unavailable".to_owned())?;
+                if press == openpatch_core::ModuleAction::PushPress
+                    && release == openpatch_core::ModuleAction::PushRelease
+                {
+                    audio.press_gate_with_ticket(id)
+                } else {
+                    audio.press_manual_with_ticket(id, press, release)
+                }
             });
         match result {
             Ok(ticket) => {
                 self.deferred_manual_release = Some((ctx.cumulative_frame_nr(), ticket));
-                self.status = "PUSH queued · release on the next display frame".into();
+                self.status = "Button queued · release after the audio engine samples it".into();
                 ctx.request_repaint();
             }
             Err(error) => self.status = error,
         }
     }
     fn service_manual_release(&mut self, ctx: &egui::Context) {
-        if self
-            .deferred_manual_release
-            .as_ref()
-            .is_some_and(|(frame, _)| {
-                *frame != ctx.cumulative_frame_nr()
-                    || !ctx.input(|input| input.focused)
-                    || !self.library_enabled()
-            })
-        {
-            // Drop sends a guarded release, or discards an obsolete ticket.
+        if !ctx.input(|input| input.focused) || !self.library_enabled() {
             self.deferred_manual_release.take();
+            return;
+        }
+        if let Some((frame, ticket)) = self.deferred_manual_release.as_mut() {
+            if *frame != ctx.cumulative_frame_nr() && ticket.ready_to_release() {
+                ticket.begin_release();
+            }
+            if ticket.is_finished() {
+                self.deferred_manual_release.take();
+            }
+        }
+        if self.deferred_manual_release.is_some() {
+            ctx.request_repaint();
         }
     }
     fn sync(&mut self) {
@@ -2053,6 +2086,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::random_motion_layout())
                 .expect("bundled Random motion layout");
+        } else if title == "Stock sequenced voice" {
+            self.rack
+                .restore_layout(&Self::stock_sequenced_voice_layout())
+                .expect("bundled Stock sequenced voice layout");
         } else if title == "Stock modular voice" {
             self.rack
                 .restore_layout(&Self::stock_voice_layout())
@@ -2065,6 +2102,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn stock_sequenced_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "sequence":[0,0],"scope":[780,0],"guide":[1380,0],
+            "voice":[0,420],"filter":[390,420],"amplifier":[690,420],"envelope":[900,420],"out":[1290,420]
+        }})
     }
     fn stock_voice_layout() -> Value {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
@@ -3094,6 +3137,14 @@ impl OpenPatch {
                 self.replace_from_menu(patch, "MIDI controller voice");
                 ui.close();
             }
+            if ui.button("Stock sequenced voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stock-sequenced-voice.json"
+                ))
+                .expect("valid Stock sequenced voice");
+                self.replace_from_menu(patch, "Stock sequenced voice");
+                ui.close();
+            }
             if ui.button("Stock modular voice").clicked() {
                 let patch =
                     serde_json::from_str(include_str!("../../../examples/stock-voice.json"))
@@ -3926,10 +3977,17 @@ impl OpenPatch {
             });
         match action {
             Some(RackAction::Command(name, args)) => {
-                if name == "trigger_module" && args["action"] == "push_press" {
-                    self.deferred_manual_release.take();
+                let manual_takeover = name == "trigger_module"
+                    && (args["action"] == "push_press"
+                        || args["id"].as_str().is_some_and(|id| {
+                            self.patch
+                                .nodes
+                                .iter()
+                                .any(|node| node.id == id && node.kind == "stock_seq3")
+                        }));
+                if !manual_takeover || self.finish_previous_manual_click() {
+                    self.command(name, args);
                 }
-                self.command(name, args);
             }
             Some(RackAction::PaletteConnect {
                 arguments,
@@ -3948,6 +4006,13 @@ impl OpenPatch {
                     .any(|n| n.id == id && n.kind == "adsr_eg")
                 {
                     self.manual_gate_click(ctx, &id);
+                } else if self
+                    .patch
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == id && node.kind == "stock_seq3")
+                {
+                    self.manual_button_click(ctx, &id, press, release);
                 } else {
                     self.manual_click(&id, press, release);
                 }
@@ -5495,6 +5560,91 @@ impl OpenPatch {
         self.title = "Stock LFO · free, clocked, and polyphonic".into();
         self.status = "Actual offline Engine · free Hz / measured clock ratio · mono phase and poly blue lamps · five-voice Scope · no live audio".into();
         lights
+    }
+
+    fn prepare_stock_seq3_fixture(&mut self) -> openpatch_core::ModuleTelemetry {
+        let mut patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-sequenced-voice.json"))
+                .expect("valid Stock sequenced voice");
+        patch
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "sequence")
+            .unwrap()
+            .params
+            .insert("steps".into(), 6.0);
+        let mut engine = patch.compile().expect("Stock SEQ3 fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let mut audio = vec![[0.0; 2]; 24032];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|value| value.is_finite()));
+        assert!(audio.iter().flatten().any(|value| value.abs() > 0.001));
+        let telemetry = engine
+            .module_telemetry(engine.resolve_module_telemetry("sequence").unwrap())
+            .unwrap();
+        assert_eq!(telemetry.length, 6);
+        assert!(telemetry.running && (2..=3).contains(&telemetry.step));
+        let lights: BTreeMap<_, _> = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let handle = engine.resolve_module_lights(&node.id).ok()?;
+                Some((node.id.clone(), engine.module_lights(handle)?))
+            })
+            .collect();
+        let lamps = lights["sequence"];
+        assert_eq!(lamps.count, 19);
+        assert_eq!(lamps.brightness[1][0], 1.0);
+        assert_eq!(lamps.brightness[6][0], 0.0); // disabled step4 gate
+        assert_eq!(lamps.brightness[17][1], 1.0); // step7 beyond length
+        assert_eq!(lamps.brightness[18][1], 1.0); // step8 beyond length
+        assert!(lamps
+            .brightness
+            .iter()
+            .flatten()
+            .all(|value| value.is_finite()));
+        let saved = engine
+            .module_saved_state(engine.resolve_module_state("sequence").unwrap())
+            .unwrap();
+        let openpatch_core::SavedModuleState::StockSeq3 {
+            running,
+            gates,
+            passthrough,
+        } = saved
+        else {
+            unreachable!()
+        };
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::stock_sequenced_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack
+            .set_sequence_states(BTreeMap::from([("sequence".into(), telemetry)]), false);
+        self.rack.set_stock_seq3_states(BTreeMap::from([("sequence".into(),json!({"running":running,
+            "gates":(0..8).map(|i| gates & (1 << i) != 0).collect::<Vec<_>>(),"passthrough":passthrough}))]));
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock SEQ3 · three-row voice".into();
+        self.status = "Actual offline Engine · pitch / cutoff / resonance rows · 27 source lamp components · six steps · no live audio".into();
+        telemetry
     }
 
     fn prepare_stock_vco_fixture(&mut self) -> BTreeMap<String, openpatch_core::ModuleLightState> {
@@ -7338,6 +7488,25 @@ impl OpenPatch {
             self.title = "Stock VCO · shared library faceplate".into();
             self.status = "Same Stock VCO panel in rack and browser · configured values, no invented phase or mode telemetry".into();
         }
+        if frame == 2630 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_seq3_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2648 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock SEQ3 · actual clock / Run / gates / selected and out-of-range step lamps · no live audio".into();
+        }
+        if frame == 2664 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("stock_seq3", &self.catalog));
+            self.title = "Stock SEQ3 · shared library faceplate".into();
+            self.status = "Same Stock SEQ3 panel in rack and browser · configured settings, inactive preview lamps".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7472,6 +7641,9 @@ impl OpenPatch {
                 | 2590
                 | 2606
                 | 2622
+                | 2640
+                | 2656
+                | 2672
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -7610,7 +7782,10 @@ impl OpenPatch {
                 117 => path.with_file_name("stock-lfo-library.png"),
                 118 => path.with_file_name("rack-stock-vco.png"),
                 119 => path.with_file_name("rack-stock-vco-lights-out.png"),
-                _ => path.with_file_name("stock-vco-library.png"),
+                120 => path.with_file_name("stock-vco-library.png"),
+                121 => path.with_file_name("rack-stock-seq3.png"),
+                122 => path.with_file_name("rack-stock-seq3-lights-out.png"),
+                _ => path.with_file_name("stock-seq3-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7621,18 +7796,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/121 at frame {frame}: {}",
+                "Native smoke: capture {}/124 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 121 {
+            if captures == 124 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2660, "Native screenshot timeout");
+        assert!(frame < 2710, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7817,7 +7992,12 @@ impl eframe::App for OpenPatch {
                 .patch
                 .nodes
                 .iter()
-                .filter(|n| matches!(n.kind.as_str(), "seq3" | "switch_1to4" | "switch_4to1"))
+                .filter(|n| {
+                    matches!(
+                        n.kind.as_str(),
+                        "seq3" | "stock_seq3" | "switch_1to4" | "switch_4to1"
+                    )
+                })
                 .filter_map(|n| {
                     self.audio
                         .as_ref()?
@@ -7826,6 +8006,18 @@ impl eframe::App for OpenPatch {
                 })
                 .collect();
             self.rack.set_sequence_states(states, self.audio.is_some());
+            self.rack.set_stock_seq3_states(
+                self.audio
+                    .as_ref()
+                    .filter(|_| {
+                        self.patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.kind == "stock_seq3")
+                    })
+                    .map(|audio| audio.stock_seq3_states())
+                    .unwrap_or_default(),
+            );
             let mut lights = BTreeMap::new();
             let mut controls = BTreeMap::new();
             let mut scopes = BTreeMap::new();
@@ -8200,6 +8392,94 @@ mod project_workflow_tests {
     }
 
     #[test]
+    fn stock_seq3_deferred_click_waits_for_actual_press_and_low_release_before_next_click() {
+        for (press, release, mask) in [
+            ("run_press", "run_release", 2),
+            ("seq_gate1_press", "seq_gate1_release", 8),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            let ctx = egui::Context::default();
+            let (ticket, mut render, next_ticket) =
+                crate::audio::test_stock_seq3_manual_release_ticket(press, release);
+            let mut ticket = Some(ticket);
+            for frame in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        focused: true,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        if let Some(ticket) = ticket.take() {
+                            app.deferred_manual_release = Some((ctx.cumulative_frame_nr(), ticket));
+                        }
+                        app.service_manual_release(ctx);
+                        assert!(
+                            app.deferred_manual_release.is_some(),
+                            "Frame {frame}: press has not been sampled"
+                        );
+                        app.manual_button_click(ctx, "seq", press, release);
+                        assert!(app.status.contains("Previous button click is waiting"));
+                        assert!(app.deferred_manual_release.is_some());
+                    },
+                );
+            }
+            let sampled = render(1);
+            assert_eq!(sampled["modules"]["seq"]["controls"]["pressed_mask"], mask);
+            let state = &sampled["modules"]["seq"]["state"];
+            if mask == 2 {
+                assert_eq!(state["running"], false);
+            } else {
+                assert_eq!(state["gates"][0], false);
+            }
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    app.service_manual_release(ctx);
+                    assert!(
+                        app.deferred_manual_release.is_some(),
+                        "Release is posted but LOW has not been sampled"
+                    );
+                    app.manual_button_click(ctx, "seq", press, release);
+                    assert!(app.status.contains("Previous button click is waiting"));
+                    assert!(app.deferred_manual_release.is_some());
+                },
+            );
+            assert!(
+                next_ticket().is_err(),
+                "Private ticket API must also wait for the pending LOW sample"
+            );
+            let released = render(1);
+            assert_eq!(released["modules"]["seq"]["controls"]["pressed_mask"], 0);
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| app.service_manual_release(ctx),
+            );
+            assert!(app.deferred_manual_release.is_none());
+            assert!(app.finish_previous_manual_click());
+            let mut second = next_ticket().unwrap();
+            let twice = render(1);
+            let state = &twice["modules"]["seq"]["state"];
+            if mask == 2 {
+                assert_eq!(state["running"], true);
+            } else {
+                assert_eq!(state["gates"][0], true);
+            }
+            assert!(second.ready_to_release());
+            second.begin_release();
+            assert!(!second.is_finished());
+            render(1);
+            assert!(second.is_finished());
+        }
+    }
+
+    #[test]
     fn midi_gate_offline_fixture_has_actual_gate_lamps_poly_scope_and_learn() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
@@ -8316,6 +8596,46 @@ mod project_workflow_tests {
         assert_eq!(app.patch.nodes.len(), 6);
         assert_eq!(app.patch.cables.len(), 4);
         assert!(app.status.contains("offline"));
+    }
+
+    #[test]
+    fn stock_seq3_smoke_and_bundled_three_row_voice_observe_real_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let telemetry = app.prepare_stock_seq3_fixture();
+        assert_eq!(telemetry.length, 6);
+        assert!(app.patch.nodes.iter().any(|node| node.kind == "stock_seq3"));
+        assert!(app.status.contains("offline"));
+        let playable: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-sequenced-voice.json"))
+                .unwrap();
+        let mut engine = playable.compile().unwrap();
+        let mut audio = vec![[0.0; 2]; 48000];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|sample| sample.is_finite()));
+        assert!(audio.iter().flatten().any(|sample| sample.abs() > 0.001));
+        for (port, target, input) in [
+            ("cv1", "voice", "pitch"),
+            ("cv2", "filter", "cutoff_cv"),
+            ("cv3", "filter", "resonance_cv"),
+            ("trigger", "envelope", "gate"),
+        ] {
+            assert!(playable.cables.iter().any(|c| c.from == "sequence"
+                && c.output == port
+                && c.to == target
+                && c.input == input));
+        }
+        let revision = app.revision;
+        app.replace_from_menu(playable, "Stock sequenced voice");
+        assert_eq!(app.revision, revision);
+        let action = app
+            .confirm_discard
+            .take()
+            .expect("unsaved example must retain discard guard");
+        app.perform_action(action);
+        assert!(app.revision > revision);
+        assert_eq!(app.title, "Stock sequenced voice");
+        assert_eq!(app.rack.layout()["zoom"], 0.75);
     }
 
     #[test]

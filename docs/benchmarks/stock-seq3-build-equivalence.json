@@ -1,0 +1,28 @@
+{
+  "addendum_sha256": "51f1a507390f8d74208270fcad5b7e05f0e9f543158f24239e7def547733804c",
+  "changed_source": {
+    "crates/openpatch-core/src/pulses.rs": {
+      "current": "463d92a08419c0e90347281546d3182e76e6acd8d7c392789257b79024b9c057",
+      "original": "2e4f9e5a8f3037aea0935e051b2eaccbb7a645236f9a5a9a59e3dd0fb62bacd6"
+    }
+  },
+  "frozen_files_unchanged": true,
+  "host_regression_evidence": "Current workspace, MCP and native CI results are separate from the original probe execution.",
+  "limitations": [
+    "Original compiler executable hash and system dyld-cache hash were not retained; compiler version is evidence only, not full toolchain identity.",
+    "Whole executable identity supports this bounded direct probe qualification only. No new SDK/DSP execution; no performance, hardware, native-device or full Rack parity claim."
+  ],
+  "original_artifacts_reverified": 790,
+  "original_benchmark": "stock-seq3-reference.json",
+  "original_benchmark_sha256": "a8acd06e132866838c629a83e50235724637f5c7b0451a1a9d4189a97585f4ad",
+  "original_source_closure_unchanged": false,
+  "passed": true,
+  "reference_frames": 3421221,
+  "safety_frames": 5970,
+  "schema": 1,
+  "sdk_headers_unchanged": 668,
+  "statement": "Recorded execution reused through whole-executable identity; no new DSP execution.",
+  "system_dependency_basis": "Only Apple libSystem dependency description matches, original execution traces postdate current continuous boot, same macOS host workspace; no injected DYLD environment. Original libSystem/dyld-cache bytes were not hashed, so byte-identical system-library provenance is unverified.",
+  "unchanged_source_files": 75,
+  "whole_probe_sha256": "9c0b3ddd5adb89214730d058fdd9e123dddc2ee094f272d907c6bc542b1bf76f"
+}

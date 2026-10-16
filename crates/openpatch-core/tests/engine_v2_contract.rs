@@ -1600,7 +1600,10 @@ fn split_first_callback_count_adoption_initialize_and_bypass_use_no_heap() {
         let state = state.unwrap();
         assert_eq!(state.input_channels, Some(16));
         assert_eq!(state.count, 0);
-        assert_eq!(state.brightness, [[0.0; 2]; 16]);
+        assert_eq!(
+            state.brightness,
+            [[0.0; 2]; openpatch_core::MAX_MODULE_LIGHTS]
+        );
     }
     assert!(output.iter().all(|frame| *frame == PortFrame::mono(0.0)));
 }
@@ -1717,6 +1720,68 @@ fn stock_vco_first_callbacks_consumer_taps_initialize_and_adoption_use_no_heap()
     for observation in observations {
         let state = observation.unwrap();
         assert_eq!(state.count, 5);
+        assert_eq!(state.clock_frequency, None);
+        assert!(state
+            .brightness
+            .iter()
+            .all(|v| v.iter().all(|x| x.is_finite())));
+    }
+    assert!(tapped
+        .iter()
+        .flatten()
+        .all(|s| s.active && s.value.is_finite()));
+}
+
+#[test]
+fn stock_seq3_first_callbacks_consumer_taps_initialize_and_adoption_use_no_heap() {
+    let p = patch(
+        vec![
+            node("tempo", "poly_constant", &[("channels", 16.0)]),
+            node("seq", "stock_seq3", &[]),
+        ],
+        vec![cable("tempo", "out", "seq", "tempo")],
+        "seq",
+    );
+    let mut p = p;
+    p.output_port = "cv1".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    let mut bypass_patch = p.clone();
+    bypass_patch.nodes[1].bypassed = true;
+    let mut bypass = bypass_patch.compile().unwrap();
+    let old_handle = old.resolve_module_lights("seq").unwrap();
+    let new_handle = replacement.resolve_module_lights("seq").unwrap();
+    let bypass_handle = bypass.resolve_module_lights("seq").unwrap();
+    let taps = std::array::from_fn::<_, 4, _>(|i| {
+        Some(
+            old.resolve_tap("seq", ["cv1", "cv2", "cv3", "clock"][i], 0)
+                .unwrap(),
+        )
+    });
+    let mut audio = [[0.0; 2]; 129];
+    let mut tapped = [[openpatch_core::TapSample::default(); 4]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut observations = [None; 3];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_audio_block_with_taps(&mut audio[..length], &taps, &mut tapped[..length]);
+        observations[0] = old.module_lights(old_handle);
+        replacement.adopt_state_from(&old);
+        initialized = replacement.initialize_module_state(new_handle);
+        replacement.process_poly_block(&mut frames[..length]);
+        observations[1] = replacement.module_lights(new_handle);
+        bypass.adopt_state_from(&old);
+        bypass.process_poly_block(&mut frames[..length]);
+        observations[2] = bypass.module_lights(bypass_handle);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    for observation in observations {
+        let state = observation.unwrap();
+        assert_eq!(state.count, 19);
         assert_eq!(state.clock_frequency, None);
         assert!(state
             .brightness

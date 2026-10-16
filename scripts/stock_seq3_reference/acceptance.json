@@ -1,0 +1,149 @@
+{
+  "acceptance_scope": "Full core source contract under the frozen finite-domain matrix and actual SDK2.6.6; separate public Engine,Session,persistence,shared UI,native Mac and transport tests are required. No hardware/MIDI/liveperformance qualification claim.",
+  "declared_before_first_comparison": "2026-10-16",
+  "fixture_plan": {
+    "implementation": "Segment schedules; one rate input string at a time, streaming trace validator; bounded retained first16failureframes.",
+    "slow_clock_duration": "Each internal knob endpoint test spans1.125analytical periods plus3ms tail margin. This accounts for f32 accumulated-phase error without predicting exact DSP; explicit final index1 anchor verifies a full actual crossing in bothpassthroughmodes. No warmup frames discarded."
+  },
+  "input_protocol": {
+    "bypass": "OpenPatch host-policy shim: apply receiving controls, skip processor, all16outputsmono+0; preserve runtime and last processed effective length. Frozen fixtures keep heldlevels unchanged duringbypass. Not native Rack Engine bypass proof.",
+    "cell_order": "row1step1..8,row2step1..8,row3step1..8, rawf32voltages[-10,10]",
+    "connected_outputs": "All16 SDK outputs connected with channels1. Source doesnot inspect outputconsumers/setChannels; inactive SDK mono paddingexcluded, full activeoutputs/counts compared.",
+    "control_order": [
+      "tempo rawlog2Hz[-2,4]",
+      "tempo_amount[0,1]",
+      "steps integer1..8",
+      "steps_amount[0,1]"
+    ],
+    "controls_after_rotation": "Every row supplies full receiving rawcontrols/cells before event operation; if persistence across subsequent rows is desired, subsequent row supplies rotated cell values. This adapter is not a second sequencer.",
+    "durable_fields": "Only event4 consumes run0/1,gatesmask0..255,passthrough0/1; -1 means absent field. Complete gate arrays or absent array, not malformed/partial JSON importer qualification.",
+    "events": {
+      "0": "apply receiving raw control/cell values then process",
+      "1": "fresh then apply rawcontrols/cells then process",
+      "2": "apply rawcontrols/cells then actual onReset then process; no host parameter reset",
+      "3": "explicit same-rate rebuild/adopt then apply receiving rawcontrols/cells then process; SDK keeps actual instance",
+      "4": "apply rawcontrols/cells then actual dataFromJson durableload then process; -1 omitsfield, absent running/gates retained, absent passthrough becomes true",
+      "5": "apply rawcontrols/cells then actual rotateStates(delta) then process"
+    },
+    "fields": 120,
+    "held_bits": "clock0,run1,reset2,gate1..8 bits3..10; physical heldlevels passed to source BooleanTrigger, not legacy actionqueue",
+    "offsets": {
+      "bypass": 119,
+      "controls": [
+        1,
+        4
+      ],
+      "durable_gates": 116,
+      "durable_passthrough": 117,
+      "durable_run": 115,
+      "event": 0,
+      "held_mask": 29,
+      "ports": [
+        30,
+        47,
+        64,
+        81,
+        98
+      ],
+      "rotate_delta": 118,
+      "row_major_cells": [
+        5,
+        28
+      ]
+    },
+    "port_encoding": "width0..16 then16f32values; only lane0 used; inactive rawslotspositivezero",
+    "port_order": [
+      "tempo",
+      "clock",
+      "run",
+      "reset",
+      "steps"
+    ],
+    "rotate_delta": "-1,0,+1; exactly source UI-supported one-column rotations oridentity; complete eight-column composition tested via fixtures/hosttests."
+  },
+  "numeric_gate": {
+    "all_frames": true,
+    "exact_f32_bits": "All90fields on every referenceframe; no voltage/state/lamp tolerance, relative0. Finite checks are independent. No skippedstartup, phasealignment,decimation or postcomparison threshold adjustment.",
+    "excluded": "Only mono inactive outputstorage; no meaningful state/activevoltage/light exclusions.",
+    "host_extension_boundary": "Old seq3 and old ordered convenienceactions remain unchanged. New stock convenience Clock/Run/Reset coalescing peraction/sample is a separate documented host extension; these oracle fixtures use only physicalheldlevels. Nativehistory/transport/graphidentity/callbackallocation/MCP validation is a separate required host suite.",
+    "independent_checks": "Every outputmono; onehotstep andCVselection;trigger=clock AND selectedgate;effective-length output;finitephase>=0 (no upper1assertion: phaseaccumulates duringreset); pulse remain[-f32dt,f32.001];enumdetectors;gate/run/length lamp semantics;paused/disconnectedclockdetectorfreeze;explicit static anchor. Source pulse floats are not integer ceil timers."
+  },
+  "output_protocol": {
+    "button_state_order": "clock,run,reset,gates1..8; SDK Boolean LOW0,HIGH1,UNINITIALIZED2",
+    "derived_length": "Source stores no length; SDK adapter retains latest actually processed STEPS_OUTPUT+1, including on bypass. Fresh helper length is configured integer steps before CV, matching host policy; pre-step helper length is not a primary-source state claim. Frozen fixtures never start bypassed.",
+    "fields": 90,
+    "held_mask": "Derived last processed physicalheldmask; fresh0, updated only on actualprocess, frozen onbypass. No source detector is reconstructed from this field.",
+    "initial_assertions": "Before fresh processing phase/index0,runningtrue,gate8true,passthroughfalse,all14detectorsUNINITIALIZED2,pulse3remaining0,lamps27zero. Wrapperheldmask0. No seeded state.",
+    "input_state_order": "clock,run,reset; SDK scalar Schmitt LOW0,HIGH1,UNINITIALIZED2",
+    "light_order": "clock,run,reset,gate1..8,step1yellow/red..step8yellow/red, all27 actual storedbrightnesses",
+    "offsets": {
+      "button_triggers": [
+        45,
+        55
+      ],
+      "counts": [
+        0,
+        15
+      ],
+      "effective_length": 34,
+      "gates": [
+        36,
+        43
+      ],
+      "held_mask": 89,
+      "index_zero_based": 33,
+      "input_triggers": [
+        56,
+        58
+      ],
+      "lights": [
+        62,
+        88
+      ],
+      "passthrough": 44,
+      "phase": 32,
+      "pulse_remaining": [
+        59,
+        61
+      ],
+      "running": 35,
+      "voltages": [
+        16,
+        31
+      ]
+    },
+    "output_order": [
+      "cv1",
+      "cv2",
+      "cv3",
+      "trigger",
+      "step1",
+      "step2",
+      "step3",
+      "step4",
+      "step5",
+      "step6",
+      "step7",
+      "step8",
+      "steps",
+      "clock",
+      "run",
+      "reset"
+    ],
+    "pulse_order": "run,clock,reset actual float remaining; negative final residues valid"
+  },
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "reference_domain": {
+    "normal": "All rawinput/control values finite. For scalar internal-clock approximation, f32(f32(tempo+f32(tempoCV*amount))+127) in[0,255); scalar integer exponent0..254 ensures representable nonnegative leftshift and finiteapproximation. Include zero exponent, highfinite and fractional boundary cases. Externalclock connects preserve same domain in schedule for simple declaration.",
+    "pulse_and_phase": "SDK PulseGenerator subtracts f32dt only while remaining>0; passthrough freezes clockPulse remaining. Internal reset guard mayallow phase>=1, evenhugefinite, until a later accepted crossing truncates it. No real-number interval assumptions.",
+    "safety": "Rust-only fixtures exercise NaN/Inf/extremeCV and out-of-domain exponents with recovery. Require finite outputs/state, bounded discrete state and declared policies; no SDK oracle executed and no out-of-domain numerical equivalence claim. Production safetyextension must keep phasefinite/nonnegative; nonfiniteinput maps0."
+  },
+  "reference_source_sha256": "5144a35b58c2187fd6611acfdccc7a938e16fd8a8febc8310871aa2f8fde7131",
+  "sample_rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "schema": 1,
+  "sdk_version_required": "2.6.6"
+}

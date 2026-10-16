@@ -180,7 +180,7 @@ fn darkroom_meters_and_sequence_indicators_follow_published_state() {
             ModuleLightState {
                 count: 16,
                 input_channels: Some(1),
-                brightness: [[1.0, 1.0]; 16],
+                brightness: [[1.0, 1.0]; openpatch_core::MAX_MODULE_LIGHTS],
                 ..Default::default()
             },
         );
@@ -544,7 +544,7 @@ fn darkroom_dense_patch_cpu_and_shape_budget() {
                     ModuleLightState {
                         count: 16,
                         input_channels: Some(16),
-                        brightness: [[0.7, 0.3]; 16],
+                        brightness: [[0.7, 0.3]; openpatch_core::MAX_MODULE_LIGHTS],
                         ..Default::default()
                     },
                 )

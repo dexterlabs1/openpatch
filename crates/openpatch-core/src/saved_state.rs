@@ -15,6 +15,18 @@ pub enum SavedModuleState {
     MidiCcMappings([i16; 16]),
     MidiGateMappings([i16; 16]),
     Seq3Run(bool),
+    StockSeq3 {
+        running: bool,
+        gates: u8,
+        passthrough: bool,
+    },
+    /// Selective persistent assignments; absent fields retain callback state.
+    StockSeq3Fields {
+        running: Option<bool>,
+        gates: u8,
+        gate_mask: u8,
+        passthrough: Option<bool>,
+    },
     PushHold(bool),
     /// IEEE-754 voltage bits preserve exact equality in history and dirty checks.
     ShiftRegister {
@@ -31,6 +43,7 @@ impl SavedModuleState {
         match node.kind.as_str() {
             "midi_gate" => crate::initial_midi_gate_state(node).ok(),
             "midi_cc" => crate::initial_midi_cc_state(node).ok(),
+            "stock_seq3" => crate::initial_stock_seq3_state(node).ok(),
             "seq3" => Some(Self::Seq3Run(
                 node.params.get("running").copied().unwrap_or(1.0) != 0.0,
             )),
@@ -47,6 +60,7 @@ impl SavedModuleState {
             Self::MidiCc { .. } | Self::MidiCcMappings(_) => "midi_cc",
             Self::MidiGateMappings(_) => "midi_gate",
             Self::Seq3Run(_) => "seq3",
+            Self::StockSeq3 { .. } | Self::StockSeq3Fields { .. } => "stock_seq3",
             Self::PushHold(_) => "push",
             Self::ShiftRegister { .. } => "sh_asr",
             Self::RandomValues { .. } => "random_values",
@@ -60,7 +74,9 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(value) => Some(("running", value)),
             Self::PushHold(value) => Some(("holding", value)),
-            Self::MidiCc { .. }
+            Self::StockSeq3 { .. }
+            | Self::StockSeq3Fields { .. }
+            | Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
             | Self::MidiGateMappings(_)
             | Self::ShiftRegister { .. }
@@ -74,7 +90,9 @@ impl SavedModuleState {
         match self {
             Self::Seq3Run(_) => Self::Seq3Run(value),
             Self::PushHold(_) => Self::PushHold(value),
-            Self::MidiCc { .. }
+            Self::StockSeq3 { .. }
+            | Self::StockSeq3Fields { .. }
+            | Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
             | Self::MidiGateMappings(_)
             | Self::ShiftRegister { .. }
@@ -84,6 +102,41 @@ impl SavedModuleState {
     /// Overlay all persistent state on a graph or preset without changing controls.
     pub fn write_params(self, params: &mut BTreeMap<String, f32>) {
         match self {
+            Self::StockSeq3Fields {
+                running,
+                gates,
+                gate_mask,
+                passthrough,
+            } => {
+                if let Some(value) = running {
+                    params.insert("running".into(), f32::from(u8::from(value)));
+                }
+                if let Some(value) = passthrough {
+                    params.insert("passthrough".into(), f32::from(u8::from(value)));
+                }
+                for i in 0..8 {
+                    if gate_mask & (1 << i) != 0 {
+                        params.insert(
+                            format!("gate{}", i + 1),
+                            f32::from(u8::from(gates & (1 << i) != 0)),
+                        );
+                    }
+                }
+            }
+            Self::StockSeq3 {
+                running,
+                gates,
+                passthrough,
+            } => {
+                params.insert("running".into(), f32::from(u8::from(running)));
+                params.insert("passthrough".into(), f32::from(u8::from(passthrough)));
+                for i in 0..8 {
+                    params.insert(
+                        format!("gate{}", i + 1),
+                        f32::from(u8::from(gates & (1 << i) != 0)),
+                    );
+                }
+            }
             Self::MidiCc {
                 assignments,
                 values,

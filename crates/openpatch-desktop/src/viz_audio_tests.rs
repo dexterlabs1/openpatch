@@ -17,13 +17,19 @@ fn viz_callback_publishes_all_signed_lanes_coherently_across_graph_changes() {
     without_heap_activity(|| callback.render(&mut [0.0_f32; 15], 1));
     let before = callback.performance.module_lights("viz").unwrap();
     assert_eq!(before.input_channels, Some(0));
-    assert_eq!(before.brightness, [[0.0;2];16]);
+    assert_eq!(before.brightness, [[0.0;2];openpatch_core::MAX_MODULE_LIGHTS]);
     without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
     let first = callback.performance.module_lights("viz").unwrap();
     assert_eq!(first.input_channels, Some(16));
     assert_eq!(first.count, 16);
-    for (i, pair) in first.brightness.iter().enumerate() {
+    for (i, pair) in first.brightness.iter().take(usize::from(first.count)).enumerate() {
         assert_eq!(*pair, if i % 2 == 0 { [1.0, -0.01] } else { [-0.01, 1.0] });
+    }
+    // The widened storage tail has no channels. Viz still evaluates its signed
+    // targets [voltage, -voltage], so clean +0 V produces exact [+0, -0] bits.
+    // These slots are excluded from the sixteen published logical lights.
+    for pair in &first.brightness[usize::from(first.count)..] {
+        assert_eq!(pair.map(f32::to_bits), [0.0_f32.to_bits(), (-0.0_f32).to_bits()]);
     }
     let observed = session.execute("inspect_performance", serde_json::json!({})).unwrap();
     let module = &observed["performance"]["modules"]["viz"];
@@ -58,7 +64,7 @@ fn viz_callback_publishes_all_signed_lanes_coherently_across_graph_changes() {
     without_heap_activity(|| callback.render(&mut [0.0_f32;1],1));
     let fresh = callback.performance.module_lights("viz").unwrap();
     assert_eq!(fresh.input_channels, Some(0));
-    assert_eq!(fresh.brightness, [[0.0;2];16]);
+    assert_eq!(fresh.brightness, [[0.0;2];openpatch_core::MAX_MODULE_LIGHTS]);
     callback.performance.close();
     assert!(callback.performance.module_lights("viz").is_none());
 }
