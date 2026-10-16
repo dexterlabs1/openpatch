@@ -80,10 +80,9 @@ impl Category {
 
     fn of_kind(kind: &str) -> Self {
         match kind {
-            "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
-            | "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
-                Self::Oscillators
-            }
+            "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise"
+            | "drum_voice" | "modal_resonator" | "colored_noise" | "macro_voice"
+            | "wavetable_vco" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
@@ -1392,6 +1391,7 @@ mod tests {
         assert_eq!(Category::of_kind("stock_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("stock_delay"), Category::Mixing);
         assert_eq!(Category::of_kind("stock_lfo"), Category::Modulation);
+        assert_eq!(Category::of_kind("stock_vco"), Category::Oscillators);
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
         assert_eq!(Category::of_kind("push"), Category::Utilities);

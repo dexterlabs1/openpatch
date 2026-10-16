@@ -18,6 +18,7 @@ use cable_menu::CableMenu;
 include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
 include!("stock_lfo_panel.rs");
+include!("stock_vco_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -2892,6 +2893,9 @@ impl Rack {
             if node.kind == "stock_lfo" {
                 self.stock_lfo_lights(ui, node, rect);
             }
+            if node.kind == "stock_vco" {
+                self.stock_vco_lights(ui, node, rect);
+            }
             if node.kind == "poly_split" {
                 self.split_panel(ui, node, rect);
             }
@@ -3141,6 +3145,59 @@ impl Rack {
                         ));
                     }
                     response.on_hover_text(if *name=="linear_fm"{"Use linear FM. Off selects exponential FM. This mode is saved with the patch."}else{"Use soft sync. Off selects hard sync. This mode is saved with the patch."});
+                    continue;
+                }
+                if node.kind == "stock_vco" && matches!(*name, "linear_fm" | "soft_sync") {
+                    let enabled = value_or_default(node, name, spec) >= 0.5;
+                    let x = if *name == "linear_fm" { 20.0 } else { 200.0 };
+                    let response = crate::panel_skin::toggle_button(
+                        ui,
+                        Rect::from_min_size(point(x, 280.0), vec2(120.0, 26.0) * self.zoom),
+                        if *name == "linear_fm" {
+                            "Linear FM"
+                        } else {
+                            "Soft sync"
+                        },
+                        enabled,
+                        self.zoom,
+                    );
+                    if mode.is_interactive() {
+                        if let Some(cue) = self
+                            .construction_animation
+                            .parameter(&node.id, &node.kind, name)
+                        {
+                            let label = |value: f32| match (*name, value >= 0.5) {
+                                ("linear_fm", true) => "Linear FM",
+                                ("linear_fm", false) => "Exponential FM",
+                                (_, true) => "Soft sync",
+                                (_, false) => "Hard sync",
+                            };
+                            self.register_construction_anchor(
+                                ui,
+                                node,
+                                name,
+                                crate::construction_motion::Anchor {
+                                    rect: response.rect,
+                                    old_text: label(cue.old).into(),
+                                    new_text: label(cue.new).into(),
+                                    marker: None,
+                                },
+                                &[response.id],
+                            );
+                        }
+                    }
+                    if response.clicked() {
+                        self.select_primary(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":if enabled {0.0} else {1.0},"expected_revision":revision}),
+                        ));
+                    }
+                    response.on_hover_text(if *name == "linear_fm" {
+                        "Linear FM when selected; exponential FM otherwise. Signed FM depth stays independent of the mode."
+                    } else {
+                        "Soft sync when selected; hard sync otherwise. The SYNC input controls the oscillator, and the adjacent lamp is observed runtime state."
+                    });
                     continue;
                 }
                 if node.kind == "stock_lfo" && matches!(*name, "offset" | "invert") {
@@ -3414,7 +3471,7 @@ impl Rack {
                         random_parameter_position(index),
                         if *name == "unipolar" { 10.0 } else { 14.0 },
                     )
-                } else if node.kind == "stock_lfo" {
+                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
                     (
                         pos2(
                             if index.is_multiple_of(2) { 90.0 } else { 270.0 },
@@ -3461,6 +3518,7 @@ impl Rack {
                     matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
+                let stock_pitch = node.kind == "stock_vco" && *name == "frequency";
                 let observed_clock = stock_lfo_clock(self.module_lights.get(&node.id));
                 let hz_rate = wave_rate || stock_rate || (node.kind == "random" && *name == "rate");
                 let clock_ratio = (stock_rate && observed_clock.is_some_and(|clock| clock != 2.0))
@@ -3476,10 +3534,11 @@ impl Rack {
                 });
                 let fade_percent = node.kind == "fade"
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
-                let vco_percent = (matches!(node.kind.as_str(), "multi_vco" | "stock_lfo")
-                    && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
-                    || (is_wavetable(&node.kind)
-                        && matches!(*name, "position" | "fm_amount" | "position_cv_amount"));
+                let vco_percent =
+                    (matches!(node.kind.as_str(), "multi_vco" | "stock_lfo" | "stock_vco")
+                        && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
+                        || (is_wavetable(&node.kind)
+                            && matches!(*name, "position" | "fm_amount" | "position_cv_amount"));
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
@@ -3496,7 +3555,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if node.kind == "stock_lfo" {
+                let display_value = if node.kind == "stock_vco" {
+                    stock_vco_parameter_value(name, value)
+                } else if node.kind == "stock_lfo" {
                     stock_lfo_parameter_value(name, value, observed_clock)
                 } else if node.kind == "random" {
                     random_parameter_value(name, value)
@@ -3529,7 +3590,9 @@ impl Rack {
                     surface,
                     menu_popup: None,
                     stale: false,
-                    text: if node.kind == "random" && hz_rate {
+                    text: if stock_pitch {
+                        stock_vco_frequency_hz(value).to_string()
+                    } else if node.kind == "random" && hz_rate {
                         value.exp2().clamp(0.002, 2000.0).to_string()
                     } else if hz_rate {
                         (value.exp2() * display_scale).to_string()
@@ -3540,7 +3603,9 @@ impl Rack {
                             .map_or(value * display_scale, |min| slew_display(value, min))
                             .to_string()
                     },
-                    min: if node.kind == "random" && hz_rate {
+                    min: if stock_pitch {
+                        stock_vco_frequency_hz(min)
+                    } else if node.kind == "random" && hz_rate {
                         0.002
                     } else if hz_rate {
                         min.exp2() * display_scale
@@ -3551,7 +3616,9 @@ impl Rack {
                     } else {
                         min * display_scale
                     },
-                    max: if node.kind == "random" && hz_rate {
+                    max: if stock_pitch {
+                        stock_vco_frequency_hz(max)
+                    } else if node.kind == "random" && hz_rate {
                         2000.0
                     } else if hz_rate {
                         max.exp2() * display_scale
@@ -3564,7 +3631,9 @@ impl Rack {
                     },
                     step: step.map(|step| step * display_scale),
                     display_scale,
-                    display_unit: if gain_power.is_some() {
+                    display_unit: if stock_pitch {
+                        "Hz"
+                    } else if gain_power.is_some() {
                         "dB"
                     } else if slew_min.is_some() {
                         "ms/V"
@@ -3681,14 +3750,18 @@ impl Rack {
                         } else {
                             egui::WidgetInfo::slider(
                                 true,
-                                if hz_rate {
+                                if stock_pitch {
+                                    f64::from(stock_vco_frequency_hz(value))
+                                } else if hz_rate {
                                     f64::from(value.exp2() * display_scale)
                                 } else if node.kind == "random" {
                                     f64::from(value * display_scale)
                                 } else {
                                     f64::from(value)
                                 },
-                                if hz_rate {
+                                if stock_pitch {
+                                    format!("{} frequency: {}", node.id, display_value)
+                                } else if hz_rate {
                                     format!("{} rate: {}", node.id, display_value)
                                 } else if node.kind == "random" {
                                     format!("{} {}: {}", node.id, name, display_value)
@@ -3862,6 +3935,8 @@ impl Rack {
                     center - vec2(0.0, (radius + label_gap) * self.zoom),
                     if node.kind == "seq3" {
                         ""
+                    } else if node.kind == "stock_vco" {
+                        stock_vco_parameter_label(name)
                     } else if node.kind == "stock_lfo" {
                         stock_lfo_parameter_label(name, clock_ratio)
                     } else if node.kind == "random" {
@@ -3911,7 +3986,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if node.kind == "stock_lfo" {
+                        let old_text = if node.kind == "stock_vco" {
+                            stock_vco_parameter_value(name, old)
+                        } else if node.kind == "stock_lfo" {
                             stock_lfo_parameter_value(name, old, observed_clock)
                         } else if node.kind == "random" {
                             random_parameter_value(name, old)
@@ -4038,7 +4115,7 @@ impl Rack {
                     false,
                     self.zoom,
                     is_voltage_utility(&node.kind) || node.kind == "sh_asr",
-                    if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo") {
+                    if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
                         12.0
                     } else {
                         18.0
@@ -4206,6 +4283,7 @@ impl Rack {
                             | "midi_cc"
                             | "midi_gate"
                             | "stock_lfo"
+                            | "stock_vco"
                     ) {
                         12.0
                     } else {
@@ -8610,6 +8688,8 @@ fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
         && edit.parameter == "rate"
     {
         (parsed / edit.display_scale).log2()
+    } else if edit.kind == "stock_vco" && edit.parameter == "frequency" {
+        stock_vco_frequency_raw(parsed)
     } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
         stock_vcf_frequency_raw(parsed)
     } else if edit.kind == "stock_vcf" && edit.parameter == "drive" {
@@ -9195,6 +9275,19 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if edit.kind == "stock_vco" {
+        let suffix = if edit.parameter == "frequency" {
+            "Hz"
+        } else {
+            "%"
+        };
+        if text
+            .get(text.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     if edit.kind == "stock_lfo" {
         let suffix = if edit.parameter == "rate" {
             edit.display_unit.as_str()
@@ -9404,7 +9497,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
-        "stock_lfo" => {
+        "stock_lfo" | "stock_vco" => {
             return pos2(
                 width * (index + 1) as f32 / 5.0,
                 if input { 334.0 } else { 376.0 },
@@ -10582,7 +10675,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
         "stock_vcf" => HP * 18.0,
-        "stock_delay" | "stock_lfo" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
+        "stock_delay" | "stock_lfo" | "stock_vco" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
         "stock_vca" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
@@ -10651,6 +10744,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_delay" => "DELAY",
         "stock_vca" => "VCA",
         "stock_lfo" => "STOCK LFO",
+        "stock_vco" => "STOCK VCO",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -10940,6 +11034,14 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "gate" => &["frequency", "duty"],
         "lfo" => &["frequency", "amplitude", "offset"],
         "multi_vco" => &[
+            "frequency",
+            "pulse_width",
+            "fm_amount",
+            "pwm_amount",
+            "linear_fm",
+            "soft_sync",
+        ],
+        "stock_vco" => &[
             "frequency",
             "pulse_width",
             "fm_amount",
@@ -11399,6 +11501,10 @@ fn denormalize_geometric(value: f32, min: f32, max: f32) -> f32 {
     (min * (value.clamp(0.0, 1.0) * (max / min).log2()).exp2()).clamp(min, max)
 }
 fn logarithmic_parameter(kind: &str, name: &str) -> bool {
+    if kind == "stock_vco" && name == "frequency" {
+        // The stored pitch is already logarithmic in Hz.
+        return false;
+    }
     (kind == "gates" && name == "length")
         || matches!(
             name,
@@ -12759,7 +12865,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            70,
+            71,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -12879,6 +12985,7 @@ mod tests {
             "mix6",
             "multi_lfo",
             "stock_lfo",
+            "stock_vco",
             "wavetable_vco",
             "wavetable_lfo",
             "poly_viz",
@@ -12930,12 +13037,15 @@ mod tests {
                             ("mix6", "average" | "invert")
                                 | ("multi_lfo", "unipolar" | "invert")
                                 | ("stock_lfo", "offset" | "invert")
+                                | ("stock_vco", "linear_fm" | "soft_sync")
                         ) {
                             continue;
                         }
                         assert!(
                             texts.iter().any(|(text, _)| text
-                                == if kind == "stock_lfo" {
+                                == if kind == "stock_vco" {
+                                    stock_vco_parameter_label(name)
+                                } else if kind == "stock_lfo" {
                                     stock_lfo_parameter_label(name, false)
                                 } else if is_wavetable(kind) {
                                     wavetable_parameter_label(name)
@@ -19430,6 +19540,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_vco_ui_tests {
+        include!("stock_vco_ui_tests.rs");
     }
     mod stock_lfo_ui_tests {
         include!("stock_lfo_ui_tests.rs");

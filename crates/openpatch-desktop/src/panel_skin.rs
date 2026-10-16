@@ -25,7 +25,7 @@ const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
 /// Every stock kind is assigned explicitly; unknown modules use neutral metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
-        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
+        "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise" | "drum_voice"
         | "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
             Color32::from_rgb(158, 92, 52)
         }

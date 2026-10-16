@@ -1,5 +1,10 @@
 # Four-output audio oscillator
 
+This page documents the older `multi_vco` contract and its measured limits.
+The separate [Stock VCO](STOCK_VCO.md) targets the newer pinned processor with
+step/slope correction and within-frame sync. Existing patches keep this older
+model's behavior.
+
 `multi_vco` is an original Rust functional oscillator for version-2 patches.
 Its behavior target is the VCO in **Fundamental 2.6.4**, pinned to
 [`e0ade9a`](https://github.com/VCVRack/Fundamental/blob/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src/VCO.cpp).

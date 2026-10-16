@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "declared_before_first_comparison": "2026-10-16",
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "reference_source_sha256": "3745dd5e7fafd3b4260fed6ecdb19fb19f1573943cc5f0b1d55fa30fd2efe67d",
+  "sdk_version_required": "2.6.6",
+  "sample_rates": [44100, 48000, 96000],
+  "input_protocol": {
+    "fields": 78,
+    "events": {"0": "apply receiving parameters then process; production rebuilds/adopts only if parameters changed", "1": "fresh instance, apply params and sample-rate event, then process", "2": "apply receiving parameters then runtime Initialize then process; source has no onReset override, so runtime state is retained", "3": "explicitly rebuild production instance with receiving parameters and adopt previous same-rate runtime, even if params unchanged; SDK retains its same actual instance"},
+    "parameter_order": ["frequency", "fm_amount", "pulse_width", "pwm_amount", "linear_fm", "soft_sync"],
+    "parameter_mapping": "frequency is raw semitones [-76,76], default0; SDK SYNC_PARAM=1-soft_sync; FM/PWM amounts signed [-1,1]; width [.01,.99]; switches integer0/1. Defaults [0,0,.5,0,0,0].",
+    "input_order": ["pitch", "fm", "sync", "pwm"],
+    "port_fields": "width then16f32 values, inactive slots positive zero; mono aux broadcasts as actual getPolyVoltageSimd; no zero-padding changes to production transport",
+    "final_fields": ["consumer_mask bits sine1 triangle2 saw4 square8", "bypass 0/1", "checkpoint 0/1"],
+    "consumer_adapter": "SDK output.channels changes only on mask transitions: newly connected=1, disconnected=0; actual setChannels controls processed connected width. Compare every output count; compare voltages only connected active lanes.",
+    "bypass_adapter": "Explicit OpenPatch host-policy shim, not native Rack Engine bypass proof: skip oscillator process, freeze all runtime including divider/buffers, emit mono positive-zero on ALL four outputs regardless of consumer mask, counts[1,1,1,1]. Parameters/adoption/Initialize still apply. Separate public production Engine tests must qualify actual host bypass."
+  },
+  "output_protocol": {
+    "compact_fields": 218,
+    "order": ["counts4", "output-major voltages4x16", "phases16", "sync_directions16", "last_sync16", "last_square16", "filter lowpass y state4x16 in sine/triangle/saw/square order", "buffer_indices4x4 wave/quartet", "light_divider", "lights RGB,linear,soft"],
+    "checkpoint_fields": 2048,
+    "checkpoint_order": "Append wave-major,lane-major,next-sample-major correction tails [4][16][32], logical source buffer[bufferIndex+offset]. No dead physical buffer storage comparison.",
+    "kernel_protocol": "Separate --kernel mode: exactly1024f32values, actual prepared correction impulse already minus1 then ramp, each512 in chronological order z*16+o from source impulseReordered[o][z]/rampReordered[o][z], z0..31,o0..15. Production snapshot O-major tables are transposed by adapter only. No kernel mirror in adapters or validators.",
+    "initial_assertions": "Before each fresh first step: phases=0,directions=1,last_sync=0,last_square=1,filters=0,all logical tails=0,all cursors=0,divider=0,lamps=0. Source onSampleRateChange(sampleTime=1.f/rate) is mandatory before processing."
+  },
+  "numeric_gate": {
+    "kernel_absolute": 0.0000002,
+    "normalized_state_absolute": 0.00005,
+    "output_absolute_volts": 0.0005,
+    "relative_tolerance": 0,
+    "exact_fields": "All counts, phases, sync directions/history, square latches, buffer indices, divider and lamps are exact f32 bits/integer equality every frame; source inactive SIMD phases are included.",
+    "bounded_fields": "Actual prepared impulse/ramp coefficients within kernel_absolute; all filter histories and checkpoint logical tails within normalized_state_absolute; every connected active output sample within output_absolute_volts. Every compared numeric field must be finite. Independently, first impulse correction is exactly-1 and first ramp exactly+0 in both prepared kernels.",
+    "rationale": "Unfitted engineering budgets for independent double-precision FFT/libm coefficient preparation and accumulated f32 interpolation/correction/filter arithmetic. Kernel budget is a few f32 rounding units; normalized-state budget covers repeated overlapping corrections; output budget is 0.01% of5V. These are acceptance thresholds, not a proved worst-case error theorem. Failures remain failures; no fitting, phase alignment, startup discard or hard-case exclusion.",
+    "excluded": "Only disconnected/inactive SDK output voltage storage and dead physical correction-buffer storage. Their counts and all meaningful runtime state remain checked. Rust inactive/disconnected output padding must be positive zero. All processed and bypass frames are observed.",
+    "independent_checks": "Width/consumer/bypass contract; phases finite[0,1); direction and square latch ±1; cursors advance mod32 only when wave connected and quartet active, freeze otherwise; divider advances mod16 only on processed frames; lamps hold between ticks and bypass, mode lamps equal actual switches on tick, poly RGB=[0,0,1], mono B=0. Source raw mono R/G can be negative; do not clamp them in the probe. Explicit zero-frequency, sync-endpoint, frozen-group, Initialize/adoption and drained-tail anchors supplement cross equality.",
+    "build_policy": "No fast-math or contraction; actual original production probe only, actual pinned SDK class prefix. Retain sources/licenses, complete build source closure, SDK headers/library, flags, FPU/target/toolchain, binaries, full inputs/traces and hashes."
+  },
+  "reference_domain": {
+    "exponent": "For every processed SIMD lane, effective exponent uses source f32 order: frequency/12 + poly pitch, then exponential FM if selected; finite exponent p with f32(p+127) in[0,256). Include exponent0 zero corner, exponent255 positive-infinity corner and positive frequency overflow followed by source clamp. Reject no difficult sample within this declared domain.",
+    "pitch_endpoints": [-127.0, 128.99998474121094],
+    "sync": "Finite sync inputs, including startup positive, rising/falling-to-zero, zero-to-positive, exact endpoint and fractional crossings; no preconditioning/warmup removal. Valid interpolation can create NaN intermediate for zero denominator, but false masks leave valid observable state.",
+    "outside_domain": "Separate Rust-only safety fixtures for negative/wrapped biased exponents and nonfinite/extreme diagnostic input. SIMD intrinsic conversion/shift behavior is not categorically C++ undefined behavior, but numerical equivalence outside the declared domain is not claimed. Safety must not execute SDK oracle.",
+    "safety_gate": "Connected output and meaningful runtime values remain finite; counts,phase bounds,directions,cursors,divider and mode/connection policies still hold. No arbitrary5V peak bound: legitimate correction overshoot is allowed. Separate safety recovery frames are included."
+  },
+  "fixture_plan": {
+    "max_reference_frames_per_rate": 300000,
+    "low_frequency_cycle": "Four mode combinations at frequency=-76 semitones, all16voices, for ceil(rate/(261.6256*2**(-76/12)))+65 frames, followed by65frames exact zero-frequency tail drain. Duration is analytical input scheduling, not a DSP mirror. This pre-comparison amendment was requested after the first pure-Python freeze and before any oracle execution.",
+    "static_frequencies": [-76, -54, -12, 0, 12, 54, 76],
+    "widths": [0, 1, 3, 4, 5, 16],
+    "static_frames": 257,
+    "spectral_frames": 12288,
+    "spectral_window_start": 4096,
+    "spectral_window_length": 8192,
+    "spectral_frequencies_hz": [110, 1000, 5000],
+    "spectral_policy": "Separate Hann-window spectrum diagnostic on the declared later window; numeric equivalence still checks every startup frame. Report both implementations' fundamental estimate and off-harmonic energy with explicit window/harmonic guard width; never infer universal alias performance from waveform equivalence. No fitted spectral acceptance threshold and no claim this diagnostic separates all aliases from leakage. Spectral reporting does not replace the numerical gate.",
+    "lifecycle_scope": "Same-rate parameter edits/adoption, runtime Initialize, all consumer transitions and explicit bypass shim are in this suite. Rate/incarnation reset, real Engine bypass, transport, callback allocation/device deadlines, native shared rendering and MCP history require separate host tests."
+  }
+}
