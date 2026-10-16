@@ -21,8 +21,8 @@
   <a href="#go-deeper">Documentation</a>
 </p>
 
-![OpenPatch native rack with a VCO, ladder filter, OTA VCA, ADSR, gate clock, and audio output](docs/images/openpatch-rack.png)
-<p align="center"><sub>Studio Rack panels, transport toolbar and analysis dock in the native desktop app, rendered on Linux with Mesa in CI. macOS is the primary design target.</sub></p>
+![OpenPatch native rack with wavetable VCO and LFO, rotary filter and amplifier, envelope, and live signal scope](docs/images/openpatch-rack.png)
+<p align="center"><sub>OpenPatch 0.2.4 rotary panels and signal scope, rendered in native Linux/Mesa CI. macOS is the primary design target.</sub></p>
 
 - **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
@@ -410,21 +410,19 @@ after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
 passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-The next module-design pass brings black rotary controls and warm ivory panels
-to ten more voice and utility kinds, using the same face in rack and browser.
-[Design progress and validation](docs/MODULE_DESIGN.md).
+**80 built-in module kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
 
-**80 installed built-in kinds in 0.2.2 build 4.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
-
-The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The signed macOS ARM app is installed with all four visualizers, including Ferrofluid.
+The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
 
 The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) brings back prominent black
 knobs on warm ivory, with the same artwork in the rack and library. The first ten
 voice/utility conversions passed platform and native-render checks in
-[PR23](https://github.com/dexterlabs1/openpatch/pull/23). A six-panel oscillator,
-filter and amplifier pass is in development; these staged updates have not yet
-replaced the installed 0.2.2 build 4 app. Larger sockets across the remaining
-catalog are still in progress.
+[PR23](https://github.com/dexterlabs1/openpatch/pull/23). The six-panel oscillator,
+filter and amplifier extension passed the same gates in
+[PR24](https://github.com/dexterlabs1/openpatch/pull/24), producing the qualified
+0.2.4 build 6 macOS candidate. The next development build enlarges sockets on
+all sixteen panels and improves crowded-jack menu picking. Remaining catalog
+conversion and native device qualification are still open.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

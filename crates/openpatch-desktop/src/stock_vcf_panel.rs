@@ -16,15 +16,20 @@ fn stock_vcf_frequency_hz(raw: f32) -> f32 {
     STOCK_VCF_C4 * 2.0_f32.powf(raw * 10.0 - 5.0)
 }
 const STOCK_VCF_KNOB_BODY: f32 = 20.0;
+// The final row clears the unchanged input-jack caption at reduced zoom.
+const STOCK_VCF_LAST_ROW_LIFT: f32 = 2.0;
+fn stock_vcf_row_shift(index: usize) -> f32 {
+    if index % 3 == 2 { -STOCK_VCF_LAST_ROW_LIFT } else { 0.0 }
+}
 fn stock_vcf_knob_rect(index: usize) -> Rect {
     Rect::from_center_size(
-        pos2(if index >= 3 { 190.0 } else { 70.0 }, 103.0 + (index % 3) as f32 * 82.0),
+        pos2(if index >= 3 { 190.0 } else { 70.0 }, 103.0 + (index % 3) as f32 * 82.0 + stock_vcf_row_shift(index)),
         Vec2::splat(46.0),
     )
 }
 fn stock_vcf_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
-        pos2(if index >= 3 { 190.0 } else { 70.0 }, 137.0 + (index % 3) as f32 * 82.0),
+        pos2(if index >= 3 { 190.0 } else { 70.0 }, 137.0 + (index % 3) as f32 * 82.0 + stock_vcf_row_shift(index)),
         vec2(100.0, 18.0),
     )
 }
@@ -129,7 +134,7 @@ impl Rack {
         .iter()
         .enumerate()
         {
-            let y = 73.0 + row as f32 * 82.0;
+            let y = 73.0 + row as f32 * 82.0 + stock_vcf_row_shift(row);
             painter.text(p(70.0, y), Align2::CENTER_CENTER, main, font(9.0), INK);
             painter.text(p(190.0, y), Align2::CENTER_CENTER, depth, font(8.0), MUTED);
         }

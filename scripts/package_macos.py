@@ -44,7 +44,7 @@ with (contents / "Info.plist").open("wb") as stream:
         "CFBundleName": "OpenPatch",
         "CFBundleDisplayName": "OpenPatch",
         "CFBundleIdentifier": "org.openpatch.desktop",
-        "CFBundleVersion": "6",
+        "CFBundleVersion": "7",
         "CFBundleShortVersionString": version,
         "CFBundleExecutable": "openpatch-desktop",
         "CFBundleIconFile": "OpenPatch.icns",

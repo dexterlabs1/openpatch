@@ -44,13 +44,56 @@ const STOCK_VCA_MIX_PORT_SCALE: f32 = 1.07;
 const STOCK_OSCILLATOR_PORT_SCALE: f32 = 1.30;
 const STOCK_NOISE_PORT_SCALE: f32 = 1.30;
 const STOCK_PROCESS_PORT_SCALE: f32 = 1.30;
+const REDESIGNED_PORT_SCALE: f32 = 1.30;
 fn port_material_scale(kind: &str) -> f32 {
     match kind {
         "stock_vca_mix" => STOCK_VCA_MIX_PORT_SCALE,
         "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
         "stock_noise" => STOCK_NOISE_PORT_SCALE,
         "stock_process" => STOCK_PROCESS_PORT_SCALE,
+        "analog_vco" | "ladder_vcf" | "fade" | "compare" | "process" | "rescale" | "gate"
+        | "attenuverter" | "white_noise" | "oscillator" | "multi_vco" | "multi_lfo"
+        | "wavetable_vco" | "wavetable_lfo" | "stock_vcf" | "stock_vca" => REDESIGNED_PORT_SCALE,
         _ => 1.0,
+    }
+}
+
+// Caption geometry belongs to the panel's jack layout, not to the diameter
+// of its socket. All offsets are logical points from an unchanged port center.
+#[derive(Clone, Copy)]
+enum JackCaptionPlacement {
+    Classic,
+    ExistingEnlarged,
+    Above(f32),
+    Right(f32),
+    Left(f32),
+}
+
+fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
+    use JackCaptionPlacement::*;
+    match (kind, port, output) {
+        ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
+        ("rescale", "signal", false) => Left(31.0),
+        ("attenuverter", "signal", false) => Left(31.0),
+        ("process" | "multi_vco" | "multi_lfo", _, false) => Above(21.0),
+        ("stock_vcf", _, false) => Above(21.0),
+        ("compare" | "process" | "wavetable_vco" | "wavetable_lfo" | "stock_vca", _, true) => {
+            Above(24.0)
+        }
+        ("multi_vco" | "multi_lfo" | "stock_vcf", _, true) => Right(30.0),
+        (
+            "analog_vco" | "ladder_vcf" | "fade" | "rescale" | "gate" | "attenuverter"
+            | "white_noise" | "oscillator",
+            _,
+            true,
+        ) => Right(36.0),
+        (
+            "analog_vco" | "ladder_vcf" | "fade" | "compare" | "gate" | "white_noise"
+            | "wavetable_vco" | "wavetable_lfo" | "stock_vca",
+            _,
+            false,
+        ) => Above(25.0),
+        _ => Classic,
     }
 }
 
@@ -311,6 +354,14 @@ enum CableEnd {
     Input { node: String, port: String },
 }
 
+impl CableEnd {
+    fn node(&self) -> &str {
+        match self {
+            Self::Output { node, .. } | Self::Input { node, .. } => node,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CableOperation {
     Create,
@@ -523,6 +574,7 @@ pub struct Rack {
     cable_palette_colors: Vec<[u8; 3]>,
     pending: Option<PendingCable>,
     cable_press: Option<PendingCable>,
+    cable_secondary_press: Option<(CableEnd, String)>,
     cable_menu: Option<CableMenu>,
     observed_revision: u64,
     dragging_cable: bool,
@@ -535,6 +587,7 @@ pub struct Rack {
     requested_parameter_menu: Option<(String, String)>,
     requested_precision_control: Option<(String, String)>,
     requested_cable_menu: Option<CableEnd>,
+    deferred_touch_menu: Option<(CableEnd, String, u64)>,
     shortcuts_enabled: bool,
     suppress_reveal_once: bool,
     gesture: u64,
@@ -582,6 +635,7 @@ impl Default for Rack {
             cable_palette_colors: Vec::new(),
             pending: None,
             cable_press: None,
+            cable_secondary_press: None,
             cable_menu: None,
             observed_revision: 0,
             dragging_cable: false,
@@ -594,6 +648,7 @@ impl Default for Rack {
             requested_parameter_menu: None,
             requested_precision_control: None,
             requested_cable_menu: None,
+            deferred_touch_menu: None,
             shortcuts_enabled: true,
             suppress_reveal_once: false,
             gesture: 0,
@@ -1602,6 +1657,8 @@ impl Rack {
             self.cancel_module_drag();
             self.pending = None;
             self.cable_press = None;
+            self.cable_secondary_press = None;
+            self.deferred_touch_menu = None;
             self.dragging_cable = false;
             self.observed_revision = revision;
         }
@@ -1662,12 +1719,16 @@ impl Rack {
         if !drag_interactive {
             self.pending = None;
             self.cable_press = None;
+            self.cable_secondary_press = None;
+            self.deferred_touch_menu = None;
             self.dragging_cable = false;
             self.cancel_module_drag();
         }
         if !interactive {
             self.pending = None;
             self.cable_press = None;
+            self.cable_secondary_press = None;
+            self.deferred_touch_menu = None;
             self.dragging_cable = false;
             self.editing = None;
             self.group_drag = None;
@@ -2612,10 +2673,134 @@ impl Rack {
                     pos,
                 )
             });
+        let secondary_events = ui.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|event| match event {
+                    egui::Event::PointerButton {
+                        pos,
+                        button: PointerButton::Secondary,
+                        pressed,
+                        ..
+                    } => Some((*pos, *pressed)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        });
+        let secondary_enabled = drag_interactive
+            && interactive
+            && !popup_open_at_frame_start
+            && self.editing.is_none()
+            && self.annotation_edit.is_none()
+            && ui.input(|i| i.focused && !i.key_pressed(egui::Key::Escape));
+        if !secondary_enabled {
+            self.cable_secondary_press = None;
+        }
+        let deferred_touch_menu = if mode.is_interactive() {
+            self.deferred_touch_menu
+                .take()
+                .and_then(|(end, kind, at_revision)| {
+                    let port_valid = match &end {
+                        CableEnd::Output { node, port } => {
+                            port_exists(patch, catalog, node, port, true)
+                        }
+                        CableEnd::Input { node, port } => {
+                            port_exists(patch, catalog, node, port, false)
+                        }
+                    };
+                    (secondary_enabled
+                        && at_revision == revision
+                        && port_valid
+                        && patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == end.node() && node.kind == kind))
+                    .then_some(end)
+                })
+        } else {
+            None
+        };
+        let mut secondary_click_target = None;
+        for (pos, pressed) in &secondary_events {
+            if !secondary_enabled {
+                continue;
+            }
+            let target = (ui.ctx().layer_id_at(*pos) == Some(ui.layer_id()))
+                .then(|| {
+                    self.cable_press_target(
+                        patch,
+                        catalog,
+                        canvas,
+                        canvas.intersect(ui.clip_rect()),
+                        *pos,
+                    )
+                })
+                .flatten();
+            if *pressed {
+                self.cable_secondary_press = target.and_then(|end| {
+                    patch
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == end.node())
+                        .map(|node| (end, node.kind.clone()))
+                });
+            } else {
+                let captured = self.cable_secondary_press.take();
+                if ui.input(|i| i.pointer.button_clicked(PointerButton::Secondary)) {
+                    if let (Some((end, kind)), Some(target)) = (captured, target) {
+                        if end == target
+                            && patch
+                                .nodes
+                                .iter()
+                                .any(|node| node.id == end.node() && node.kind == kind)
+                        {
+                            secondary_click_target = Some(end);
+                        }
+                    }
+                }
+            }
+        }
+        if !ui.input(|i| i.pointer.button_down(PointerButton::Secondary)) {
+            self.cable_secondary_press = None;
+        }
+        let hover_target = ui
+            .input(|i| {
+                (secondary_enabled && !i.pointer.any_down())
+                    .then(|| i.pointer.hover_pos())
+                    .flatten()
+            })
+            .filter(|pos| ui.ctx().layer_id_at(*pos) == Some(ui.layer_id()))
+            .and_then(|pos| {
+                self.cable_press_target(
+                    patch,
+                    catalog,
+                    canvas,
+                    canvas.intersect(ui.clip_rect()),
+                    pos,
+                )
+            });
+        // egui reports a touch hold on the response, rather than as a raw
+        // Secondary pointer event. Route it through the same nearest endpoint
+        // after the widget pass, so overlapping touch targets keep their owner.
+        let long_touch_target = ui
+            .input(|i| secondary_enabled.then(|| i.pointer.hover_pos()).flatten())
+            .filter(|pos| ui.ctx().layer_id_at(*pos) == Some(ui.layer_id()))
+            .and_then(|pos| {
+                self.cable_press_target(
+                    patch,
+                    catalog,
+                    canvas,
+                    canvas.intersect(ui.clip_rect()),
+                    pos,
+                )
+            });
         let mut action = None;
         let mut outputs = BTreeMap::<(String, String), Pos2>::new();
         let mut inputs = BTreeMap::<(String, String), Pos2>::new();
         let mut jack_targets = Vec::new();
+        let mut hovered_jack_response = false;
+        let mut long_touched_jack_response = false;
+        let mut nearest_jack_tooltip: Option<(egui::Response, String, Pos2, f32)> = None;
         let mut pointer_on_module = false;
         let mut stack_badges = Vec::new();
         // One ordered grouping pass serves picking, menus, counts and curve fans.
@@ -4588,6 +4773,8 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
+                        &node.kind,
+                        port,
                         if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
                         } else if node.kind == "studio_mixer" {
@@ -4631,6 +4818,8 @@ impl Rack {
                     ui,
                     &painter,
                     location,
+                    &node.kind,
+                    port,
                     ui.id().with(("input", &node.id, port)),
                     if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -4673,7 +4862,14 @@ impl Rack {
                         18.0
                     },
                     port_material_scale(&node.kind),
+                    hover_target.as_ref()
+                        == Some(&CableEnd::Input {
+                            node: node.id.clone(),
+                            port: port.to_string(),
+                        }),
                 );
+                hovered_jack_response |= jack.hovered();
+                long_touched_jack_response |= jack.long_touched();
                 if drag_interactive {
                     self.cable_jack(
                         &jack,
@@ -4701,7 +4897,8 @@ impl Rack {
                     node: node.id.clone(),
                     port: port.into(),
                 };
-                if jack.secondary_clicked() {
+                let secondary_owner = secondary_click_target.as_ref() == Some(&end);
+                if secondary_owner {
                     self.open_cable_menu(end.clone(), patch);
                 }
                 if self.requested_cable_menu.as_ref() == Some(&end) {
@@ -4709,9 +4906,20 @@ impl Rack {
                     egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
                     self.requested_cable_menu = None;
                 }
+                if deferred_touch_menu.as_ref() == Some(&end) {
+                    self.open_cable_menu(end.clone(), patch);
+                    egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
+                }
                 let mut popup = egui::Popup::context_menu(&jack)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-                if !jack.secondary_clicked()
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .open_memory(if secondary_owner {
+                        Some(egui::SetOpenCommand::Bool(true))
+                    } else if jack.clicked() {
+                        Some(egui::SetOpenCommand::Bool(false))
+                    } else {
+                        None
+                    });
+                if !secondary_owner
                     && egui::Popup::position_of_id(ui.ctx(), jack.id.with("popup")).is_none()
                 {
                     popup = popup.anchor(egui::PopupAnchor::Position(jack.rect.right_bottom()));
@@ -4751,7 +4959,14 @@ impl Rack {
                     openpatch_core::PortDirection::Input,
                     port,
                 ));
-                jack.on_hover_text(details);
+                if hover_target.as_ref() == Some(&end) {
+                    nearest_jack_tooltip = Some((
+                        jack,
+                        format!("{}\n{details}", jack_instruction(false)),
+                        location,
+                        port_material_scale(&node.kind),
+                    ));
+                }
             }
             for (port_index, port) in output_ports.iter().enumerate() {
                 let output_point = outputs[&(node.id.clone(), port.to_string())];
@@ -4763,6 +4978,8 @@ impl Rack {
                     paint_jack(
                         &painter,
                         output_point,
+                        &node.kind,
+                        port,
                         if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
                         } else if node.kind == "studio_mixer" {
@@ -4816,6 +5033,8 @@ impl Rack {
                     ui,
                     &painter,
                     output_point,
+                    &node.kind,
+                    port,
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -4875,7 +5094,14 @@ impl Rack {
                         18.0
                     },
                     port_material_scale(&node.kind),
+                    hover_target.as_ref()
+                        == Some(&CableEnd::Output {
+                            node: node.id.clone(),
+                            port: port.to_string(),
+                        }),
                 );
+                hovered_jack_response |= jack.hovered();
+                long_touched_jack_response |= jack.long_touched();
                 if drag_interactive {
                     self.cable_jack(
                         &jack,
@@ -4924,7 +5150,8 @@ impl Rack {
                     node: node.id.clone(),
                     port: port.to_string(),
                 };
-                if jack.secondary_clicked() {
+                let secondary_owner = secondary_click_target.as_ref() == Some(&end);
+                if secondary_owner {
                     self.open_cable_menu(end.clone(), patch);
                 }
                 if self.requested_cable_menu.as_ref() == Some(&end) {
@@ -4932,9 +5159,20 @@ impl Rack {
                     egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
                     self.requested_cable_menu = None;
                 }
+                if deferred_touch_menu.as_ref() == Some(&end) {
+                    self.open_cable_menu(end.clone(), patch);
+                    egui::Popup::open_id(ui.ctx(), jack.id.with("popup"));
+                }
                 let mut popup = egui::Popup::context_menu(&jack)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-                if !jack.secondary_clicked()
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .open_memory(if secondary_owner {
+                        Some(egui::SetOpenCommand::Bool(true))
+                    } else if jack.clicked() {
+                        Some(egui::SetOpenCommand::Bool(false))
+                    } else {
+                        None
+                    });
+                if !secondary_owner
                     && egui::Popup::position_of_id(ui.ctx(), jack.id.with("popup")).is_none()
                 {
                     popup = popup.anchor(egui::PopupAnchor::Position(jack.rect.right_bottom()));
@@ -4956,10 +5194,45 @@ impl Rack {
                         }
                     }
                 });
-                jack.on_hover_text(format!("{}.{}\nCapacity: up to {capacity} channels; {units}.{}\nDrag moves the top OUT plug. Cmd/Ctrl-drag adds a cable; Cmd/Ctrl+Shift clones; Shift-click deletes the top cable.", node.id, port, self.port_signal_description(&node.id, openpatch_core::PortDirection::Output, port)));
+                if hover_target.as_ref() == Some(&end) {
+                    nearest_jack_tooltip = Some((
+                        jack,
+                        format!("{}\n{}.{}\nCapacity: up to {capacity} channels; {units}.{}\nDrag moves the top OUT plug. Cmd/Ctrl-drag adds a cable; Cmd/Ctrl+Shift clones; Shift-click deletes the top cable.", jack_instruction(true), node.id, port, self.port_signal_description(&node.id, openpatch_core::PortDirection::Output, port)),
+                        output_point,
+                        port_material_scale(&node.kind),
+                    ));
+                }
             }
         }
 
+        if long_touched_jack_response {
+            if let Some(end) = long_touch_target {
+                // The owning jack may have been painted before egui reports a
+                // long touch on another overlapping response. Defer only
+                // this touch, with graph identity, to the next rack frame.
+                if let Some(node) = patch.nodes.iter().find(|node| node.id == end.node()) {
+                    self.deferred_touch_menu = Some((end, node.kind.clone(), revision));
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+        if let Some((jack, text, center, port_scale)) = nearest_jack_tooltip {
+            if jack.hovered() {
+                jack.on_hover_text(text);
+            } else if hovered_jack_response {
+                painter.circle_stroke(
+                    center,
+                    13.0 * self.zoom * port_scale,
+                    Stroke::new(1.8 * self.zoom, Color32::from_rgb(221, 157, 64)),
+                );
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                if overlapping_jack_tooltip_ready(&jack) {
+                    egui::Tooltip::for_widget(&jack).show(|ui| {
+                        ui.label(text);
+                    });
+                }
+            }
+        }
         self.lighting.finish(&painter, lighting_start);
         RenderedModules {
             outputs,
@@ -4994,7 +5267,8 @@ impl Rack {
                 .map_or([0.0; 2], |s| s.brightness[index]);
             paint_signal_light(
                 painter,
-                output_point + vec2(0.0, 17.0) * self.zoom,
+                output_point
+                    + vec2(0.0, if node.kind == "compare" { 22.0 } else { 17.0 }) * self.zoom,
                 brightness,
                 self.zoom,
                 &self.lighting,
@@ -8598,18 +8872,19 @@ impl Rack {
                             )
                             .to_vec2())
                             * self.zoom;
-                    let hit = Rect::from_center_size(
+                    let hit = jack_target_rect(
+                        &node.kind,
                         center,
-                        Vec2::splat((29.0 * self.zoom * port_material_scale(&node.kind)).max(
-                            if matches!(
-                                node.kind.as_str(),
-                                "colored_noise" | "random_values" | "sh_asr" | "stock_noise"
-                            ) {
-                                12.0
-                            } else {
-                                18.0
-                            },
-                        )),
+                        self.zoom,
+                        if matches!(
+                            node.kind.as_str(),
+                            "colored_noise" | "random_values" | "sh_asr" | "stock_noise"
+                        ) {
+                            12.0
+                        } else {
+                            18.0
+                        },
+                        port_material_scale(&node.kind),
                     )
                     .intersect(clip);
                     let distance = center.distance_sq(pos);
@@ -8737,6 +9012,46 @@ impl Rack {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }
         self.reconcile_selection(patch);
+        if self
+            .cable_secondary_press
+            .as_ref()
+            .is_some_and(|(end, kind)| {
+                !patch
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == end.node() && node.kind == kind.as_str())
+                    || match end {
+                        CableEnd::Output { node, port } => {
+                            !port_exists(patch, catalog, node, port, true)
+                        }
+                        CableEnd::Input { node, port } => {
+                            !port_exists(patch, catalog, node, port, false)
+                        }
+                    }
+            })
+        {
+            self.cable_secondary_press = None;
+        }
+        if self
+            .deferred_touch_menu
+            .as_ref()
+            .is_some_and(|(end, kind, _)| {
+                !patch
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == end.node() && node.kind == kind.as_str())
+                    || match end {
+                        CableEnd::Output { node, port } => {
+                            !port_exists(patch, catalog, node, port, true)
+                        }
+                        CableEnd::Input { node, port } => {
+                            !port_exists(patch, catalog, node, port, false)
+                        }
+                    }
+            })
+        {
+            self.deferred_touch_menu = None;
+        }
         if self.pending.as_ref().is_some_and(|pending| {
             let origin_exists = match &pending.origin {
                 CableEnd::Output { node, port } => port_exists(patch, catalog, node, port, true),
@@ -12648,11 +12963,32 @@ fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32,
     }
 }
 
+fn jack_target_rect(
+    kind: &str,
+    center: Pos2,
+    zoom: f32,
+    minimum_target: f32,
+    port_scale: f32,
+) -> Rect {
+    let side = (29.0 * zoom * port_scale).max(minimum_target);
+    // VCF's staggered rows have a 37-point vertical center gap and closely
+    // spaced diagonal ports. Keep an 18-screen-point minimum at small zoom,
+    // but avoid overlapping the two rows at native scale.
+    let height = if kind == "stock_vcf" {
+        (36.0 * zoom).max(minimum_target)
+    } else {
+        side
+    };
+    Rect::from_center_size(center, vec2(side, height))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn jack_with_minimum_target(
     ui: &mut egui::Ui,
     painter: &egui::Painter,
     center: Pos2,
+    kind: &str,
+    port: &str,
     id: egui::Id,
     label: &str,
     connected: bool,
@@ -12661,12 +12997,10 @@ fn jack_with_minimum_target(
     compact: bool,
     minimum_target: f32,
     port_scale: f32,
+    hover_owner: bool,
 ) -> egui::Response {
     let response = ui.interact(
-        Rect::from_center_size(
-            center,
-            Vec2::splat((29.0 * zoom * port_scale).max(minimum_target)),
-        ),
+        jack_target_rect(kind, center, zoom, minimum_target, port_scale),
         id,
         Sense::click_and_drag(),
     );
@@ -12683,9 +13017,9 @@ fn jack_with_minimum_target(
         )
     });
     paint_jack(
-        painter, center, label, connected, output, zoom, compact, port_scale,
+        painter, center, kind, port, label, connected, output, zoom, compact, port_scale,
     );
-    if response.hovered() {
+    if hover_owner && response.hovered() {
         painter.circle_stroke(
             center,
             13.0 * zoom * port_scale,
@@ -12693,10 +13027,35 @@ fn jack_with_minimum_target(
         );
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    response.on_hover_text(if output {
+    response
+}
+
+fn jack_instruction(output: bool) -> &'static str {
+    if output {
         "Occupied OUT: drag or click another OUT to move the top cable source. Cmd/Ctrl starts a new cable to IN. Empty OUT starts a new cable. Cmd/Ctrl+Shift clones the top cable; Shift-click removes it."
     } else {
         "Drag to OUT to connect. Drag a connected input to another input to move its cable. Right-click to unplug; Esc cancels."
+    }
+}
+
+// A low-zoom jack may own the nearest center while egui hovers an overlapping
+// jack response. Keep its standard delayed text tooltip without changing any
+// response flags or the focusable click-and-drag widgets.
+fn overlapping_jack_tooltip_ready(response: &egui::Response) -> bool {
+    if egui::Popup::is_any_open(&response.ctx) {
+        return false;
+    }
+    let delay = response.ctx.style().interaction.tooltip_delay;
+    response.ctx.input(|i| {
+        i.focused
+            && i.pointer.has_pointer()
+            && !i.pointer.any_down()
+            && i.pointer.is_still()
+            && i.smooth_scroll_delta == Vec2::ZERO
+            && i.time_since_last_scroll() >= delay
+            && i.pointer.time_since_last_movement() >= delay
+            && i.pointer.time_since_last_click() >= delay
+            && i.pointer.time_since_last_click() >= i.pointer.time_since_last_movement() + 0.1
     })
 }
 
@@ -12705,6 +13064,8 @@ fn jack_with_minimum_target(
 fn paint_jack(
     painter: &egui::Painter,
     center: Pos2,
+    kind: &str,
+    port: &str,
     label: &str,
     connected: bool,
     output: bool,
@@ -12721,13 +13082,20 @@ fn paint_jack(
         );
     }
     if !compact {
-        if port_scale >= 1.25 {
-            let label_center = if output {
-                center + vec2(36.0, 0.0) * zoom
+        let caption = jack_caption_placement(kind, port, output);
+        let offset = match caption {
+            JackCaptionPlacement::Classic => None,
+            JackCaptionPlacement::ExistingEnlarged => Some(if output {
+                vec2(36.0, 0.0)
             } else {
-                center - vec2(0.0, 25.0) * zoom
-            };
-            paint_stock_oscillator_port_label(painter, label_center, label, output, zoom);
+                vec2(0.0, -25.0)
+            }),
+            JackCaptionPlacement::Above(distance) => Some(vec2(0.0, -distance)),
+            JackCaptionPlacement::Right(distance) => Some(vec2(distance, 0.0)),
+            JackCaptionPlacement::Left(distance) => Some(vec2(-distance, 0.0)),
+        };
+        if let Some(offset) = offset {
+            paint_enlarged_port_label(painter, center + offset * zoom, label, output, zoom);
         } else {
             crate::panel_skin::port_label(
                 painter,
@@ -12741,10 +13109,9 @@ fn paint_jack(
     crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
 }
 
-/// Larger oscillator jacks need a compact output legend between the fixed
-/// input and output rows. Input labels sit 25 points above their jack; short
-/// output legends use 9.5 pt type in the remaining clear space between sockets.
-fn paint_stock_oscillator_port_label(
+/// Kept at the readable 10.5/9.5-point type used by existing enlarged Stock
+/// jacks; placement is selected separately for each panel's port layout.
+fn paint_enlarged_port_label(
     painter: &egui::Painter,
     center: Pos2,
     label: &str,
@@ -20526,6 +20893,9 @@ mod tests {
     }
     mod generic_fader_geometry_tests {
         include!("generic_fader_geometry_tests.rs");
+    }
+    mod large_socket_ui_tests {
+        include!("large_socket_ui_tests.rs");
     }
 
     mod stock_delay_ui_tests {

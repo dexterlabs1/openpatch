@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 80 installed built-in module kinds in 0.2.2 build 4. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid was restored through PR21. Stock Process passed its frozen source/host comparison, local application checks, platform CI and native render review before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 80 built-in module kinds; the qualified 0.2.4 build 6 rotary release is merged, and 0.2.5 build 7 adds the next socket pass. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid was restored through PR21. Stock Process passed its frozen source/host comparison, local application checks, platform CI and native render review before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -48,10 +48,14 @@ or a labeled scale; decorative pseudo-circuit markings are excluded. Stock VCA
 Mix is the first conversion; Stock VCO/LFO and Stock Noise extend it in the
 installed baseline. Ten more voice/utility panels passed their local, platform
 and native-render checks before [PR23](https://github.com/dexterlabs1/openpatch/pull/23)
-merged. Their 0.2.3 build 5 app is staged. Multi VCO/LFO, wavetable VCO/LFO,
-Stock VCF and Stock VCA form the next six-panel candidate, preserving existing
-panel widths, observed meters and exact editing. The rest of the catalog and
-larger sockets remain an incremental design task. See [module design rules](MODULE_DESIGN.md).
+merged. Multi VCO/LFO, wavetable VCO/LFO, Stock VCF and Stock VCA passed their
+local, platform and native-render gates in [PR24](https://github.com/dexterlabs1/openpatch/pull/24),
+preserving panel widths, observed meters and exact editing. Its signed macOS
+candidate is 0.2.4 build 6. The next development pass enlarges sockets on these
+sixteen panels and checks crowded-port picking, including right-click and real
+touch holds. Its local 1,071-test Desktop suite and strict Clippy pass; platform
+and native render review remain required. The rest of the catalog remains an
+incremental design task. See [module design rules](MODULE_DESIGN.md).
 The latest shared rack/browser header pass removes brand/description headers
 and makes module names prominent and left-aligned. Local layout checks and the
 Mac ARM candidate build pass; capture review and native window/input
