@@ -6,7 +6,7 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 
 - Keep the installed 0.2.5 build 7 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
 - Validate macOS ARM only by default. Linux/Windows and throughput benchmarks are deferred to an explicitly requested full-platform milestone. MIDI and live performance remain last.
-- Work on one product milestone at a time. The user's next priority is extending the approved Signal Atlas module design across the remaining catalog, with matching browser thumbnails. Keep Stock Scope checkpointed; it must not delay this design milestone. Feature implementation remains paused during the current workflow/planning task.
+- Work on one product milestone at a time. The user's next priority is extending the approved Signal Atlas module design across the remaining catalog, with matching browser thumbnails. Keep Stock Scope checkpointed; it must not delay this design milestone. The goal is active again; proceed with this design milestone.
 - Each work item needs one user-visible outcome and a short done checklist. Avoid expanding acceptance into unrelated cleanup or exhaustive internal equivalence. Preserve existing frozen references and honest fidelity claims.
 - Do not touch user patches/settings or replace a running app. Preserve existing computer-use restrictions; headless validation does not establish a native device test.
 

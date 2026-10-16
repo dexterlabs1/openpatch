@@ -12,7 +12,7 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## Next product milestone: finish the approved module design
+## Active product milestone: finish the approved module design
 
 The user wants the new module design soon. Extend the approved **01 Signal Atlas** direction across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
 
@@ -23,9 +23,15 @@ The user wants the new module design soon. Extend the approved **01 Signal Atlas
 - **Delivery:** inventory the remaining panels, apply shared controls first, then convert coherent layout families on one milestone branch. Review a representative changed panel early; avoid waiting for every catalog detail before making the design reviewable. Use focused UI/geometry checks and one Mac regression for the release candidate; unchanged DSP references do not need repeating.
 - **Done:** remaining supported catalog panels follow the approved design, browser previews match them, controls/labels remain usable, affected checks pass and the candidate is ready for one installation. Keep 0.2.5 installed during development.
 
+### First catalog batch in progress
+
+Branch `work/signal-atlas-catalog` extends rotary controls and larger sockets to Sine LFO, Low-pass, Gain, OTA VCA, analog ADSR and State Variable Filter. ADSR EG receives four main rotaries and four smaller bipolar CV-depth rotaries. Its range legends describe real time constants, sustain voltage and modulation depth; stage lamps remain engine-driven. All catalog faces now share the approved warm ivory material through the rack/browser renderer.
+
+Focused checks cover successive real-Session drag edits with one undo, enlarged jack identity/caption clearance, envelope precision entry/lights, and identical rack/browser control geometry. An opt-in CPU panel preview renders actual egui meshes without opening a window or audio device. This batch is development source, not an installed release. Remaining dense effect, sequencer, mixer and utility layouts still need individual control/spacing passes; the shared faceplate change alone does not complete their redesign.
+
 ## Checkpointed: Stock Scope integration
 
-Feature implementation is paused. The current branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
+Stock Scope implementation is checkpointed while the design milestone proceeds. Its branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
 
 - **Proven:** the optimized actual Core probe matched all 4,242 frozen genuine-Rack snapshots across 1,056 cases, including full 50-second sweeps at three rates. The reference declaration remains unchanged. This establishes the bounded source/host numerical result, not complete application or hardware qualification.
 - **Written, not yet qualified:** the shared stock panel, native AUTO view, real callback/MCP transport, seven Core lifecycle/realtime tests, panel tests and separate 46-record safety probe.

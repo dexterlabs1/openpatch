@@ -744,3 +744,38 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
         );
     }
 }
+
+#[test]
+fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
+    for (kind, parameter, initial, local) in [
+        ("lowpass", "cutoff", 1000.0, pos2(90.0, 183.0)),
+        ("gain", "gain", 1.0, pos2(75.0, 183.0)),
+        ("analog_vca", "gain", 1.0, pos2(75.0, 183.0)),
+        ("adsr", "attack", 0.01, pos2(60.0, 139.0)),
+        ("adsr_eg", "attack", 0.5, pos2(58.0, 136.0)),
+        ("lfo", "frequency", 2.0, pos2(90.0, 138.0)),
+        ("svf_filter", "cutoff", 1000.0, pos2(67.5, 139.0)),
+    ] {
+        let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
+        let center = f.rack.viewport.unwrap().min + f.rack.pan
+            + f.rack.positions["target"].to_vec2() + local.to_vec2();
+        let baseline = f.undo_steps();
+        f.time = 1.0;
+        assert!(f.press(center, egui::Modifiers::NONE).is_none(), "{kind}: no click jump");
+        let first = center - vec2(0.0, 10.0);
+        let edit = f.move_to(first, egui::Modifiers::NONE).expect(kind);
+        assert_eq!(edit["parameter"], parameter);
+        let after_first = f.value("target", parameter);
+        assert!(after_first > initial, "{kind}: first relative move");
+        let second = center - vec2(0.0, 20.0);
+        f.move_to(second, egui::Modifiers::NONE).expect(kind);
+        let after_second = f.value("target", parameter);
+        assert!(after_second > after_first, "{kind}: current revision on second move");
+        f.release(second, egui::Modifiers::NONE);
+        assert_eq!(f.undo_steps(), baseline + 1, "{kind}: one gesture, one undo");
+        f.session.execute("undo", json!({})).unwrap();
+        near(f.value("target", parameter), initial);
+        f.session.execute("redo", json!({})).unwrap();
+        near(f.value("target", parameter), after_second);
+    }
+}

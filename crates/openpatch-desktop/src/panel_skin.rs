@@ -132,24 +132,7 @@ pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
     }
 }
 
-pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
-    // Warm, matte metal: a simple face and a crisp edge keep the controls clear.
-    // Room illumination belongs to the caller, including bespoke panel layouts.
-    painter.rect_filled(
-        rect.translate(vec2(1.0, 1.5) * zoom),
-        1.0,
-        Color32::from_black_alpha(38),
-    );
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(139, 140, 133));
-    let face = rect.shrink(1.0 * zoom);
-    painter.rect_filled(face, 0.0, Color32::from_rgb(223, 220, 210));
-    painter.line_segment(
-        [face.left_top(), face.right_top()],
-        Stroke::new(0.6 * zoom, Color32::from_rgb(237, 234, 223)),
-    );
-}
-
-/// Unprinted warm-ivory stock used by the Signal Atlas VCA mixer faceplate.
+/// Warm-ivory stock shared by every rack panel and browser thumbnail.
 /// This intentionally has no family-color enamel band.
 pub(crate) fn signal_atlas_face(painter: &egui::Painter, rect: Rect, zoom: f32) {
     painter.rect_filled(

@@ -1,5 +1,4 @@
-// Original shared rack/browser panel. The shape is a printed nominal guide;
-// only engine snapshots drive stage and any-gate lamps.
+// The rack and browser share this panel. Only engine snapshots drive the lamps.
 const ADSR_EG_PARAMS: [&str; 8] = [
     "attack",
     "decay",
@@ -13,20 +12,22 @@ const ADSR_EG_PARAMS: [&str; 8] = [
 fn adsr_eg_time_edit(edit: &ParameterEdit) -> bool {
     edit.kind == "adsr_eg" && matches!(edit.parameter.as_str(), "attack" | "decay" | "release")
 }
-fn adsr_eg_slider_rect(index: usize) -> Rect {
-    let row = index / 4;
-    Rect::from_min_size(
-        pos2(23.0 + (index % 4) as f32 * 80.0, 168.0 + row as f32 * 74.0),
-        vec2(70.0, 22.0),
+fn adsr_eg_knob_rect(index: usize) -> Rect {
+    Rect::from_center_size(
+        pos2(
+            58.0 + (index % 4) as f32 * 80.0,
+            if index < 4 { 136.0 } else { 244.0 },
+        ),
+        Vec2::splat(if index < 4 { 62.0 } else { 46.0 }),
     )
 }
 fn adsr_eg_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             58.0 + (index % 4) as f32 * 80.0,
-            201.0 + (index / 4) as f32 * 73.0,
+            if index < 4 { 194.0 } else { 286.0 },
         ),
-        vec2(64.0, 18.0),
+        vec2(70.0, 18.0),
     )
 }
 fn adsr_eg_push_rect() -> Rect {
@@ -83,41 +84,17 @@ impl Rack {
         let p = |x, y| rect.min + vec2(x, y) * z;
         let screen = |r: Rect| Rect::from_min_max(p(r.min.x, r.min.y), p(r.max.x, r.max.y));
         let painter = ui.painter().clone();
-        let accent = crate::panel_skin::family_accent("adsr_eg");
         let ctx = ui.ctx().clone();
         let font = |size| crate::panel_skin::print_font(&ctx, size * z);
         let mut action = None;
-        let guide = Rect::from_min_max(p(24.0, 77.0), p(336.0, 130.0));
-        painter.rect_filled(guide, 3.0 * z, Color32::from_rgb(204, 205, 196));
-        painter.text(
-            p(32.0, 86.0),
-            Align2::LEFT_CENTER,
-            "NOMINAL SHAPE",
-            font(8.0),
-            MUTED,
-        );
-        let sustain = node
-            .params
-            .get("sustain")
-            .copied()
-            .unwrap_or(0.5)
-            .clamp(0.0, 1.0);
-        let points = vec![
-            p(35.0, 121.0),
-            p(78.0, 94.0),
-            p(132.0, 121.0 - 24.0 * sustain),
-            p(245.0, 121.0 - 24.0 * sustain),
-            p(324.0, 121.0),
-        ];
-        painter.add(egui::Shape::line(points, Stroke::new(1.5 * z, accent)));
         // Stage LEDs are aggregate DSP state across polyphonic lanes; no clock,
-        // button state or nominal drawing is used to infer an active stage.
+        // button state or knob position is used to infer an active stage.
         for (i, label) in ["ATTACK", "DECAY", "SUSTAIN", "RELEASE"].iter().enumerate() {
             let x = 58.0 + i as f32 * 80.0;
-            let center = p(x - 23.0, 148.0);
+            let center = p(x - 23.0, 86.0);
             self.adsr_eg_lamp(&painter, node, i, center, z);
             painter.text(
-                p(x + 3.0, 148.0),
+                p(x + 3.0, 86.0),
                 Align2::CENTER_CENTER,
                 label,
                 font(9.0),
@@ -128,33 +105,42 @@ impl Rack {
             let depth = i >= 4;
             if depth {
                 painter.text(
-                    p(58.0 + (i % 4) as f32 * 80.0, 235.0),
+                    p(58.0 + (i % 4) as f32 * 80.0, 211.0),
                     Align2::CENTER_CENTER,
                     "CV DEPTH",
                     font(8.0),
                     MUTED,
                 );
             }
+            let center_x = 58.0 + (i % 4) as f32 * 80.0;
+            painter.text(
+                p(center_x, if depth { 273.0 } else { 174.0 }),
+                Align2::CENTER_CENTER,
+                if depth {
+                    "−100  0  +100%"
+                } else if i == 2 {
+                    "0  50  100%"
+                } else {
+                    "1  100  10k ms"
+                },
+                font(7.0),
+                MUTED,
+            );
             let min = if depth { -1.0 } else { 0.0 };
-            let mut raw = node
+            let raw = node
                 .params
                 .get(*name)
                 .copied()
                 .unwrap_or(if depth { 0.0 } else { 0.5 })
                 .clamp(min, 1.0);
-            let slider_rect = screen(adsr_eg_slider_rect(i));
-            let response = ui
-                .scope(|ui| {
-                    crate::panel_skin::control_style(ui, z);
-                    ui.spacing_mut().slider_width = slider_rect.width();
-                    ui.spacing_mut().interact_size.y = slider_rect.height();
-                    ui.put(
-                        slider_rect,
-                        egui::Slider::new(&mut raw, min..=1.0).show_value(false),
-                    )
-                })
-                .inner;
-            response.widget_info(|| {
+            let normalized = if depth { (raw + 1.0) * 0.5 } else { raw };
+            let knob_rect = screen(adsr_eg_knob_rect(i));
+            let knob = ui.interact(
+                knob_rect,
+                ui.id().with(("adsr-eg-knob", &node.id, name)),
+                Sense::click_and_drag(),
+            );
+            knob.widget_info(|| {
                 egui::WidgetInfo::slider(
                     ui.is_enabled(),
                     f64::from(raw),
@@ -165,47 +151,66 @@ impl Rack {
                     },
                 )
             });
-            if response.drag_started()
-                || (response.is_pointer_button_down_on()
-                    && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary)))
+            let input_enabled = ui.is_enabled()
+                && self.shortcuts_enabled
+                && self.editing.is_none()
+                && self.annotation_edit.is_none()
+                && !egui::Popup::is_any_open(ui.ctx());
+            let input = self.parameter_knob_input(ui, &knob, normalized, input_enabled);
+            if input_enabled
+                && (knob.is_pointer_button_down_on()
+                    || knob.clicked_by(PointerButton::Primary)
+                    || knob.drag_started_by(PointerButton::Primary))
             {
                 self.select_primary(node.id.clone());
-                response.request_focus();
-                if ui.data(|d| d.get_temp::<String>(response.id)).is_none() {
-                    self.gesture = self.gesture.wrapping_add(1);
-                    ui.data_mut(|d| {
-                        d.insert_temp(response.id, format!("rack-adsr-slider-{}", self.gesture))
-                    });
-                }
             }
-            if response.changed() || response.double_clicked() {
-                self.select_primary(node.id.clone());
-                if response.double_clicked() {
-                    raw = if depth { 0.0 } else { 0.5 };
-                }
-                let mut args =
-                    json!({"id":node.id,"parameter":name,"value":raw,"expected_revision":revision});
-                if (response.dragged() || response.is_pointer_button_down_on())
-                    && !response.double_clicked()
-                {
-                    if let Some(group) = ui.data(|d| d.get_temp::<String>(response.id)) {
-                        args["history_group"] = json!(group);
+            let keyboard_step = ui.input(|i| {
+                if i.modifiers.command || i.modifiers.ctrl {
+                    if i.modifiers.shift {
+                        0.0001
+                    } else {
+                        0.001
                     }
+                } else if i.modifiers.shift {
+                    0.1
+                } else {
+                    0.01
+                }
+            });
+            let next = if input.reset {
+                Some(if depth { 0.0 } else { 0.5 })
+            } else if let Some(high) = input.boundary {
+                Some(if high { 1.0 } else { min })
+            } else if input.nudge != 0 {
+                let n = (normalized + input.nudge as f32 * keyboard_step).clamp(0.0, 1.0);
+                Some(if depth { n * 2.0 - 1.0 } else { n })
+            } else {
+                input
+                    .normalized
+                    .map(|n| if depth { n * 2.0 - 1.0 } else { n })
+            };
+            if let Some(next) = next.filter(|next| *next != raw) {
+                let mut args = json!({"id":node.id,"parameter":name,"value":next,"expected_revision":revision});
+                if let Some(group) = input.history_group {
+                    args["history_group"] = json!(group);
                 }
                 action = Some(RackAction::Command("set_parameter", args));
             }
-            if response.drag_stopped()
-                || ui.input(|i| i.pointer.button_released(PointerButton::Primary))
-            {
-                ui.data_mut(|d| d.remove::<String>(response.id));
-            }
-            if response.secondary_clicked() {
+            if input_enabled && knob.secondary_clicked() {
                 self.open_precision_editor(
                     adsr_eg_edit(node, i, revision),
                     screen(adsr_eg_value_rect(i)),
                 );
             }
-            response.on_hover_text(if depth { "Bipolar CV depth: ±100%. Effective stage value adds CV / 10 × depth, then clamps to 0–100%." } else if i == 2 { "Sustain level as a percentage of 10 V. Click the readout for exact entry." } else { "Time constant, 1–10,000 ms. 100 ms at midpoint. Attack time to peak is longer. Click the readout for exact entry." });
+            knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(if depth { "Bipolar CV depth: ±100%. Effective stage value adds CV / 10 × depth, then clamps to 0–100%. Drag vertically; Ctrl/Cmd for fine adjustment. Double-click resets to 0%." } else if i == 2 { "Sustain level as a percentage of 10 V. Drag vertically; Ctrl/Cmd for fine adjustment. Double-click resets to 50%." } else { "Time constant, 1–10,000 ms. 100 ms at midpoint. Attack time to peak is longer. Drag vertically; Ctrl/Cmd for fine adjustment. Double-click resets to 100 ms." });
+            crate::panel_skin::signal_atlas_rotary(
+                &painter,
+                knob_rect.center(),
+                normalized,
+                knob.hovered() || knob.dragged() || knob.has_focus(),
+                if depth { 20.0 } else { 28.0 },
+                z,
+            );
             let value_rect = screen(adsr_eg_value_rect(i));
             let label = if !depth && i != 2 {
                 format!("{:.0} ms", 10000.0_f32.powf(raw))
@@ -251,7 +256,7 @@ impl Rack {
             Stroke::new(0.6 * z, Color32::from_rgb(166, 164, 157)),
         );
         painter.text(
-            p(180.0, 342.0),
+            p(180.0, 337.0),
             Align2::CENTER_CENTER,
             "GATE ≥ 1 V  ·  ENV 0–10 V NOMINAL",
             font(8.0),

@@ -9399,7 +9399,8 @@ mod project_workflow_tests {
             },
             |ctx| app.rack_workspace(ctx, None),
         );
-        preset_text(&output, "NOMINAL SHAPE");
+        preset_text(&output, "1  100  10k ms");
+        preset_text(&output, "CV DEPTH");
         preset_text(&output, "ADSR EG");
     }
 

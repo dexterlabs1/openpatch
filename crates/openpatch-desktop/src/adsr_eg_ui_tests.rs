@@ -82,13 +82,13 @@ fn adsr_eg_time_entry_and_tab_use_all_eight_guarded_controls() {
     assert_eq!(rack.precision_next.as_ref().unwrap().parameter, "decay");
 }
 #[test]
-fn adsr_eg_sliders_change_primary_and_bipolar_depth_values() {
+fn adsr_eg_rotaries_change_primary_and_bipolar_depth_values() {
     for (i, parameter) in ADSR_EG_PARAMS.iter().enumerate() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
         let patch = patch();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let start = at(adsr_eg_slider_rect(i).center());
+        let start = at(adsr_eg_knob_rect(i).center());
         frame(
             &ctx,
             &mut rack,
@@ -96,7 +96,7 @@ fn adsr_eg_sliders_change_primary_and_bipolar_depth_values() {
             1.0,
             vec![egui::Event::PointerMoved(start), button(start, true)],
         );
-        let end = start + vec2(if i < 4 { 25.0 } else { -25.0 }, 0.0);
+        let end = start + vec2(0.0, if i < 4 { -25.0 } else { 25.0 });
         let action = frame(
             &ctx,
             &mut rack,
@@ -106,9 +106,85 @@ fn adsr_eg_sliders_change_primary_and_bipolar_depth_values() {
         );
         assert!(
             matches!(action,Some(RackAction::Command("set_parameter",args)) if args["parameter"]==*parameter && if i<4 {args["value"].as_f64().unwrap()>0.5} else {args["value"].as_f64().unwrap()<0.0}),
-            "slider {i}"
+            "rotary {i}"
         );
     }
+}
+#[test]
+fn adsr_eg_successive_rotary_edits_keep_revision_and_one_undo_group() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 41);
+    let start = at(adsr_eg_knob_rect(4).center());
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![egui::Event::PointerMoved(start), button(start, true)],
+        true,
+        true,
+        41
+    )
+    .0
+    .is_none());
+    let first = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 15.0))],
+        true,
+        true,
+        41,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", first)) = first else {
+        panic!("initial CV depth drag must edit its parameter")
+    };
+    assert_eq!(first["parameter"], "attack_amount");
+    assert_eq!(first["expected_revision"], 41);
+    let group = first["history_group"].clone();
+    assert!(group.is_string());
+    patch.nodes[0].params.insert(
+        "attack_amount".into(),
+        first["value"].as_f64().unwrap() as f32,
+    );
+    let second = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.2,
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 30.0))],
+        true,
+        true,
+        42,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", second)) = second else {
+        panic!("successive CV depth drag must edit its parameter")
+    };
+    assert_eq!(second["parameter"], "attack_amount");
+    assert_eq!(second["expected_revision"], 42);
+    assert_eq!(second["history_group"], group);
+    assert!(second["value"].as_f64().unwrap() > first["value"].as_f64().unwrap());
+    patch.nodes[0].params.insert(
+        "attack_amount".into(),
+        second["value"].as_f64().unwrap() as f32,
+    );
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.3,
+        vec![button(start - vec2(0.0, 30.0), false)],
+        true,
+        true,
+        43
+    )
+    .0
+    .is_none());
 }
 #[test]
 fn adsr_eg_push_held_and_coalesced_click_release_safely() {
@@ -160,7 +236,7 @@ fn adsr_eg_push_held_and_coalesced_click_release_safely() {
 fn adsr_eg_ports_and_control_bounds_are_separate_and_inside_panel() {
     let bounds = Rect::from_min_size(Pos2::ZERO, vec2(panel_width("adsr_eg"), PANEL_HEIGHT));
     let controls = (0..8)
-        .flat_map(|i| [adsr_eg_slider_rect(i), adsr_eg_value_rect(i)])
+        .flat_map(|i| [adsr_eg_knob_rect(i), adsr_eg_value_rect(i)])
         .chain([adsr_eg_push_rect()])
         .collect::<Vec<_>>();
     for r in &controls {
@@ -226,11 +302,14 @@ fn adsr_eg_shared_browser_text_fits_at_rack_and_thumbnail_scales() {
                 collect_texts(&shape.shape, &mut texts);
             }
             for required in [
-                "NOMINAL SHAPE",
                 "ATTACK",
                 "DECAY",
                 "SUSTAIN",
                 "RELEASE",
+                "CV DEPTH",
+                "1  100  10k ms",
+                "0  50  100%",
+                "−100  0  +100%",
                 "ENV",
                 "PUSH",
                 "A CV",
@@ -266,7 +345,7 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
     let mut rack = Rack::default();
     let patch = patch();
     let centers = (0..4)
-        .map(|i| at(pos2(35.0 + i as f32 * 80.0, 148.0)))
+        .map(|i| at(pos2(35.0 + i as f32 * 80.0, 86.0)))
         .chain([at(pos2(267.0, 367.0))])
         .collect::<Vec<_>>();
     let colors = |output: egui::FullOutput| {
@@ -278,7 +357,8 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
                     .iter()
                     .filter_map(|s| match &s.shape {
                         egui::Shape::Circle(c)
-                            if c.center.distance(*center) < 0.1 && (c.radius - crate::lighting::lamp_radius(2.5)).abs() < 0.1 =>
+                            if c.center.distance(*center) < 0.1
+                                && (c.radius - crate::lighting::lamp_radius(2.5)).abs() < 0.1 =>
                         {
                             Some(c.fill)
                         }
@@ -290,7 +370,10 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
             .collect::<Vec<_>>()
     };
     let dark = colors(frame_output(&ctx, &mut rack, &patch, 0.0, vec![]).1);
-    let mut lights = ModuleLightState { count:5, ..ModuleLightState::default() };
+    let mut lights = ModuleLightState {
+        count: 5,
+        ..ModuleLightState::default()
+    };
     for i in 0..5 {
         lights.brightness[i][0] = 1.0;
         rack.module_lights.insert("env".into(), lights);

@@ -1,9 +1,10 @@
 use super::*;
 
-const KINDS: [&str; 16] = [
+const KINDS: [&str; 22] = [
     "analog_vco", "ladder_vcf", "fade", "compare", "process", "rescale", "gate",
     "attenuverter", "white_noise", "oscillator", "multi_vco", "multi_lfo",
     "wavetable_vco", "wavetable_lfo", "stock_vcf", "stock_vca",
+    "lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter",
 ];
 
 #[derive(Clone, Copy)]
@@ -38,6 +39,11 @@ impl SocketSpec {
 fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
     use SocketSpec as S;
     match kind {
+        "lfo" => (180.0, vec![S::input("fm", "FM", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
+        "lowpass" => (180.0, vec![S::input("signal", "IN", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
+        "gain" | "analog_vca" => (150.0, vec![S::input("signal", "IN", 50.0, 332.0), S::input("cv", "CV", 100.0, 332.0), S::output("out", "OUT", 75.0, 374.0)]),
+        "adsr" => (240.0, vec![S::input("gate", "GATE", 80.0, 332.0), S::input("retrigger", "RETRIG", 160.0, 332.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "V/OCT", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
         "analog_vco" => (210.0, vec![
             S::input("pitch", "V/OCT", 70.0, 332.0),
             S::input("fm", "FM", 140.0, 332.0),
@@ -1043,5 +1049,12 @@ fn narrow_vca_adjacent_target_overlap_preserves_first_input_and_occupied_menu() 
                 Some(CableEnd::Input { node:"subject".into(), port:"cv".into() }),
                 "occupied CV primary pick chose neighboring signal input");
         }
+    }
+}
+
+#[test]
+fn signal_atlas_voice_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter"] {
+        assert_large_socket_kind(kind);
     }
 }

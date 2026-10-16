@@ -53,7 +53,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_process" => STOCK_PROCESS_PORT_SCALE,
         "analog_vco" | "ladder_vcf" | "fade" | "compare" | "process" | "rescale" | "gate"
         | "attenuverter" | "white_noise" | "oscillator" | "multi_vco" | "multi_lfo"
-        | "wavetable_vco" | "wavetable_lfo" | "stock_vcf" | "stock_vca" => REDESIGNED_PORT_SCALE,
+        | "wavetable_vco" | "wavetable_lfo" | "stock_vcf" | "stock_vca" | "lfo" | "lowpass"
+        | "gain" | "analog_vca" | "adsr" | "adsr_eg" | "svf_filter" => REDESIGNED_PORT_SCALE,
         _ => 1.0,
     }
 }
@@ -77,6 +78,11 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("attenuverter", "signal", false) => Left(31.0),
         ("process" | "multi_vco" | "multi_lfo", _, false) => Above(21.0),
         ("stock_vcf", _, false) => Above(21.0),
+        ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
+        ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("svf_filter", _, true) => Above(24.0),
+        ("adsr_eg", "attack_cv" | "decay_cv" | "sustain_cv" | "release_cv", false) => Right(30.0),
+        ("lfo" | "lowpass" | "gain" | "analog_vca" | "adsr", _, true) => Right(36.0),
         ("compare" | "process" | "wavetable_vco" | "wavetable_lfo" | "stock_vca", _, true) => {
             Above(24.0)
         }
@@ -97,8 +103,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
     }
 }
 
-// The catalog fallback stays a fader until its cell has been checked for a
-// rotary, its labels, and its separate exact-value target at reduced zoom.
+// Continuous controls adopt rotary hardware only after checking their cells,
+// captions and independent exact-value targets at reduced zoom.
 fn signal_atlas_generic_rotary_kind(kind: &str) -> bool {
     matches!(
         kind,
@@ -112,6 +118,12 @@ fn signal_atlas_generic_rotary_kind(kind: &str) -> bool {
             | "attenuverter"
             | "white_noise"
             | "oscillator"
+            | "lfo"
+            | "lowpass"
+            | "gain"
+            | "analog_vca"
+            | "adsr"
+            | "svf_filter"
     )
 }
 
@@ -137,19 +149,6 @@ fn oscillator_voice_rotary_parameter(kind: &str, parameter: &str) -> bool {
         }
         _ => false,
     }
-}
-
-fn signal_atlas_face_kind(kind: &str) -> bool {
-    signal_atlas_generic_rotary_kind(kind)
-        || matches!(
-            kind,
-            "multi_vco"
-                | "multi_lfo"
-                | "wavetable_vco"
-                | "wavetable_lfo"
-                | "stock_vcf"
-                | "stock_vca"
-        )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4116,8 +4115,11 @@ impl Rack {
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     (pos2(width * 0.5, 125.0), 32.0)
-                } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf") {
+                } else if matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf" | "lfo") {
                     voice_parameter_position(index, width)
+                } else if matches!(node.kind.as_str(), "adsr" | "svf_filter") {
+                    let (center, _) = parameter_position(count, index, width);
+                    (center, 32.0)
                 } else {
                     // Stacked generic labels share the space between the prior
                     // numeric well and this fader. Keep the larger print below
@@ -4340,6 +4342,7 @@ impl Rack {
                 } else if node.kind == "gates" {
                     110.0
                 } else if count >= 4
+                    || (node.kind == "lfo" && index > 0)
                     || matches!(node.kind.as_str(), "mid_side" | "stock_mid_side")
                     || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
                 {
@@ -12808,13 +12811,10 @@ fn paint_panel(
     zoom: f32,
     lighting: &crate::lighting::RoomLighting,
 ) {
-    if matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
-        crate::panel_skin::signal_atlas_face(painter, rect, zoom);
-    } else if node.kind == "stock_noise" || signal_atlas_face_kind(&node.kind) {
-        crate::panel_skin::signal_atlas_face(painter, rect, zoom);
-        crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
-    } else {
-        crate::panel_skin::metal(painter, rect, zoom);
+    // One faceplate material across the catalog and its browser previews.
+    // Bespoke mixer/process layouts own their section dividers.
+    crate::panel_skin::signal_atlas_face(painter, rect, zoom);
+    if !matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
         crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
     }
     // Reflective mounting hardware belongs to the panel paint, including
@@ -20890,6 +20890,9 @@ mod tests {
     }
     mod generic_fader_ui_tests {
         include!("generic_fader_ui_tests.rs");
+    }
+    mod panel_design_preview {
+        include!("panel_design_preview.rs");
     }
     mod generic_fader_geometry_tests {
         include!("generic_fader_geometry_tests.rs");
