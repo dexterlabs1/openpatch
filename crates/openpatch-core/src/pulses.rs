@@ -100,6 +100,7 @@ impl Pulses {
             input_channels: None,
             output_channels: None,
             automatic_channels: None,
+            clock_frequency: None,
             waveform_position: None,
             count: 10,
             brightness: std::array::from_fn(|button| {

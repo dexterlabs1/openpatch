@@ -258,6 +258,7 @@ impl Gates {
             input_channels: None,
             output_channels: None,
             automatic_channels: None,
+            clock_frequency: None,
             waveform_position: None,
             count: 6,
             brightness: self.lights.map(|pair| pair.map(|value| value as f32)),

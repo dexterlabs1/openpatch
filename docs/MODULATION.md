@@ -1,5 +1,8 @@
 # Clocked modulation
 
+For the separately qualified stock-style module, see [Stock LFO](STOCK_LFO.md).
+The `multi_lfo` and legacy `lfo` contracts on this page remain unchanged.
+
 `multi_lfo` is an original Rust functional CV oscillator for version-2 patches.
 It supplies simultaneous sine, triangle, saw, and square outputs, exponential
 FM, pulse-width modulation, clock synchronization, and hard reset. It is not a

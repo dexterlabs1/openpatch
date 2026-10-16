@@ -5384,6 +5384,102 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_stock_lfo_fixture(&mut self) -> BTreeMap<String, openpatch_core::ModuleLightState> {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"mono","kind":"stock_lfo","params":{"rate":0}},
+                {"id":"clocked","kind":"stock_lfo","params":{"rate":0,"invert":1}},
+                {"id":"poly","kind":"stock_lfo","params":{"rate":2,"offset":0,"fm_amount":0.5}},
+                {"id":"clock","kind":"multi_lfo","params":{"frequency":8,"unipolar":1}},
+                {"id":"fm","kind":"poly_constant","params":{"channels":5,"v1":-2,"v2":-1,"v3":0,"v4":1,"v5":2}},
+                {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0}}],
+            "cables":[
+                {"from":"clock","output":"square","to":"clocked","input":"clock"},
+                {"from":"fm","to":"poly","input":"fm"},
+                {"from":"mono","output":"sine","to":"scope","input":"x"},
+                {"from":"poly","output":"triangle","to":"scope","input":"y"}],
+            "output":"mono","output_port":"sine"})).expect("Stock LFO fixture");
+        let mut engine = patch.compile().expect("Stock LFO fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let ids = ["mono", "clocked", "poly"];
+        let ports = ["sine", "triangle", "saw", "square"];
+        let taps: [_; 12] = std::array::from_fn(|index| {
+            Some(
+                engine
+                    .resolve_tap(ids[index / 4], ports[index % 4], 0)
+                    .unwrap(),
+            )
+        });
+        let mut audio = vec![[0.0; 2]; 18000];
+        let mut observed = vec![[openpatch_core::TapSample::default(); 12]; audio.len()];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut observed);
+        assert!(audio.iter().flatten().all(|v| v.is_finite()));
+        let mut lights = BTreeMap::new();
+        for id in ids {
+            let state = engine
+                .module_lights(engine.resolve_module_lights(id).unwrap())
+                .unwrap();
+            assert_eq!(state.count, 5);
+            let clock = state.clock_frequency.expect("Actual measured clock");
+            if id == "clocked" {
+                assert!((clock - 8.0).abs() < 0.1);
+            } else {
+                assert_eq!(clock, 2.0);
+            }
+            assert!(state
+                .brightness
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite()));
+            if id == "poly" {
+                assert_eq!(state.brightness[2][0], 1.0);
+                assert_eq!(state.brightness[0][0], 0.0);
+            } else {
+                assert!(state.brightness[0][0] > 0.0);
+            }
+            lights.insert(id.to_owned(), state);
+        }
+        assert_eq!(lights["mono"].brightness[4][0], 1.0);
+        assert_eq!(lights["clocked"].brightness[3][0], 1.0);
+        assert!(observed
+            .last()
+            .unwrap()
+            .iter()
+            .all(|sample| sample.active && sample.value.is_finite()));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 5));
+        assert!(scope.x[0]
+            .iter()
+            .any(|point| point.min.is_finite() && point.max > point.min));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],
+            "positions":{"mono":[0,0],"clocked":[390,0],"poly":[780,0],
+                "scope":[0,420],"clock":[720,420],"fm":[1080,420]}}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights.clone(), BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock LFO · free, clocked, and polyphonic".into();
+        self.status = "Actual offline Engine · free Hz / measured clock ratio · mono phase and poly blue lamps · five-voice Scope · no live audio".into();
+        lights
+    }
+
     fn prepare_wavetable_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
@@ -7105,6 +7201,25 @@ impl OpenPatch {
             self.title = "Split · shared library faceplate".into();
             self.status = "The browser uses the same Split panel; its unavailable count is distinct from actual rack observations".into();
         }
+        if frame == 2530 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_lfo_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2548 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock LFO · actual phase RGB, Offset/Invert lamps and observed clock rates remain in darkroom · no live audio".into();
+        }
+        if frame == 2564 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("stock_lfo", &self.catalog));
+            self.title = "Stock LFO · shared library faceplate".into();
+            self.status = "Shared Stock LFO panel · configured controls remain visible; preview does not invent clock or lamp telemetry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7233,6 +7348,9 @@ impl OpenPatch {
                 | 2490
                 | 2506
                 | 2522
+                | 2540
+                | 2556
+                | 2572
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -7365,7 +7483,10 @@ impl OpenPatch {
                 111 => path.with_file_name("merge-library.png"),
                 112 => path.with_file_name("rack-split.png"),
                 113 => path.with_file_name("rack-split-lights-out.png"),
-                _ => path.with_file_name("split-library.png"),
+                114 => path.with_file_name("split-library.png"),
+                115 => path.with_file_name("rack-stock-lfo.png"),
+                116 => path.with_file_name("rack-stock-lfo-lights-out.png"),
+                _ => path.with_file_name("stock-lfo-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7376,18 +7497,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/115 at frame {frame}: {}",
+                "Native smoke: capture {}/118 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 115 {
+            if captures == 118 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2550, "Native screenshot timeout");
+        assert!(frame < 2600, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -8056,6 +8177,20 @@ mod project_workflow_tests {
         }
         assert_eq!(app.patch.nodes.len(), 6);
         assert_eq!(app.patch.cables.len(), 3);
+        assert!(app.status.contains("offline"));
+    }
+
+    #[test]
+    fn stock_lfo_smoke_observes_free_clocked_and_polyphonic_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let lights = app.prepare_stock_lfo_fixture();
+        assert_eq!(lights.len(), 3);
+        assert_eq!(lights["mono"].clock_frequency, Some(2.0));
+        assert!((lights["clocked"].clock_frequency.unwrap() - 8.0).abs() < 0.1);
+        assert_eq!(lights["poly"].brightness[2][0], 1.0);
+        assert_eq!(app.patch.nodes.len(), 6);
+        assert_eq!(app.patch.cables.len(), 4);
         assert!(app.status.contains("offline"));
     }
 

@@ -114,7 +114,7 @@ and local Mac ARM release build pass. Three-platform CI and 100 native captures
 have [recorded bounded passes](WAVETABLES.md#checked-numerical-scope-and-remaining-gates); native interaction/device and full host parity are
 separate acceptance gates.
 
-[Random modulation](RANDOM.md) brings the current catalog to **69 kinds**.
+[Random modulation](RANDOM.md) brings the catalog to **69 kinds at that milestone**.
 This separate instrument adds probability, spread, internal/external clocking,
 shared-phase interpolation and external polyphonic sample targets. Its checked
 actual-class comparison passes 75 cases / 484,548 frames at three sample rates
@@ -137,6 +137,15 @@ source outputs, 0–16 channels, explicit voice policies and one sample of delay
 per cable, including feedback cycles. Independent engine contract tests cover routing, state migration and MIDI; polyphonic hardware I/O and full module parity remain separate work.
 See [ENGINE_V2.md](ENGINE_V2.md) for exact routing, normalization and state rules.
 
+
+[Stock LFO](STOCK_LFO.md) brings the current catalog to **70 kinds**. This
+separate unipolar-default modulation source retains the older LFO contracts.
+Its actual-class comparison passes 393,046 frames at three sample rates with
+exact phase, reset, shared-clock, lamp and active non-sine values; maximum sine
+error is 0.954 µV against the frozen 3 µV gate. Another 1,572 Rust-only safety
+frames pass separately. The shared rack/browser panel uses actual clock and RGB
+phase observations and has visible MCP cues for all six controls. Native
+interaction/device and complete host/import parity remain separate gates.
 ## Implemented functional utility contracts
 
 Five additional original models use at most two inputs and one output. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They retain mono version-1 behavior; version 2 adds the declared voice policies below. They extend the usable toolkit; they do not establish full VCV module parity.
@@ -245,7 +254,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Wavetable VCO | Oscillator | Implemented bounded `wavetable_vco`: prepared custom audio tables, position/CV, pitch/FM, hard/soft sync, immutable publication and local host/heap tests | Checked 153-case family SDK comparison; power-of-two audio lengths >=32 only, source nonpositive-frequency path excluded. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
 | VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
-| LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
+| LFO | Modulation | Separate `stock_lfo`: unipolar default, four waveforms, shared clock, reset, quartet retention, actual phase/mode lamps and clock observation; existing `multi_lfo` unchanged | 393,046 actual-class frames pass at three rates with exact non-sine/state and sine within 3 µV; platform/native capture, Rack state/import mapping and native-device qualification remain open. [Contract](STOCK_LFO.md). |
 | Wavetable LFO | Modulation | Implemented bounded `wavetable_lfo`: custom-table interpolation, FM, clock/reset, offset/invert, coherent position and local host/file/preset tests | Exact LFO voltages in the checked family SDK run; integer wave lengths >=2. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | Delay | Effect | Implemented bounded `stock_delay`: clock-synchronized mono sinc delay, feedback/tone, MIX/WET, four signed depths and shared native panel | Final guarded source-defined DSP matrix, Rust/MCP checks and release build pass; source-undefined analytic SRC case has safety evidence only. Adoption microprofile is separate from callback deadlines. Three-platform CI and native captures passed; native input/device remains open; [contract](STOCK_DELAY.md) |
 | ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |
@@ -260,7 +269,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Sequential Switch 4 to 1 | Routing | Implemented documented signal role: `switch_4to1`, polyphonic selection, mode-specific mono behavior and de-click | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison and full host workflow acceptance remain open |
 | Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
-| Split | Polyphony | Implemented `poly_split`: 16 named mono outputs, exact raw-slot copy, measured input count and shared rack/browser display; no saved controls or invented lamps | 1,065 normal and 204 raw diagnostic cases match the actual class; platform/native capture qualification pending. Native devices and Rack import remain separate gates. [Contract](POLYPHONIC_SPLIT.md). |
+| Split | Polyphony | Implemented `poly_split`: 16 named mono outputs, exact raw-slot copy, measured input count and shared rack/browser display; no saved controls or invented lamps | 1,065 normal and 204 raw diagnostic cases match the actual class; 115 native PNGs validated, new views reviewed and macOS/Windows/Linux CI passed in [PR10](https://github.com/dexterlabs1/openpatch/pull/10). Native devices and Rack import remain separate gates. [Contract](POLYPHONIC_SPLIT.md). |
 | Merge | Polyphony | Implemented bounded `poly_merge`: sparse first-lane assembly, backward-compatible Auto/forced 0–16, measured automatic/output counts and shared dropdown panel; 16,416-row actual-class comparison passes | Rack state mapping and native-device qualification; 112 captures validated and macOS/Windows/Linux CI passed in PR9. [Contract](POLYPHONIC_MERGE.md). |
 | Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
 | Viz | Measurement | Implemented signal/display role: `poly_viz`, input-only, 16 paired indicators, channel activity and sampled signed smoothing | Full upstream host comparison, Rack import and native device qualification remain; [contract](POLYPHONIC_VIZ.md) |
