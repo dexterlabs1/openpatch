@@ -159,6 +159,7 @@ def check_artifacts(result: dict, binaries: dict[str, Path]) -> None:
     expected = result["artifact_guard_inputs"]
     baseline_count = expected["baseline_kind_count"]
     candidate_count = expected["candidate_kind_count"]
+    catalog_policy = expected["catalog_policy"]
     added_kind = expected["added_kind"]
     added = sorted(candidate.keys() - baseline.keys())
     removed = sorted(baseline.keys() - candidate.keys())
@@ -175,20 +176,41 @@ def check_artifacts(result: dict, binaries: dict[str, Path]) -> None:
             {key: value for key, value in result["catalogs"]["candidate"].items() if key != "modules"}),
         "module_order": {build: [module["kind"] for module in catalog["modules"]]
                          for build, catalog in result["catalogs"].items()},
-        "policy": "Only the expected new kind is required; changes to existing functional metadata are recorded, not rejected",
+        "catalog_policy": catalog_policy,
+        "policy": ("Exact actual catalog JSON equality; no catalog additions, removals, ordering changes, or metadata changes are permitted"
+                   if catalog_policy == "unchanged" else
+                   "Only the expected new kind is required; changes to existing functional metadata are recorded, not rejected"),
     }
     guards = {
         "distinct_binary_sha256": result["binaries"]["baseline"]["sha256"] != result["binaries"]["candidate"]["sha256"],
         "binary_paths_still_match_recorded_sha256": all(
             hashlib.sha256(path.read_bytes()).hexdigest() == result["binaries"][build]["sha256"]
             for build, path in binaries.items()),
-        f"baseline_has_exactly_{baseline_count}_unique_kinds": len(baseline) == len(result["catalogs"]["baseline"]["modules"]) == baseline_count,
-        f"candidate_has_exactly_{candidate_count}_unique_kinds": len(candidate) == len(result["catalogs"]["candidate"]["modules"]) == candidate_count,
-        f"{added_kind}_absent_from_baseline": added_kind not in baseline,
-        f"{added_kind}_present_in_candidate": added_kind in candidate,
-        f"only_added_kind_is_{added_kind}": added == [added_kind],
-        "no_removed_kinds": not removed,
     }
+    if catalog_policy == "unchanged":
+        guards.update({
+            "same_positive_catalog_kind_counts": (
+                baseline_count > 0 and candidate_count > 0
+                and baseline_count == candidate_count
+                and len(baseline) == len(result["catalogs"]["baseline"]["modules"]) == baseline_count
+                and len(candidate) == len(result["catalogs"]["candidate"]["modules"]) == candidate_count
+            ),
+            "actual_catalogs_exactly_equal": encoded(result["catalogs"]["baseline"])
+                == encoded(result["catalogs"]["candidate"]),
+            "no_added_kinds": not added,
+            "no_removed_kinds": not removed,
+        })
+    elif catalog_policy == "added-kind":
+        guards.update({
+            f"baseline_has_exactly_{baseline_count}_unique_kinds": len(baseline) == len(result["catalogs"]["baseline"]["modules"]) == baseline_count,
+            f"candidate_has_exactly_{candidate_count}_unique_kinds": len(candidate) == len(result["catalogs"]["candidate"]["modules"]) == candidate_count,
+            f"{added_kind}_absent_from_baseline": added_kind not in baseline,
+            f"{added_kind}_present_in_candidate": added_kind in candidate,
+            f"only_added_kind_is_{added_kind}": added == [added_kind],
+            "no_removed_kinds": not removed,
+        })
+    else:
+        raise RuntimeError(f"Unknown catalog policy: {catalog_policy!r}")
     result["artifact_guards"] = guards
     failed = [name for name, passed in guards.items() if not passed]
     if failed:
@@ -239,6 +261,7 @@ def run(arguments: argparse.Namespace) -> dict:
         "catalogs": {}, "artifact_guards": {},
         "artifact_guard_inputs": {"baseline_kind_count": arguments.baseline_kind_count,
                                  "candidate_kind_count": arguments.candidate_kind_count,
+                                 "catalog_policy": arguments.catalog_policy,
                                  "added_kind": arguments.added_kind},
         "analysis": {}, "warmup": {}, "pairs": {name: [] for name in definitions},
     }
@@ -346,8 +369,10 @@ def main() -> int:
                         help="Required baseline catalog size (unique kinds; default: 73)")
     parser.add_argument("--candidate-kind-count", type=int, default=74,
                         help="Required candidate catalog size (unique kinds; default: 74)")
-    parser.add_argument("--added-kind", default="stock_mid_side",
-                        help="Only permitted added catalog kind (default: stock_mid_side)")
+    parser.add_argument("--catalog-policy", choices=("added-kind", "unchanged"), default="added-kind",
+                        help="Catalog comparison policy (default: added-kind)")
+    parser.add_argument("--added-kind",
+                        help="Only permitted added catalog kind under added-kind policy (default: stock_mid_side)")
     parser.add_argument("--baseline-build-command", default="not supplied")
     parser.add_argument("--candidate-build-command", default="not supplied")
     parser.add_argument("--toolchain", default="not supplied")
@@ -356,10 +381,20 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20261016)
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
-    if arguments.baseline_kind_count < 1 or arguments.candidate_kind_count != arguments.baseline_kind_count + 1:
-        parser.error("Catalog guards require a positive baseline count and exactly one additional candidate kind")
-    if not arguments.added_kind or arguments.added_kind != arguments.added_kind.strip():
-        parser.error("Added kind must be a nonempty name without surrounding whitespace")
+    if arguments.catalog_policy == "added-kind":
+        if arguments.baseline_kind_count < 1 or arguments.candidate_kind_count != arguments.baseline_kind_count + 1:
+            parser.error("added-kind policy requires a positive baseline count and exactly one additional candidate kind")
+        if arguments.added_kind is None:
+            arguments.added_kind = "stock_mid_side"
+        if not arguments.added_kind or arguments.added_kind != arguments.added_kind.strip():
+            parser.error("Added kind must be a nonempty name without surrounding whitespace")
+    else:
+        if (arguments.baseline_kind_count < 1 or arguments.candidate_kind_count < 1
+                or arguments.candidate_kind_count != arguments.baseline_kind_count):
+            parser.error("unchanged policy requires equal positive baseline and candidate catalog counts")
+        if arguments.added_kind is not None:
+            parser.error("--added-kind can only be used with --catalog-policy added-kind")
+        arguments.added_kind = None
     for binary in (arguments.baseline, arguments.candidate):
         if not binary.is_file():
             parser.error(f"Executable does not exist: {binary}")

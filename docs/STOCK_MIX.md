@@ -130,9 +130,13 @@ Both timing attempts are retained; only the corrected source is the shipping
 candidate. The corrected optimized ARM workspace build and separate ad-hoc
 signed bundle pass static validation: its CLI is the exact measured/MCP-tested
 binary, all four fonts and notices are present, and no Rack runtime library is
-linked. The bundle was not installed or launched. Exact-head CI and all 133
-native captures are separate pre-merge gates. Native Mac/device qualification
-remains open.
+linked. [PR16](https://github.com/dexterlabs1/openpatch/pull/16) merged after
+all eight exact-head push/PR CI jobs passed and both sets of 133 native captures
+were validated and reviewed. The qualified bundle was subsequently installed
+at `~/Applications/OpenPatch.app` by user request, with its signed executable
+hashes and strict signature rechecked. Older app bundles/installers were moved
+to Trash. The installed app was not launched; native Mac input/device
+qualification remains open.
 
 ## Additional pre-rounding boundary
 

@@ -507,3 +507,52 @@ separate pre-rounding correctness fix and is not the final-source measurement.
 The report retains both attempts, source manifests and wire records; no timing
 attempt was discarded and no optimization search was performed. The benchmark measures existing patches,
 not a direct throughput comparison of Stock Mix with Rack's Mixer.
+
+## Compact publication plans
+
+The next candidate compiles dense cable-source indices and coalesced spans of
+logical producer outputs. The per-sample publication loops no longer traverse
+route identities or classify every module again. Every disconnected logical
+output is still published; native producers retain their independent raw slots.
+The receiving graph owns these plans across adoption. Arithmetic, sanitization,
+full-slot writes, cable order/delay and connection/bypass lifecycle are unchanged.
+The additional vectors are allocated during compilation, not in the callback.
+
+The [paired report](benchmarks/transport-publication-plans.json) compares the
+qualified PR16 CLI with this candidate on one M1 Max, on AC power, using the
+same four workloads, 48 kHz, five audio seconds per call and five alternating
+pairs. Both actual 75-kind catalogs must match exactly, including metadata and
+order, before analysis or timing. Distinct executable hashes and source/build
+receipts identify the artifacts. All pre-timing signal statistics and all
+warmup/timed checksums match exactly. The lossless
+[complete report archive](benchmarks/transport-publication-plans-raw.json.gz)
+retains every RPC/catalog response; the readable report retains every timing pair.
+
+| Workload | PR16 median ns/frame | Candidate median ns/frame | Paired median elapsed-time change |
+|---|---:|---:|---:|
+| Sixteen-stage mono routing | 352.69 | 335.30 | −4.80% |
+| Sixteen-stage 16-channel routing | 1353.20 | 1333.98 | −1.00% |
+| Mixed stock/analog mono voice | 1738.13 | 1728.88 | −0.22% |
+| Mixed stock/analog 16-voice voice | 19664.99 | 19672.20 | +0.06% |
+
+All five mono-routing pairs decrease by 3.52–5.33%; all five 16-channel routing
+pairs decrease by 0.77–2.47%. Both mixed-voice ranges cross parity, so their small
+medians do not establish a speed change. This single retained candidate/attempt
+reduces some bookkeeping cost; it does not erase the earlier retained-port
+regression or establish a performance advantage over Rack. Compile/adoption
+latency, resident memory, UI/GPU load, live devices and callback deadlines were
+not measured by this experiment.
+
+The candidate passes all 792 Core tests (three existing ignored), including
+mixed native/logical producers, zero-output annotations, reordered nodes and
+disconnected multi-output publication. The unchanged genuine-reference gates
+also pass: all 86,355 Stock Mix, 576 pre-rounding and 890 Mid/Side snapshots are
+byte-identical; all 224,988 output-lifecycle histories pass. These are the
+recorded bounded numerical/host checks, not a full Rack parity sign-off.
+
+The full candidate workspace passes 2,017 Rust tests (six existing ignored),
+strict all-target Clippy and formatting, plus 79 MCP, 20 synthetic conversion
+and four artifact-guard checks. The isolated optimized ARM workspace builds.
+The separate app bundle passes strict ad-hoc signature, executable-section and
+UUID identity, embedded-font, notice and icon checks; it embeds the exact
+measured/MCP-tested CLI. Native Mac input/device testing remains unqualified.
