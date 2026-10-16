@@ -2732,6 +2732,7 @@ class OpenPatchMCPTests(unittest.TestCase):
         tools = {tool["name"]: tool for tool in self.client.request("tools/list")["result"]["tools"]}
         row = tools["add_module"]["inputSchema"]["properties"]["row"]
         self.assertEqual((row["type"], row["minimum"], row["maximum"]), ("integer", 0, 63))
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
         before = self.patch_snapshot()
         for invalid in (-1, 64, .5, "2", True):
             self.require_tool_error("add_module", {"id": "noise", "kind": "stock_noise", "row": invalid})
