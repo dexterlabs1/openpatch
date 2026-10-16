@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "frames_default": 4096,
+  "sample_rates_hz": [44100, 48000, 96000],
+  "banks": ["default", "harmonic", "dc_endpoints", "saw"],
+  "vco_cases": ["default", "harmonic", "saw", "dc_endpoints", "position_0", "position_1", "position_between", "signed_position_cv", "exponential_fm", "positive_linear_fm", "hard_sync", "soft_sync", "mono_broadcast", "short_poly", "width_1", "width_4", "width_5", "width_16", "group_freeze", "parameter_adoption", "loading_freeze", "invalid_bank", "bank_replace", "wave_length_rebuild", "source_reset"],
+  "lfo_cases": ["default", "harmonic", "saw", "dc_endpoints", "position_0", "position_1", "position_between", "signed_position_cv", "exponential_fm", "reset", "offset_invert", "clock", "clock_reject_fast", "mono_broadcast", "short_poly", "width_1", "width_4", "width_5", "width_16", "group_freeze", "parameter_adoption", "loading_freeze", "invalid_bank", "bank_replace", "wave_length_rebuild", "source_reset"],
+  "vco_param_order": ["removed_mode", "soft", "frequency_semitones", "position", "fm_depth", "position_cv_depth", "linear"],
+  "lfo_param_order": ["offset", "invert", "frequency_log2_hz", "position", "fm_depth", "position_cv_depth"],
+  "input_order": ["fm", "sync_or_reset", "position", "pitch_or_clock"],
+  "poison_unused_port_storage": 997.0,
+  "seed": "No randomness. Synthetic samples rounded to IEEE f32 before serialization; resulting shared binary payload is hashed."
+}

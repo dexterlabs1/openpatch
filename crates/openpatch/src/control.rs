@@ -11,6 +11,14 @@ mod midi_gate_tests;
 mod preset_tools;
 mod project_capture;
 mod running;
+mod wavetable_import;
+#[cfg(test)]
+mod wavetable_import_tests;
+#[cfg(test)]
+mod wavetable_preset_tests;
+#[cfg(test)]
+mod wavetable_tool_tests;
+mod wavetable_tools;
 pub use project_capture::{ProjectPatchSnapshot, ProjectRunningSnapshot};
 use running::EditEffects;
 #[cfg(test)]
@@ -40,7 +48,8 @@ mod stack_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
     write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, ModuleParameterActions, Node,
-    Patch, PortFrame, SavedModuleState, TimedMidiEvent, TimedModuleEvent, BLOCK_SIZE, MAX_CHANNELS,
+    Patch, PortFrame, PreparedWaveBanks, SavedModuleState, TimedMidiEvent, TimedModuleEvent,
+    WavePreparationCache, BLOCK_SIZE, MAX_CHANNELS, MAX_HISTORY_ASSET_BYTES, MAX_PATCH_FILE_BYTES,
     MODULE_ACTION_NAMES,
 };
 use serde_json::{json, Value};
@@ -242,6 +251,8 @@ pub trait LiveModuleEvents: Send + Sync {
 
 pub struct Session {
     patch: Patch,
+    wave_preparation_cache: WavePreparationCache,
+    prepared_wave_banks: Arc<PreparedWaveBanks>,
     revision: u64,
     state_id: u64,
     workspace: PathBuf,
@@ -260,6 +271,8 @@ impl Clone for Session {
     fn clone(&self) -> Self {
         Self {
             patch: self.patch.clone(),
+            wave_preparation_cache: self.wave_preparation_cache.clone(),
+            prepared_wave_banks: self.prepared_wave_banks.clone(),
             revision: self.revision,
             state_id: self.state_id,
             workspace: self.workspace.clone(),
@@ -284,6 +297,7 @@ impl Drop for Session {
 #[derive(Clone)]
 struct HistoryEntry {
     patch: Patch,
+    prepared_wave_banks: std::sync::Weak<PreparedWaveBanks>,
     state_id: u64,
     // Reset metadata belongs to the transition, even if both patches serialize
     // identically. Replay it whenever undo/redo crosses this boundary.
@@ -315,6 +329,7 @@ const EDIT_TOOLS: &[&str] = &[
     "initialize_modules",
     "randomize_modules",
     "apply_module_preset",
+    "set_wavetable",
     "set_output",
 ];
 
@@ -331,6 +346,16 @@ pub fn execute_shared(session: &SharedSession, name: &str, args: Value) -> Resul
     execute_shared_authorized(session, name, args, None)
 }
 
+/// Native import worker entry point. Set `allowed` false to cancel before the
+/// guarded commit. The caller runs this blocking operation off the UI thread.
+pub fn import_wavetable_cancellable(
+    session: &SharedSession,
+    args: Value,
+    allowed: &std::sync::atomic::AtomicBool,
+) -> Result<Value, String> {
+    execute_shared_authorized(session, "import_wavetable", args, Some(allowed))
+}
+
 /// Local transports carry a revocable authorization. Check it while holding
 /// the same lock as edits, so bridge Stop can revoke queued requests atomically
 /// with pausing construction. Stdio and native controls have no bridge token.
@@ -342,6 +367,9 @@ pub(crate) fn execute_shared_authorized(
 ) -> Result<Value, String> {
     if name == "start_construction" {
         return construction::start(session, args, authorization);
+    }
+    if name == "import_wavetable" {
+        return wavetable_import::execute(session, args, authorization);
     }
     #[cfg(test)]
     transport_authorization_tests::pause_if_requested(
@@ -361,7 +389,9 @@ pub(crate) fn execute_shared_authorized(
         | "capture_signal"
         | "save_module_preset"
         | "read_module_preset"
-        | "list_module_presets" => {
+        | "list_module_presets"
+        | "export_wavetable"
+        | "inspect_wavetable" => {
             let mut snapshot = live.detached_snapshot();
             if name == "save_patch" {
                 snapshot.patch = live.capture_project_patch(expected_revision(&args)?)?.patch;
@@ -405,8 +435,13 @@ fn optional_string<'a>(args: &'a Value, name: &str, default: &'a str) -> Result<
 impl Session {
     pub fn new(workspace: &Path) -> Result<Self, String> {
         fs::create_dir_all(workspace).map_err(|e| e.to_string())?;
+        let patch = Patch::new_v2();
+        let wave_preparation_cache = WavePreparationCache::default();
+        let prepared_wave_banks = patch.prepare_wave_banks(&wave_preparation_cache)?;
         Ok(Self {
-            patch: Patch::new_v2(),
+            patch,
+            wave_preparation_cache,
+            prepared_wave_banks,
             revision: 0,
             state_id: 0,
             undo: VecDeque::new(),
@@ -443,6 +478,11 @@ impl Session {
 
     pub fn patch(&self) -> &Patch {
         &self.patch
+    }
+
+    /// Read with patch() under the same Session lock for coherent adoption.
+    pub fn prepared_wave_banks(&self) -> Arc<PreparedWaveBanks> {
+        self.prepared_wave_banks.clone()
     }
 
     pub fn revision(&self) -> u64 {
@@ -491,7 +531,7 @@ impl Session {
     }
 
     pub fn snapshot(&self) -> Value {
-        json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch,"history":self.history()})
+        json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch.reference_view(),"history":self.history()})
     }
 
     /// Replace the document through the same validation and revision boundary.
@@ -551,7 +591,9 @@ impl Session {
         self.check_open()?;
         self.check_revision(expected_revision)?;
         candidate.assign_missing_cable_ids()?;
-        candidate.compile()?;
+        self.intern_candidate_assets(&mut candidate)?;
+        let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
+        candidate.compile_with_wave_banks(&prepared)?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
         if !effects.learn_reconciliation {
             self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
@@ -574,6 +616,7 @@ impl Session {
             }
             self.undo.push_back(HistoryEntry {
                 patch: std::mem::replace(&mut self.patch, candidate),
+                prepared_wave_banks: Arc::downgrade(&self.prepared_wave_banks),
                 state_id: self.state_id,
                 retired_modules: effects.retired.clone(),
                 retired_cables: effects.retired_cables.clone(),
@@ -583,8 +626,10 @@ impl Session {
             });
             self.state_id = revision;
         }
+        self.prepared_wave_banks = prepared;
         self.history_group = group;
         self.redo.clear();
+        self.prune_history_assets();
         self.revision = revision;
         self.construction.last_move = move_receipt;
         self.construction.wake();
@@ -616,6 +661,71 @@ impl Session {
         Ok(revision)
     }
 
+    fn prune_displaced_assets(&self, candidate: &mut Patch) {
+        // Retain intentionally unbound document assets, but release displaced
+        // module assets only after the whole transaction's final bindings exist.
+        let referenced: BTreeSet<_> = candidate
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.content {
+                Some(openpatch_core::ModuleContent::Wavetable { asset_id, .. }) => {
+                    Some(asset_id.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        for old in &self.patch.nodes {
+            if let Some(openpatch_core::ModuleContent::Wavetable { asset_id, .. }) = &old.content {
+                if !referenced.contains(asset_id) {
+                    candidate.assets.remove(asset_id);
+                }
+            }
+        }
+    }
+
+    fn intern_candidate_assets(&self, candidate: &mut Patch) -> Result<(), String> {
+        for (id, asset) in &mut candidate.assets {
+            for patch in std::iter::once(&self.patch)
+                .chain(self.undo.iter().map(|entry| &entry.patch))
+                .chain(self.redo.iter().map(|entry| &entry.patch))
+            {
+                if let Some(retained) = patch.assets.get(id) {
+                    if !Arc::ptr_eq(asset, retained) && asset.as_ref() != retained.as_ref() {
+                        return Err(format!("wavetable asset identity collision: {id}"));
+                    }
+                    *asset = retained.clone();
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn history_asset_bytes(&self) -> usize {
+        let mut unique = BTreeMap::new();
+        for patch in std::iter::once(&self.patch)
+            .chain(self.undo.iter().map(|entry| &entry.patch))
+            .chain(self.redo.iter().map(|entry| &entry.patch))
+        {
+            for (id, asset) in &patch.assets {
+                unique.entry(id).or_insert_with(|| asset.decoded_bytes());
+            }
+        }
+        unique.values().sum()
+    }
+
+    fn prune_history_assets(&mut self) {
+        self.prune_history_assets_to(MAX_HISTORY_ASSET_BYTES);
+    }
+
+    fn prune_history_assets_to(&mut self, byte_limit: usize) {
+        while self.history_asset_bytes() > byte_limit {
+            if self.undo.pop_front().is_none() {
+                break;
+            }
+        }
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
@@ -625,7 +735,7 @@ impl Session {
     }
 
     fn history(&self) -> Value {
-        json!({"undo_steps":self.undo.len(),"redo_steps":self.redo.len(),"limit":HISTORY_LIMIT})
+        json!({"undo_steps":self.undo.len(),"redo_steps":self.redo.len(),"limit":HISTORY_LIMIT,"asset_bytes":self.history_asset_bytes(),"asset_byte_limit":MAX_HISTORY_ASSET_BYTES})
     }
 
     fn restore_history(&mut self, redo: bool) -> Result<Value, String> {
@@ -643,6 +753,20 @@ impl Session {
             }
             .into());
         }
+        // History owns durable sample payloads, not every expensive derived
+        // bank. Rebuild an expired ticket before any history/backend mutation.
+        let target = if redo {
+            self.redo.last().unwrap()
+        } else {
+            self.undo.back().unwrap()
+        };
+        let prepared = match target.prepared_wave_banks.upgrade() {
+            Some(prepared) => prepared,
+            None => target
+                .patch
+                .prepare_wave_banks(&self.wave_preparation_cache)?,
+        };
+        target.patch.compile_with_wave_banks(&prepared)?;
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         let entry = if redo {
             self.redo.pop().ok_or("nothing to redo")?
@@ -650,6 +774,10 @@ impl Session {
             self.undo.pop_back().ok_or("nothing to undo")?
         };
         let opposite = HistoryEntry {
+            prepared_wave_banks: Arc::downgrade(&std::mem::replace(
+                &mut self.prepared_wave_banks,
+                prepared,
+            )),
             patch: std::mem::replace(&mut self.patch, entry.patch),
             state_id: std::mem::replace(&mut self.state_id, entry.state_id),
             retired_modules: entry.retired_modules.clone(),
@@ -739,7 +867,7 @@ impl Session {
         let mut patch = self.patch.clone();
         patch.output = Some(string(args, "id")?.into());
         patch.output_port = optional_string(args, "port", "out")?.into();
-        let mut engine = patch.compile()?;
+        let mut engine = patch.compile_with_wave_banks(&self.prepared_wave_banks)?;
         let frames = (seconds * patch.sample_rate as f64).round() as usize;
         let mut events = PerformanceEvents::new(args, frames, &engine)?;
         let mut block = [PortFrame::default(); BLOCK_SIZE];
@@ -803,6 +931,7 @@ impl Session {
                 name,
                 "replace_patch"
                     | "load_patch"
+                    | "import_wavetable"
                     | "apply_edits"
                     | "undo"
                     | "redo"
@@ -829,9 +958,22 @@ impl Session {
             | "resume_construction"
             | "cancel_construction" => return self.construction_command(name, &args),
             "catalog" => return Ok(catalog()),
+            "import_wavetable" => return self.import_wavetable(&args),
+            "export_wavetable" => return self.export_wavetable(&args),
+            "inspect_wavetable" => return self.inspect_wavetable(&args),
             "capture_project_patch" => {
                 let captured = self.capture_project_patch(expected_revision(&args)?)?;
-                return Ok(json!({"patch":captured.patch,"revision":captured.revision,
+                let patch_view = if args
+                    .get("include_asset_data")
+                    .map(|v| v.as_bool().ok_or("include_asset_data must be a boolean"))
+                    .transpose()?
+                    .unwrap_or(false)
+                {
+                    serde_json::to_value(&captured.patch).map_err(|error| error.to_string())?
+                } else {
+                    captured.patch.reference_view()
+                };
+                return Ok(json!({"patch":patch_view,"revision":captured.revision,
                     "state_id":captured.state_id,"running":captured.running,"holding":captured.holding,
                     "random_values":captured.saved_states.iter().filter_map(|(id, state)| match state {
                         SavedModuleState::RandomValues { values, rng } => Some((id.clone(), json!({"values":values.map(|row| row.map(f32::from_bits)),"rng_state":rng}))),
@@ -847,7 +989,19 @@ impl Session {
             "save_module_preset" | "read_module_preset" | "list_module_presets" => {
                 return self.preset_file_tool(name, &args)
             }
-            "inspect_patch" => return Ok(self.snapshot()),
+            "inspect_patch" => {
+                let mut snapshot = self.snapshot();
+                if args
+                    .get("include_asset_data")
+                    .map(|v| v.as_bool().ok_or("include_asset_data must be a boolean"))
+                    .transpose()?
+                    .unwrap_or(false)
+                {
+                    snapshot["patch"] =
+                        serde_json::to_value(&self.patch).map_err(|e| e.to_string())?;
+                }
+                return Ok(snapshot);
+            }
             "inspect_history" => {
                 return Ok(json!({"revision":self.revision,"history":self.history()}))
             }
@@ -1037,7 +1191,9 @@ impl Session {
                 if !seconds.is_finite() || !(0.01..=5.0).contains(&seconds) {
                     return Err("benchmark seconds must be 0.01..5".into());
                 }
-                let mut engine = self.patch.compile()?;
+                let mut engine = self
+                    .patch
+                    .compile_with_wave_banks(&self.prepared_wave_banks)?;
                 let mut block = [0.0; 128];
                 for _ in 0..16 {
                     engine.process_block(&mut block);
@@ -1105,11 +1261,11 @@ impl Session {
                 let path = self.file(string(&args, "filename")?, ".json")?;
                 let f = fs::File::open(path).map_err(|e| e.to_string())?;
                 let mut data = Vec::new();
-                f.take(1_048_577)
+                f.take(MAX_PATCH_FILE_BYTES as u64 + 1)
                     .read_to_end(&mut data)
                     .map_err(|e| e.to_string())?;
-                if data.len() > 1_048_576 {
-                    return Err("patch file exceeds 1 MiB".into());
+                if data.len() > MAX_PATCH_FILE_BYTES {
+                    return Err("patch file exceeds 64 MiB".into());
                 }
                 candidate = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             }
@@ -1146,10 +1302,12 @@ impl Session {
                     result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
                 }
                 if name == "preview_edits" {
+                    self.prune_displaced_assets(&mut candidate);
                     candidate.assign_missing_cable_ids()?;
-                    candidate.compile()?;
+                    let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
+                    candidate.compile_with_wave_banks(&prepared)?;
                     return Ok(
-                        json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate,"committed":false,"edit_count":edits.len()}),
+                        json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate.reference_view(),"committed":false,"edit_count":edits.len()}),
                     );
                 }
             }
@@ -1160,16 +1318,24 @@ impl Session {
             }
             _ => return Err(format!("unknown tool: {name}")),
         }
+        if !matches!(name, "replace_patch" | "load_patch") {
+            self.prune_displaced_assets(&mut candidate);
+        }
         // Transaction boundary: failed edits never change the patch or revision.
         // Direct equal-color/same-endpoint edits are validated no-ops. Batched
         // no-ops intentionally retain the ordinary transaction history contract.
         if matches!(
             name,
-            "set_cable_color" | "move_cables" | "promote_cables" | "set_module_content"
-        ) && serde_json::to_value(&candidate).map_err(|error| error.to_string())?
-            == serde_json::to_value(&self.patch).map_err(|error| error.to_string())?
+            "set_cable_color"
+                | "move_cables"
+                | "promote_cables"
+                | "set_module_content"
+                | "set_wavetable"
+        ) && candidate.reference_view() == self.patch.reference_view()
+            && candidate.assets == self.patch.assets
         {
-            candidate.compile()?;
+            let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
+            candidate.compile_with_wave_banks(&prepared)?;
             return Ok(self.snapshot());
         }
         let group = if name == "set_parameter" && args.get("history_group").is_some() {
@@ -1708,8 +1874,11 @@ fn apply_edit(
                 node.params.insert(key, 1.0 - value);
             }
         }
+        "set_wavetable" => wavetable_tools::set(candidate, args)?,
         "apply_module_preset" => {
             let id = string(args, "id")?;
+            let assets = crate::presets::assets_from_preset(&args["preset"])?;
+            candidate.assets.extend(assets);
             let node = candidate
                 .nodes
                 .iter_mut()
@@ -1942,9 +2111,13 @@ pub fn tools() -> Value {
         tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
         tool("undo","Undo one shared GUI/MCP edit or native module-movement checkpoint. Revision increases; file writes and view pan/zoom are not undone.",json!({"expected_revision":rev}),&[],false),
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
+        tool("import_wavetable","Decode a regular workspace WAV or raw table into a wavetable module. Atomically prepares and binds immutable samples, with one undo step; no normalization, playback, or partial publication. WAV channels remain interleaved. Omit wave_points to use a power-of-two WAV sample rate or the current/default geometry.",json!({"id":s,"filename":s,"wave_points":{"type":"integer","minimum":2,"maximum":524288},"expected_revision":rev}),&["id","filename"],false),
+        tool("set_wavetable","Bind an existing patch asset with a new wave length/name. Supports preview and atomic batches; new geometry is prepared before publication. VCO lengths must be powers of two >=32; LFO lengths >=2.",json!({"id":s,"asset_id":{"type":"string","pattern":"^[0-9a-f]{64}$"},"wave_points":{"type":"integer","minimum":2,"maximum":524288},"name":{"type":"string","maxLength":1024},"expected_revision":rev}),&["id","asset_id","wave_points","name"],false),
+        tool("export_wavetable","Write a new workspace .f32 (exact source samples) or .wav (PCM16, clipped to [-1,1]) from a wavetable module. Includes unused trailing source points. Never overwrites files or changes the patch.",json!({"id":s,"filename":s,"expected_revision":rev}),&["id","filename"],false),
+        tool("inspect_wavetable","Read actual table geometry and asset metadata. Optional limit1..256 and offset return a small source-sample window. No preparation, full payload echo, or graph change.",json!({"id":s,"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":256},"expected_revision":rev}),&["id"],true),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
-        tool("inspect_patch","Read the session's patch and revision. In desktop MCP mode this is the same live patch shown in the native window.",json!({}),&[],true),
-        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev}),&[],true),
+        tool("inspect_patch","Read the session patch and revision with compact asset metadata. Set include_asset_data for the full portable payload. In desktop MCP mode this is the live patch shown in the native window.",json!({"include_asset_data":{"type":"boolean","default":false}}),&[],true),
+        tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
         tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","kind"],false),
@@ -1962,11 +2135,11 @@ pub fn tools() -> Value {
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
-        tool("capture_module_preset","Capture a native module preset with effective parameter defaults, annotation content, and explicit bypass. Stateful modules capture actual Run, HOLD, MIDI CC assignments and controller values, or voltages and RNG from revision-coherent live telemetry, or deterministic initial state without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev}),&["id"],true),
-        tool("save_module_preset","Save exactly the supplied, reviewed native preset to a new workspace .opreset file. Capture first with capture_module_preset. Never recaptures a module, overwrites a file, or changes graph/history. Files are bounded to 64 KiB; symlinks and directories are rejected.",json!({"filename":s,"preset":preset_tools::schema()}),&["filename","preset"],false),
-        tool("read_module_preset","Read and validate one bounded regular workspace .opreset file. Returns immutable preset contents for review and inline apply; no graph/history change and no .vcvm compatibility.",json!({"filename":s}),&["filename"],true),
+        tool("capture_module_preset","Capture a native module preset with effective parameter defaults, annotation content, and explicit bypass. Stateful modules capture actual Run, HOLD, MIDI CC assignments and controller values, or voltages and RNG from revision-coherent live telemetry, or deterministic initial state without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&["id"],true),
+        tool("save_module_preset","Save exactly the supplied, reviewed native preset to a new workspace .opreset file. Capture first with capture_module_preset. Never recaptures a module, overwrites a file, or changes graph/history. Files are bounded to 4 MiB; symlinks and directories are rejected.",json!({"filename":s,"preset":preset_tools::schema(),"include_asset_data":{"type":"boolean","default":false}}),&["filename","preset"],false),
+        tool("read_module_preset","Read and validate one bounded regular workspace .opreset file. Returns immutable preset contents for review and inline apply; no graph/history change and no .vcvm compatibility.",json!({"filename":s,"include_asset_data":{"type":"boolean","default":false}}),&["filename"],true),
         tool("list_module_presets","Browse sorted workspace .opreset files, optionally filtering valid entries by module kind. Corrupt or unsafe entries remain visible with errors. Filename query matches case-insensitively before pagination. Paged results default to 50, maximum 100; library is bounded to 1024 files.",json!({"kind":s,"query":{"type":"string","maxLength":120},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50}}),&[],true),
-        tool("apply_module_preset","Merge reviewed native preset params, optional content and bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running, Push holding, MIDI CC controller values, or a complete Random Values or Shift Register snapshot assigns actual saved state after adoption even if its configured value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured persistent state.",json!({"id":s,"preset":preset_tools::schema(),"expected_revision":rev}),&["id","preset"],false),
+        tool("apply_module_preset","Merge reviewed native preset params, optional content and bypass into a matching module kind. Omitted settings remain unchanged; no Initialize or new instance. Explicit SEQ3 running, Push holding, MIDI CC controller values, or a complete Random Values or Shift Register snapshot assigns actual saved state after adoption even if its configured value is unchanged. Atomic batch/preview support and one history step; undo/redo restore captured persistent state.",json!({"id":s,"preset":preset_tools::schema(),"filename":s,"expected_file_sha256":{"type":"string","description":"Required with filename: exact digest returned by read_module_preset. A changed file is rejected."},"expected_revision":rev}),&["id"],false),
         tool("initialize_modules","Initialize saved parameters and annotation content for 1..256 unique module IDs using catalog policy (Notes becomes empty; Blank becomes 10 HP), preserving bypass, identity, cables, and output. Applies audited per-kind runtime initialization after live graph publication; this is not a fresh-instance reset. One undo step; undo/redo restore saved values and captured SEQ3 Run without replaying initialization. Supports preview and atomic batches.",json!({"ids":module_ids,"expected_revision":rev}),&["ids"],false),
         tool("randomize_modules","Deterministically randomize eligible saved parameters for 1..256 unique module IDs using catalog distributions. Preserves bypass, identity, cables, and output. Required u32 seed; each module receives UTF-8 FNV-1a32(id) XOR seed, with wrapping multiplication. Selection order does not affect results. Shift Register is entirely unchanged, including live values and RNG. Random Values rerolls all 112 voltages in the selected range using max(1, derived module seed) as its xorshift32 initial state, independently of live PRNG position, preserving range and visible seed. Preview and apply agree; undo/redo restore values and captured SEQ3 Run without rerolling.",json!({"ids":module_ids,"seed":{"type":"integer","minimum":0,"maximum":4294967295_u64},"expected_revision":rev}),&["ids","seed"],false),
         tool("set_output","Select a module output port (default out). audio_stereo selects explicit L/R output; other outputs monitor channel 1. Add poly_sum for a mono mix of all voices.",json!({"id":s,"port":s,"expected_revision":rev}),&["id"],false),
@@ -1996,6 +2169,149 @@ mod tests {
             {"tool":"add_module","arguments":{"id":"out","kind":"output"}},
             {"tool":"set_output","arguments":{"id":"out"}}
         ]})
+    }
+
+    #[test]
+    fn asset_snapshots_are_compact_and_equal_loads_share_retained_samples() {
+        let mut s = session();
+        let asset = Arc::new(openpatch_core::WaveAsset::new(&[0.0, -0.0, 0.5]).unwrap());
+        let id = asset.id().to_owned();
+        let mut patch = Patch::new_v2();
+        patch.assets.insert(id.clone(), asset.clone());
+        s.replace_patch(patch, Some(0)).unwrap();
+        let full = s
+            .execute("inspect_patch", json!({"include_asset_data":true}))
+            .unwrap();
+        assert!(full["patch"]["assets"][&id]["data"].is_string());
+        let compact = s.snapshot();
+        assert_eq!(compact["patch"]["assets"][&id]["payload_omitted"], true);
+        assert!(compact["patch"]["assets"][&id].get("data").is_none());
+        let decoded: Patch = serde_json::from_value(full["patch"].clone()).unwrap();
+        assert!(!Arc::ptr_eq(&decoded.assets[&id], &asset));
+        s.replace_patch(decoded, Some(1)).unwrap();
+        assert!(Arc::ptr_eq(&s.patch.assets[&id], &asset));
+        assert_eq!(s.history_asset_bytes(), asset.decoded_bytes());
+        let ticket = s.prepared_wave_banks();
+        s.execute("undo", json!({})).unwrap();
+        s.execute("redo", json!({})).unwrap();
+        assert!(Arc::ptr_eq(&ticket, &s.prepared_wave_banks()));
+        assert!(Arc::ptr_eq(&s.patch.assets[&id], &asset));
+        let preview = s
+            .execute(
+                "preview_edits",
+                json!({"edits":[
+                    {"tool":"add_module","arguments":{"id":"source","kind":"constant"}}
+                ]}),
+            )
+            .unwrap();
+        assert!(preview["patch"]["assets"][&id].get("data").is_none());
+    }
+
+    #[test]
+    fn asset_cleanup_matches_preview_and_final_batch_bindings_without_dropping_document_assets() {
+        let mut s = session();
+        let a = Arc::new(openpatch_core::WaveAsset::new(&[0.25; 32]).unwrap());
+        let b = Arc::new(openpatch_core::WaveAsset::new(&[0.75; 32]).unwrap());
+        let mut patch = Patch::new_v2();
+        patch.assets.insert(a.id().into(), a.clone());
+        patch.assets.insert(b.id().into(), b.clone());
+        patch.nodes.push(serde_json::from_value(json!({"id":"wt","kind":"wavetable_lfo","content":{"type":"wavetable","asset_id":a.id(),"wave_points":32,"name":"A"}})).unwrap());
+        s.replace_patch(patch, Some(0)).unwrap();
+        let args = json!({"edits":[{"tool":"initialize_modules","arguments":{"ids":["wt"]}}]});
+        let preview = s.execute("preview_edits", args.clone()).unwrap();
+        assert!(preview["patch"]["assets"].get(a.id()).is_none());
+        assert!(preview["patch"]["assets"].get(b.id()).is_some());
+        let applied = s.execute("apply_edits", args).unwrap();
+        assert_eq!(preview["patch"], applied["patch"]);
+        s.execute("undo", json!({})).unwrap();
+        let args = json!({"edits":[
+            {"tool":"initialize_modules","arguments":{"ids":["wt"]}},
+            {"tool":"add_module","arguments":{"id":"other","kind":"wavetable_lfo","content":{"type":"wavetable","asset_id":a.id(),"wave_points":32,"name":"Rebound"}}}
+        ]});
+        let preview = s.execute("preview_edits", args.clone()).unwrap();
+        let applied = s.execute("apply_edits", args).unwrap();
+        assert_eq!(preview["patch"], applied["patch"]);
+        assert_eq!(s.patch.assets.len(), 2);
+        let mut explicit_document = s.patch.clone();
+        explicit_document.nodes.clear();
+        s.replace_patch(explicit_document, None).unwrap();
+        assert_eq!(
+            s.patch.assets.len(),
+            2,
+            "explicit documents may retain unbound assets"
+        );
+    }
+
+    #[test]
+    fn expired_history_ticket_rebuilds_and_failed_preflight_leaves_state_unchanged() {
+        let mut s = session();
+        let mut patch = Patch::new_v2();
+        patch
+            .nodes
+            .push(serde_json::from_value(json!({"id":"wt","kind":"wavetable_lfo"})).unwrap());
+        s.replace_patch(patch, Some(0)).unwrap();
+        s.execute(
+            "set_parameter",
+            json!({"id":"wt","parameter":"rate","value":3.0}),
+        )
+        .unwrap();
+        assert!(s
+            .undo
+            .back()
+            .unwrap()
+            .prepared_wave_banks
+            .upgrade()
+            .is_none());
+        s.wave_preparation_cache.clear_unused();
+        s.wave_preparation_cache = WavePreparationCache::with_memory_limit(0);
+        let before = s.snapshot();
+        assert!(s.execute("undo", json!({})).is_err());
+        assert_eq!(s.snapshot(), before);
+        s.wave_preparation_cache = WavePreparationCache::default();
+        s.execute("undo", json!({})).unwrap();
+        assert_ne!(s.patch.nodes[0].params.get("rate"), Some(&3.0));
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(s.patch.nodes[0].params.get("rate"), Some(&3.0));
+    }
+
+    #[test]
+    fn history_budget_counts_shared_assets_once_and_prunes_oldest_undo() {
+        let mut s = session();
+        for value in [0.0, 0.25, 0.5] {
+            let mut patch = Patch::new_v2();
+            let asset = Arc::new(openpatch_core::WaveAsset::new(&[value; 8]).unwrap());
+            patch.assets.insert(asset.id().to_owned(), asset);
+            s.replace_patch(patch, None).unwrap();
+        }
+        assert_eq!(s.history_asset_bytes(), 3 * 32);
+        s.prune_history_assets_to(64);
+        assert_eq!(s.history_asset_bytes(), 64);
+        assert_eq!(s.undo.len(), 1);
+        let previous = s.undo.back().unwrap().patch.assets.values().next().unwrap();
+        assert_eq!(previous.sample(0), Some(0.25));
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(s.history_asset_bytes(), 64);
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(s.history_asset_bytes(), 64);
+    }
+
+    #[test]
+    fn failed_wave_preparation_preserves_patch_ticket_and_history() {
+        let mut s = session();
+        let before = s.snapshot();
+        let ticket = s.prepared_wave_banks();
+        let mut invalid = Patch::new_v2();
+        invalid.nodes.push(
+            serde_json::from_value(json!({
+                "id":"wt","kind":"wavetable_vco","params":{},
+                "content":{"type":"wavetable","asset_id":"0".repeat(64),
+                    "wave_points":1024,"name":"Missing"}
+            }))
+            .unwrap(),
+        );
+        assert!(s.replace_patch(invalid, Some(0)).is_err());
+        assert_eq!(s.snapshot(), before);
+        assert!(Arc::ptr_eq(&ticket, &s.prepared_wave_banks()));
     }
 
     #[test]

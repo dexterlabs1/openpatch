@@ -25,6 +25,11 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, TryRecvError},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -111,6 +116,48 @@ fn weighted_mean_utilization(snapshot: &AudioTimingSnapshot) -> Option<f64> {
 enum FileMode {
     Open,
     Save,
+    WavetableImport,
+    WavetableExport,
+}
+
+struct WavetableFileTarget {
+    id: String,
+    revision: u64,
+    current_points: u32,
+    audio: bool,
+    // Empty means automatic WAV hint or the module's current geometry.
+    wave_points: String,
+}
+
+struct WavetableImportJob {
+    result: Receiver<Result<Value, String>>,
+    allowed: Arc<AtomicBool>,
+    filename: String,
+}
+
+impl Drop for WavetableImportJob {
+    fn drop(&mut self) {
+        // App teardown also revokes an import still preparing off thread.
+        self.allowed.store(false, Ordering::Release);
+    }
+}
+
+fn wavetable_file_extension(filename: &str) -> String {
+    Path::new(filename)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+fn wavetable_filename_with_extension(filename: &str, extension: &str) -> String {
+    let mut filename = PathBuf::from(if filename.is_empty() {
+        "wavetable"
+    } else {
+        filename
+    });
+    filename.set_extension(extension);
+    filename.to_string_lossy().into_owned()
 }
 
 enum PendingAction {
@@ -245,6 +292,17 @@ fn preset_controls(ui: &mut egui::Ui, preset: &Value, catalog: &Value) {
                     }
                 });
         });
+    if preset["content"]["type"] == "wavetable" {
+        // Review only the table identity and geometry. The portable preset
+        // keeps encoded sample data for Save/Apply without laying it out.
+        ui.label(format!(
+            "Embedded wavetable: {}",
+            preset["content"]["name"].as_str().unwrap_or("Unnamed")
+        ));
+        if let Some(points) = preset["content"]["wave_points"].as_u64() {
+            ui.label(format!("{points} points per wave"));
+        }
+    }
 }
 
 fn preset_control_value(name: &str, value: &Value, spec: &Value) -> String {
@@ -315,6 +373,8 @@ pub struct OpenPatch {
     workspace: String,
     file_mode: Option<FileMode>,
     file_focus: bool,
+    wavetable_file_target: Option<WavetableFileTarget>,
+    wavetable_import: Option<WavetableImportJob>,
     browser_open: bool,
     library: ModuleLibrary,
     preset_dialog: Option<PresetDialog>,
@@ -387,10 +447,11 @@ impl OpenPatch {
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
-        let (patch, revision, state_id, workspace) = {
+        let (patch, wave_banks, revision, state_id, workspace) = {
             let s = shared.lock().unwrap();
             (
                 s.patch().clone(),
+                s.prepared_wave_banks(),
                 s.revision(),
                 s.state_id(),
                 s.workspace().display().to_string(),
@@ -406,6 +467,7 @@ impl OpenPatch {
         let cable_presentation = CablePresentation::from_settings(&preferences);
         let (mut audio, device) = Self::open_audio(
             &patch,
+            wave_banks,
             output_device.as_deref(),
             cable_presentation.plug_brightness > 0.0,
         );
@@ -479,6 +541,8 @@ impl OpenPatch {
             workspace,
             file_mode: None,
             file_focus: false,
+            wavetable_file_target: None,
+            wavetable_import: None,
             browser_open: false,
             library: ModuleLibrary::default(),
             preset_dialog: None,
@@ -598,13 +662,12 @@ impl OpenPatch {
     }
     fn open_audio(
         patch: &Patch,
+        wave_banks: std::sync::Arc<openpatch_core::PreparedWaveBanks>,
         device: Option<&str>,
         port_lights_enabled: bool,
     ) -> (Option<Audio>, String) {
-        let opened = match device {
-            Some(device) => Audio::new_with_device(patch, Some(device), port_lights_enabled),
-            None => Audio::new(patch, port_lights_enabled),
-        };
+        let opened =
+            Audio::new_with_device_and_wave_banks(patch, wave_banks, device, port_lights_enabled);
         match opened {
             Ok(audio) => {
                 let label = format!(
@@ -734,8 +797,16 @@ impl OpenPatch {
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
         self.scope.reset_connection();
+        let (patch, wave_banks) = match self.shared.lock() {
+            Ok(session) => (session.patch().clone(), session.prepared_wave_banks()),
+            Err(_) => {
+                self.settings_status = "Session lock poisoned".into();
+                return;
+            }
+        };
         let (audio, label) = Self::open_audio(
-            &self.patch,
+            &patch,
+            wave_banks,
             selected.as_deref(),
             self.rack.cable_presentation().plug_brightness > 0.0,
         );
@@ -1052,6 +1123,9 @@ impl OpenPatch {
         self.files.sort();
     }
     fn command(&mut self, name: &str, mut args: Value) -> bool {
+        if matches!(name, "open_wavetable_import" | "open_wavetable_export") {
+            return self.wavetable_file_dialog(name, &args);
+        }
         if !matches!(name, "save_patch" | "render_audio") && args.get("expected_revision").is_none()
         {
             args["expected_revision"] = json!(self.revision);
@@ -1201,6 +1275,7 @@ impl OpenPatch {
         }
     }
     fn sync(&mut self) {
+        let mut wave_banks = None;
         if self.live_events_attach_pending {
             self.attach_live_events();
         }
@@ -1258,6 +1333,8 @@ impl OpenPatch {
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
             }
+            // Capture the immutable ticket under the same lock as patch/revision.
+            wave_banks = Some(s.prepared_wave_banks());
             self.construction.observe(construction);
         }
         if let Some(midi) = &mut self.midi {
@@ -1272,8 +1349,10 @@ impl OpenPatch {
                 self.midi_epoch = audio.midi_epoch();
                 self.keyboard.release();
             }
-            if self.audio_revision != Some(self.revision) {
-                match audio.submit_patch_at_revision(&self.patch, self.revision) {
+            if let Some(wave_banks) =
+                wave_banks.filter(|_| self.audio_revision != Some(self.revision))
+            {
+                match audio.submit_patch_with_wave_banks(&self.patch, self.revision, wave_banks) {
                     Ok(()) => self.audio_revision = Some(self.revision),
                     Err(e) => {
                         audio.set_playing(false);
@@ -1325,6 +1404,8 @@ impl OpenPatch {
         self.library.request_focus();
     }
     fn file_dialog(&mut self, mode: FileMode) {
+        self.cancel_wavetable_import();
+        self.wavetable_file_target = None;
         self.refresh_files();
         if mode == FileMode::Save {
             self.filename = self.active_file.as_ref().map_or_else(
@@ -1334,6 +1415,178 @@ impl OpenPatch {
         }
         self.file_mode = Some(mode);
         self.file_focus = true;
+    }
+
+    fn wavetable_file_dialog(&mut self, command: &str, args: &Value) -> bool {
+        let target = (|| {
+            let id = args["id"].as_str().ok_or("Wavetable target is missing")?;
+            let revision = args["expected_revision"]
+                .as_u64()
+                .ok_or("Wavetable target revision is missing")?;
+            if revision != self.revision {
+                return Err("Patch changed; reopen the wavetable file dialog");
+            }
+            let node = self
+                .patch
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .ok_or("Wavetable module was removed")?;
+            if !matches!(node.kind.as_str(), "wavetable_vco" | "wavetable_lfo") {
+                return Err("Choose a wavetable module");
+            }
+            let current_points = match &node.content {
+                Some(openpatch_core::ModuleContent::Wavetable { wave_points, .. }) => *wave_points,
+                _ => 1024,
+            };
+            Ok(WavetableFileTarget {
+                id: id.into(),
+                revision,
+                current_points,
+                audio: node.kind == "wavetable_vco",
+                wave_points: String::new(),
+            })
+        })();
+        let target = match target {
+            Ok(target) => target,
+            Err(error) => {
+                self.status = error.into();
+                return false;
+            }
+        };
+        let importing = command == "open_wavetable_import";
+        self.cancel_wavetable_import();
+        self.files = std::fs::read_dir(&self.workspace)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| {
+                !name.starts_with('.')
+                    && matches!(
+                        wavetable_file_extension(name).as_str(),
+                        "wav" | "f32" | "s8" | "i8" | "s16" | "i16" | "s24" | "i24" | "s32" | "i32"
+                    )
+            })
+            .collect();
+        self.files.sort();
+        self.filename = if importing {
+            self.files.first().cloned().unwrap_or_default()
+        } else {
+            "wavetable.f32".into()
+        };
+        self.status = format!(
+            "{} wavetable for {}",
+            if importing { "Load" } else { "Save" },
+            target.id
+        );
+        self.wavetable_file_target = Some(target);
+        self.file_mode = Some(if importing {
+            FileMode::WavetableImport
+        } else {
+            FileMode::WavetableExport
+        });
+        self.file_focus = true;
+        true
+    }
+
+    fn apply_wavetable_file(&mut self, mode: FileMode) {
+        if mode == FileMode::WavetableImport && self.wavetable_import.is_some() {
+            return;
+        }
+        let Some(target) = &self.wavetable_file_target else {
+            self.status = "Wavetable target is unavailable; reopen the file dialog".into();
+            return;
+        };
+        let importing = mode == FileMode::WavetableImport;
+        let mut args = json!({
+            "id":target.id,"filename":self.filename,"expected_revision":target.revision
+        });
+        if importing && !target.wave_points.trim().is_empty() {
+            let points = target
+                .wave_points
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|value| (2..=524288).contains(value));
+            let Some(points) = points else {
+                self.status =
+                    "Wave points must be an integer from 2 to 524288, or empty for Auto".into();
+                return;
+            };
+            args["wave_points"] = json!(points);
+        }
+        if importing {
+            let shared = self.shared.clone();
+            let allowed = Arc::new(AtomicBool::new(true));
+            let worker_allowed = allowed.clone();
+            let (sender, result) = mpsc::channel();
+            let worker = std::thread::Builder::new()
+                .name("wavetable-import".into())
+                .spawn(move || {
+                    // Decoding, preparation and release of replaced banks remain
+                    // on this control worker. The core helper rechecks authorization
+                    // and the opening revision immediately before publication.
+                    let result = openpatch::control::import_wavetable_cancellable(
+                        &shared,
+                        args,
+                        &worker_allowed,
+                    );
+                    let _ = sender.send(result);
+                });
+            match worker {
+                Ok(_) => {
+                    self.wavetable_import = Some(WavetableImportJob {
+                        result,
+                        allowed,
+                        filename: self.filename.clone(),
+                    });
+                    self.status = "Preparing wavetable…".into();
+                }
+                Err(error) => self.status = format!("Could not start wavetable import: {error}"),
+            }
+        } else if self.command("export_wavetable", args) {
+            self.status = format!("Wavetable saved: {}", self.filename);
+            self.file_mode = None;
+            self.wavetable_file_target = None;
+        }
+    }
+
+    fn cancel_wavetable_import(&mut self) {
+        if let Some(job) = &self.wavetable_import {
+            if job.allowed.swap(false, Ordering::AcqRel) {
+                self.status = "Wavetable import cancelled".into();
+            }
+        }
+    }
+
+    fn poll_wavetable_import(&mut self) {
+        let Some(job) = &self.wavetable_import else {
+            return;
+        };
+        let result = match job.result.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                Err("Wavetable preparation worker stopped unexpectedly".into())
+            }
+        };
+        let job = self.wavetable_import.take().unwrap();
+        if !job.allowed.load(Ordering::Acquire) {
+            // A cancelled result belongs to the dismissed dialog. Never change
+            // a newer dialog or overwrite status from subsequent user actions.
+            return;
+        }
+        self.sync();
+        match result {
+            Ok(_) => {
+                self.status = format!("Wavetable loaded: {}", job.filename);
+                self.file_mode = None;
+                self.wavetable_file_target = None;
+            }
+            Err(error) => self.status = format!("Could not load wavetable: {error}"),
+        }
     }
     fn observe_document(&mut self) {
         let running = self
@@ -1419,6 +1672,7 @@ impl OpenPatch {
         }
     }
     fn request_action(&mut self, action: PendingAction) {
+        self.cancel_wavetable_import();
         if matches!(action, PendingAction::DiscardClose) {
             self.perform_action(action);
             return;
@@ -1691,6 +1945,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::mixing_layout())
                 .expect("bundled mixer layout");
+        } else if title == "Wavetable voice" {
+            self.rack
+                .restore_layout(&Self::wavetable_voice_layout())
+                .expect("bundled wavetable voice layout");
         }
         self.documents.mark_unsaved();
         self.autosave_needed = true;
@@ -1725,6 +1983,13 @@ impl OpenPatch {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "values":[0,0],"scope":[330,0],"clock":[0,420],
             "notes":[330,420],"vco":[600,420],"out":[930,420]
+        }})
+    }
+
+    fn wavetable_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.72,"pan":[24,12],"positions":{
+            "voice":[0,0],"morph":[390,0],"filter":[780,0],"amplifier":[1080,0],"out":[1290,0],
+            "clock":[0,420],"envelope":[180,420],"scope":[570,420],"guide":[1230,420]
         }})
     }
     fn switched_stereo_layout(&mut self) {
@@ -2386,6 +2651,10 @@ impl OpenPatch {
     }
 
     fn save_or_load(&mut self, mode: FileMode) {
+        if matches!(mode, FileMode::WavetableImport | FileMode::WavetableExport) {
+            self.apply_wavetable_file(mode);
+            return;
+        }
         let name = self.filename.clone();
         if mode == FileMode::Save {
             self.save_document(&name, true);
@@ -2714,6 +2983,13 @@ impl OpenPatch {
                                     "../../../examples/stock-vca-voice.json"
                                 )).expect("valid stock VCA voice");
                                 self.replace_from_menu(patch, "Stock VCA voice");
+                                ui.close();
+                            }
+                            if ui.button("Wavetable voice").clicked() {
+                                let patch = serde_json::from_str(include_str!(
+                                    "../../../examples/wavetable-voice.json"
+                                )).expect("valid wavetable voice");
+                                self.replace_from_menu(patch, "Wavetable voice");
                                 ui.close();
                             }
                             if ui.button("Stock VCF voice").clicked() {
@@ -3447,7 +3723,7 @@ impl OpenPatch {
                     &self.shared,
                     "capture_module_preset",
                     json!({
-                        "id":dialog.id,"expected_revision":dialog.revision
+                        "id":dialog.id,"expected_revision":dialog.revision,"include_asset_data":true
                     }),
                 ) {
                     Ok(result) => {
@@ -3526,7 +3802,11 @@ impl OpenPatch {
                 PresetMode::Browse => "Browse module presets",
             });
             ui.label(format!("{} · {}", module_title(&dialog.kind), dialog.id));
-            ui.label(RichText::new("Presets store module controls and bypass only. Rack cables and position stay in the project.").color(MUTED).size(11.0));
+            ui.label(RichText::new(if matches!(dialog.kind.as_str(), "wavetable_vco" | "wavetable_lfo") {
+                "Wavetable presets store controls, bypass and an embedded table. Rack cables and position stay in the project."
+            } else {
+                "Presets store module controls and bypass only. Rack cables and position stay in the project."
+            }).color(MUTED).size(11.0));
             if let Some(error) = &target_error {
                 ui.colored_label(Color32::LIGHT_RED, error);
                 if dialog.mode == PresetMode::Save && dialog.capture.is_some() {
@@ -3688,7 +3968,7 @@ impl OpenPatch {
                 match execute_shared(
                     &self.shared,
                     "read_module_preset",
-                    json!({"filename":filename}),
+                    json!({"filename":filename,"include_asset_data":true}),
                 ) {
                     Ok(result)
                         if result["filename"].as_str() == Some(filename.as_str())
@@ -3756,19 +4036,30 @@ impl OpenPatch {
         }
     }
     fn files_window(&mut self, ctx: &egui::Context) {
+        self.poll_wavetable_import();
         let Some(mode) = self.file_mode else {
             return;
         };
+        let preparing = mode == FileMode::WavetableImport && self.wavetable_import.is_some();
         let mut run = false;
         let mut cancel = false;
         egui::Modal::new(egui::Id::new("project-file-dialog")).show(ctx, |ui| {
             ui.set_width(460.0);
-            ui.heading(if mode == FileMode::Save { "Save project as" } else { "Open project" });
+            ui.heading(match mode {
+                FileMode::Save => "Save project as",
+                FileMode::Open => "Open project",
+                FileMode::WavetableImport => "Load wavetable",
+                FileMode::WavetableExport => "Save wavetable",
+            });
             ui.label(RichText::new(&self.workspace).color(MUTED).size(11.0));
+            if let Some(target) = &self.wavetable_file_target {
+                ui.label(format!("Module: {}", target.id));
+            }
+            ui.add_enabled_ui(!preparing, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Filename");
                 let mut output = egui::TextEdit::singleline(&mut self.filename).desired_width(330.0).show(ui);
-                if self.file_focus {
+                if self.file_focus && !preparing {
                     self.file_focus = false;
                     output.response.request_focus();
                     output.state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
@@ -3778,30 +4069,83 @@ impl OpenPatch {
                 }
                 run |= output.response.lost_focus() && ui.input(|i|i.key_pressed(egui::Key::Enter));
             });
-            if mode == FileMode::Open {
+            if matches!(mode, FileMode::Open | FileMode::WavetableImport) {
                 egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
                     for file in &self.files {
                         let response = ui.selectable_label(self.filename == *file,file);
                         if response.clicked() { self.filename = file.clone(); }
                         if response.double_clicked() { self.filename = file.clone(); run = true; }
                     }
-                    if self.files.is_empty() { ui.label("No saved projects yet."); }
+                    if self.files.is_empty() { ui.label(if mode == FileMode::Open {
+                        "No saved projects yet."
+                    } else { "No supported wavetable files in this workspace." }); }
                 });
-                ui.label("Open a native .openpatch project or import an older .json patch.");
-            } else {
-                ui.label("Use a new .openpatch filename. Modules, cables and rack layout are saved together.");
             }
+            match mode {
+                FileMode::Open => { ui.label("Open a native .openpatch project or import an older .json patch."); }
+                FileMode::Save => { ui.label("Use a new .openpatch filename. Modules, cables and rack layout are saved together."); }
+                FileMode::WavetableImport => {
+                    ui.label("Supported: .wav, .f32, .s8/.i8, .s16/.i16, .s24/.i24, .s32/.i32.");
+                    ui.label("Raw samples use little-endian encoding. WAV channels remain interleaved.");
+                    if let Some(target) = &mut self.wavetable_file_target {
+                        ui.horizontal(|ui| {
+                            ui.label("Wave points");
+                            let entry = ui.add(egui::TextEdit::singleline(&mut target.wave_points)
+                                .hint_text("Auto").desired_width(100.0));
+                            run |= entry.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                            ui.label(format!("Current: {}", target.current_points));
+                        });
+                        ui.label("Auto uses a power-of-two WAV sample rate; otherwise it keeps the current wave length. Enter a length such as 32 to override.");
+                        ui.label(if target.audio { "VCO wave length must be a power of two, at least 32 points." }
+                            else { "LFO wave length must contain at least 2 points." });
+                    }
+                }
+                FileMode::WavetableExport => {
+                    let extension = wavetable_file_extension(&self.filename);
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(extension == "f32", "Exact float32 (.f32)").clicked() {
+                            self.filename = wavetable_filename_with_extension(&self.filename, "f32");
+                        }
+                        if ui.selectable_label(extension == "wav", "PCM16 WAV (.wav)").clicked() {
+                            self.filename = wavetable_filename_with_extension(&self.filename, "wav");
+                        }
+                    });
+                    ui.label(".f32 preserves every source sample bit, including unused trailing points.");
+                    ui.label(".wav converts to PCM16 and clips samples to [-1, 1].");
+                    ui.label("Choose a new filename. Existing files are never overwritten.");
+                }
+            }
+            });
             ui.separator();
+            if preparing {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(if self.wavetable_import.as_ref().is_some_and(|job| job.allowed.load(Ordering::Acquire)) {
+                        "Preparing wavetable…"
+                    } else { "Finishing cancelled import…" });
+                });
+                ctx.request_repaint_after(Duration::from_millis(16));
+            }
             ui.label(&self.status);
             ui.horizontal(|ui| {
-                run |= ui.button(if mode == FileMode::Save { "Save project" } else { "Open" }).clicked();
+                run |= ui.add_enabled(!preparing, egui::Button::new(match mode {
+                    FileMode::Save => "Save project",
+                    FileMode::Open => "Open",
+                    FileMode::WavetableImport => "Load wavetable",
+                    FileMode::WavetableExport => "Save wavetable",
+                })).clicked();
                 cancel = ui.button("Cancel").clicked();
             });
         });
         if cancel || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.cancel_wavetable_import();
+            if mode == FileMode::WavetableImport && self.wavetable_import.is_some() {
+                self.status = "Wavetable import cancelled".into();
+            }
             self.file_mode = None;
+            self.wavetable_file_target = None;
             self.after_save = None;
-        } else if run {
+        } else if run && !preparing {
             self.save_or_load(mode);
         }
     }
@@ -4414,6 +4758,84 @@ impl OpenPatch {
         self.select_analysis(None);
         self.title = "VCA · effective gain, voice by voice".into();
         self.status = "Actual DSP snapshot · proof lanes 0 / 6.25 / 50 / 100 / 100% · fifth input silent, full gain · no live audio".into();
+    }
+
+    fn prepare_wavetable_fixture(&mut self) {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
+                .expect("Valid wavetable voice");
+        let mut engine = patch.compile().expect("Wavetable fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let morph = engine.resolve_tap("morph", "out", 0).unwrap();
+        let mut audio = vec![[0.0; 2]; 4096];
+        let mut taps = vec![[openpatch_core::TapSample::default(); 1]; audio.len()];
+        engine.process_audio_block_with_taps(&mut audio, &[Some(morph)], &mut taps);
+        assert!(audio.iter().flatten().all(|value| value.is_finite()));
+        assert!(audio.iter().flatten().any(|value| value.abs() > 0.001));
+        let lights: BTreeMap<_, _> = ["voice", "morph", "amplifier", "envelope"]
+            .into_iter()
+            .map(|id| {
+                (
+                    id.to_owned(),
+                    engine
+                        .module_lights(engine.resolve_module_lights(id).unwrap())
+                        .unwrap(),
+                )
+            })
+            .collect();
+        let actual_position = lights["voice"]
+            .waveform_position
+            .expect("VCO table position");
+        let expected_position = (0.1 + taps[taps.len() - 2][0].value * 0.8 / 10.0).clamp(0.0, 1.0);
+        assert!(
+            (actual_position - expected_position).abs() < 0.000001,
+            "Wavetable display must show the actual delayed LFO modulation"
+        );
+        assert!(actual_position > 0.1);
+        assert_eq!(lights["morph"].waveform_position, Some(0.2));
+        for id in ["voice", "morph", "amplifier", "envelope"] {
+            assert!(
+                lights[id]
+                    .brightness
+                    .iter()
+                    .flatten()
+                    .any(|value| *value > 0.0),
+                "Wavetable fixture needs actual lit telemetry for {id}"
+            );
+        }
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        assert!(scope.x[0]
+            .iter()
+            .any(|point| point.min.is_finite() && point.max.abs() > 0.001));
+        assert!(scope.y[0]
+            .iter()
+            .any(|point| point.min.is_finite() && point.max.abs() > 0.001));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.preset_dialog = None;
+        self.file_mode = None;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::wavetable_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.browser_open = false;
+        self.title = "Wavetable voice · a table in motion".into();
+        self.status = "Actual offline DSP snapshot · LFO moves the VCO table · VCA/ADSR lights and both Scope traces share one frame · no live audio".into();
     }
 
     fn prepare_stock_delay_fixture(&mut self) {
@@ -5929,6 +6351,23 @@ impl OpenPatch {
             self.status =
                 "The module library uses the rack's exact delay panel and jack geometry".into();
         }
+        if frame == 2232 {
+            egui::Popup::close_all(ctx);
+            self.prepare_wavetable_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2248 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Wavetable voice · lights out · actual phase and envelope lights with captured Scope traces".into();
+        }
+        if frame == 2264 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.5);
+            self.browse();
+            self.title = "Wavetable · shared library faceplates".into();
+            self.status = "Both wavetable modules use the same faceplates and table previews in the library and rack".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -6039,6 +6478,9 @@ impl OpenPatch {
                 | 2192
                 | 2208
                 | 2224
+                | 2240
+                | 2256
+                | 2276
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -6153,7 +6595,10 @@ impl OpenPatch {
                 93 => path.with_file_name("agent-follow-settled.png"),
                 94 => path.with_file_name("rack-stock-delay.png"),
                 95 => path.with_file_name("rack-stock-delay-lights-out.png"),
-                _ => path.with_file_name("stock-delay-library.png"),
+                96 => path.with_file_name("stock-delay-library.png"),
+                97 => path.with_file_name("rack-wavetable.png"),
+                98 => path.with_file_name("rack-wavetable-lights-out.png"),
+                _ => path.with_file_name("wavetable-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -6164,18 +6609,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/97 at frame {frame}: {}",
+                "Native smoke: capture {}/100 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 97 {
+            if captures == 100 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2238, "Native screenshot timeout");
+        assert!(frame < 2290, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6201,6 +6646,9 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
+            if *frame == 2268 {
+                input.events.push(egui::Event::Text("Wavetable".into()));
+            }
             if matches!(*frame, 1972 | 1988 | 2020) {
                 input.events.push(egui::Event::Text(
                     if *frame == 1972 { "analog_vco" } else { "seq3" }.into(),
@@ -6269,6 +6717,10 @@ impl eframe::App for OpenPatch {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_wavetable_import();
+        if self.wavetable_import.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
         if self.smoke_test.is_some() {
             ctx.style_mut(|style| {
                 style.interaction.tooltip_delay = f32::INFINITY;
@@ -6431,6 +6883,7 @@ impl eframe::App for OpenPatch {
         }
     }
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
+        self.cancel_wavetable_import();
         self.mcp_session.shutdown();
         if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
             v.destroy(gl);
@@ -6440,6 +6893,12 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod wavetable_factory_tests {
+        include!("wavetable_factory_tests.rs");
+    }
+    mod wavetable_file_ui_tests {
+        include!("wavetable_file_ui_tests.rs");
+    }
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
     }
@@ -6527,6 +6986,8 @@ mod project_workflow_tests {
             workspace,
             file_mode: None,
             file_focus: false,
+            wavetable_file_target: None,
+            wavetable_import: None,
             browser_open: false,
             library: ModuleLibrary::default(),
             preset_dialog: None,

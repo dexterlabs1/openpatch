@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "frozen_before_rust_comparison": true,
+  "sample_rates_hz": [44100, 48000, 96000],
+  "pointwise": {
+    "absolute_volts": 0.002,
+    "relative": 0.00001,
+    "formula": "abs(actual-reference) <= absolute_volts + relative*abs(reference)",
+    "first_frame": 0,
+    "warmup_frames": 0,
+    "alignment_search_frames": 0,
+    "all_visible_channels": true,
+    "all_outputs_finite": true
+  },
+  "observations": {
+    "phase_absolute_cycles": 0.000002,
+    "table_position_absolute_waves": 0.000002,
+    "clock_absolute": 0.000001,
+    "clock_relative": 0.00001,
+    "exact": ["channel_count", "sync_directions", "previous_sync_voltages", "reset_trigger_masks", "clock_trigger_state", "loading", "wave_length", "sample_count", "frame_count"],
+    "inactive_complete_simd_groups": "phase and trigger state remain bit-identical until active again, except explicit source reset events",
+    "inactive_lanes_in_active_groups": "advance with the complete four-lane group; visible channel count does not round up"
+  },
+  "required_coverage": [
+    "actual default bank and shared explicit f32 synthetic banks",
+    "position 0 and 1 and a fractional position between waves",
+    "signed position CV and clamp boundaries",
+    "exponential FM and positive-frequency linear FM",
+    "VCO hard sync including minBLEP startup and tails; soft sync directions",
+    "LFO clock connection, measurement, rejection, disconnection and reconnection",
+    "LFO reset thresholds, offset, invert and simultaneous flags",
+    "mono broadcast, short poly zero fill, disconnected ports, widths 1 4 5 16",
+    "whole SIMD group freeze and reactivation; active-group hidden lanes",
+    "parameter adoption preserving all oscillator, sync, trigger and clock state",
+    "empty and invalid banks, loading freeze, atomic bank replacement, wave-length rebuild",
+    "explicit source onReset lifecycle and fresh-instance determinism"
+  ],
+  "rust_only_safe_functional_requirements": [
+    "VCO linear FM crossing through zero remains finite, wraps phase in both directions and selects bandlimit using absolute frequency",
+    "VCO exact zero frequency remains finite and holds phase while sync remains usable",
+    "negative-to-positive FM transitions preserve phase continuity except explicit hard sync",
+    "wave-length changes atomically rebuild the prepared bank before publication",
+    "nonfinite/out-of-range host input handling and host public parameter validation",
+    "serialization, graph replacement/adoption, bypass and reset policies through the real host API"
+  ],
+  "excluded_source_undefined_behavior": "Negative/zero VCO frequency reaches log2 and float-to-size_t conversion of NaN/infinity. Never execute or claim fidelity for that source path.",
+  "rationale": "2 mV plus 10 ppm is the existing driven DSP comparison budget, far below a 10 V nominal signal span, while permitting FFT/libm rounding across the independent implementation. Exact widths and event/trigger metadata prevent an amplitude tolerance from hiding lifecycle or routing errors. No startup skip, phase alignment, RMS substitute or per-case relaxation is allowed."
+}

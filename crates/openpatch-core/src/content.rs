@@ -12,8 +12,18 @@ pub const DEFAULT_BLANK_WIDTH_HP: u16 = 10;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModuleContent {
-    Notes { text: String },
-    Blank { width_hp: u16 },
+    Notes {
+        text: String,
+    },
+    Blank {
+        width_hp: u16,
+    },
+    /// Immutable samples live once in Patch.assets, referenced by SHA256.
+    Wavetable {
+        asset_id: String,
+        wave_points: u32,
+        name: String,
+    },
 }
 
 impl Node {
@@ -61,6 +71,38 @@ pub fn validate_content(node: &Node) -> Result<(), String> {
             } else {
                 Ok(())
             }
+        }
+        (
+            Some(ModuleContent::Wavetable {
+                asset_id,
+                wave_points,
+                name,
+            }),
+            "wavetable_vco" | "wavetable_lfo",
+        ) => {
+            if asset_id.len() != 64
+                || !asset_id
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err(format!(
+                    "node '{}': invalid wavetable asset digest",
+                    node.id
+                ));
+            }
+            if name.len() > 1024 || name.contains('\0') {
+                return Err(format!(
+                    "node '{}': wavetable name exceeds 1024 bytes or contains NUL",
+                    node.id
+                ));
+            }
+            if *wave_points < 2
+                || (node.kind == "wavetable_vco"
+                    && (*wave_points < 32 || !wave_points.is_power_of_two()))
+            {
+                return Err(format!("node '{}': invalid wavetable wave length", node.id));
+            }
+            Ok(())
         }
         (Some(_), _) => Err(format!(
             "node '{}': content type does not match module kind '{}'",

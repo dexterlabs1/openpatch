@@ -1,0 +1,30 @@
+{
+  "source": "Rack SDK numerical design API; no SDK source copied into production",
+  "api": "rack::dsp::minBlepImpulse(16,16)",
+  "sdk_version": "Rack SDK 2.6.6; minBlepImpulse(16,16)",
+  "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+  "sdk_minblep_header_sha256": "0ba749aacdecc5bedbdc981b4e8b6bb046c8f630831f41f86c0e99d67497db11",
+  "adapter_sha256": "a67e7f82a740943c038393512abd3a7e267765b167cba5824cc977a6d6bb5bfc",
+  "platform": "arm64",
+  "command": [
+    "c++",
+    "-std=c++17",
+    "-O2",
+    "-ffp-contract=off",
+    "-isysroot",
+    "${MACOS_SDK}",
+    "-isystem",
+    "${MACOS_SDK}/usr/include/c++/v1",
+    "-I${RACK_SDK}/include",
+    "-I${RACK_SDK}/dep/include",
+    "${WORKTREE}/scripts/wavetable_kernel/sdk_coefficients.cpp",
+    "-L${RACK_SDK}",
+    "-lRack",
+    "-o",
+    "${TEMP}/design"
+  ],
+  "computed_coefficients": 512,
+  "appended_endpoint": 1.0,
+  "computed_f32le_sha256": "63feb405c75d062feb5759f5a4f27e1ab9e5da5ecfb62d00c6370fc0b6db1d32",
+  "command_path_normalization": "SDK, workspace and temporary paths normalized; ignored local evidence retains exact invocation"
+}

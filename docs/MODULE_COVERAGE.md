@@ -82,7 +82,7 @@ completed stock VCV target.
 
 [Stock Delay](STOCK_DELAY.md) adds a separate clock-synchronized mono delay,
 MIX/WET outputs, feedback/tone controls and four signed CV depths, bringing the
-current catalog to **66 kinds**. The existing original stereo delay keeps its
+catalog to **66 kinds at that milestone**. The existing original stereo delay keeps its
 own contract. The mono sinc adaptation credits BSD-2-Clause libsamplerate
 0.1.9. The original 24 HP rack/browser panel uses actual CLK telemetry.
 Live Delay runtime handoff avoids copying its 8 MiB history; borrowed adoption
@@ -100,6 +100,19 @@ comparison. The macOS ARM bundle's ad-hoc signature/notices are verified,
 without installing or launching it. Platform CI and the configured 97 native
 captures remain release gates. Native input/device and full callback-deadline
 qualification remain open; this bounded DSP result does not complete host parity.
+
+[Wavetable VCO and LFO](WAVETABLES.md) bring the current catalog to **68 kinds**.
+Their original Rust DSP, immutable prepared banks, guarded workspace files,
+portable presets and local host lifecycle/heap tests cover bounded digital
+behavior. The checked actual-class SDK run passes 153 cases and 626,688 frames
+at 44.1/48/96 kHz, with maximum voltage error 1.9073486328125e-6 V under the
+unchanged 2 mV + 10 ppm gate; LFO voltages are exact in that run. Audio geometry
+is explicitly limited to powers of two of at least 32 points. Zero/negative VCO
+frequency is a safe native extension tested separately from the source's
+undefined path. The [production-hash proof](benchmarks/wavetable-reference.json)
+and local Mac ARM release build pass. New UI captures and platform CI remain
+pending; native interaction/device and full host parity are
+separate acceptance gates.
 
 The prior 45-kind baseline comprises: seven legacy utilities, six reference-voice
 kinds, five functional utilities, four version-2 polyphonic routing/source
@@ -219,11 +232,11 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Module | Group | Rust status | Next acceptance test or prerequisite |
 |---|---|---|---|
 | VCO | Oscillator | Partial: `multi_vco` has four simultaneous outputs, polyphonic FM/PWM and hard/soft sync, original step reconstruction, and direct pinned-reference comparisons; separate reference ramp VCO retained | Reconstruction residual, high-frequency aliasing, voice-retirement compatibility and native qualification remain open; [contract](AUDIO_OSCILLATOR.md) |
-| Wavetable VCO | Oscillator | Planned | Validated file loading, interpolation, tuning and alias budget |
+| Wavetable VCO | Oscillator | Implemented bounded `wavetable_vco`: prepared custom audio tables, position/CV, pitch/FM, hard/soft sync, immutable publication and local host/heap tests | Checked 153-case family SDK comparison; power-of-two audio lengths >=32 only, source nonpositive-frequency path excluded. Hash proof and local Mac build pass; new UI captures, platform CI and native input/device qualification remain; [contract](WAVETABLES.md). |
 | VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
 | VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
 | LFO | Modulation | Implemented documented signal role: `multi_lfo`, four waveforms, FM/PWM, clock/reset and voltage modes | Direct VCV waveform/clock comparison and full native configuration parity remain open; OpenPatch defaults to bipolar output, whereas Fundamental 2.6.4 defaults to unipolar |
-| Wavetable LFO | Modulation | Planned | Table traversal, reset and low-frequency timing |
+| Wavetable LFO | Modulation | Implemented bounded `wavetable_lfo`: custom-table interpolation, FM, clock/reset, offset/invert, coherent position and local host/file/preset tests | Exact LFO voltages in the checked family SDK run; integer wave lengths >=2. Hash proof and local Mac build pass; new UI captures, platform CI and native input/device qualification remain; [contract](WAVETABLES.md). |
 | Delay | Effect | Implemented bounded `stock_delay`: clock-synchronized mono sinc delay, feedback/tone, MIX/WET, four signed depths and shared native panel | Final guarded source-defined DSP matrix, Rust/MCP checks and release build pass; source-undefined analytic SRC case has safety evidence only. Adoption microprofile is separate from callback deadlines. Platform CI/capture verification are release gates; native input/device remains open; [contract](STOCK_DELAY.md) |
 | ADSR EG | Envelope | Implemented stock-style signal role: separate `adsr_eg`, four signed CV depths, gate/retrigger/PUSH, 16 voices and stage lamps; original RC `adsr` preserved | Pinned DSP comparison and original shared panel are independently checked; native macOS interaction/device qualification, Rack import and reference animated envelope-position display remain open; [contract](ADSR_EG.md) |
 | Mix | Mixing | Implemented documented signal role: `mix6`, six inputs, level, invert, averaging | Full native/context-menu parity and VCV differential acceptance remain open |

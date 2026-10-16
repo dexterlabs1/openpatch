@@ -2499,6 +2499,7 @@ impl Rack {
                         self.open_annotation_editor(node, revision);
                         ui.close();
                     }
+                    wavetable_menu(ui, node, patch, revision, &mut action);
                     utility_menu(ui, node, &mut action);
                     if node.kind == "seq3" {
                         for (direction, label) in [
@@ -2666,6 +2667,7 @@ impl Rack {
                     ui.strong(format!("{}  /  {}", title(&node.kind), node.id));
                     ui.separator();
                     monitor_menu(ui, node, &output_ports, patch, &mut action);
+                    wavetable_menu(ui, node, patch, revision, &mut action);
                     utility_menu(ui, node, &mut action);
                     if node.kind == "seq3" {
                         for (direction, label) in [
@@ -2918,6 +2920,17 @@ impl Rack {
                 if let Some(edit) = self.stock_vca_panel(ui, node, rect, revision) {
                     action = Some(edit);
                 }
+            }
+            if is_wavetable(&node.kind) {
+                paint_wavetable_display(
+                    &painter,
+                    node,
+                    patch,
+                    rect,
+                    self.zoom,
+                    self.module_lights.get(&node.id),
+                    &self.lighting,
+                );
             }
             if node.kind == "stock_delay" {
                 if let Some(edit) = self.stock_delay_panel(ui, node, rect, revision) {
@@ -3325,6 +3338,8 @@ impl Rack {
                     )
                 } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
+                } else if is_wavetable(&node.kind) {
+                    (wavetable_parameter_position(index), 18.0)
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
                     (
                         pos2(
@@ -3354,8 +3369,8 @@ impl Rack {
                 };
                 let geometric =
                     matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
-                let clock_ratio = node.kind == "multi_lfo"
-                    && geometric
+                let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
+                let clock_ratio = ((node.kind == "multi_lfo" && geometric) || wave_rate)
                     && patch
                         .cables
                         .iter()
@@ -3366,8 +3381,10 @@ impl Rack {
                     2.0
                 });
                 let fade_percent = node.kind == "fade";
-                let vco_percent = node.kind == "multi_vco"
-                    && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount");
+                let vco_percent = (node.kind == "multi_vco"
+                    && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
+                    || (is_wavetable(&node.kind)
+                        && matches!(*name, "position" | "fm_amount" | "position_cv_amount"));
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
@@ -3384,7 +3401,11 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if let Some(power) = gain_power {
+                let display_value = if wave_rate {
+                    wavetable_rate_value(value, clock_ratio)
+                } else if is_wavetable(&node.kind) {
+                    wavetable_parameter_value(name, value)
+                } else if let Some(power) = gain_power {
                     gain_db_display(value, power)
                 } else if fade_percent {
                     format!("{:.1}%", value * 100.0)
@@ -3409,21 +3430,27 @@ impl Rack {
                     surface,
                     menu_popup: None,
                     stale: false,
-                    text: if let Some(power) = gain_power {
+                    text: if wave_rate {
+                        (value.exp2() * display_scale).to_string()
+                    } else if let Some(power) = gain_power {
                         gain_db(value, power).to_string()
                     } else {
                         slew_min
                             .map_or(value * display_scale, |min| slew_display(value, min))
                             .to_string()
                     },
-                    min: if gain_power.is_some() {
+                    min: if wave_rate {
+                        min.exp2() * display_scale
+                    } else if gain_power.is_some() {
                         f32::NEG_INFINITY
                     } else if slew_min.is_some() {
                         0.0
                     } else {
                         min * display_scale
                     },
-                    max: if let Some(power) = gain_power {
+                    max: if wave_rate {
+                        max.exp2() * display_scale
+                    } else if let Some(power) = gain_power {
                         gain_db(max, power)
                     } else if slew_min.is_some() {
                         max.exp2() * 1000.0
@@ -3438,6 +3465,8 @@ impl Rack {
                         "ms/V"
                     } else if clock_ratio || (scaled_gain && multiplier != 1.0) {
                         "x"
+                    } else if wave_rate {
+                        "Hz"
                     } else if display_scale == 100.0 {
                         "%"
                     } else {
@@ -3459,7 +3488,9 @@ impl Rack {
                     15.0
                 };
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
-                let readout_width = if node.kind == "score_sequencer" {
+                let readout_width = if is_wavetable(&node.kind) {
+                    104.0
+                } else if node.kind == "score_sequencer" {
                     96.0
                 } else if node.kind == "stereo_delay" {
                     width / 4.0 - 12.0
@@ -3482,7 +3513,11 @@ impl Rack {
                 } else {
                     width - 20.0
                 };
-                let choices = ParameterChoices::from_spec(spec);
+                let wave_choices = wavetable_choice_spec(&node.kind, name);
+                let choices = wave_choices
+                    .as_ref()
+                    .and_then(ParameterChoices::from_spec)
+                    .or_else(|| ParameterChoices::from_spec(spec));
                 let normalized = if geometric {
                     normalize_geometric(value, min, max)
                 } else {
@@ -3529,8 +3564,16 @@ impl Rack {
                         } else {
                             egui::WidgetInfo::slider(
                                 true,
-                                value as f64,
-                                format!("{} {}", node.id, name),
+                                if wave_rate {
+                                    f64::from(value.exp2() * display_scale)
+                                } else {
+                                    f64::from(value)
+                                },
+                                if wave_rate {
+                                    format!("{} rate: {}", node.id, display_value)
+                                } else {
+                                    format!("{} {}", node.id, name)
+                                },
                             )
                         }
                     });
@@ -3694,6 +3737,10 @@ impl Rack {
                     Align2::CENTER_BOTTOM,
                     if node.kind == "seq3" {
                         ""
+                    } else if wave_rate && clock_ratio {
+                        "CLOCK RATIO"
+                    } else if is_wavetable(&node.kind) {
+                        wavetable_parameter_label(name)
                     } else if clock_ratio {
                         "CLOCK RATIO"
                     } else if node.kind == "vca_mix" {
@@ -3735,7 +3782,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if let Some(power) = gain_power {
+                        let old_text = if wave_rate {
+                            wavetable_rate_value(old, clock_ratio)
+                        } else if let Some(power) = gain_power {
                             gain_db_display(old, power)
                         } else if fade_percent || vco_percent {
                             format!("{:.1}%", old * 100.0)
@@ -3818,6 +3867,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if is_wavetable(&node.kind) {
+                            wavetable_port_label(port)
                         } else if node.kind == "stock_delay" {
                             stock_delay_port_label(port)
                         } else {
@@ -3839,6 +3890,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if is_wavetable(&node.kind) {
+                        wavetable_port_label(port)
                     } else if node.kind == "stock_delay" {
                         stock_delay_port_label(port)
                     } else {
@@ -3945,6 +3998,8 @@ impl Rack {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
+                        } else if is_wavetable(&node.kind) {
+                            wavetable_port_label(port)
                         } else if node.kind == "stock_delay" {
                             stock_delay_port_label(port)
                         } else {
@@ -3978,6 +4033,8 @@ impl Rack {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
+                    } else if is_wavetable(&node.kind) {
+                        wavetable_port_label(port)
                     } else if node.kind == "stock_delay" {
                         stock_delay_port_label(port)
                     } else {
@@ -7722,6 +7779,321 @@ impl Rack {
     }
 }
 
+// Original 24 HP wavetable faceplate, shared by the rack and browser renderer.
+fn is_wavetable(kind: &str) -> bool {
+    matches!(kind, "wavetable_vco" | "wavetable_lfo")
+}
+fn wavetable_parameter_position(index: usize) -> Pos2 {
+    pos2(
+        60.0 + (index % 3) as f32 * 120.0,
+        205.0 + (index / 3) as f32 * 90.0,
+    )
+}
+fn wavetable_parameter_label(name: &str) -> &str {
+    match name {
+        "tune" => "TUNE",
+        "rate" => "FREE RATE",
+        "position" => "POSITION",
+        "fm_amount" => "FM DEPTH",
+        "position_cv_amount" => "POSITION CV",
+        "sync_mode" => "SYNC",
+        "fm_mode" => "FM MODE",
+        "offset" => "RANGE",
+        "invert" => "POLARITY",
+        other => other,
+    }
+}
+fn wavetable_rate_value(raw: f32, clock_ratio: bool) -> String {
+    let rate = raw.exp2() * if clock_ratio { 0.5 } else { 1.0 };
+    if clock_ratio {
+        format!("{rate:.4}x")
+    } else if rate < 1.0 {
+        format!("{rate:.8} Hz")
+    } else {
+        format!("{rate:.3} Hz")
+    }
+}
+fn wavetable_parameter_value(name: &str, value: f32) -> String {
+    match name {
+        "tune" => format!("{value:+.2} st"),
+        "rate" => wavetable_rate_value(value, false),
+        "position" => format!("{:.1}%", value * 100.0),
+        "fm_amount" | "position_cv_amount" => format!("{:+.1}%", value * 100.0),
+        "sync_mode" => if value < 0.5 { "Hard" } else { "Soft" }.into(),
+        "fm_mode" => if value < 0.5 {
+            "Exponential"
+        } else {
+            "Linear TZ"
+        }
+        .into(),
+        "offset" => if value < 0.5 { "Bipolar" } else { "Offset" }.into(),
+        "invert" => if value < 0.5 { "Normal" } else { "Invert" }.into(),
+        _ => format!("{value:.2}"),
+    }
+}
+fn wavetable_choice_spec(kind: &str, name: &str) -> Option<Value> {
+    if !is_wavetable(kind) {
+        return None;
+    }
+    let labels = match name {
+        "sync_mode" => ["Hard", "Soft"],
+        "fm_mode" => ["Exp", "Linear"],
+        "offset" => ["±5 V", "0–10 V"],
+        "invert" => ["Normal", "Invert"],
+        _ => return None,
+    };
+    Some(json!({"min":0,"max":1,"step":1,"values":[0,1],"labels":labels}))
+}
+fn wavetable_port_label(port: &str) -> &str {
+    match port {
+        "fm" => "FM",
+        "sync" => "SYNC",
+        "reset" => "RESET",
+        "position_cv" => "POS CV",
+        "pitch" => "V/OCT",
+        "clock" => "CLOCK",
+        "out" => "OUT",
+        other => other,
+    }
+}
+fn wavetable_menu(
+    ui: &mut egui::Ui,
+    node: &Node,
+    patch: &Patch,
+    revision: u64,
+    action: &mut Option<RackAction>,
+) {
+    if !is_wavetable(&node.kind) {
+        return;
+    }
+    ui.separator();
+    for (label, command) in [
+        ("Load wavetable…", "open_wavetable_import"),
+        ("Save wavetable…", "open_wavetable_export"),
+    ] {
+        if ui.button(label).clicked() {
+            *action = Some(RackAction::Command(
+                command,
+                json!({"id":node.id,"expected_revision":revision}),
+            ));
+            ui.close();
+        }
+    }
+    ui.menu_button("Wave points", |ui| {
+        let (current, sample_count) = match &node.content {
+            Some(openpatch_core::ModuleContent::Wavetable {
+                asset_id,
+                wave_points,
+                ..
+            }) => (
+                *wave_points as usize,
+                patch
+                    .assets
+                    .get(asset_id)
+                    .map_or(0, |asset| asset.sample_count()),
+            ),
+            _ => (1024, 4096),
+        };
+        for points in [
+            2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
+        ] {
+            if node.kind == "wavetable_vco" && points < 32 {
+                continue;
+            }
+            if ui
+                .add_enabled(
+                    points <= sample_count,
+                    egui::Button::new(format!("{points}")).selected(current == points),
+                )
+                .clicked()
+            {
+                let (asset_id, name) = match &node.content {
+                    Some(openpatch_core::ModuleContent::Wavetable { asset_id, name, .. }) => {
+                        (asset_id.clone(), name.clone())
+                    }
+                    _ => (
+                        openpatch_core::default_wavetable_asset().id().to_owned(),
+                        "Basic".into(),
+                    ),
+                };
+                *action = Some(RackAction::Command(
+                    "set_wavetable",
+                    json!({"id":node.id,"asset_id":asset_id,
+                    "wave_points":points,"name":name,"expected_revision":revision}),
+                ));
+                ui.close();
+            }
+        }
+        ui.label("Rebuilds the table before the graph changes.");
+    });
+    ui.separator();
+}
+
+fn wavetable_display_position(node: &Node, lights: Option<&ModuleLightState>) -> f32 {
+    lights
+        .and_then(|state| state.waveform_position)
+        .filter(|position| position.is_finite())
+        .unwrap_or_else(|| node.params.get("position").copied().unwrap_or(0.0))
+        .clamp(0.0, 1.0)
+}
+// Shows the actual source samples, interpolating the selected complete waves.
+// Basic is the same four mathematical waves used by the control-thread factory.
+fn wavetable_display_samples(node: &Node, patch: &Patch, position: f32) -> Option<[f32; 161]> {
+    let (asset, points) = match &node.content {
+        Some(openpatch_core::ModuleContent::Wavetable {
+            asset_id,
+            wave_points,
+            ..
+        }) => (Some(patch.assets.get(asset_id)?), *wave_points as usize),
+        None => (None, 1024),
+        _ => return None,
+    };
+    let sample_count = asset.map_or(4096, |asset| asset.sample_count());
+    if points < 2 || points > sample_count {
+        return None;
+    }
+    let waves = sample_count / points;
+    let wave = position.clamp(0.0, 1.0) * (waves - 1) as f32;
+    let first = wave.floor() as usize;
+    let second = (first + 1).min(waves - 1);
+    let blend = f64::from(wave.fract());
+    let sample = |index: usize| -> f64 {
+        if let Some(asset) = asset {
+            return f64::from(asset.sample(index).unwrap_or(0.0));
+        }
+        let phase = (index % 1024) as f32 / 1024.0;
+        f64::from(match index / 1024 {
+            0 => (std::f32::consts::TAU * phase).sin(),
+            1 => {
+                if phase < 0.25 {
+                    phase * 4.0
+                } else if phase < 0.75 {
+                    2.0 - phase * 4.0
+                } else {
+                    phase * 4.0 - 4.0
+                }
+            }
+            2 => {
+                if phase < 0.5 {
+                    2.0 * phase
+                } else {
+                    2.0 * phase - 2.0
+                }
+            }
+            _ => {
+                if phase < 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+        })
+    };
+    Some(std::array::from_fn(|index| {
+        let phase = index as f64 / 160.0 * points as f64;
+        let point = phase.floor() as usize % points;
+        let next = (point + 1) % points;
+        let fraction = phase.fract();
+        let a = sample(first * points + point) * (1.0 - fraction)
+            + sample(first * points + next) * fraction;
+        let b = sample(second * points + point) * (1.0 - fraction)
+            + sample(second * points + next) * fraction;
+        (a * (1.0 - blend) + b * blend) as f32
+    }))
+}
+fn paint_wavetable_display(
+    painter: &egui::Painter,
+    node: &Node,
+    patch: &Patch,
+    rect: Rect,
+    zoom: f32,
+    lights: Option<&ModuleLightState>,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let point = |x, y| rect.min + vec2(x, y) * zoom;
+    let outer_clip = painter.clip_rect();
+    let screen = Rect::from_min_max(point(18.0, 78.0), point(342.0, 144.0));
+    let painter = painter.with_clip_rect(painter.clip_rect().intersect(screen));
+    painter.rect_filled(screen, 3.0 * zoom, Color32::from_rgb(32, 44, 43));
+    let position = wavetable_display_position(node, lights);
+    let (name, points) = match &node.content {
+        Some(openpatch_core::ModuleContent::Wavetable {
+            name, wave_points, ..
+        }) => (name.as_str(), *wave_points),
+        _ => ("Basic", 1024),
+    };
+    painter.text(
+        point(25.0, 87.0),
+        Align2::LEFT_CENTER,
+        format!("{name} · {points} points"),
+        crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
+        Color32::from_rgb(201, 224, 207),
+    );
+    if let Some(samples) = wavetable_display_samples(node, patch, position) {
+        let peak = samples
+            .iter()
+            .map(|v| f64::from(*v).abs())
+            .fold(1.0_f64, f64::max);
+        let line: Vec<_> = samples
+            .iter()
+            .enumerate()
+            .map(|(i, sample)| {
+                point(
+                    25.0 + i as f32 / 160.0 * 310.0,
+                    115.0 - (f64::from(*sample) / peak) as f32 * 19.0,
+                )
+            })
+            .collect();
+        painter.add(egui::Shape::line(
+            line,
+            Stroke::new(1.2 * zoom, Color32::from_rgb(167, 224, 187)),
+        ));
+    } else {
+        painter.text(
+            point(180.0, 116.0),
+            Align2::CENTER_CENTER,
+            "Table unavailable",
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+            Color32::from_gray(190),
+        );
+    }
+    let track = Rect::from_min_max(point(25.0, 138.0), point(335.0, 141.0));
+    painter.rect_filled(track, 0.0, Color32::from_gray(85));
+    painter.circle_filled(
+        pos2(egui::lerp(track.x_range(), position), track.center().y),
+        2.5 * zoom,
+        Color32::from_rgb(235, 198, 94),
+    );
+    let painter = painter.with_clip_rect(rect.intersect(outer_clip));
+    let labels = if node.kind == "wavetable_vco" {
+        ["−", "+", "POLY", "SOFT", "LIN"]
+    } else {
+        ["A", "B", "POLY", "OFFSET", "INV"]
+    };
+    for (index, label) in labels.iter().enumerate() {
+        let center = point(54.0 + index as f32 * 63.0, 154.0);
+        let strength = lights
+            .filter(|state| index < usize::from(state.count))
+            .map_or(0.0, |state| state.brightness[index][0])
+            .clamp(0.0, 1.0);
+        lighting.circle(
+            &painter,
+            center,
+            2.5 * zoom,
+            Color32::from_rgb(207, 176, 83).gamma_multiply(0.12 + strength * 0.88),
+            strength,
+            0.12,
+        );
+        painter.text(
+            center + vec2(6.0, 0.0) * zoom,
+            Align2::LEFT_CENTER,
+            label,
+            crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
+            MUTED,
+        );
+    }
+}
+
 include!("annotation_panel.rs");
 include!("precision_editor.rs");
 include!("adsr_eg_panel.rs");
@@ -7769,7 +8141,9 @@ fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value
 }
 
 fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
-    if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
+    if edit.kind == "wavetable_lfo" && edit.parameter == "rate" {
+        (parsed / edit.display_scale).log2()
+    } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
         stock_vcf_frequency_raw(parsed)
     } else if edit.kind == "stock_vcf" && edit.parameter == "drive" {
         parsed / 100.0 - 1.0
@@ -7865,6 +8239,9 @@ fn parameter_editor_contents_with_navigation(
     }
     if edit.display_scale == 0.5 {
         ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive.");
+    }
+    if edit.kind == "wavetable_lfo" && edit.parameter == "rate" && edit.display_scale != 0.5 {
+        ui.label("Enter the free-running rate in Hz. Connecting a clock changes this control to a clock multiplier.");
     }
     if edit.parameter == "frequency" && edit.display_scale != 0.5 {
         ui.label("Enter frequency in Hz.");
@@ -8325,6 +8702,21 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if is_wavetable(&edit.kind) {
+        let suffix = match edit.parameter.as_str() {
+            "position" | "fm_amount" | "position_cv_amount" => "%",
+            "tune" => "st",
+            "rate" => edit.display_unit.as_str(),
+            _ => "",
+        };
+        if !suffix.is_empty()
+            && text
+                .get(text.len().saturating_sub(suffix.len())..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     let evaluated =
         crate::expression::evaluate(text).map_err(|error| error.to_string())? * unit_scale;
     let gain_zero = edit.gain_power.is_some() && evaluated == f64::NEG_INFINITY;
@@ -8523,6 +8915,9 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 },
                 365.0,
             )
+        }
+        "wavetable_vco" | "wavetable_lfo" => {
+            return pos2(36.0 + if input { index as f32 } else { 4.0 } * 72.0, 367.0);
         }
         "stock_delay" => {
             return if input && index < 4 {
@@ -9654,7 +10049,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
         "stock_vcf" => HP * 18.0,
-        "stock_delay" => HP * 24.0,
+        "stock_delay" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
         "stock_vca" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
@@ -9717,6 +10112,8 @@ pub(crate) fn title(kind: &str) -> &str {
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
         "stock_vcf" => "VCF",
+        "wavetable_vco" => "WAVETABLE VCO",
+        "wavetable_lfo" => "WAVETABLE LFO",
         "stock_delay" => "DELAY",
         "stock_vca" => "VCA",
         "analog_vca" => "OTA VCA",
@@ -9964,6 +10361,22 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
         "stock_vcf" => &STOCK_VCF_PARAMS,
+        "wavetable_vco" => &[
+            "tune",
+            "position",
+            "fm_amount",
+            "position_cv_amount",
+            "sync_mode",
+            "fm_mode",
+        ],
+        "wavetable_lfo" => &[
+            "rate",
+            "position",
+            "fm_amount",
+            "position_cv_amount",
+            "offset",
+            "invert",
+        ],
         "stock_delay" => &STOCK_DELAY_PARAMS,
         "stock_vca" => &STOCK_VCA_PARAMS,
         "adsr" => &["attack", "decay", "sustain", "release"],
@@ -10622,6 +11035,14 @@ fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32)
     }
 }
 
+fn panel_heading(kind: &str, width: f32) -> &str {
+    if kind == "blank" && width < 75.0 {
+        "BLK"
+    } else {
+        title(kind)
+    }
+}
+
 fn paint_panel(
     painter: &egui::Painter,
     rect: Rect,
@@ -10661,76 +11082,31 @@ fn paint_panel(
     }
     let point = |x, y| rect.min + vec2(x, y) * zoom;
     let width = rect.width() / zoom;
-    if node.kind == "blank" && width < 120.0 {
-        return;
-    }
-    let label = title(&node.kind);
+    let inset = if width < 90.0 { 8.0 } else { 14.0 };
+    let label = panel_heading(&node.kind, width);
     let mut font = crate::panel_skin::heading_font(
         painter.ctx(),
-        if width < 140.0 { 18.0 } else { 21.0 } * zoom,
+        if width < 140.0 { 24.0 } else { 28.0 } * zoom,
     );
     let measured = painter.layout_no_wrap(label.to_owned(), font.clone(), INK);
-    let available = (width - 30.0) * zoom;
+    let available = (width - inset * 2.0 - if master { 16.0 } else { 0.0 }).max(1.0) * zoom;
     font.size *= (available / measured.size().x.max(1.0)).min(1.0);
     let heading = painter.layout_no_wrap(label.to_owned(), font, INK);
-    painter.galley(
-        point(width * 0.5, 31.0) - heading.size() * 0.5,
-        heading,
-        INK,
-    );
-    let mut identity = egui::text::LayoutJob::simple(
-        if node.bypassed {
-            "BYPASSED"
-        } else {
-            crate::panel_skin::model_caption(&node.kind)
-        }
-        .to_owned(),
-        crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-        MUTED,
-        (width - 28.0) * zoom,
-    );
-    identity.wrap.max_rows = 1;
-    let identity = painter.layout_job(identity);
-    painter.galley(
-        point(width * 0.5, 51.0) - identity.size() * 0.5,
-        identity,
-        MUTED,
-    );
-    painter.line_segment(
-        [point(22.0, 65.0), point(width - 22.0, 65.0)],
-        Stroke::new(0.65 * zoom, Color32::from_rgb(166, 164, 157)),
-    );
-    painter.line_segment(
-        [point(22.0, 65.0), point(width - 22.0, 65.0)],
-        Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
-    );
-    if !matches!(
-        node.kind.as_str(),
-        "pulses" | "svf_filter" | "audio_stereo" | "modal_resonator" | "random_values" | "sh_asr"
-    ) {
-        let studio_footer = matches!(
-            node.kind.as_str(),
-            "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
-        );
+    painter.galley(point(inset, 19.0), heading, INK);
+    // Bypass is current state, rather than a permanent descriptive subtitle.
+    if node.bypassed {
         painter.text(
-            point(
-                if studio_footer {
-                    width - 24.0
-                } else {
-                    width * 0.5
-                },
-                PANEL_HEIGHT - 7.0,
-            ),
-            if studio_footer {
-                Align2::RIGHT_CENTER
-            } else {
-                Align2::CENTER_CENTER
-            },
-            "OPENPATCH",
-            FontId::proportional(7.0 * zoom),
+            point(inset, 55.0),
+            Align2::LEFT_CENTER,
+            if width < 90.0 { "BYP" } else { "BYPASSED" },
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
     }
+    painter.line_segment(
+        [point(inset, 65.0), point(width - inset, 65.0)],
+        Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
+    );
     if master {
         paint_jack_light(
             painter,
@@ -11632,7 +12008,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            66,
+            68,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -11692,6 +12068,29 @@ mod tests {
                     assert!(rendered.action.is_none(), "{kind}");
                 });
             });
+            // Header typography must fit the panel at each real library/rack
+            // scale; clipping would conceal a long or narrow module identity.
+            let heading = thumbnail
+                .shapes
+                .iter()
+                .find_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == panel_heading(kind, panel_width(kind))
+                            && text.pos.y < rect.top() + 65.0 * scale =>
+                    {
+                        Some(Rect::from_min_size(text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .expect("shared preview draws a module heading");
+            assert!(
+                rect.expand(0.1).contains_rect(heading),
+                "{kind} at {scale}: heading {heading:?} clips outside {rect:?}"
+            );
+            assert!(
+                heading.bottom() <= rect.top() + 65.0 * scale,
+                "{kind} at {scale}: heading overlaps the controls below the header"
+            );
             let thumbnail = primitives(&thumbnail.shapes);
             let actual = primitives(&actual.shapes);
             let difference = thumbnail.iter().zip(&actual).position(|(a, b)| a != b);
@@ -11728,6 +12127,8 @@ mod tests {
             "macro_voice",
             "mix6",
             "multi_lfo",
+            "wavetable_vco",
+            "wavetable_lfo",
             "poly_viz",
             "score_sequencer",
             "drum_voice",
@@ -11779,28 +12180,24 @@ mod tests {
                             continue;
                         }
                         assert!(
-                            texts.iter().any(|(text, _)| text == parameter_label(name)
+                            texts.iter().any(|(text, _)| text
+                                == if is_wavetable(kind) {
+                                    wavetable_parameter_label(name)
+                                } else {
+                                    parameter_label(name)
+                                }
                                 || (kind == "sh_asr"
                                     && name == "random"
                                     && text.starts_with("RND "))),
                             "{kind}: missing parameter label {name}"
                         );
                     }
-                    if let Some((_, footer)) = texts.iter().find(|(text, _)| {
-                        text == "OPENPATCH" && !matches!(kind, "mix6" | "multi_lfo")
-                    }) {
-                        for shape in &output.shapes {
-                            if let egui::Shape::Circle(circle) = &shape.shape {
-                                assert!(
-                                    !footer.intersects(Rect::from_center_size(
-                                        circle.center,
-                                        Vec2::splat(circle.radius * 2.0)
-                                    )),
-                                    "{kind} at {scale}: footer intersects a control/socket"
-                                );
-                            }
-                        }
-                    }
+                    assert!(
+                        texts
+                            .iter()
+                            .all(|(text, _)| !text.eq_ignore_ascii_case("openpatch")),
+                        "{kind} at {scale}: module branding must be absent"
+                    );
                     for (index, (label, bounds)) in texts.iter().enumerate() {
                         for (other, other_bounds) in &texts[index + 1..] {
                             assert!(!bounds.shrink(0.2 * scale).intersects(other_bounds.shrink(0.2 * scale)),
@@ -18289,6 +18686,9 @@ mod tests {
 
     mod stock_delay_ui_tests {
         include!("stock_delay_ui_tests.rs");
+    }
+    mod wavetable_ui_tests {
+        include!("wavetable_ui_tests.rs");
     }
     mod stock_vcf_ui_tests {
         include!("stock_vcf_ui_tests.rs");

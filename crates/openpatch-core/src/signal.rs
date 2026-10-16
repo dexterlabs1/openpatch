@@ -17,6 +17,9 @@ pub struct ModuleLightState {
     /// Input channel count for SUM and VIZ, latched with their published lights.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
+    /// Actual CV-influenced normalized wavetable position, for shared panels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waveform_position: Option<f32>,
     pub count: u8,
     pub brightness: [[f32; 2]; MAX_MODULE_LIGHTS],
     pub manual: bool,
@@ -507,6 +510,7 @@ impl Signal {
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
             input_channels: None,
+            waveform_position: None,
             count: self.light_count,
             brightness: self.lights.map(|row| row.map(|v| v as f32)),
             manual: self.dsp.controls().is_some_and(|m| m.pressed),

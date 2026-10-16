@@ -318,14 +318,22 @@ fn basename_extension_and_size_limits_apply_to_native_and_legacy_reads_and_write
     ] {
         assert!(store.load(name).is_err());
     }
-    let mut native = document(1.0).encode().unwrap();
-    native.resize(2 * 1024 * 1024 + 1, b' '); // Still valid JSON: reject size, not syntax.
-    fs::write(directory.path().join("large.openpatch"), native).unwrap();
-    assert!(store.load("large.openpatch").is_err());
-    let mut legacy = serde_json::to_vec(&patch(1, 1.0)).unwrap();
-    legacy.resize(1024 * 1024 + 1, b' ');
-    fs::write(directory.path().join("large.json"), legacy).unwrap();
-    assert!(store.load("large.json").is_err());
+    // Sparse oversized files exercise metadata rejection without allocating a
+    // pair of 64MiB test buffers; error text proves size wins over JSON parsing.
+    for (name, prefix) in [
+        ("large.openpatch", document(1.0).encode().unwrap()),
+        ("large.json", serde_json::to_vec(&patch(1, 1.0)).unwrap()),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, prefix).unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_len(openpatch_core::MAX_PATCH_FILE_BYTES as u64 + 1)
+            .unwrap();
+        assert!(store.load(name).unwrap_err().contains("64 MiB"));
+    }
     fs::write(
         directory.path().join("sidecar.json"),
         serde_json::to_vec(&patch(2, 1.0)).unwrap(),

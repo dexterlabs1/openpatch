@@ -313,7 +313,6 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
             }
             for required in [
                 "VCF",
-                "POLYPHONIC LP / HP FILTER",
                 "CUTOFF",
                 "RESONANCE",
                 "DRIVE",

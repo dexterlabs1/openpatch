@@ -25,10 +25,12 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
             Color32::from_rgb(151, 93, 57)
         }
-        "modal_resonator" | "colored_noise" | "macro_voice" => Color32::from_rgb(151, 93, 57),
+        "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
+            Color32::from_rgb(151, 93, 57)
+        }
         "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
-        "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer"
-        | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
+        "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "seq3"
+        | "score_sequencer" | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
         "gain"
         | "analog_vca"
         | "stock_vca"
@@ -47,73 +49,6 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
             Color32::from_rgb(66, 104, 133)
         }
         _ => Color32::from_rgb(112, 112, 105),
-    }
-}
-
-/// Permanent faceplate print: independent of instance IDs and live values.
-pub(crate) fn model_caption(kind: &str) -> &str {
-    match kind {
-        "notes" => "PATCH NOTES",
-        "blank" => "RACK SPACE",
-        "score_sequencer" => "PATTERNS & AUTOMATION",
-        "stereo_delay" => "MODULATED ECHO",
-        "stereo_reverb" => "STEREO REVERBERATOR",
-        "sidechain_compressor" => "SIDECHAIN COMPRESSOR",
-        "drum_voice" => "PERCUSSION SYNTHESIZER",
-        "svf_filter" => "LOW / BAND / HIGH",
-        "analog_vco" => "ANALOG OSCILLATOR",
-        "oscillator" => "SINE OSCILLATOR",
-        "multi_vco" => "MULTI-WAVE OSCILLATOR",
-        "macro_voice" => "8 ENGINE POLYPHONIC SYNTH",
-        "lowpass" => "LOW-PASS FILTER",
-        "ladder_vcf" => "TRANSISTOR FILTER",
-        "stock_vcf" => "POLYPHONIC LP / HP FILTER",
-        "stock_delay" => "CLOCKED MONO DELAY",
-        "stock_vca" => "POLYPHONIC GAIN",
-        "analog_vca" => "TRANSCONDUCTANCE VCA",
-        "gain" => "AMPLIFIER",
-        "adsr" => "ENVELOPE GENERATOR",
-        "adsr_eg" => "POLYPHONIC DIGITAL ENVELOPE",
-        "lfo" | "multi_lfo" => "LOW FREQUENCY",
-        "gate" => "PULSE GENERATOR",
-        "seq3" => "THREE-ROW SEQUENCER",
-        "constant" => "VOLTAGE SOURCE",
-        "poly_constant" => "POLYPHONIC SOURCE",
-        "output" | "audio_out" => "AUDIO OUTPUT",
-        "audio_stereo" => "STEREO OUTPUT",
-        "midi_cv" => "MIDI INTERFACE",
-        "midi_cc" => "SIXTEEN CONTROLLER OUTPUTS",
-        "midi_gate" => "SIXTEEN NOTE GATES",
-        "white_noise" => "NOISE GENERATOR",
-        "colored_noise" => "SEVEN NOISE COLORS",
-        "random_values" => "HELD RANDOM VOLTAGES",
-        "sh_asr" => "EIGHT-STAGE SAMPLE & HOLD",
-        "mixer" => "SIGNAL SUMMER",
-        "mix6" => "SIX-CHANNEL MIXER",
-        "vca_mix" => "VOLTAGE CONTROLLED MIXER",
-        "cv_mix" => "BIPOLAR MIXER",
-        "fade" | "crossfade" => "SIGNAL CROSSFADER",
-        "attenuverter" | "attenuverter8" => "BIPOLAR ATTENUATOR",
-        "mutes10" => "TEN-CHANNEL MUTES",
-        "mid_side" => "STEREO MATRIX",
-        "octave" => "PITCH TRANSPOSE",
-        "quantizer" => "PITCH QUANTIZER",
-        "sample_hold" => "SAMPLE & HOLD",
-        "mult" => "SIGNAL MULTIPLE",
-        "poly_split" => "POLYPHONIC SPLITTER",
-        "poly_merge" => "POLYPHONIC MERGER",
-        "poly_sum" => "POLYPHONIC SUMMER",
-        "scope" => "POLYPHONIC SIGNAL MONITOR",
-        "modal_resonator" => "STIFF STRING / BEAM · 16 MODES",
-        "poly_viz" => "POLYPHONIC VOLTAGE DISPLAY",
-        "switch_1to4" | "switch_4to1" => "SEQUENTIAL SWITCH",
-        "logic" => "BOOLEAN LOGIC",
-        "compare" => "VOLTAGE COMPARATOR",
-        "process" => "SIGNAL PROCESSOR",
-        "rescale" => "VOLTAGE SCALER",
-        "pulses" | "push" => "MANUAL GATES",
-        "gates" => "GATE PROCESSOR",
-        _ => "SIGNAL UTILITY",
     }
 }
 

@@ -338,7 +338,6 @@ fn stock_delay_shared_browser_and_rack_labels_fit_at_zoom_and_200_percent_previe
             }
             for required in [
                 "DELAY",
-                "CLOCKED MONO DELAY",
                 "TIME",
                 "FEEDBACK",
                 "TONE",
