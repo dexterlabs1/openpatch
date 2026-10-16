@@ -22,6 +22,7 @@ include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("stock_vca_mix_panel.rs");
+include!("stock_process_panel.rs");
 include!("stock_noise_panel.rs");
 include!("studio_mixer_panel.rs");
 include!("cable_autopan.rs");
@@ -42,11 +43,13 @@ const STOCK_VCA_MIX_PORT_SCALE: f32 = 1.07;
 // shared scale also enlarges their input sockets and pointer targets.
 const STOCK_OSCILLATOR_PORT_SCALE: f32 = 1.30;
 const STOCK_NOISE_PORT_SCALE: f32 = 1.30;
+const STOCK_PROCESS_PORT_SCALE: f32 = 1.30;
 fn port_material_scale(kind: &str) -> f32 {
     match kind {
         "stock_vca_mix" => STOCK_VCA_MIX_PORT_SCALE,
         "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
         "stock_noise" => STOCK_NOISE_PORT_SCALE,
+        "stock_process" => STOCK_PROCESS_PORT_SCALE,
         _ => 1.0,
     }
 }
@@ -3138,6 +3141,18 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_process" {
+                if let Some(edit) = self.stock_process_panel(
+                    ui,
+                    node,
+                    rect,
+                    revision,
+                    allow_manual_press,
+                    mode.is_interactive(),
+                ) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "random" {
                 if self.editing.as_ref().is_some_and(|edit| {
                     edit.id == node.id
@@ -3264,6 +3279,7 @@ impl Rack {
                     || node.kind == "stock_vca"
                     || node.kind == "stock_octave"
                     || node.kind == "stock_vca_mix"
+                    || node.kind == "stock_process"
                     || node.kind == "studio_mixer"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
@@ -4451,6 +4467,8 @@ impl Rack {
                             studio_mixer_port_label(port)
                         } else if node.kind == "stock_vca_mix" {
                             stock_vca_mix_port_label(port)
+                        } else if node.kind == "stock_process" {
+                            stock_process_port_label(port)
                         } else if node.kind == "stock_octave" {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
@@ -4472,7 +4490,11 @@ impl Rack {
                         is_voltage_utility(&node.kind)
                             || matches!(
                                 node.kind.as_str(),
-                                "sh_asr" | "stock_seq3" | "stock_quantizer" | "stock_noise"
+                                "sh_asr"
+                                    | "stock_seq3"
+                                    | "stock_quantizer"
+                                    | "stock_noise"
+                                    | "stock_process"
                             ),
                         port_material_scale(&node.kind),
                     );
@@ -4489,6 +4511,8 @@ impl Rack {
                         studio_mixer_port_label(port)
                     } else if node.kind == "stock_vca_mix" {
                         stock_vca_mix_port_label(port)
+                    } else if node.kind == "stock_process" {
+                        stock_process_port_label(port)
                     } else if node.kind == "stock_octave" {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
@@ -4510,7 +4534,11 @@ impl Rack {
                     is_voltage_utility(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "sh_asr" | "stock_seq3" | "stock_quantizer" | "stock_noise"
+                            "sh_asr"
+                                | "stock_seq3"
+                                | "stock_quantizer"
+                                | "stock_noise"
+                                | "stock_process"
                         ),
                     if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
                         12.0
@@ -4616,6 +4644,8 @@ impl Rack {
                             "ENV"
                         } else if node.kind == "stock_vca_mix" {
                             stock_vca_mix_port_label(port)
+                        } else if node.kind == "stock_process" {
+                            stock_process_port_label(port)
                         } else if node.kind == "stock_octave" {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
@@ -4646,6 +4676,7 @@ impl Rack {
                                     | "midi_cc"
                                     | "midi_gate"
                                     | "stock_noise"
+                                    | "stock_process"
                             ),
                         port_material_scale(&node.kind),
                     );
@@ -4667,6 +4698,8 @@ impl Rack {
                         "ENV"
                     } else if node.kind == "stock_vca_mix" {
                         stock_vca_mix_port_label(port)
+                    } else if node.kind == "stock_process" {
+                        stock_process_port_label(port)
                     } else if node.kind == "stock_octave" {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
@@ -4697,6 +4730,7 @@ impl Rack {
                                 | "midi_cc"
                                 | "midi_gate"
                                 | "stock_noise"
+                                | "stock_process"
                         ),
                     if matches!(
                         node.kind.as_str(),
@@ -9285,7 +9319,11 @@ fn parameter_editor_contents_with_navigation(
         ui.label("Enter dB. -inf sets the gain to zero.");
     }
     if edit.slew_min.is_some() {
-        ui.label("Enter milliseconds per volt. 0 = instant (slew CV ignored).");
+        ui.label(if edit.kind == "stock_process" {
+            "Enter 0 for instant (slew CV ignored), or more than 1 ms/V for slew."
+        } else {
+            "Enter milliseconds per volt. 0 = instant (slew CV ignored)."
+        });
     }
     if edit.display_scale == 0.5 {
         ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive.");
@@ -9716,6 +9754,14 @@ fn is_signal_utility(kind: &str) -> bool {
 fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     let mut text = edit.text.trim();
     let mut unit_scale = 1.0;
+    if edit.kind == "stock_process"
+        && edit.parameter == "slew"
+        && text
+            .get(text.len().saturating_sub(4)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case("ms/V"))
+    {
+        text = text[..text.len() - 4].trim_end();
+    }
     if stock_delay_time_edit(edit) {
         if text
             .get(text.len().saturating_sub(2)..)
@@ -9853,6 +9899,13 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             "Result must be between {} and {}.",
             edit.min, edit.max
         ));
+    }
+    if edit.kind == "stock_process"
+        && edit.parameter == "slew"
+        && value > 0.0
+        && parameter_edit_raw_value(edit, value) <= STOCK_PROCESS_MIN_SLEW
+    {
+        return Err("Enter 0 for instant, or more than 1 ms/V for slew.".into());
     }
     if let Some(step) = edit.step {
         let steps = (value - edit.min) / step;
@@ -10034,6 +10087,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 pos2(stock_vca_mix_column(index - 1), 380.0)
             }
         }
+        "stock_process" => return stock_process_port_position(input, index),
         "stock_octave" => {
             return pos2(
                 if input {
@@ -11236,6 +11290,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "svf_filter" => HP * 18.0,
         "vca_mix" => HP * 26.0,
         "stock_vca_mix" => HP * 18.0,
+        "stock_process" => HP * 20.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
         "attenuverter8" | "mutes10" | "cv_mix" | "pulses" | "gates" => HP * 16.0,
@@ -11301,6 +11356,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "mix6" => "MIX 6",
         "stock_mix" => "STOCK MIX",
         "stock_vca_mix" => "STOCK VCA MIX",
+        "stock_process" => "STOCK PROCESS",
         "stock_noise" => "STOCK NOISE",
         "studio_mixer" => "STUDIO MIXER",
         "octave" => "OCTAVE",
@@ -12310,7 +12366,7 @@ fn paint_panel(
     zoom: f32,
     lighting: &crate::lighting::RoomLighting,
 ) {
-    if node.kind == "stock_vca_mix" {
+    if matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
     } else if node.kind == "stock_noise" {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
@@ -12375,7 +12431,7 @@ fn paint_panel(
     let width = rect.width() / zoom;
     let inset = if width < 90.0 { 8.0 } else { 14.0 };
     let label = panel_heading(&node.kind, width);
-    let header_ink = if node.kind == "stock_vca_mix" {
+    let header_ink = if matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
         crate::panel_skin::INK
     } else {
         crate::panel_skin::HEADER_INK
@@ -13516,7 +13572,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            79,
+            80,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -20327,6 +20383,9 @@ mod tests {
     }
     mod stock_vca_mix_ui_tests {
         include!("stock_vca_mix_ui_tests.rs");
+    }
+    mod stock_process_ui_tests {
+        include!("stock_process_ui_tests.rs");
     }
     mod stock_noise_ui_tests {
         include!("stock_noise_ui_tests.rs");

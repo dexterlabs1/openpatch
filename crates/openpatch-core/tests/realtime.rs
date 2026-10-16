@@ -60,6 +60,60 @@ fn process_block_allocates_nothing_even_on_first_callback() {
 }
 
 #[test]
+fn stock_process_sixteen_voice_first_callback_actions_adoption_bypass_and_resets_use_no_heap() {
+    use openpatch_core::{ModuleAction, Patch, PortFrame};
+
+    let patch: Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[
+            {"id":"source","kind":"poly_constant","params":{"channels":16,"v1":5,"v16":-5}},
+            {"id":"process","kind":"stock_process","params":{"slew":-10}}
+        ],
+        "cables":[{"from":"source","to":"process","input":"signal"}],
+        "output":"process","output_port":"sh1"
+    }))
+    .unwrap();
+    let mut old = patch.compile().unwrap();
+    let mut receiving = patch.compile().unwrap();
+    let mut bypass_patch = patch;
+    bypass_patch.nodes[1].bypassed = true;
+    let mut bypassed = bypass_patch.compile().unwrap();
+    let old_handle = old.resolve_module_control("process").unwrap();
+    let receiving_handle = receiving.resolve_module_control("process").unwrap();
+    let bypass_handle = bypassed.resolve_module_state("process").unwrap();
+    let mut frames = [PortFrame::default(); 129];
+
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for length in [0, 1, 3, 64, 129] {
+        assert!(old.handle_module_event(old_handle, ModuleAction::GatePress));
+        old.process_poly_block(&mut frames[..length]);
+        assert!(old.handle_module_event(old_handle, ModuleAction::GateRelease));
+        old.process_poly_block(&mut frames[..length]);
+
+        receiving.adopt_state_from(&old);
+        assert!(receiving.handle_module_event(receiving_handle, ModuleAction::GatePress));
+        receiving.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(receiving.stock_process_snapshot_bits(receiving_handle));
+        std::hint::black_box(receiving.module_lights(receiving_handle));
+
+        bypassed.adopt_state_from(&receiving);
+        bypassed.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(bypassed.stock_process_snapshot_bits(bypass_handle));
+        assert!(receiving.handle_module_event(receiving_handle, ModuleAction::GateRelease));
+        assert!(receiving.initialize_module_state(receiving_handle));
+        assert!(receiving.reset_module_state(receiving_handle));
+        receiving.process_poly_block(&mut frames[..length]);
+        assert!(receiving.release_module_controls(receiving_handle));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(frames.iter().all(|frame| frame.channels <= 16));
+}
+
+#[test]
 fn studio_mixer_first_process_adoption_recreation_and_reset_use_no_heap() {
     use openpatch_core::{Patch, PortDirection, PortFrame};
     let mut patch: Patch = serde_json::from_value(serde_json::json!({

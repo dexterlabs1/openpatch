@@ -1155,6 +1155,42 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertTrue(any(abs(x) > 100 for x in samples))
         self.assertLess(max(abs(x) for x in samples), 32767)
 
+    def test_stock_process_outputs_raw_presets_and_connected_voice(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        outputs = ["sh1", "sh2", "track_hold", "hold_track", "slew", "glide"]
+        self.assertEqual(modules["stock_process"]["outputs"], outputs)
+        self.assertEqual(modules["stock_process"]["inputs"], ["slew_cv", "signal", "gate"])
+        self.assertIn("process", modules)
+        patch = {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 3, "v1": 1, "v2": 2, "v3": 3}},
+            {"id": "process", "kind": "stock_process", "params": {"slew": -10}},
+        ], "cables": [{"from": "source", "to": "process", "input": "signal"}],
+            "output": "process", "output_port": "sh1"}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        before = self.patch_snapshot()
+        for port in outputs:
+            captured = self.payload(self.require_tool_success("capture_signal", {
+                "id": "process", "port": port, "seconds": .004, "points": 96, "channel": 3,
+                "module_events": [{"frame": 16, "id": "process", "action": "gate_press"},
+                                  {"frame": 48, "id": "process", "action": "gate_release"}],
+            }))
+            self.assertTrue(all(math.isfinite(captured["summary"][key]) for key in ("rms", "dc", "peak")))
+            self.assertEqual(len(captured["bins"]), 96)
+        self.assertEqual(self.patch_snapshot(), before, "offline actions must not edit the live project")
+        self.require_tool_error("set_parameter", {"id": "process", "parameter": "slew", "value": 8})
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "process"}))["preset"]
+        self.assertEqual(preset["params"], {"slew": -10})
+        self.require_tool_success("set_parameter", {"id": "process", "parameter": "slew", "value": 0})
+        self.require_tool_success("apply_module_preset", {"id": "process", "preset": preset})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        example = json.loads((REPOSITORY / "examples/stock-process-voice.json").read_text())
+        self.require_tool_success("replace_patch", {"patch": example})
+        self.require_tool_success("render_audio", {"filename": "process-voice.wav", "seconds": .2})
+        with wave.open(str(self.workspace / "process-voice.wav")) as rendered:
+            samples = self._first_channel_samples(rendered.readframes(9600), rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(value) > 100 for value in samples))
+        self.assertLess(max(abs(value) for value in samples), 32767)
+
     def test_noise_colors_named_outputs_seed_history_and_persistence(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         colors = ["white", "pink", "red", "violet", "blue", "gray", "black"]
@@ -1299,7 +1335,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 79)
+        self.assertEqual(len(catalog["modules"]), 80)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1395,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 79)
+        self.assertEqual(len(catalog["modules"]), 80)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1488,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 79)
+        self.assertEqual(len(catalog["modules"]), 80)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])

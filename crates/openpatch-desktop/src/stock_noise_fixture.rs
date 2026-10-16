@@ -63,7 +63,7 @@ impl OpenPatch {
     // Append captures only after all 139 existing receipts have been saved.
     // The old logical-frame schedule and its <2960 guard remain unchanged.
     fn smoke_noise_tail(&mut self, ctx: &egui::Context, path: &Path, captures: usize) {
-        if captures == 146 {
+        if captures == 149 {
             self.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
@@ -118,6 +118,25 @@ impl OpenPatch {
                     self.title = "Studio Mixer · Custom and Mixing".into();
                 }
                 145 => self.prepare_ferrofluid_fixture(ctx),
+                146 => {
+                    egui::Popup::close_all(ctx);
+                    self.library = ModuleLibrary::default();
+                    self.prepare_stock_process_fixture();
+                    self.rack.set_room_brightness(1.0);
+                }
+                147 => {
+                    self.rack.set_room_brightness(0.0);
+                    self.status = "Stock Process · lights out · actual manual button lamp and port voltages · no live audio".into();
+                }
+                148 => {
+                    self.rack.set_room_brightness(1.0);
+                    self.library = ModuleLibrary::default();
+                    self.library.set_preview_zoom(0.7);
+                    self.browse();
+                    assert!(self.library.inspect("stock_process", &self.catalog));
+                    self.library.request_focus();
+                    self.title = "Stock Process · shared rack and browser panel".into();
+                }
                 _ => panic!("Unexpected Noise tail capture"),
             }
         } else if let Some(expected) = stage.pending {
@@ -146,6 +165,9 @@ impl OpenPatch {
                     143 => "rack-studio-mixer-lights-out.png",
                     144 => "studio-mixer-library.png",
                     145 => "visuals-ferrofluid.png",
+                    146 => "rack-stock-process.png",
+                    147 => "rack-stock-process-lights-out.png",
+                    148 => "stock-process-library.png",
                     _ => unreachable!(),
                 };
                 let target = path.with_file_name(name);
@@ -158,13 +180,13 @@ impl OpenPatch {
                 )
                 .expect("Save Noise screenshot");
                 eprintln!(
-                    "Native smoke: capture {}/146 at frame 2959: {}",
+                    "Native smoke: capture {}/149 at frame 2959: {}",
                     captures + 1,
                     target.display()
                 );
                 self.smoke_test.as_mut().unwrap().2 = captures + 1;
                 stage.pending = None;
-                if captures == 145 {
+                if captures == 148 {
                     self.allow_close = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }

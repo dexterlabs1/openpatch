@@ -112,7 +112,7 @@ impl Category {
             "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" | "midi_gate" => {
                 Self::InputOutput
             }
-            "pulses" | "push" | "gates" | "poly_viz" | "scope" => Self::Utilities,
+            "pulses" | "push" | "gates" | "poly_viz" | "scope" | "stock_process" => Self::Utilities,
             _ => Self::Utilities,
         }
     }
@@ -1488,6 +1488,7 @@ mod tests {
         assert_eq!(Category::of_kind("stock_lfo"), Category::Modulation);
         assert_eq!(Category::of_kind("stock_vco"), Category::Oscillators);
         assert_eq!(Category::of_kind("stock_noise"), Category::Oscillators);
+        assert_eq!(Category::of_kind("stock_process"), Category::Utilities);
         assert_eq!(Category::of_kind("poly_split"), Category::Routing);
         assert_eq!(Category::of_kind("pulses"), Category::Utilities);
         assert_eq!(Category::of_kind("push"), Category::Utilities);

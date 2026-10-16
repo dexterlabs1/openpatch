@@ -5861,6 +5861,7 @@ mod tests {
     include!("stock_quantizer_audio_tests.rs");
     include!("stock_octave_audio_tests.rs");
     include!("stock_vca_mix_audio_tests.rs");
+    include!("stock_process_audio_tests.rs");
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
     include!("host_lifecycle_audio_tests.rs");
