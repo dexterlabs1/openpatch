@@ -1,0 +1,1459 @@
+{
+  "recorded_at": "2026-10-16T17:49:46.319749+00:00",
+  "status": "passed",
+  "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+  "scope": "Combined product-source release; following commit adds documentation and evidence only",
+  "desktop_tests": {
+    "passed": 1013,
+    "failed": 0,
+    "existing_ignored": 3
+  },
+  "strict_workspace_all_targets_clippy": true,
+  "formatting": true,
+  "core_callback_tests": {
+    "passed": 28,
+    "allocation_and_deallocation": 14,
+    "noise": 10,
+    "studio_mixer": 4
+  },
+  "frozen_regressions": {
+    "mid_side": {
+      "passed": true,
+      "validation": {
+        "acceptance_sha256": "f00be21fdfed433902bbad3ee7d8a5869a022fdf42501221159f67766acec02c",
+        "cases": 74,
+        "cases_sha256": "d4c7d48e3439a70952e55c912f71efd4bb7b77acae468535ef88ab13d159d81e",
+        "discarded_snapshots": 0,
+        "hand_anchors": 1472,
+        "paired_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+        "passed": true,
+        "scope": "paired genuine host snapshots",
+        "sdk_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+        "snapshots": 890
+      },
+      "discarded_snapshots": 0
+    },
+    "output_lifecycle": {
+      "passed": true,
+      "validation": {
+        "cases": 224988,
+        "compared_field_counts": {
+          "bypassed": 224988,
+          "consumer_mask": 224988,
+          "counts": 899952,
+          "raw_voltages": 14399232
+        },
+        "compared_fields": 15749160,
+        "engine_frame_observation_source": "Separate actual SDK adapter assertion required; not encoded in70-field trace",
+        "expected_engine_dsp_frames": 0,
+        "failed_cases": 0,
+        "first_failures": [],
+        "independent_anchors_checked": 3920,
+        "independent_invariants_checked": 59581964,
+        "input_sha256": "74991d5447a2ba002b122c61260cf9cc4bbc8db91ac4f258344ea9841e40e088",
+        "max_absolute_error": 0.0,
+        "mismatched_fields": 0,
+        "passed": true,
+        "protocol_failures": 0,
+        "qualification_basis": "Bounded producer-output lifecycle; exact full raw storage, no DSP/host/device equivalence claim",
+        "rust_trace_sha256": "d3e0044fb33ab03cf0d776b101af2a0ac98e8c9c3a11678f64ba4da30365887f",
+        "sdk_trace_sha256": "4aa6d1b87b1a2d0c3754dcc2316dd980bad128388af3e69ca7f6093c3d9778ac",
+        "trace_rows": {
+          "input": 224988,
+          "rust": 224988,
+          "sdk": 224988
+        }
+      },
+      "discarded_snapshots": null
+    },
+    "rounding": {
+      "passed": true,
+      "validation": null,
+      "discarded_snapshots": 0
+    },
+    "stock_mix": {
+      "passed": true,
+      "validation": {
+        "cases": 28383,
+        "discarded_snapshots": 0,
+        "hand_anchors": 708,
+        "inputs_sha256": "e43c44867ddb7850bf2805e0d5b1b7edd3784d1a04d314f4a0cf9191b1b75f83",
+        "paired_trace_sha256": "59e6df1c9c29b3cae2b8247ea8dacf28d4f09645bf95df6df9d5132b81dbc934",
+        "passed": true,
+        "rates": {
+          "44100": {
+            "explicit": 21,
+            "fresh": 9440
+          },
+          "48000": {
+            "explicit": 21,
+            "fresh": 9440
+          },
+          "96000": {
+            "explicit": 21,
+            "fresh": 9440
+          }
+        },
+        "scope": "complete paired host snapshots",
+        "sdk_trace_sha256": "59e6df1c9c29b3cae2b8247ea8dacf28d4f09645bf95df6df9d5132b81dbc934",
+        "snapshots": 86355
+      },
+      "discarded_snapshots": 0
+    },
+    "stock_noise": {
+      "passed": true,
+      "validation": {
+        "cases": 424,
+        "discarded_snapshots": 0,
+        "events": 17689,
+        "output_consumer_masks_per_rate": 128,
+        "paired": {
+          "discarded_snapshots": 0,
+          "paired_rows": 18113,
+          "passed": true
+        },
+        "passed": true,
+        "production": {
+          "dft_checks": 22,
+          "discarded_snapshots": 0,
+          "passed": true,
+          "rows": 18113
+        },
+        "sample_rates": [
+          44100,
+          48000,
+          96000
+        ],
+        "sdk": {
+          "dft_checks": 22,
+          "discarded_snapshots": 0,
+          "passed": true,
+          "rows": 18113
+        },
+        "snapshots": 18113
+      },
+      "discarded_snapshots": 0
+    },
+    "stock_octave": {
+      "passed": true,
+      "validation": {
+        "cases": 30120,
+        "conversion_domain_checks_before_execution": 225207,
+        "discarded_snapshots": 0,
+        "events": 61359,
+        "families": {
+          "44100": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          },
+          "48000": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          },
+          "96000": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          }
+        },
+        "hand_anchors": 3885,
+        "inputs_sha256": "e4b552579532851c674f1416ce5603d0f2daad05818f42f7679c0b69b8f2ba4a",
+        "invariants_checked": 1189227,
+        "paired_trace_sha256": "d25afd221a2790b55b109d5572790adfe86962ffd9dc15a3ac9e0b9401bfddc2",
+        "passed": true,
+        "safety_inputs_sha256": "a2c4256f8895eca4e24aeaa110adc28fc5f2bff6f06c043f818e653eb6b9e9b6",
+        "scope": "complete paired host snapshots",
+        "sdk_trace_sha256": "d25afd221a2790b55b109d5572790adfe86962ffd9dc15a3ac9e0b9401bfddc2",
+        "snapshots": 91479
+      },
+      "discarded_snapshots": 0
+    },
+    "stock_vca_mix": {
+      "passed": true,
+      "validation": {
+        "cases": 39021,
+        "discarded_snapshots": 0,
+        "events": 91722,
+        "families": {
+          "44100": {
+            "asym": 1536,
+            "explicit": 37,
+            "finite": 1530,
+            "gain": 240,
+            "input-mask": 2048,
+            "pair": 5780,
+            "width": 1836
+          },
+          "48000": {
+            "asym": 1536,
+            "explicit": 37,
+            "finite": 1530,
+            "gain": 240,
+            "input-mask": 2048,
+            "pair": 5780,
+            "width": 1836
+          },
+          "96000": {
+            "asym": 1536,
+            "explicit": 37,
+            "finite": 1530,
+            "gain": 240,
+            "input-mask": 2048,
+            "pair": 5780,
+            "width": 1836
+          }
+        },
+        "finite_controls_checked_before_execution": 1191441,
+        "hand_anchors": 348900,
+        "inputs_sha256": "5bc863a71d3696940d81efb578156e361b28d59fd3d196e2aa9b846a30ad2b9c",
+        "invariants_checked": 2353374,
+        "paired_trace_sha256": "bf90867c792d5185e3c054698241fc11fa714bad3831f2de52f1188511db77b0",
+        "passed": true,
+        "safety_inputs_sha256": "44486460995e4e47f63daf517680c15a1aa8353a1e727bfd5544fecf023b1815",
+        "scope": "complete exact paired host snapshots",
+        "sdk_trace_sha256": "bf90867c792d5185e3c054698241fc11fa714bad3831f2de52f1188511db77b0",
+        "snapshots": 130743
+      },
+      "discarded_snapshots": 0
+    }
+  },
+  "release_executable_MCP": {
+    "passed": 113,
+    "failed": 0,
+    "CLI_sha256": "c3e68b2d24294f543bc38992a5a653d7c3e63e039db93a0f47f60d65e02f3406"
+  },
+  "performance": {
+    "baseline": "Immutable 78-kind Noise intermediate release with 111 passing MCP checks",
+    "candidate": "Combined 79-kind release with Studio Mixer",
+    "workloads": {
+      "legacy_routing_1": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 356.38680416666665,
+        "candidate_median_ns_per_frame": 350.92291666666665,
+        "baseline_min_max_ns_per_frame": [
+          345.17690833333336,
+          360.6578125
+        ],
+        "candidate_min_max_ns_per_frame": [
+          342.22534583333334,
+          358.02742916666665
+        ],
+        "paired_median_candidate_over_baseline_time": 0.9914491310723784,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9830328270570277,
+          0.9987080984444886
+        ],
+        "paired_median_candidate_overhead_percent": -0.855086892762158,
+        "all_checksums_equal": true
+      },
+      "mixed_stock_analog_1": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 1743.8630208333334,
+        "candidate_median_ns_per_frame": 1742.3751708333334,
+        "baseline_min_max_ns_per_frame": [
+          1693.9027791666667,
+          1776.9196166666666
+        ],
+        "candidate_min_max_ns_per_frame": [
+          1710.3282958333334,
+          1757.6631958333332
+        ],
+        "paired_median_candidate_over_baseline_time": 0.9972874111803387,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9870880062413627,
+          1.0096968473448915
+        ],
+        "paired_median_candidate_overhead_percent": -0.2712588819661299,
+        "all_checksums_equal": true
+      },
+      "legacy_routing_16": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 1381.762675,
+        "candidate_median_ns_per_frame": 1369.6081583333332,
+        "baseline_min_max_ns_per_frame": [
+          1347.9833333333333,
+          1400.9956583333333
+        ],
+        "candidate_min_max_ns_per_frame": [
+          1346.4663166666667,
+          1389.7354166666667
+        ],
+        "paired_median_candidate_over_baseline_time": 0.9902550867083832,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9781811927932516,
+          1.0057699790354135
+        ],
+        "paired_median_candidate_overhead_percent": -0.9744913291616752,
+        "all_checksums_equal": true
+      },
+      "mixed_stock_analog_16": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 19570.3920125,
+        "candidate_median_ns_per_frame": 19679.1579875,
+        "baseline_min_max_ns_per_frame": [
+          19474.5359375,
+          19857.380729166667
+        ],
+        "candidate_min_max_ns_per_frame": [
+          19614.76961666667,
+          19727.103475
+        ],
+        "paired_median_candidate_over_baseline_time": 1.0030338576404298,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9934393535611011,
+          1.0105071592286818
+        ],
+        "paired_median_candidate_overhead_percent": 0.3033857640429849,
+        "all_checksums_equal": true
+      }
+    },
+    "limitation": "Five paired runs of four unchanged workloads on one Mac; this does not measure Studio Mixer DSP cost or establish a Rack speed comparison."
+  },
+  "platform_checks": [
+    {
+      "run": 38940106704,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/38940106704",
+      "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+      "jobs": [
+        {
+          "name": "test (windows-latest, x86_64-pc-windows-msvc, windows-x86_64, openpatch.exe)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (ubuntu-latest, x86_64-unknown-linux-gnu, linux-x86_64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (macos-14, aarch64-apple-darwin, macos-arm64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "visualizer",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run": 38940115943,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/38940115943",
+      "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+      "jobs": [
+        {
+          "name": "visualizer",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (windows-latest, x86_64-pc-windows-msvc, windows-x86_64, openpatch.exe)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (ubuntu-latest, x86_64-unknown-linux-gnu, linux-x86_64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (macos-14, aarch64-apple-darwin, macos-arm64, openpatch)",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "native_captures": {
+    "run": 38940115943,
+    "count": 145,
+    "all_png_CRCs_and_rows_valid": true,
+    "all_seven_contact_sheets_reviewed": true,
+    "new_six_and_VCO_LFO_full_size_reviewed": true,
+    "captured_on": "Linux native desktop CI, offline engine",
+    "captures": [
+      {
+        "name": "rack.png",
+        "sha256": "91712963d290ee85451fe68f7193c8d2530978c7f5afdc102610d050b1bbceff",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-visuals.png",
+        "sha256": "2e38b70a34cc1c41771ce305417278dddf0ac99de4b40d229630097e89b42487",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-utilities.png",
+        "sha256": "3cd45888216be740df509fc045363d38c8f648f1ffbc6fb44c145f9a3360945e",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-polyphonic.png",
+        "sha256": "c944f5a9f6aa43a89abe9da61618731492c9ad020fd9f5f20d2834451355cc99",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-routing.png",
+        "sha256": "318484c1a6164cafd14a6828d333ed2897dfa4bcec0b15d01b4403722b500ae5",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-midi.png",
+        "sha256": "87b91be53b1f09ad4dee0984ffb45111fa795a315cd762bbb967e8917054d33e",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "audio-midi-settings.png",
+        "sha256": "7e04ebb65666d7657deba658fd961b9434e87aa2cefd3c8674d97bc418a4ba48",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stereo-width.png",
+        "sha256": "0fc6b3d2310ba6bacb95e7843f7e4ebfa03f25e2968683a797e3ad0635943283",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-routing-modules.png",
+        "sha256": "abe4cf672f154918f0cec7799473af1aa3ab2346589137b107b97f7224fff33c",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-modulation.png",
+        "sha256": "1b948f1d3c4670799c1a48b85196cb143b3852a16d537036b25c504e85528acf",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "project-save.png",
+        "sha256": "9331339e4f3ae2f9e399134fbdf8201319a6f0f7c94d8ecd10781043137e2946",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "project-unsaved.png",
+        "sha256": "32e126a0119c7f53e86bb88821ca4c05b0bb9470c70b8c8eee71c350731fa66b",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "signal-scope.png",
+        "sha256": "7ad96613c6650c2db7a7b37a157d6887ef451fefec94e69889d86865fd354a9c",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "signal-scope-xy.png",
+        "sha256": "4e63eb7f9cc2872c71a54ed201ae18ea2d7c2e7b3c71c38da0f44a34b699a185",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-sequencer.png",
+        "sha256": "ae9c81097f3158cae3d9c694acee9542cc27be4a293165e475f124b5863a3363",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-switches.png",
+        "sha256": "d2d91b4310e2a49a91cf84587349f77377f66817dab266b0bbc8d330f7d9445c",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-voltage-utilities.png",
+        "sha256": "a2af00672d7078b14e36ff151179385a678cadfbe4bd05eeac365ad3cd96506a",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-bypass.png",
+        "sha256": "f7094943245173e9aceff3c9b70b4ce4d62af6d909497ea603ba387a9d42e253",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-gate-shaping.png",
+        "sha256": "eeb668991f9ef67cbbcb6fb952431db2419ca4f747d062895a76b73d7082481e",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-manual-gates.png",
+        "sha256": "31ac05aa8ca4a32203ba7374f30346eca573d2adc334c30acecaa5cdcf09da3f",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-vca-mix-fade.png",
+        "sha256": "3275dbd9ef5110c73827ff2e2a8b35a8691e9b0e61584970621c0d73a3e99898",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-duplication.png",
+        "sha256": "040a10ea7f8e89c80ce07984bd5bb4828b4386d84c824b46f8716537e65e5dbe",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stacked-routing.png",
+        "sha256": "bc42a733b7d557e4c119a319c78dae48ec23707eb2878687dfa765918e6e5422",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-multi-vco.png",
+        "sha256": "1cb405ee0be40299e45f135843a00c3e83c004588e8f3f8df430c6b774c5233b",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "module-preset-save.png",
+        "sha256": "dd27dce674e9fdcc0fc3ce124c6257b9a17c2a00771afec5bf3e371a35709acb",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "module-preset-browser.png",
+        "sha256": "c4f56fea6cca40f981b6a8b2ce0103bddbf9031feddaa93eebedb21c980550e0",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-duplication-outgoing.png",
+        "sha256": "d915b4c87fd4879498fdf118863850e223328179d7ea529520870ba06e3846d1",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "module-browser.png",
+        "sha256": "748059193c94876c3351191f9928b8eabd8ca611c7dfdcd17db5e6abb96e26ad",
+        "width": 1280,
+        "height": 880,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "module-library-compact.png",
+        "sha256": "75636b0359f36316c5effdb432bada2d35321b152f5717a601a5d527fffe3e40",
+        "width": 940,
+        "height": 680,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "analysis-dock-compact.png",
+        "sha256": "44d7af7f53e0761db89ba73baf4547af76527d58124586fa693ebcc1e80d3305",
+        "width": 940,
+        "height": 680,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "analysis-visuals-compact.png",
+        "sha256": "30ffe3b35b81a681a15fe873aaef7dbced60c31ab471c430fbace138cbb7bae4",
+        "width": 940,
+        "height": 680,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-pulses.png",
+        "sha256": "e303ed14ab7a44d297a5129f1becefcd5fc66cb8eb583068f263be28732137cf",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-push.png",
+        "sha256": "190d04bc9db2ffc2022bc4bf08fca94e4e452ce86946708fd2c01759ea85ff40",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-gates.png",
+        "sha256": "0326932316b2f0039ea2106c69dad64058ad93bd1a669eea4f86820586038d25",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "audio-performance-simulated.png",
+        "sha256": "9b5b77f8b9d9ffdc9777300caf2c12a8b8694f944f56c7670b23c3d3a638649c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "parameter-context-entry.png",
+        "sha256": "e63c0bac81e75f747b31f4736dc6d376a6be2de6c901ba91ab709986dd750aa3",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-output-menu.png",
+        "sha256": "b130a0b547f35048e9feaa13d7b3243f69474248433ea9c460f43f525d10d6c2",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-input-menu.png",
+        "sha256": "6ef671cfec46d6c0d27221fe698418c419886cf6a08795f40ce6dcb8ab7efa31",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-score-studio.png",
+        "sha256": "0aa2d59bd7a21b3715dbbbc8515119891957da70ad55257e9a34b963abf68eae",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-scope-time.png",
+        "sha256": "3091a09c33b933a545dec15e2ffc2537a68c26610edacf241f3d3fe820af2c00",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-scope-xy.png",
+        "sha256": "449627e1804b02b291b259f6c7cc634b0430cdcd2a42a64cc5060d6a24156cd3",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-scope-external.png",
+        "sha256": "99f6d197d535df664243089ae44fe0d48f64398cd9d39d2ba3a564e8efbd2d08",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-modal-resonator.png",
+        "sha256": "b48e3e9e99ff306b4c81de072ee165afa5358abb7e386ed82857816394700b0b",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-colored-noise.png",
+        "sha256": "7fcf325bf61c8a66718529adad68be00ad83c9a6f7e166c1f5dde6987cec6dae",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-random-values.png",
+        "sha256": "564fede8ade95a70f8389cb97efc48a4363375edd017b4de4477fc259c694be3",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-shift-register.png",
+        "sha256": "8562f8555240bc5d899bda1b9dc6a22907020240bdabfc2267cee783361ea6db",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "construction-motion-080.png",
+        "sha256": "8bbb5746a4b6a3dda1024f762aa40b690c6cb663414e9234d56ebbbff686f3c2",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "construction-motion-180.png",
+        "sha256": "a2c38a23594020a79dd861c7a7fab53f9747c8e0bd806aa477b4eefc4d74b4e4",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "construction-motion-340.png",
+        "sha256": "b97cb3f11e3e2b9316b7b60f97657f427be7cd8440ea2ee74d7a5f191abdcab7",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "construction-motion-settled.png",
+        "sha256": "6fb4eb5232ce60b6e325f3831d830a907965047fa5f6b4477d83d518ce86b7c0",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "mcp-session.png",
+        "sha256": "b6d58cc16fcc719453e9e8d90f87d2c4dcced39e60e00a246a1556addaaa0b70",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "room-lights-on.png",
+        "sha256": "a6ff03360bb50f2279a2bc0919ef47809ea0d7889815ccba1f8544ecdf25f800",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "room-dark.png",
+        "sha256": "fef5b6f8ebad3a719e9ea03d1d00f60db5374d29b4b3c8b2c8349af5a4494e5f",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "room-lights-out.png",
+        "sha256": "4094b63be9acbbbeacf5a34b2542d1c31bc0e6683531e8a07ff1ff13f45f94dd",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "module-inspection.png",
+        "sha256": "05d5d2f391ad1e55425a7f53e2f950c112e88ee5445ed543762d82efd57adbd5",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "parameter-precision-navigation.png",
+        "sha256": "da4afba7a87751a4c13eb28a89a6fa0b2bf0837a4f1e063070dc63aeeee991a5",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-gesture-guidance.png",
+        "sha256": "195b1bbc7a70d780eebabf747670cbc1a04cc7f3f9ab81505a372ace8688c9c9",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-gesture-lights-out.png",
+        "sha256": "c70bdb801450b591957b1eb2efdf625432a1226ee9767b9dd29157c46b295c3c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-palette-editor.png",
+        "sha256": "78ab7bda1da0afe8275091ecb2aa4041ffb551c0b0f56a4478c9806c6e16a18a",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-palette-created.png",
+        "sha256": "8c48fbd2e58896459cb95f180c2bf12b5d93ec0f0eb4354eab4bb969ab70de5c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-adsr-eg.png",
+        "sha256": "029a9c2fe9e5eeb626dfccf4268a5255525c76fcb708473f82a874e816f808b3",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-adsr-eg-lights-out.png",
+        "sha256": "82d8c96c684c7ededdddaab2445f71ee25897b1c492982b4ca988d06c717e173",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-midi-cc.png",
+        "sha256": "32cbaf9b1a277141a11c66726c330f506b89cab2b50bc9e893c976a48f75943c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-midi-cc-lights-out.png",
+        "sha256": "67fae7dab879d26444f35b013481a33e16065a8fd197ee18b9e3def0d77262b1",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-midi-gate.png",
+        "sha256": "aba7e5922fadedcfd43cfdc50b6febda7706ece02fb99820951da86433037a5e",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-midi-gate-lights-out.png",
+        "sha256": "93e777ad96c86b8b91fb5aaaf7e3dfd17c2bac678076ee415ebe190c9cd34512",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-annotations.png",
+        "sha256": "c2f06f8722609698287bb909a36fc22690329aa31bc43ad3af67e57048008a71",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-annotations-lights-out.png",
+        "sha256": "b33b8484927d99bd43df2fc0f390b7aa643509c2561e1b9790c7064d1a267402",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "notes-editor.png",
+        "sha256": "7dc0fdf5c72ea8fb5f1827658a407f07975c289c54e133e1c3ec11ad57c6e5d0",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "notes-editor-conflict.png",
+        "sha256": "b69d61da8abda7105317232cbc42e538506df3230c504c208dcc0ad7c7176c1d",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vcf.png",
+        "sha256": "d07ef753db10fec23868a5c9db8404c48750b3bc545cc308d2cf030b28d79c61",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vcf-lights-out.png",
+        "sha256": "e0ddc4b3a420bb52dc1b0ef3ba668d4834ce8c1d983768a8b2a274afdf669a50",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vca.png",
+        "sha256": "e2f5879f8849ad1b1cf8d5f4b09b39cdeeeadae02da3a4f8ce4682bfc7d72c9a",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vca-lights-out.png",
+        "sha256": "9dbf72eb8fe2af7e12c3e5c431470e942c2e1d6e1b5e0973abe111f13a973ba2",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-parameter-choices.png",
+        "sha256": "2eaa8c3fdec03256ae195e3b41f2b52daaa3d6e5b04f3b167dd4da3e55de3603",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-parameter-choices-lights-out.png",
+        "sha256": "bc9433f67f7dfc486665a16fb1b96dfda5635b80364896318bcbac6c9e8c2b89",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-port-lights.png",
+        "sha256": "f84e19345179532bacf69e0666114021d61e6719051f16db6cc5162c74620b4a",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-port-lights-lights-out.png",
+        "sha256": "93d4f589c230d8861340b886505a3772e7cbccd38eefd5057a9e209ee70be392",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "view-cable-controls.png",
+        "sha256": "5a422034bdb350c2f88f85e730f6f5c9b42f630de47531481d8a8b184877c85a",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-presentation-clear-panel.png",
+        "sha256": "34e04edd8a3a75b4b9c2b5a3fe15e1876b0545b29f30dc08a3c5dd11d2e461ab",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-presentation-loose.png",
+        "sha256": "76bbcd9a4e403e1bd84795deefd36b0b32a51bb93565d51e7eb5763972e7cde6",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "library-zoom-100.png",
+        "sha256": "728f7eb82016db50d027a23661faca5c1187be606ec365a2e5467699d5bde866",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "library-zoom-wide.png",
+        "sha256": "d212d8e79bb1fa339ff405fbc2c063909dfc2f6f6ec035088e0d175b0a5e3ebb",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "library-zoom-compact.png",
+        "sha256": "1222c44decd59e0efffdc48bf5ec75bc407161808ba7b854d24cfea0ef65d305",
+        "width": 940,
+        "height": 680,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "library-zoom-200.png",
+        "sha256": "baa55ceb81be447efc8f7e3da8fe70c974cd809aff9c4bd2d2e7cffbe08b9d93",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-small-labels.png",
+        "sha256": "0b9d4681aa56de59a3de9074b4f760a14c0f6e2ebf625a6389f8b9d9ffadcfec",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-move-unplug.png",
+        "sha256": "370d29258052560b88c50b293289354b55a68a49a96e2dbec705bb0c29b9eac9",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-move-travel.png",
+        "sha256": "5bfba9c29a26b0a8915de62ee83a335d955a286c341f1593548ebd8ed7209bd0",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-move-settle.png",
+        "sha256": "664d3d8332a99e6a4a6392f037cb2ffa48cc9d04e7f38bf6c504e3a2d89bff73",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-move-complete.png",
+        "sha256": "67a940374e7fe2e7f8421aa2639a086770816c199bda72036bd4c11ee7ff9dad",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "cable-tension-tight.png",
+        "sha256": "0369e9c1cbb923a39592e76b593a8daf014313de6c4a3524e32bbbd137817854",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "agent-follow-before.png",
+        "sha256": "ae0a280548deab9064b751ecc2fd47ed7784670f757b5c2f78ef66400b3008c5",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "agent-follow-mid.png",
+        "sha256": "e485cabbca7fb71d376404427730e106ae297456c92ac16fafc774cac8ad1cd9",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "agent-follow-settled.png",
+        "sha256": "0a85a03f80218d6a9f0f89cfcbb16814ccd24e443c544106c9bcedba38f7a748",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-delay.png",
+        "sha256": "698105489ec1256fc6c58404e0dfdb71089cd0d49327a663610c312385651ca1",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-delay-lights-out.png",
+        "sha256": "1ca235539d8b5d92b09e11f08b073968e399369d9e1d977863f22d74b439863c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-delay-library.png",
+        "sha256": "c6c29be6c165d69287c13351685743270e106a913547f51f5f91d814ff61b3d1",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-wavetable.png",
+        "sha256": "fefc8b2a3fbb1058b55e2589602091070acb84bc11fa0bdcfc675f7a6acc4025",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-wavetable-lights-out.png",
+        "sha256": "b185feeb4a91406be4dd44d59569b21fad2c0bd5049c4dff590e44d406d60601",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "wavetable-library.png",
+        "sha256": "793a74db3a1ac30e512e04bc2eaea0981d459f3da506b0aa9491e05e50d232b6",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-random.png",
+        "sha256": "97ef0fcaba7df946e2103673914598ddd1c304ed40a3f8399afb5ceadc2bfab6",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-random-lights-out.png",
+        "sha256": "24df3014d82fcaeef7bf848b5e6a106328e01c397b67d6a6d95ae2719e49a26e",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "random-library.png",
+        "sha256": "dc56508a1900f0e07e95f4e59453806c30f94d645a9c2ece0831cda501ba7e9d",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-weak-scope.png",
+        "sha256": "bc916f49349f8b9ed29f47402913ffe07aa4be4c7a3f74e16114d3444f51ad54",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-weak-scope-lights-out.png",
+        "sha256": "97de6d6481ccbf6bd134c7aae843ae92411c45f234a683ca0e93b8b2ead23867",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-weak-scope-manual.png",
+        "sha256": "ac1f194b2d1b02f2bfdd99d2069b910105f02ea8bb880282ca82a42210805e7f",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "menu-motion-opening.png",
+        "sha256": "022174d4dd8177b375e4cfb40e02fd52ab92b28d2fbcc3025fbc98fb90c13fd0",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "menu-motion-mid.png",
+        "sha256": "a5af3d5df33900019f4e6b52b0e46cc2db5002c88d3d675994473f1c3a0f7708",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "menu-motion-settled.png",
+        "sha256": "694f2f82dae7f429e037c2aa73b82f02e023bc6984fa2745d74bd5eccec5fd6c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-merge.png",
+        "sha256": "56b77e52ae45fc555b665a9e77b88c0cc7e6e151e42fee6789b8db9e11bc9e3c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-merge-lights-out.png",
+        "sha256": "ff8939e3d242eb08e812af5e5e305feae289d26b5b6fa1c75e05b7cb823bdd11",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "merge-library.png",
+        "sha256": "abdafebf06a3cdb45104690d05e39596af7dc337acf85c3a7baf6e2907b103df",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-split.png",
+        "sha256": "33e5971d4c8ca674c2db82f429e2eb9cfe1a6cb4ce8f52b5b35d4f45d2413836",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-split-lights-out.png",
+        "sha256": "12433997974bb44dbe7359149b4693bf9585530da07ef117873f02ace04144e5",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "split-library.png",
+        "sha256": "f1e1e95c76a8a86705ea2f0c0198853b7050e43a437e151f6d6c77ea13d53289",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-lfo.png",
+        "sha256": "d87dcb34da4762847de832d0b02a634d40c1e08b7642c0a35e6090d3dc3311c2",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-lfo-lights-out.png",
+        "sha256": "979adb88c1b51a6efaa8a93ee1b3e5822cd0f98549713d134564ad7914653e68",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-lfo-library.png",
+        "sha256": "7bb442173c6950e5e2fdfe78b3fc70ad20c327fa6ceea59445fca9dbdeb5f023",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vco.png",
+        "sha256": "1ea523629acb9c2819200f77a2747ca5fd46c09b24b35682db2c112d5354e142",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vco-lights-out.png",
+        "sha256": "9d8b8037f30033ebebb38b64f91a8a00f87dd8d864b5567474ec8c7ebb68401b",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-vco-library.png",
+        "sha256": "5becd73d72fb706429c4679830bf9bd809b6aa92efa237b5826c71e6238e4025",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-seq3.png",
+        "sha256": "064e1f0bfc05492c6c9f9c357656f7df237ddf2883d007e2c2eaa8203f8da87c",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-seq3-lights-out.png",
+        "sha256": "32ec9e0eb973cff08e8516cf011c94acb7113c96c0581046f99bcb681390bd51",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-seq3-library.png",
+        "sha256": "b29267f090d18ab1aabaf96d6fa92776a822a74ce6ed3b787dd1921ae96f1d1f",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-quantizer.png",
+        "sha256": "d5f189163be6746ef2e6ce26ec1c10f51c30eda34764ffab9e815a7f5ed953f5",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-quantizer-lights-out.png",
+        "sha256": "6dfd4c87ad6841c01a2976376f60d0e4fd97e23c6276955c362ef8eb301d57e3",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-quantizer-library.png",
+        "sha256": "e5f6994ba4a3a8e545eeb3370b4510140b255b6f9b104bd0e79e0150c7759fa1",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-mid-side.png",
+        "sha256": "50792172a326a3874499264bd1a0841ac2f06380379a552df5d425fa461398ff",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-mid-side-lights-out.png",
+        "sha256": "93fbe6ab88f636791013e64bb27b012cd2dc46cbc3b66ede2797aa721e0a833f",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-mid-side-library.png",
+        "sha256": "dcb66200f2e696c29b0f95b7a0ecd708fa7a85d363695e83ab0ca37c5bc56d4b",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-mix.png",
+        "sha256": "533a93fad2ecb40b9926ba78af3bd6505dd90c87418e85759c9dba80b9a24417",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-mix-lights-out.png",
+        "sha256": "c515067494fedd6d72eb890b4452cd2dfb81f3bb859713b7616db0ab41f9b0dc",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-mix-library.png",
+        "sha256": "edac50dd28d9e964b9d203601f5d9c8ce37b632ea9b43b85ad7ae02fe842b9ec",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-octave.png",
+        "sha256": "86d5193748b2a4a3778e0d1642bd590d9f34e8b842f6ecec9643343d25eb7a81",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-octave-lights-out.png",
+        "sha256": "373209092e4ee61225b6c44cce8f6bb3f135944563509500788cf3824ebb9629",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-octave-library.png",
+        "sha256": "329424a9f054ed2af5b5737d26d9b713a06e630cd7b9c5e0590505c2d5f4ebb7",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vca-mix.png",
+        "sha256": "cb76e1743bb3a3d05ff924c56c33425a102e2f8ed08b764ae541adb42ecf05bf",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-vca-mix-lights-out.png",
+        "sha256": "d291086c859ed1681250eaa651c0a5477db7c204e1c7e9ec6cb6f22cf772268a",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-vca-mix-library.png",
+        "sha256": "69f4e7d019f2a4917fec8098f2131e7fea4680f73dcd2652e2a85a2528e91699",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-noise.png",
+        "sha256": "a0cf2ea34d1a11841f4310f41e7b87ea1b06958a1a8a8ff6184bdfc8a29e6c47",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-stock-noise-lights-out.png",
+        "sha256": "6427de5953ff5caad5c79af4881f74f89d77848794d6c5b819d87a9b9fd0f39b",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "stock-noise-library.png",
+        "sha256": "b3e7066f810cf699e6886f7227a88016ab168a102e7ef4f54180f06d8f63a591",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-studio-mixer.png",
+        "sha256": "c497661fe165cc7425d1789a21a48c3aa466c5eaafdd9578bb7a4d6013284c3e",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "rack-studio-mixer-lights-out.png",
+        "sha256": "63533b51ed057b69220c6b9a1f5d986d0627a9d1a21f675ff21d17e60372544b",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      },
+      {
+        "name": "studio-mixer-library.png",
+        "sha256": "3a2a604d69eed24cfff5a86e41fd19d8bf05d55328d63d18c57017574f666abd",
+        "width": 1440,
+        "height": 960,
+        "all_crc_and_rows_valid": true
+      }
+    ]
+  },
+  "macOS_bundle": {
+    "architecture": "arm64",
+    "strict_adhoc_signature": true,
+    "binaries": [
+      {
+        "name": "openpatch-desktop",
+        "release_sha256": "04630822244692c34f89067f97ec7ae60dc001ea2b44d7a9f927fdbd97016aea",
+        "signed_sha256": "da242fc29d166785a0a3a3f05f8f8d5a7617876311c483578a99e0929b959843",
+        "file_backed_sections_equal": true,
+        "uuid": [
+          "956012362f8c3a45b1ce903a3fc404af"
+        ],
+        "no_libRack_dependency": true
+      },
+      {
+        "name": "openpatch",
+        "release_sha256": "c3e68b2d24294f543bc38992a5a653d7c3e63e039db93a0f47f60d65e02f3406",
+        "signed_sha256": "3aa0650f4914c6c399bfa35dc484f74d24be34b38773c4a8d447905b9ac13766",
+        "file_backed_sections_equal": true,
+        "uuid": [
+          "53707213507d3c47abd27164512d5f0c"
+        ],
+        "no_libRack_dependency": true
+      }
+    ],
+    "all_four_fonts_embedded": true,
+    "icon_and_notices_verified": true
+  },
+  "files": {
+    "studio-mixer-performance.json.gz": {
+      "compressed_sha256": "b13a3c3a586feeb1fac6248f66c9c5b985535c6aea173fa935f3633a0de28743",
+      "uncompressed_sha256": "915eb891daeb12c457b7a8cd219e39479a68caa69aec7a80a14cec2bcd371c87",
+      "uncompressed_bytes": 3626851
+    },
+    "stock-noise-combined-regressions.json.gz": {
+      "compressed_sha256": "ada795157b9e9a4cea7ba34c477e9c5053dbc020544f67b6856c7aed6ae61343",
+      "uncompressed_sha256": "441c27cf39c60391dabb387a9a066558c3b21432119c10e34412b80ec57d7c98",
+      "uncompressed_bytes": 288506
+    },
+    "stock-noise-combined-release-build.json.gz": {
+      "compressed_sha256": "e30ae6abdc429792d71f0e446caf3e3704d374948fbedfcafea871ec84ecb93b",
+      "uncompressed_sha256": "a2ca43a81d0b5481c5d669b1da6972a51f141d60e31b5c29a3ab40671d888869",
+      "uncompressed_bytes": 54865
+    },
+    "stock-noise-final-paired-result.json.gz": {
+      "compressed_sha256": "6d9e82c7176548a44960991a47b5b49f405ecb8ef5458f0d0da1fc996e683940",
+      "uncompressed_sha256": "d954f8aaad1e2d9382910e0e9b49ea8762309d521b8fe927980de81dd3c120b5",
+      "uncompressed_bytes": 77247
+    },
+    "stock-noise-final-production-build.json.gz": {
+      "compressed_sha256": "899f7c9c6786b6318ac42101e10e20843479e4e1df08c1aec5661f5ed252cdc7",
+      "uncompressed_sha256": "821bc7572e4ee040f09f0353834cc37ee0089b2b0d189c00811d35f2b334bdb2",
+      "uncompressed_bytes": 20783
+    }
+  },
+  "local_mac_GUI_launched": false,
+  "audio_device_opened": false,
+  "original_working_copy_modified": false,
+  "prior_failures_retained": [
+    "Initial MCP fixture requested 2400 points above the 2048 API maximum; corrected fixture uses 1920 points.",
+    "Earlier UI test and routing fixes are recorded in the local immutable qualification logs."
+  ],
+  "limitations": [
+    "Controlled Noise draw tapes and declared pinned source/SDK transforms; no official binary or hardware-equivalence claim.",
+    "Static local ARM packaging and remote native-window review; local Mac GUI and physical audio-device verification were not performed."
+  ]
+}

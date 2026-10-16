@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 77 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix and Stock Octave have bounded digital reference proof and merged platform/capture evidence; the new Stock VCA Mix is undergoing application qualification. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 79 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix, Stock Octave and Stock VCA Mix have merged bounded evidence; the separate Stock Noise has passed its controlled-draw SDK/Core reference gate, with combined application qualification pending. Studio Mixer is a new original custom module with targeted Core tests passing; combined desktop, release and CI qualification remain pending. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -45,8 +45,10 @@ The newly selected **Signal Atlas** direction restores larger rotary knobs and
 ports, removes colored header bands and uses strong black graphics on warm
 ivory. Every diagram must correspond to actual signal flow, a control dependency
 or a labeled scale; decorative pseudo-circuit markings are excluded. Stock VCA
-Mix is the first conversion; the rest of the catalog remains an incremental
-design/qualification task. See [module design rules](MODULE_DESIGN.md).
+Mix is the first conversion; Stock VCO/LFO rotary and Stock Noise process faces
+extend it in the development branch, with their new combined application review
+pending. The rest of the catalog remains an incremental design/qualification
+task. See [module design rules](MODULE_DESIGN.md).
 The latest shared rack/browser header pass removes brand/description headers
 and makes module names prominent and left-aligned. Local layout checks and the
 Mac ARM candidate build pass; capture review and native window/input
@@ -63,7 +65,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 77 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 79 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents. Studio Mixer is tracked separately as an original custom module, outside the 49 VCV targets.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -80,6 +82,7 @@ This plan starts from the code inspected on the baseline date:
 - Wavetable family: separate audio/modulation oscillators, immutable custom assets, worker preparation and revision-checked publication, portable projects/presets and shared panels. The checked 153-case actual-class run qualifies bounded digital behavior; audio geometry, nonpositive-frequency safety policy and remaining platform/UI gates are explicit in [WAVETABLES.md](WAVETABLES.md).
 - Reference DSP: voltage-based VCO/ladder/OTA VCA/RC ADSR/gate/audio conversion, with documented idealizations and numerical tests. Ladder and VCA each add 64 samples of oversampling latency; parallel paths are not compensated. Legacy patches retain normalized semantics. See [ANALOG_MODELS.md](ANALOG_MODELS.md).
 - Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. SUM now adds output attenuation and revision-coherent six-band level/channel telemetry; [contract](POLYPHONIC_SUM.md). [VIZ](POLYPHONIC_VIZ.md) adds 16-channel signed indicators and genuine input-only modules, with primitive reference comparisons at three sample rates. Complete corresponding VCV module contracts remain open.
+- Noise: separate [Stock Noise](STOCK_NOISE.md) has seven mono outputs with consumer-gated source dependencies and no inputs, controls or module lamps. Its pinned SDK/Core controlled-draw comparison passes; the existing [`colored_noise`](COLORED_NOISE.md) retains its level, seed and original filter contract. Uncontrolled Rack PRNG identity and combined application qualification remain open.
 - Native host: rack browser, module movement, direct parameter controls, cable creation/removal, single-file native projects with Save/Save As/Revert, recovery copies, and legacy JSON/sidecar import, shared multi-step patch undo/redo, and optional GLSL visuals. Studio Rack chrome provides direct transport/save/history controls and a bounded, tabbed Scope/Visuals dock beside the module library. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Single/group module moves now create one checkpoint in that shared history; drag previews are excluded from saved geometry. Selectable-device stereo output, one hardware MIDI input, polyphonic MIDI → CV, sixteen-output MIDI CC and MIDI Gate with Learn, and a performance keyboard are implemented. Hardware audio input and hands-on MIDI/device qualification remain open. See [MIDI_AUDIO.md](MIDI_AUDIO.md).
 - Control: UI and MCP share revision-checked transactions and bounded history. `preview_edits` validates a candidate without committing; `apply_edits` validates the final graph and commits up to 256 edit operations as one revision/history action. History retains at most 128 prior/future patch snapshots combined. Rendering/export clone the active patch without cloning history. Audio swaps compiled graphs through bounded queues and carries matching DSP state forward. Desktop stdio starts with one application instance. On macOS/Linux, the CLI can also discover and attach to an existing window over a private local socket; Windows retains stdio.
 - Validation: repository tests and platform CI exist. Independent engine-v2 contract tests pass, covering timing/counts, feedback, normalization, routing, retirement/state adoption, invalid data, legacy rendering and allocation/deallocation checks. Those do not establish an exhaustive hardware/device qualification matrix or a measured performance advantage over Rack. See [PERFORMANCE.md](PERFORMANCE.md).
@@ -162,7 +165,9 @@ The next gates are:
    fixtures with sequencing modules. Keep crossfades a host policy rather than
    claiming them as circuit behavior.
 4. **Connect the foundation to complete instrument workflows.** Qualify native
-   multi-output patching and persistence. Expanded hardware I/O and MIDI
+   multi-output patching and persistence, including the Stock Noise factory's
+   Scope and physical-resonator paths. Process and rack Scope are next non-MIDI
+   module targets for deeper behavior and host evidence. Expanded hardware I/O and MIDI
    allocation belong to the final delivery phase. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
@@ -269,7 +274,7 @@ its signature and executable hashes verified; it has not been launched for
 native input/device qualification. Hardware accuracy remains unqualified; no
 speed advantage is claimed.
 
-## Stock Octave: paired host proof passed; application qualification in progress
+## Stock Octave: paired host and bounded application gates merged
 
 A separate [Stock Octave](STOCK_OCTAVE.md) preserves the original `octave`
 utility while adding source-order float32 conversions, raw lane reads, native
@@ -289,11 +294,12 @@ paired Stock Mix result is retained alongside them.
 The [paired performance report](benchmarks/stock-octave-performance-attempt-001.json.gz)
 finds +0.879% median cost for mono legacy routing; the other three workload
 ranges cross parity. No speed advantage is claimed. Optimized packaging,
-platform CI and native capture review remain before delivery. No release or
-hardware claim is made by the DSP result alone. Native Mac/device qualification
-and general Rack import remain open. MIDI/live-performance priorities remain last.
+platform CI and both 136-capture sets passed before
+[PR18](https://github.com/dexterlabs1/openpatch/pull/18) merged. No hardware
+claim follows from the DSP result. Native Mac/device qualification and general
+Rack import remain open. MIDI/live-performance priorities remain last.
 
-## Stock VCA Mix: initial paired proof passed; application and design work active
+## Stock VCA Mix: bounded reference and application gates merged
 
 A separate [Stock VCA Mix](STOCK_VCA_MIX.md) preserves existing `vca_mix`
 behavior while implementing the pinned native raw-lane arithmetic, independent
@@ -308,9 +314,31 @@ meter registration and input/annotation issues; fixes and meaningful callback
 and pointer regressions pass. The final-source paired gate, 2,065 Rust tests,
 109 Python checks and the offline factory pass locally. The selected Signal
 Atlas panel shares rack/browser geometry and clear socket/label spacing.
-Regression/performance audit, native capture review and platform CI remain before
-release. The 76-kind
-PR18 app remains installed until a qualified replacement is ready.
+Regression/performance audit and both platform CI runs passed before
+[PR19](https://github.com/dexterlabs1/openpatch/pull/19) merged at `95b47`; all 139
+configured native captures were verified and reviewed. Native Mac window/input,
+device qualification, general Rack import and hardware claims remain open.
+
+## Stock Noise: controlled source gate passed; application qualification pending
+
+Separate [Stock Noise](STOCK_NOISE.md) preserves the original `colored_noise`
+contract while adding seven mono, consumer-gated outputs without controls,
+inputs or module lamps. The frozen pinned-class/genuine SDK versus actual Core
+controlled-draw comparison passes 424 cases and 18,113 complete snapshots at
+three rates, including 22 independent gray DFT checks on each side and three
+unused-scratch variants. The explicit source scratch initialization is an
+erratum; this does not prove unmodified-source, uncontrolled Rack PRNG,
+distributed plugin-binary or hardware equivalence. The **File → Noise into
+matter** factory connects Stock Noise to the modal resonator. Combined app/UI,
+callback, native capture and platform qualification remain pending.
+
+## Studio Mixer: original custom module; combined qualification pending
+
+[Studio Mixer](STUDIO_MIXER.md) ports the user's original module from its stable
+snapshot, with 1–16 strips and FX A/B. Its catalog metadata places it in both
+Custom and Mixing. Targeted Core tests pass; combined desktop, release and CI
+qualification remain pending. This original-module work is separate from the
+49 VCV Core/Free targets and does not claim VCV equivalence.
 
 ## Clocked routing
 

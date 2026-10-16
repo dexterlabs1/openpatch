@@ -1,0 +1,86 @@
+{
+  "recorded_at": "2026-10-16T17:49:46.319749+00:00",
+  "status": "passed",
+  "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+  "scope": "Original Studio Mixer with Custom + Mixing categories, shared panel, channel resizing, two FX send/return buses and factory patch",
+  "qualification_report": "stock-noise-release-qualification.json",
+  "DSP_and_callback_tests": {
+    "passed": 28,
+    "allocation_and_deallocation": 14,
+    "noise": 10,
+    "studio_mixer": 4
+  },
+  "desktop_tests": {
+    "passed": 1013,
+    "failed": 0,
+    "existing_ignored": 3
+  },
+  "release_MCP_tests": {
+    "passed": 113,
+    "failed": 0,
+    "CLI_sha256": "c3e68b2d24294f543bc38992a5a653d7c3e63e039db93a0f47f60d65e02f3406"
+  },
+  "categories": [
+    "Custom",
+    "Mixing"
+  ],
+  "maximum_channels": 16,
+  "logical_inputs": 20,
+  "outputs": 8,
+  "native_captures": [
+    "rack-studio-mixer.png",
+    "rack-studio-mixer-lights-out.png",
+    "studio-mixer-library.png"
+  ],
+  "performance_report": "studio-mixer-performance.json.gz",
+  "platform_checks": [
+    {
+      "run": 38940106704,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/38940106704",
+      "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+      "jobs": [
+        {
+          "name": "test (windows-latest, x86_64-pc-windows-msvc, windows-x86_64, openpatch.exe)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (ubuntu-latest, x86_64-unknown-linux-gnu, linux-x86_64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (macos-14, aarch64-apple-darwin, macos-arm64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "visualizer",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run": 38940115943,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/38940115943",
+      "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+      "jobs": [
+        {
+          "name": "visualizer",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (windows-latest, x86_64-pc-windows-msvc, windows-x86_64, openpatch.exe)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (ubuntu-latest, x86_64-unknown-linux-gnu, linux-x86_64, openpatch)",
+          "conclusion": "success"
+        },
+        {
+          "name": "test (macos-14, aarch64-apple-darwin, macos-arm64, openpatch)",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "local_Mac_GUI_or_audio_device_used": false,
+  "original_working_copy_modified": false
+}

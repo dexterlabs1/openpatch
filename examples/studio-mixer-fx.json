@@ -1,0 +1,329 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "bass",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -24
+      }
+    },
+    {
+      "id": "lead",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -5
+      }
+    },
+    {
+      "id": "air",
+      "kind": "stock_noise"
+    },
+    {
+      "id": "motion",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -4,
+        "offset": 1
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 4,
+        "level1": 0.55,
+        "level2": 0.25,
+        "level3": 0.12,
+        "pan1": -0.2,
+        "pan2": 0.25,
+        "send_a1": 0.3,
+        "send_a2": 0.2,
+        "send_b2": 0.4,
+        "send_b3": 0.35,
+        "return_a": 0.5,
+        "return_b": 0.4,
+        "master": 0.7
+      }
+    },
+    {
+      "id": "delay",
+      "kind": "stereo_delay",
+      "params": {
+        "dry": 0,
+        "wet": 1,
+        "feedback": 0.25,
+        "time_left": 0.234375,
+        "time_right": 0.3515625
+      }
+    },
+    {
+      "id": "reverb",
+      "kind": "stereo_reverb",
+      "params": {
+        "dry": 0,
+        "wet": 1,
+        "decay": 0.4,
+        "size": 0.5
+      }
+    },
+    {
+      "id": "return-a",
+      "kind": "poly_merge",
+      "params": {
+        "channels": 2
+      }
+    },
+    {
+      "id": "return-b",
+      "kind": "poly_merge",
+      "params": {
+        "channels": 2
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.025,
+        "trigger_enabled": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.12,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "STUDIO MIXER · FX SENDS\n\n+ / − adds or hides strips.\nHidden wiring is retained.\n\nA → stereo delay → RET A\nB → reverb → RET B\nReturns never feed sends.\n\nRight-click a strip header:\ntrim · HPF · shelves · pre/post\nM mutes · S solos to cue\n\nScope X / Y: master L / R\n\nFind this OpenPatch original\nin Custom and Mixing."
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "console-0",
+      "from": "bass",
+      "output": "triangle",
+      "to": "console",
+      "input": "in1",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-1",
+      "from": "lead",
+      "output": "saw",
+      "to": "console",
+      "input": "in2",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-2",
+      "from": "air",
+      "output": "pink",
+      "to": "console",
+      "input": "in3",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-3",
+      "from": "motion",
+      "output": "sine",
+      "to": "console",
+      "input": "send_a_cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-4",
+      "from": "console",
+      "output": "send_a_left",
+      "to": "delay",
+      "input": "left",
+      "color": [
+        226,
+        171,
+        65
+      ]
+    },
+    {
+      "id": "console-5",
+      "from": "console",
+      "output": "send_a_right",
+      "to": "delay",
+      "input": "right",
+      "color": [
+        226,
+        171,
+        65
+      ]
+    },
+    {
+      "id": "console-6",
+      "from": "console",
+      "output": "send_b_left",
+      "to": "reverb",
+      "input": "left",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-7",
+      "from": "console",
+      "output": "send_b_right",
+      "to": "reverb",
+      "input": "right",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-8",
+      "from": "delay",
+      "output": "left",
+      "to": "return-a",
+      "input": "in1",
+      "color": [
+        226,
+        171,
+        65
+      ]
+    },
+    {
+      "id": "console-9",
+      "from": "delay",
+      "output": "right",
+      "to": "return-a",
+      "input": "in2",
+      "color": [
+        226,
+        171,
+        65
+      ]
+    },
+    {
+      "id": "console-10",
+      "from": "reverb",
+      "output": "left",
+      "to": "return-b",
+      "input": "in1",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-11",
+      "from": "reverb",
+      "output": "right",
+      "to": "return-b",
+      "input": "in2",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-12",
+      "from": "return-a",
+      "output": "out",
+      "to": "console",
+      "input": "return_a",
+      "color": [
+        226,
+        171,
+        65
+      ]
+    },
+    {
+      "id": "console-13",
+      "from": "return-b",
+      "output": "out",
+      "to": "console",
+      "input": "return_b",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-14",
+      "from": "console",
+      "output": "left",
+      "to": "scope",
+      "input": "x",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-15",
+      "from": "console",
+      "output": "right",
+      "to": "scope",
+      "input": "y",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-16",
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "console-17",
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    }
+  ],
+  "output": "out"
+}

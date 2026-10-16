@@ -22,6 +22,8 @@ include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("stock_vca_mix_panel.rs");
+include!("stock_noise_panel.rs");
+include!("studio_mixer_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -36,6 +38,18 @@ const ROW: f32 = 420.0;
 // Give Signal Atlas sockets a larger face and target while preserving their
 // shared native positions and cable endpoints in rack and browser previews.
 const STOCK_VCA_MIX_PORT_SCALE: f32 = 1.07;
+// Stock oscillator output rims grow from 13 to about 17 logical points; the
+// shared scale also enlarges their input sockets and pointer targets.
+const STOCK_OSCILLATOR_PORT_SCALE: f32 = 1.30;
+const STOCK_NOISE_PORT_SCALE: f32 = 1.30;
+fn port_material_scale(kind: &str) -> f32 {
+    match kind {
+        "stock_vca_mix" => STOCK_VCA_MIX_PORT_SCALE,
+        "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
+        "stock_noise" => STOCK_NOISE_PORT_SCALE,
+        _ => 1.0,
+    }
+}
 pub(crate) const PANEL_HEIGHT: f32 = 396.0;
 const MAX_PAN: f32 = 1_000_000.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
@@ -982,6 +996,101 @@ impl Rack {
         self.reveal_module_once = reveal.then_some(id);
         self.suppress_reveal_once = !reveal;
         self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// Move only the right-hand collision chain reached by a growing mixer.
+    /// The caller runs this after saving the outgoing history layout and before
+    /// presenting the incoming state, so undo restores the prior geometry.
+    pub(crate) fn settle_studio_mixer_growth(
+        &mut self,
+        patch: &Patch,
+        id: &str,
+        old_width: f32,
+    ) -> Result<(), String> {
+        let Some(mixer) = patch
+            .nodes
+            .iter()
+            .find(|node| node.id == id && node.kind == "studio_mixer")
+        else {
+            return Ok(());
+        };
+        let delta = module_width(mixer) - old_width;
+        if delta <= 0.0 {
+            return Ok(());
+        }
+        let Some(origin) = self.positions.get(id).copied() else {
+            return Ok(());
+        };
+        let old_right = origin.x + old_width;
+        let mut neighbors: Vec<_> = patch
+            .nodes
+            .iter()
+            .filter(|node| node.id != id)
+            .filter_map(|node| {
+                self.positions
+                    .get(&node.id)
+                    .copied()
+                    .map(|position| (node, position))
+            })
+            .filter(|(_, position)| {
+                (position.y - origin.y).abs() < PANEL_HEIGHT && position.x >= old_right - 0.5
+            })
+            .map(|(node, position)| (node.id.clone(), position, module_width(node)))
+            .collect();
+        neighbors.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+        let mut right = old_right + delta;
+        let mut changes = Vec::new();
+        for (neighbor, position, width) in neighbors {
+            if position.x >= right - 0.5 {
+                break;
+            }
+            if right + width > 100_000.0 {
+                return Err("No room to expand mixer on this rack row".into());
+            }
+            changes.push((neighbor, pos2(right, position.y)));
+            right += width;
+        }
+        if changes.is_empty() {
+            return Ok(());
+        }
+        for (neighbor, position) in changes {
+            self.positions.insert(neighbor, position);
+        }
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Append agent-requested modules to the end of their rack row, in graph
+    /// order so one batch keeps its add order. Absent IDs are ignored and
+    /// every other panel keeps its place.
+    pub(crate) fn place_in_rows(&mut self, patch: &Patch, rows: &BTreeMap<String, u32>) {
+        // A batch may recreate existing IDs whose layout entries still point
+        // far to the right. Clear every requested position first; otherwise a
+        // later member sees another member's stale position as an occupant.
+        for node in &patch.nodes {
+            if rows.contains_key(&node.id) {
+                self.positions.remove(&node.id);
+            }
+        }
+        for node in &patch.nodes {
+            let Some(row) = rows.get(&node.id) else {
+                continue;
+            };
+            let y = *row as f32 * ROW;
+            let x = patch
+                .nodes
+                .iter()
+                .filter(|other| other.id != node.id)
+                .filter_map(|other| {
+                    self.positions
+                        .get(&other.id)
+                        .filter(|p| (p.y - y).abs() < 1.0)
+                        .map(|p| p.x + module_width(other))
+                })
+                .fold(0.0, f32::max);
+            self.positions.insert(node.id.clone(), pos2(x, y));
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
     }
 
     /// A clipped ghost uses the actual panel dimensions and creates no widgets.
@@ -2445,6 +2554,9 @@ impl Rack {
                 ));
             }
             for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = point_from_port(
                     rect.min,
                     self.zoom,
@@ -2495,7 +2607,17 @@ impl Rack {
                 );
             }
             if mode.is_interactive() {
-                let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                let header_rect = Rect::from_min_max(
+                    point(15.0, 19.0),
+                    point(
+                        if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                            174.0
+                        } else {
+                            width - 15.0
+                        },
+                        69.0,
+                    ),
+                );
                 if interactive
                     && !popup_open_at_frame_start
                     && !egui::Popup::is_any_open(ui.ctx())
@@ -2585,7 +2707,17 @@ impl Rack {
                     self.zoom,
                     &self.lighting,
                 );
-                let header = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                let header = Rect::from_min_max(
+                    point(15.0, 19.0),
+                    point(
+                        if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                            174.0
+                        } else {
+                            width - 15.0
+                        },
+                        69.0,
+                    ),
+                );
                 let header_response = ui.interact(
                     header,
                     ui.id().with(("module-header", &node.id)),
@@ -3072,6 +3204,22 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_noise" {
+                paint_stock_noise_face(&painter, rect, self.zoom);
+            }
+            if node.kind == "studio_mixer" {
+                if let Some(edit) = self.studio_mixer_panel(
+                    ui,
+                    node,
+                    module,
+                    patch,
+                    rect,
+                    revision,
+                    mode.is_interactive(),
+                ) {
+                    action = Some(edit);
+                }
+            }
             if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
@@ -3116,6 +3264,7 @@ impl Rack {
                     || node.kind == "stock_vca"
                     || node.kind == "stock_octave"
                     || node.kind == "stock_vca_mix"
+                    || node.kind == "studio_mixer"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -3178,6 +3327,63 @@ impl Rack {
                     }
                     continue;
                 }
+                if *name == "frequency" && node.kind == "stock_vco" {
+                    // P is V/OCT, F is signed FM input and A is FM depth.
+                    // Both formulas remain visible because linear_fm selects
+                    // between the exponential and linear-frequency laws.
+                    painter.text(
+                        point(width * 0.5, 75.0),
+                        Align2::CENTER_CENTER,
+                        "EXP target: C4·2^(T/12+V+F·A)",
+                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
+                        INK,
+                    );
+                    painter.text(
+                        point(width * 0.5, 92.0),
+                        Align2::CENTER_CENTER,
+                        "LIN target: C4·2^(T/12+V)+C4·F·A",
+                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
+                        INK,
+                    );
+                    painter.text(
+                        point(width * 0.5, 109.0),
+                        Align2::CENTER_CENTER,
+                        "T=FREQ(st) · V=PITCH(V/OCT) · F=FM(V) · A=DEPTH",
+                        crate::panel_skin::print_font(painter.ctx(), 8.0 * self.zoom),
+                        MUTED,
+                    );
+                    painter.text(
+                        point(width * 0.5, 126.0),
+                        Align2::CENTER_CENTER,
+                        "PWM/10×DEPTH→SQUARE WIDTH · SYNC→PHASE",
+                        crate::panel_skin::print_font(painter.ctx(), 8.0 * self.zoom),
+                        MUTED,
+                    );
+                }
+                if *name == "rate" && node.kind == "stock_lfo" {
+                    // Rate is log2; FM depth multiplies its frequency ratio.
+                    painter.text(
+                        point(width * 0.5, 97.0),
+                        Align2::CENTER_CENTER,
+                        "fCLK (Hz)/2 × 2^(RATE + FM×DEPTH) → RATE",
+                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
+                        INK,
+                    );
+                    painter.text(
+                        point(width * 0.5, 115.0),
+                        Align2::CENTER_CENTER,
+                        "fCLK = measured Hz · starts at 2 Hz until clocked",
+                        crate::panel_skin::print_font(painter.ctx(), 8.5 * self.zoom),
+                        MUTED,
+                    );
+                    painter.text(
+                        point(width * 0.5, 133.0),
+                        Align2::CENTER_CENTER,
+                        "PWM/10×DEPTH→SQUARE WIDTH · RESET→PHASE · OFFSET→RANGE",
+                        crate::panel_skin::print_font(painter.ctx(), 8.5 * self.zoom),
+                        MUTED,
+                    );
+                }
                 if node.kind == "multi_vco" && matches!(*name, "linear_fm" | "soft_sync") {
                     let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
                     let rect = Rect::from_min_size(
@@ -3218,10 +3424,10 @@ impl Rack {
                 }
                 if node.kind == "stock_vco" && matches!(*name, "linear_fm" | "soft_sync") {
                     let enabled = value_or_default(node, name, spec) >= 0.5;
-                    let x = if *name == "linear_fm" { 20.0 } else { 200.0 };
+                    let x = if *name == "linear_fm" { 184.0 } else { 268.0 };
                     let response = crate::panel_skin::toggle_button(
                         ui,
-                        Rect::from_min_size(point(x, 280.0), vec2(120.0, 26.0) * self.zoom),
+                        Rect::from_min_size(point(x, 39.0), vec2(78.0, 24.0) * self.zoom),
                         if *name == "linear_fm" {
                             "Linear FM"
                         } else {
@@ -3271,10 +3477,10 @@ impl Rack {
                 }
                 if node.kind == "stock_lfo" && matches!(*name, "offset" | "invert") {
                     let enabled = value_or_default(node, name, spec) >= 0.5;
-                    let x = if *name == "offset" { 20.0 } else { 200.0 };
+                    let x = if *name == "offset" { 184.0 } else { 268.0 };
                     let response = crate::panel_skin::toggle_button(
                         ui,
-                        Rect::from_min_size(point(x, 280.0), vec2(120.0, 26.0) * self.zoom),
+                        Rect::from_min_size(point(x, 39.0), vec2(78.0, 24.0) * self.zoom),
                         if *name == "offset" {
                             if enabled {
                                 "0–10 V"
@@ -3472,7 +3678,11 @@ impl Rack {
                     }
                     continue;
                 }
-                let mut label_gap = 13.0;
+                let mut label_gap = if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                    10.0
+                } else {
+                    13.0
+                };
                 let (knob_position, radius) = if let Some((row, column)) = sequence_cell(name)
                     .filter(|_| matches!(node.kind.as_str(), "seq3" | "stock_seq3"))
                 {
@@ -3567,13 +3777,14 @@ impl Rack {
                         if *name == "unipolar" { 10.0 } else { 14.0 },
                     )
                 } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
-                    (
-                        pos2(
-                            if index.is_multiple_of(2) { 90.0 } else { 270.0 },
-                            125.0 + (index / 2) as f32 * 104.0,
-                        ),
-                        23.0,
-                    )
+                    let column = match *name {
+                        "frequency" | "rate" => 0,
+                        "pulse_width" => 1,
+                        "fm_amount" => 2,
+                        "pwm_amount" => 3,
+                        _ => index,
+                    };
+                    (pos2(45.0 + column as f32 * 90.0, 196.0), 30.0)
                 } else if is_wavetable(&node.kind) {
                     (wavetable_parameter_position(index), 18.0)
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
@@ -3769,7 +3980,9 @@ impl Rack {
                     raw_max: max,
                     focus: true,
                 };
-                let value_offset = if node.kind == "vca_mix" {
+                let value_offset = if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                    16.0
+                } else if node.kind == "vca_mix" {
                     11.0
                 } else if node.kind == "fade" {
                     10.0
@@ -3796,6 +4009,8 @@ impl Rack {
                     "stereo_reverb" | "sidechain_compressor" | "drum_voice"
                 ) {
                     width / 3.0 - 12.0
+                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                    82.0
                 } else if node.kind == "vca_mix" {
                     70.0
                 } else if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
@@ -3833,8 +4048,11 @@ impl Rack {
                 let fader_track =
                     crate::panel_skin::parameter_fader_track(center, radius, self.zoom);
                 // Keep the fader target inside its own cell and above the value well.
+                let stock_rotary = matches!(node.kind.as_str(), "stock_lfo" | "stock_vco");
                 let knob_rect = if choices.is_some() {
                     Rect::from_center_size(center, vec2(readout_width, 24.0) * self.zoom)
+                } else if stock_rotary {
+                    Rect::from_center_size(center, vec2(68.0, 68.0) * self.zoom)
                 } else {
                     Rect::from_center_size(
                         center,
@@ -3955,6 +4173,8 @@ impl Rack {
                     });
                     let input = if choices.is_some() {
                         FaderInput::default()
+                    } else if stock_rotary {
+                        self.parameter_knob_input(ui, &knob, normalized, enabled)
                     } else {
                         self.parameter_fader_input(ui, &knob, fader_track, normalized, enabled)
                     };
@@ -4027,9 +4247,10 @@ impl Rack {
                         ));
                     } else {
                         knob.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(format!(
-                        "{}: {}\n{}\nClick or drag the fader to set its position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
+                        "{}: {}\n{}\nClick and drag the {} to change its saved position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
                         name, display_value,
-                        if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
+                        if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description },
+                        if stock_rotary { "rotary" } else { "fader" }
                     ));
                     }
                 }
@@ -4041,6 +4262,14 @@ impl Rack {
                         value,
                         knob_highlighted,
                         crate::panel_skin::family_accent(&node.kind),
+                        self.zoom,
+                    );
+                } else if stock_rotary {
+                    stock_oscillator_rotary(
+                        &painter,
+                        center,
+                        normalized,
+                        knob_highlighted,
                         self.zoom,
                     );
                 } else {
@@ -4157,13 +4386,20 @@ impl Rack {
                                 rect: knob_rect.union(value_response.rect),
                                 old_text,
                                 new_text: display_value.clone(),
-                                marker: step.is_none().then_some(
+                                marker: step.is_none().then_some(if stock_rotary {
+                                    crate::construction_motion::Marker::Rotary {
+                                        center,
+                                        radius: 31.0 * self.zoom,
+                                        old: old_normalized,
+                                        new: normalized,
+                                    }
+                                } else {
                                     crate::construction_motion::Marker::VerticalSlider {
                                         rect: fader_track,
                                         old: old_normalized,
                                         new: normalized,
-                                    },
-                                ),
+                                    }
+                                }),
                             },
                             &[value_response.id, ui.id().with(("knob", &node.id, name))],
                         );
@@ -4196,6 +4432,9 @@ impl Rack {
                 );
             }
             for port in ports.iter().filter_map(Value::as_str) {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = inputs[&(node.id.clone(), port.to_string())];
                 let cables = input_groups
                     .get(&(node.id.as_str(), port))
@@ -4206,7 +4445,11 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
-                        if node.kind == "stock_vca_mix" {
+                        if node.kind == "stock_noise" {
+                            stock_noise_port_label(port)
+                        } else if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
+                        } else if node.kind == "stock_vca_mix" {
                             stock_vca_mix_port_label(port)
                         } else if node.kind == "stock_octave" {
                             stock_octave_port_label(port)
@@ -4229,13 +4472,9 @@ impl Rack {
                         is_voltage_utility(&node.kind)
                             || matches!(
                                 node.kind.as_str(),
-                                "sh_asr" | "stock_seq3" | "stock_quantizer"
+                                "sh_asr" | "stock_seq3" | "stock_quantizer" | "stock_noise"
                             ),
-                        if node.kind == "stock_vca_mix" {
-                            STOCK_VCA_MIX_PORT_SCALE
-                        } else {
-                            1.0
-                        },
+                        port_material_scale(&node.kind),
                     );
                     continue;
                 }
@@ -4244,7 +4483,11 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_vca_mix" {
+                    if node.kind == "stock_noise" {
+                        stock_noise_port_label(port)
+                    } else if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
+                    } else if node.kind == "stock_vca_mix" {
                         stock_vca_mix_port_label(port)
                     } else if node.kind == "stock_octave" {
                         stock_octave_port_label(port)
@@ -4267,18 +4510,14 @@ impl Rack {
                     is_voltage_utility(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "sh_asr" | "stock_seq3" | "stock_quantizer"
+                            "sh_asr" | "stock_seq3" | "stock_quantizer" | "stock_noise"
                         ),
                     if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
                         12.0
                     } else {
                         18.0
                     },
-                    if node.kind == "stock_vca_mix" {
-                        STOCK_VCA_MIX_PORT_SCALE
-                    } else {
-                        1.0
-                    },
+                    port_material_scale(&node.kind),
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -4369,7 +4608,11 @@ impl Rack {
                     paint_jack(
                         &painter,
                         output_point,
-                        if node.kind == "adsr_eg" {
+                        if node.kind == "stock_noise" {
+                            stock_noise_port_label(port)
+                        } else if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
+                        } else if node.kind == "adsr_eg" {
                             "ENV"
                         } else if node.kind == "stock_vca_mix" {
                             stock_vca_mix_port_label(port)
@@ -4402,14 +4645,13 @@ impl Rack {
                                     | "sh_asr"
                                     | "midi_cc"
                                     | "midi_gate"
+                                    | "stock_noise"
                             ),
-                        if node.kind == "stock_vca_mix" {
-                            STOCK_VCA_MIX_PORT_SCALE
-                        } else {
-                            1.0
-                        },
+                        port_material_scale(&node.kind),
                     );
-                    self.paint_output_signal_light(&painter, node, port_index, output_point);
+                    if node.kind != "stock_noise" {
+                        self.paint_output_signal_light(&painter, node, port_index, output_point);
+                    }
                     continue;
                 }
                 let jack = jack_with_minimum_target(
@@ -4417,7 +4659,11 @@ impl Rack {
                     &painter,
                     output_point,
                     ui.id().with(("output", &node.id, port)),
-                    if node.kind == "adsr_eg" {
+                    if node.kind == "stock_noise" {
+                        stock_noise_port_label(port)
+                    } else if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
+                    } else if node.kind == "adsr_eg" {
                         "ENV"
                     } else if node.kind == "stock_vca_mix" {
                         stock_vca_mix_port_label(port)
@@ -4450,6 +4696,7 @@ impl Rack {
                                 | "sh_asr"
                                 | "midi_cc"
                                 | "midi_gate"
+                                | "stock_noise"
                         ),
                     if matches!(
                         node.kind.as_str(),
@@ -4460,16 +4707,13 @@ impl Rack {
                             | "midi_gate"
                             | "stock_lfo"
                             | "stock_vco"
+                            | "stock_noise"
                     ) {
                         12.0
                     } else {
                         18.0
                     },
-                    if node.kind == "stock_vca_mix" {
-                        STOCK_VCA_MIX_PORT_SCALE
-                    } else {
-                        1.0
-                    },
+                    port_material_scale(&node.kind),
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -4488,8 +4732,13 @@ impl Rack {
                             }),
                     );
                 }
-                self.paint_output_signal_light(&painter, node, port_index, output_point);
-                if patch.output.as_ref() == Some(&node.id) && patch.output_port == *port {
+                if node.kind != "stock_noise" {
+                    self.paint_output_signal_light(&painter, node, port_index, output_point);
+                }
+                if node.kind != "stock_noise"
+                    && patch.output.as_ref() == Some(&node.id)
+                    && patch.output_port == *port
+                {
                     paint_jack_light(
                         &painter,
                         output_point,
@@ -4721,7 +4970,12 @@ impl Rack {
                     Stroke::new(2.0 * self.zoom, gold.gamma_multiply((1.0 - t) * 0.5)),
                 );
             }
-            let header = Rect::from_min_size(rect.min, vec2(rect.width(), 65.0 * self.zoom));
+            let header_width = if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                174.0 * self.zoom
+            } else {
+                rect.width()
+            };
+            let header = Rect::from_min_size(rect.min, vec2(header_width, 65.0 * self.zoom));
             if header_keyboard
                 || ui.input(|i| {
                     i.pointer.any_pressed()
@@ -4765,6 +5019,59 @@ impl Rack {
                     );
                     if !reduced {
                         match &anchor.marker {
+                            Some(Marker::Rotary {
+                                center,
+                                radius,
+                                old,
+                                new,
+                            }) => {
+                                // A fading cursor and short trail follow the same
+                                // bounded angular scale as the actual knob.
+                                let previous = ease((t - 0.14).max(0.0));
+                                let current = ease(t);
+                                for segment in 0..10 {
+                                    let a = previous + (current - previous) * segment as f32 / 10.0;
+                                    let b = previous
+                                        + (current - previous) * (segment + 1) as f32 / 10.0;
+                                    let from = crate::construction_motion::rotary_position(
+                                        *center,
+                                        *radius,
+                                        old + (new - old) * a,
+                                    );
+                                    let to = crate::construction_motion::rotary_position(
+                                        *center,
+                                        *radius,
+                                        old + (new - old) * b,
+                                    );
+                                    painter.line_segment(
+                                        [from, to],
+                                        Stroke::new(
+                                            2.0 * self.zoom,
+                                            gold.gamma_multiply(fade * (segment + 1) as f32 / 10.0),
+                                        ),
+                                    );
+                                }
+                                let position = crate::construction_motion::rotary_position(
+                                    *center,
+                                    *radius,
+                                    old + (new - old) * current,
+                                );
+                                painter.circle_filled(
+                                    position,
+                                    5.0 * self.zoom,
+                                    gold.gamma_multiply(0.12 * fade),
+                                );
+                                painter.circle_filled(
+                                    position,
+                                    3.2 * self.zoom,
+                                    gold.gamma_multiply(0.3 * fade),
+                                );
+                                painter.circle_filled(
+                                    position,
+                                    1.7 * self.zoom,
+                                    gold.gamma_multiply(fade),
+                                );
+                            }
                             Some(Marker::VerticalSlider { rect, old, new }) => {
                                 let y = rect.bottom()
                                     - rect.height() * (old + (new - old) * ease(t)).clamp(0.0, 1.0);
@@ -8115,6 +8422,9 @@ impl Rack {
                     continue;
                 };
                 for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                    if input && !studio_mixer_input_visible(node, port) {
+                        continue;
+                    }
                     let center = canvas.min
                         + self.pan
                         + (self.positions[&node.id].to_vec2()
@@ -8129,10 +8439,10 @@ impl Rack {
                             * self.zoom;
                     let hit = Rect::from_center_size(
                         center,
-                        Vec2::splat((29.0 * self.zoom).max(
+                        Vec2::splat((29.0 * self.zoom * port_material_scale(&node.kind)).max(
                             if matches!(
                                 node.kind.as_str(),
-                                "colored_noise" | "random_values" | "sh_asr"
+                                "colored_noise" | "random_values" | "sh_asr" | "stock_noise"
                             ) {
                                 12.0
                             } else {
@@ -9707,6 +10017,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "studio_mixer" => return studio_mixer_port(input, index, width),
         "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
         "stock_vca_mix" if input => {
             return match index {
@@ -9755,6 +10066,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 )
             }
         }
+        "stock_noise" if !input => return pos2(width - 30.0, stock_noise_row_y(index)),
         "stock_lfo" | "stock_vco" => {
             return pos2(
                 width * (index + 1) as f32 / 5.0,
@@ -10898,6 +11210,9 @@ fn panel_button(
 }
 
 pub(crate) fn module_width(node: &Node) -> f32 {
+    if node.kind == "studio_mixer" {
+        return studio_mixer_channels(node) as f32 * 72.0 + 228.0;
+    }
     node.effective_blank_width_hp()
         .map_or_else(|| panel_width(&node.kind), |hp| f32::from(hp) * HP)
 }
@@ -10910,6 +11225,8 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "random_values" => HP * 20.0,
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
+        "stock_noise" => HP * 20.0,
+        "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
         "scope" => HP * 42.0,
@@ -10984,6 +11301,8 @@ pub(crate) fn title(kind: &str) -> &str {
         "mix6" => "MIX 6",
         "stock_mix" => "STOCK MIX",
         "stock_vca_mix" => "STOCK VCA MIX",
+        "stock_noise" => "STOCK NOISE",
+        "studio_mixer" => "STUDIO MIXER",
         "octave" => "OCTAVE",
         "mult" => "MULT",
         "poly_split" => "SPLIT",
@@ -11256,6 +11575,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "mix6" | "stock_mix" => &["level", "average", "invert"],
         "octave" | "stock_octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
+        "stock_noise" => &[],
         "random" => &[
             "rate",
             "probability",
@@ -11992,6 +12312,9 @@ fn paint_panel(
 ) {
     if node.kind == "stock_vca_mix" {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
+    } else if node.kind == "stock_noise" {
+        crate::panel_skin::signal_atlas_face(painter, rect, zoom);
+        crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
     } else {
         crate::panel_skin::metal(painter, rect, zoom);
         crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
@@ -12215,15 +12538,53 @@ fn paint_jack(
         );
     }
     if !compact {
-        crate::panel_skin::port_label(
-            painter,
-            center - vec2(0.0, if port_scale > 1.0 { 21.5 } else { 19.0 }) * zoom,
-            &port_label(label).to_uppercase(),
-            output,
-            zoom,
-        );
+        if port_scale >= 1.25 {
+            let label_center = if output {
+                center + vec2(36.0, 0.0) * zoom
+            } else {
+                center - vec2(0.0, 25.0) * zoom
+            };
+            paint_stock_oscillator_port_label(painter, label_center, label, output, zoom);
+        } else {
+            crate::panel_skin::port_label(
+                painter,
+                center - vec2(0.0, if port_scale > 1.0 { 21.5 } else { 19.0 }) * zoom,
+                &port_label(label).to_uppercase(),
+                output,
+                zoom,
+            );
+        }
     }
     crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
+}
+
+/// Larger oscillator jacks need a compact output legend between the fixed
+/// input and output rows. Input labels sit 25 points above their jack; short
+/// output legends use 9.5 pt type in the remaining clear space between sockets.
+fn paint_stock_oscillator_port_label(
+    painter: &egui::Painter,
+    center: Pos2,
+    label: &str,
+    output: bool,
+    zoom: f32,
+) {
+    let color = if output {
+        Color32::from_rgb(245, 242, 233)
+    } else {
+        INK
+    };
+    let size = (if output { 9.5 } else { 10.5 }) * zoom;
+    let galley = painter.layout_no_wrap(
+        port_label(label).to_uppercase(),
+        crate::panel_skin::print_font(painter.ctx(), size),
+        color,
+    );
+    let text_rect = Rect::from_center_size(center, galley.size());
+    if output {
+        let plate = Rect::from_center_size(center, galley.size() + vec2(8.0, 0.0) * zoom);
+        painter.rect_filled(plate, 1.5 * zoom, INK);
+    }
+    painter.galley(text_rect.min, galley, color);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -13155,7 +13516,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            77,
+            79,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -13290,6 +13651,7 @@ mod tests {
             "audio_stereo",
             "modal_resonator",
             "colored_noise",
+            "stock_noise",
             "random_values",
             "sh_asr",
         ] {
@@ -17952,6 +18314,97 @@ mod tests {
         assert_eq!(rack.selected.as_deref(), Some("new-two"));
     }
     #[test]
+    fn agent_rows_append_in_graph_order_without_moving_other_panels() {
+        let mut patch = Patch::new_v2();
+        for (id, kind) in [
+            ("old", "constant"),
+            ("clock", "gate"),
+            ("lfo", "multi_lfo"),
+            ("voice", "macro_voice"),
+            ("skip", "constant"),
+        ] {
+            patch.nodes.push(Node {
+                id: id.into(),
+                kind: kind.into(),
+                params: BTreeMap::new(),
+                bypassed: false,
+                content: None,
+                score: None,
+            });
+        }
+        let mut rack = Rack::default();
+        rack.positions.insert("old".into(), pos2(0.0, ROW));
+        let revision = rack.layout_revision();
+        rack.place_in_rows(
+            &patch,
+            &BTreeMap::from([
+                ("lfo".into(), 1),
+                ("clock".into(), 1),
+                ("voice".into(), 2),
+                ("absent".into(), 0),
+            ]),
+        );
+        let width = |id: &str| module_width(patch.nodes.iter().find(|n| n.id == id).unwrap());
+        assert_eq!(rack.positions["old"], pos2(0.0, ROW));
+        assert_eq!(rack.positions["clock"], pos2(width("old"), ROW));
+        assert_eq!(
+            rack.positions["lfo"],
+            pos2(width("old") + width("clock"), ROW)
+        );
+        assert_eq!(rack.positions["voice"], pos2(0.0, 2.0 * ROW));
+        assert!(!rack.positions.contains_key("skip"));
+        assert!(!rack.positions.contains_key("absent"));
+        assert_ne!(rack.layout_revision(), revision);
+    }
+
+    #[test]
+    fn agent_rows_ignore_stale_positions_for_recreated_ids_and_append_default_and_explicit_row_zero_in_graph_order(
+    ) {
+        let mut patch = Patch::new_v2();
+        for (id, kind) in [
+            ("survivor", "constant"),
+            ("recreated-b", "gate"),
+            ("default-zero", "constant"),
+            ("recreated-a", "multi_lfo"),
+            ("explicit-zero", "macro_voice"),
+        ] {
+            patch.nodes.push(Node {
+                id: id.into(),
+                kind: kind.into(),
+                params: BTreeMap::new(),
+                bypassed: false,
+                content: None,
+                score: None,
+            });
+        }
+        let mut rack = Rack::default();
+        rack.positions.insert("survivor".into(), pos2(45.0, 0.0));
+        rack.positions
+            .insert("recreated-b".into(), pos2(1800.0, 0.0));
+        rack.positions
+            .insert("recreated-a".into(), pos2(2700.0, 0.0));
+        let rows = BTreeMap::from([
+            ("recreated-b".into(), 0),
+            ("default-zero".into(), 0),
+            ("recreated-a".into(), 0),
+            ("explicit-zero".into(), 0),
+        ]);
+        rack.place_in_rows(&patch, &rows);
+        let width = |id: &str| module_width(patch.nodes.iter().find(|node| node.id == id).unwrap());
+        assert_eq!(rack.positions["survivor"], pos2(45.0, 0.0));
+        let mut next_x = 45.0 + width("survivor");
+        for id in [
+            "recreated-b",
+            "default-zero",
+            "recreated-a",
+            "explicit-zero",
+        ] {
+            assert_eq!(rack.positions[id], pos2(next_x, 0.0), "{id}");
+            next_x += width(id);
+        }
+    }
+
+    #[test]
     fn placement_snaps_to_rows_and_nearest_free_hp_without_overlap() {
         let settle = |point, width, others: &[(Pos2, f32)]| {
             settle_group(point, &[(Pos2::ZERO, width)], others).unwrap()
@@ -19874,6 +20327,12 @@ mod tests {
     }
     mod stock_vca_mix_ui_tests {
         include!("stock_vca_mix_ui_tests.rs");
+    }
+    mod stock_noise_ui_tests {
+        include!("stock_noise_ui_tests.rs");
+    }
+    mod studio_mixer_ui_tests {
+        include!("studio_mixer_ui_tests.rs");
     }
     mod cable_autopan_tests {
         include!("cable_autopan_tests.rs");

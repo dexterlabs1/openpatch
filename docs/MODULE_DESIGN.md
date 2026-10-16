@@ -57,3 +57,39 @@ and each CV law is separately selectable between linear and fourth power.
 
 The broader panel conversion remains incremental. Selecting a visual direction
 does not establish that every existing module has been redesigned or qualified.
+
+Stock VCO and Stock LFO extend Signal Atlas with four large black rotaries in a
+single row and enlarged labeled input/output sockets. The pointer and scale arc
+show each saved control's bounded position; they are not phase, pitch or output
+meters. The printed VCO frequency and FM laws, and LFO clock-relative rate and
+PWM dependencies, describe their actual processing. VCO Linear FM/Soft sync
+and LFO Offset/Invert remain explicit interactive modes. Their phase and mode
+lamps use published runtime state, while a library preview has no invented
+activity. Rack and browser use the same renderer and port locations.
+
+For MCP construction edits, each rotary gets a temporary angular cue from the
+old normalized setting to the new one at that control's actual center, with
+old/new value text tied to its readout. This cue reports an edit, not an audio
+measurement. Direct pointer or keyboard input takes over the control. Labels,
+readouts, the 68-point rotary targets and enlarged jack material need visible
+clearance at the library's reduced scales; moving text is preferable to making
+the controls smaller. Application qualification for these panel changes is recorded in
+[the combined release report](benchmarks/stock-noise-release-qualification.json).
+
+Stock Noise uses seven separate horizontal process marks terminating at its
+seven actual outputs. The marks name the normal draw, Voss rows, white and
+pink-derived differences, gray FFT block, and black uniform mapping. They do
+not connect independent outputs or suggest a live spectrum. There are no
+decorative lamps or fake parameter knobs. Its native reference and application
+status are recorded in [Stock Noise](STOCK_NOISE.md).
+
+## Original module catalog tags
+
+Every future original OpenPatch module should declare `"Custom"` and at least
+one functional category in its catalog `tags` array. Studio Mixer uses
+`["Custom", "Mixing"]`; the two tags put it in both library filters while
+retaining Mixing as its musical role. Multiple categories are intentional:
+library membership and search match tags case-insensitively, while existing
+modules keep their kind-based category. Tags describe where a module belongs;
+they do not assert Rack or hardware equivalence. [Studio Mixer](STUDIO_MIXER.md)
+documents the console's source-backed meters and signal contract.

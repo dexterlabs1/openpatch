@@ -30,7 +30,10 @@ mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod stereo_output;
 mod stock_delay;
+mod stock_noise;
 mod stock_vco;
+#[doc(hidden)]
+pub use stock_noise::{StockNoiseDrawEvent, StockNoiseSnapshot};
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
 mod host_ports;
@@ -60,6 +63,7 @@ mod stock_vca;
 mod stock_vcf;
 mod stream_render;
 mod studio_fx;
+mod studio_mixer;
 pub use stream_render::{render_wav_stream, RenderStats};
 mod bypass;
 mod colored_noise;
@@ -360,6 +364,10 @@ pub fn catalog() -> Value {
     result["modules"]
         .as_array_mut()
         .unwrap()
+        .push(studio_mixer::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
         .push(sequence::catalog());
     result["modules"]
         .as_array_mut()
@@ -413,6 +421,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_vco::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_noise::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1422,6 +1434,53 @@ impl Engine {
             _ => None,
         }
     }
+    /// Read actual Stock Noise histories and draw order without adding a consumer.
+    #[doc(hidden)]
+    pub fn stock_noise_snapshot(&self, handle: ModuleHandle) -> Option<StockNoiseSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_noise_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Install a fixed controlled reference stream before the module's first
+    /// draw. This diagnostic hook adds no module parameter or audio callback work.
+    #[doc(hidden)]
+    pub fn set_stock_noise_controlled_draws(
+        &mut self,
+        handle: ModuleHandle,
+        normal_bits: &[u32],
+        uniform_bits: &[u32],
+    ) -> bool {
+        self.set_stock_noise_controlled_draws_at(handle, normal_bits, uniform_bits, 0, 0)
+    }
+    /// Set a fresh instance's reference cursors to the external global draw
+    /// position, used after source recreation. Arrays are copied off callback.
+    #[doc(hidden)]
+    pub fn set_stock_noise_controlled_draws_at(
+        &mut self,
+        handle: ModuleHandle,
+        normal_bits: &[u32],
+        uniform_bits: &[u32],
+        normal_start: u64,
+        uniform_start: u64,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.set_stock_noise_controlled_draws(
+                handle.node,
+                normal_bits,
+                uniform_bits,
+                normal_start,
+                uniform_start,
+            ),
+            _ => false,
+        }
+    }
     /// Load actual legacy module data. This mutates runtime controls, not the
     /// source Patch; importers should persist the returned actual flag snapshot.
     #[doc(hidden)]
@@ -1559,6 +1618,35 @@ impl Engine {
         }
         match &self.inner {
             EngineKind::Poly(engine) => engine.host_module_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Enable a passive, process-time copy of one canonical host input. Set on
+    /// the control thread before this graph is published to the audio thread.
+    /// Disabled ports incur no callback copy, and this adds no cable consumer.
+    #[doc(hidden)]
+    pub fn enable_host_input_observer(&mut self, handle: ModuleHandle, port: usize) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.enable_host_input_observer(handle.node, port),
+            _ => false,
+        }
+    }
+    /// Last actual input value seen during a callback, including raw inactive
+    /// lanes. No-sample graph edits retain this value for compatible nodes.
+    #[doc(hidden)]
+    pub fn observed_host_input(
+        &self,
+        handle: ModuleHandle,
+        port: usize,
+    ) -> Option<HostPortSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.observed_host_input(handle.node, port),
             _ => None,
         }
     }
@@ -1742,8 +1830,9 @@ impl Engine {
         }
         match &mut self.inner {
             EngineKind::Poly(engine) => {
+                let preserve_history = engine.stock_noise_preserves_reset_history(handle.node);
                 let reset = engine.reset_module_state(handle.node);
-                if reset {
+                if reset && !preserve_history {
                     engine.port_lights.clear_node(handle.node);
                 }
                 reset
@@ -1766,8 +1855,9 @@ impl Engine {
                 true
             }
             EngineKind::Poly(engine) => {
-                let preserve_history =
-                    engine.stock_vca_mix_preserves_initialize_history(handle.node);
+                let preserve_history = engine
+                    .stock_vca_mix_preserves_initialize_history(handle.node)
+                    || engine.stock_noise_preserves_reset_history(handle.node);
                 let initialized = engine.initialize_module_state(handle.node);
                 if initialized && !preserve_history {
                     engine.port_lights.clear_node(handle.node);

@@ -6,6 +6,7 @@ struct TrackingAllocator;
 thread_local! {
     static TRACKING: Cell<bool> = const { Cell::new(false) };
     static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static DEALLOCATIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 fn record() {
@@ -30,6 +31,11 @@ unsafe impl GlobalAlloc for TrackingAllocator {
         unsafe { System.realloc(ptr, layout, size) }
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let _ = TRACKING.try_with(|enabled| {
+            if enabled.get() {
+                let _ = DEALLOCATIONS.try_with(|count| count.set(count.get() + 1));
+            }
+        });
         unsafe { System.dealloc(ptr, layout) }
     }
 }
@@ -51,6 +57,75 @@ fn process_block_allocates_nothing_even_on_first_callback() {
     TRACKING.with(|enabled| enabled.set(false));
     assert_eq!(ALLOCATIONS.with(Cell::get), 0, "audio callback allocated");
     assert!(samples.iter().all(|value| value.is_finite()));
+}
+
+#[test]
+fn studio_mixer_first_process_adoption_recreation_and_reset_use_no_heap() {
+    use openpatch_core::{Patch, PortDirection, PortFrame};
+    let mut patch: Patch = serde_json::from_value(serde_json::json!({
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 2, "v1": 5, "v2": -3}},
+            {"id": "mix", "kind": "studio_mixer", "params": {"channels": 16, "send_a16": 1}}
+        ],
+        "cables": [],
+        "output": "mix",
+        "output_port": "left"
+    }))
+    .unwrap();
+    for input in (1..=16)
+        .map(|i| format!("in{i}"))
+        .chain(["return_a", "return_b", "send_a_cv", "send_b_cv"].map(str::to_owned))
+    {
+        patch.cables.push(
+            serde_json::from_value(serde_json::json!({
+                "from": "source", "output": "out", "to": "mix", "input": input
+            }))
+            .unwrap(),
+        );
+    }
+    let mut old = patch.compile().unwrap();
+    let mut adopted = patch.compile().unwrap();
+    let mut recreated = patch.compile().unwrap();
+    let handle = adopted.resolve_module_lights("mix").unwrap();
+    let recreated_handle = recreated.resolve_module_lights("mix").unwrap();
+    assert!(!adopted.enable_host_input_observer(handle, 19));
+    assert!(adopted.host_port_layout(handle).is_none());
+    adopted.set_port_lights_enabled(true);
+    recreated.set_port_lights_enabled(true);
+    let port_handles = ["return_a", "return_b", "send_a_cv", "send_b_cv"].map(|port| {
+        adopted
+            .resolve_port_light("mix", PortDirection::Input, port)
+            .unwrap()
+    });
+    let mut frames = [PortFrame::default(); 129];
+
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_poly_block(&mut frames[..length]);
+        adopted.adopt_state_from(&old);
+        adopted.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(adopted.module_lights(handle));
+        for port in port_handles {
+            std::hint::black_box(adopted.port_light(port));
+        }
+        assert!(adopted.reset_module_state(handle));
+        adopted.process_poly_block(&mut frames[..length]);
+        recreated.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(recreated.module_lights(recreated_handle));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.values.iter().all(|value| value.is_finite())));
+    assert!(port_handles.into_iter().all(|port| adopted
+        .port_light(port)
+        .is_some_and(|light| light.connected)));
 }
 
 #[test]
@@ -209,6 +284,65 @@ fn colored_noise_first_callback_adoption_initialize_and_bypass_allocate_nothing(
     assert!(samples
         .iter()
         .all(|f| f.channels == 1 && f.values.iter().all(|v| v.is_finite())));
+}
+
+#[test]
+fn two_stock_noise_gray_boundaries_and_compatible_adoption_use_no_callback_heap() {
+    use openpatch_core::{Patch, PortFrame};
+    let patch: Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"a","kind":"stock_noise"},
+                 {"id":"b","kind":"stock_noise"},
+                 {"id":"sink","kind":"poly_viz"}],
+        "cables":[{"from":"b","output":"gray","to":"sink","input":"signal"}],
+        "output":"a","output_port":"gray"
+    }))
+    .unwrap();
+    let mut old = patch.compile().unwrap();
+    let mut receiving = patch.compile().unwrap();
+    let mut bypass = patch.clone();
+    bypass.nodes[0].bypassed = true;
+    bypass.nodes[1].bypassed = true;
+    let mut paused = bypass.compile().unwrap();
+    let normals = [0x3f80_0000; 64];
+    let uniforms = [0x3f00_0000; 64];
+    for engine in [&mut old, &mut receiving, &mut paused] {
+        for id in ["a", "b"] {
+            let handle = engine.resolve_module_state(id).unwrap();
+            assert!(engine.set_stock_noise_controlled_draws(handle, &normals, &uniforms));
+        }
+        let sink = engine.resolve_module_state("sink").unwrap();
+        assert!(engine.enable_host_input_observer(sink, 0));
+    }
+    let handle_a = receiving.resolve_module_state("a").unwrap();
+    let handle_b = receiving.resolve_module_state("b").unwrap();
+    let sink = receiving.resolve_module_state("sink").unwrap();
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    old.process_poly_block(&mut frames);
+    receiving.adopt_state_from(&old);
+    receiving.process_poly_block(&mut frames);
+    paused.adopt_state_from(&receiving);
+    paused.process_poly_block(&mut frames[..1]);
+    receiving.adopt_state_from(&paused);
+    std::hint::black_box(receiving.observed_host_input(sink, 0));
+    assert!(receiving.initialize_module_state(handle_a));
+    assert!(receiving.initialize_module_state(handle_b));
+    receiving.process_poly_block(&mut frames);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(frames.iter().all(|frame| frame.values[0].is_finite()));
+    assert_eq!(
+        receiving.stock_noise_snapshot(handle_a).unwrap().gray_frame,
+        3
+    );
+    assert_eq!(
+        receiving.stock_noise_snapshot(handle_b).unwrap().gray_frame,
+        3
+    );
 }
 
 #[test]

@@ -9,7 +9,13 @@ fn stock_vco_frequency_raw(hz: f32) -> f32 {
     (12.0 * (hz / STOCK_VCO_C4_HZ).log2()).clamp(-76.0, 76.0)
 }
 fn stock_vco_parameter_label(parameter: &str) -> &str {
-    match parameter { "frequency" => "FREQUENCY", "pulse_width" => "WIDTH", "fm_amount" => "FM DEPTH", "pwm_amount" => "PWM DEPTH", other => other }
+    match parameter {
+        "frequency" => "FREQUENCY",
+        "pulse_width" => "WIDTH",
+        "fm_amount" => "FM DEPTH",
+        "pwm_amount" => "PWM DEPTH",
+        other => other,
+    }
 }
 fn stock_vco_parameter_value(parameter: &str, value: f32) -> String {
     match parameter {
@@ -19,31 +25,139 @@ fn stock_vco_parameter_value(parameter: &str, value: f32) -> String {
         _ => format!("{value:.0}"),
     }
 }
+
+/// Stock VCO and LFO use the same black rotary hardware. The arc reports the
+/// saved, bounded UI position; it is not a signal meter.
+fn stock_oscillator_rotary(
+    painter: &egui::Painter,
+    center: Pos2,
+    normalized: f32,
+    active: bool,
+    zoom: f32,
+) {
+    let value = if normalized.is_finite() {
+        normalized.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let radius = 27.0 * zoom;
+    let shell = Color32::from_rgb(40, 42, 41);
+    let face = Color32::from_rgb(56, 59, 57);
+    painter.circle_filled(
+        center + vec2(0.8, 1.4) * zoom,
+        radius + 1.0 * zoom,
+        Color32::from_black_alpha(48),
+    );
+    painter.circle_filled(center, radius + 1.0 * zoom, Color32::from_rgb(28, 30, 29));
+    painter.circle_filled(center, radius - 1.2 * zoom, shell);
+    painter.circle_filled(center, radius - 4.1 * zoom, face);
+    // Eleven evenly spaced scale marks give the bounded knob travel a clear
+    // reference without implying physical units shared by unlike controls.
+    for index in 0..=10 {
+        let t = index as f32 / 10.0;
+        let angle = std::f32::consts::PI * (0.75 + 1.5 * t);
+        let outer = center + vec2(angle.cos(), angle.sin()) * (radius - 2.7 * zoom);
+        let inset = if index % 5 == 0 { 7.0 } else { 5.5 };
+        let inner = center + vec2(angle.cos(), angle.sin()) * (radius - inset * zoom);
+        painter.line_segment(
+            [inner, outer],
+            egui::Stroke::new(
+                if index % 5 == 0 { 1.25 } else { 0.8 } * zoom,
+                Color32::from_rgb(222, 216, 201),
+            ),
+        );
+    }
+    let angle = std::f32::consts::PI * (0.75 + 1.5 * value);
+    let tip = center + vec2(angle.cos(), angle.sin()) * (radius - 9.0 * zoom);
+    painter.line_segment(
+        [center, tip],
+        egui::Stroke::new(
+            2.4 * zoom,
+            if active {
+                Color32::from_rgb(244, 235, 211)
+            } else {
+                Color32::from_rgb(222, 216, 201)
+            },
+        ),
+    );
+    painter.circle_filled(center, 2.2 * zoom, Color32::from_rgb(220, 214, 199));
+}
+
 impl Rack {
     fn stock_vco_lights(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
         let zoom = self.zoom;
         let point = |x, y| rect.min + vec2(x, y) * zoom;
         let painter = ui.painter();
         let packet = self.module_lights.get(&node.id);
-        let lights = packet.filter(|state| state.count == 5 && (0..5).all(|i| state.brightness[i][0].is_finite()));
-        painter.text(point(180.0, 79.0), Align2::CENTER_CENTER, "PHASE",
-            crate::panel_skin::print_font(ui.ctx(), 10.0 * zoom), MUTED);
-        let center = point(180.0, 108.0);
+        let lights = packet
+            .filter(|state| state.count == 5 && (0..5).all(|i| state.brightness[i][0].is_finite()));
+        let center = point(180.0, 279.0);
         painter.circle_filled(center, 11.0 * zoom, Color32::from_rgb(59, 63, 61));
-        let components: [f32; 3] = std::array::from_fn(|i| lights.map_or(0.0, |state| state.brightness[i][0].clamp(0.0, 1.0)));
+        let components: [f32; 3] = std::array::from_fn(|i| {
+            lights.map_or(0.0, |state| state.brightness[i][0].clamp(0.0, 1.0))
+        });
         let strength = components.iter().copied().fold(0.0_f32, f32::max);
-        self.lighting.circle(painter, center, 8.5 * zoom,
-            if lights.is_some() { Color32::from_rgb((components[0] * 255.0) as u8, (components[1] * 255.0) as u8, (components[2] * 255.0) as u8) }
-            else { Color32::from_rgb(99, 105, 99) }, strength, 0.0);
-        for (index, x, color) in [(3, 157.0, Color32::from_rgb(87, 183, 128)), (4, 337.0, Color32::from_rgb(220, 167, 77))] {
-            let center = point(x, 293.0);
+        // Lighting expands the requested radius by 2.1; keep the lens inside its 11-point bezel.
+        self.lighting.circle(
+            painter,
+            center,
+            (8.5 / 2.1) * zoom,
+            if lights.is_some() {
+                Color32::from_rgb(
+                    (components[0] * 255.0) as u8,
+                    (components[1] * 255.0) as u8,
+                    (components[2] * 255.0) as u8,
+                )
+            } else {
+                Color32::from_rgb(99, 105, 99)
+            },
+            strength,
+            0.0,
+        );
+        for (index, x, color, label) in [
+            (3, 38.0, Color32::from_rgb(87, 183, 128), "FM MODE"),
+            (4, 322.0, Color32::from_rgb(220, 167, 77), "SYNC"),
+        ] {
+            let center = point(x, 279.0);
             let value = lights.map_or(0.0, |state| state.brightness[index][0].clamp(0.0, 1.0));
             painter.circle_filled(center, 7.0 * zoom, Color32::from_rgb(59, 63, 61));
-            self.lighting.circle(painter, center, 5.0 * zoom,
-                if lights.is_some() { color.gamma_multiply(0.12 + value * 0.88) } else { Color32::from_rgb(99, 105, 99) }, value, 0.12);
+            self.lighting.circle(
+                painter,
+                center,
+                (5.0 / 2.1) * zoom,
+                if lights.is_some() {
+                    color.gamma_multiply(0.12 + value * 0.88)
+                } else {
+                    Color32::from_rgb(99, 105, 99)
+                },
+                value,
+                0.12,
+            );
+            painter.text(
+                point(x, 296.0),
+                Align2::CENTER_CENTER,
+                label,
+                crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
+                MUTED,
+            );
         }
-        painter.text(point(180.0, 183.0), Align2::CENTER_CENTER,
-            if lights.is_some() { "PHASE / MODES" } else { "TELEMETRY —" },
-            crate::panel_skin::print_font(ui.ctx(), 10.0 * zoom), MUTED);
+        painter.text(
+            point(180.0, 296.0),
+            Align2::CENTER_CENTER,
+            "PHASE",
+            crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
+            MUTED,
+        );
+        painter.text(
+            point(180.0, 261.0),
+            Align2::CENTER_CENTER,
+            if lights.is_some() {
+                "RUNTIME STATE"
+            } else {
+                "TELEMETRY —"
+            },
+            crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
+            MUTED,
+        );
     }
 }

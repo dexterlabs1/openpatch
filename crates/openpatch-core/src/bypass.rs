@@ -58,6 +58,12 @@ pub(crate) fn annotate(module: &mut Value) {
         module["bypass"]["state_policy"] = json!("skip VCMixer processing; four meters, ClockDivider and four module lamps freeze while bypassed");
         module["bypass"]["compatibility"] = json!("Fundamental VCMixer has no configBypass route; common native host lifecycle handles physical output transitions");
     }
+    if kind == "stock_noise" {
+        module["bypass"]["output_policy"] = json!("No configured bypass routes or output writes; common native host transition lifecycle clears connected active prefixes to mono zero and retains disconnected raw slots");
+        module["bypass"]["state_policy"] =
+            json!("seven source DSP histories and both random draw cursors freeze while bypassed");
+        module["bypass"]["compatibility"] = json!("Fundamental Noise has no configBypass route; common native host lifecycle handles physical output transitions");
+    }
     if kind == "midi_gate" {
         module["bypass"]["state_policy"] = json!("ignores MIDI and freezes DSP; transitions clear cell gates/timers and armed Learn, retaining owned completion and velocity");
         module["bypass"]["module_actions"] = json!("midi_panic remains available while bypassed and clears cell gates/timers and armed Learn immediately");
