@@ -281,6 +281,8 @@ pub struct Session {
     midi_learn_worker: bool,
     midi_learn_committed: BTreeSet<MidiLearnCommitKey>,
     host_lifecycle: host_lifecycle::Publication,
+    layout_rows: BTreeMap<String, u32>,
+    layout_placements: BTreeMap<String, u32>,
 }
 
 // A cloned control snapshot never adopts another session's plan or worker.
@@ -302,6 +304,8 @@ impl Clone for Session {
             midi_learn_worker: false,
             midi_learn_committed: self.midi_learn_committed.clone(),
             host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
+            layout_rows: self.layout_rows.clone(),
+            layout_placements: BTreeMap::new(),
         }
     }
 }
@@ -315,6 +319,7 @@ impl Drop for Session {
 #[derive(Clone)]
 struct HistoryEntry {
     patch: Patch,
+    layout_rows: BTreeMap<String, u32>,
     prepared_wave_banks: std::sync::Weak<PreparedWaveBanks>,
     state_id: u64,
     // Reset metadata belongs to the transition, even if both patches serialize
@@ -490,6 +495,8 @@ impl Session {
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
             host_lifecycle: host_lifecycle::Publication::default(),
+            layout_rows: BTreeMap::new(),
+            layout_placements: BTreeMap::new(),
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -684,6 +691,7 @@ impl Session {
             }
             self.undo.push_back(HistoryEntry {
                 patch: std::mem::replace(&mut self.patch, candidate),
+                layout_rows: self.layout_rows.clone(),
                 prepared_wave_banks: Arc::downgrade(&self.prepared_wave_banks),
                 state_id: self.state_id,
                 retired_modules: effects.retired.clone(),
@@ -703,6 +711,7 @@ impl Session {
         self.revision = revision;
         self.host_lifecycle.tail.append(&forward_lifecycle);
         self.host_lifecycle.prune(&self.patch);
+        self.record_layout_placements(&effects.placements, &effects.retired);
         self.construction.last_move = move_receipt;
         self.construction.wake();
         if !effects.retired.is_empty() {
@@ -851,6 +860,7 @@ impl Session {
                 prepared,
             )),
             patch: std::mem::replace(&mut self.patch, entry.patch),
+            layout_rows: std::mem::replace(&mut self.layout_rows, entry.layout_rows),
             state_id: std::mem::replace(&mut self.state_id, entry.state_id),
             retired_modules: entry.retired_modules.clone(),
             retired_cables: entry.retired_cables.clone(),
@@ -860,6 +870,11 @@ impl Session {
             restore_lifecycle: entry.return_lifecycle.clone(),
             return_lifecycle: entry.restore_lifecycle.clone(),
         };
+        self.restore_layout_placements(
+            &opposite.patch,
+            &opposite.layout_rows,
+            &entry.retired_modules,
+        );
         if redo {
             self.undo.push_back(opposite);
         } else {
@@ -2331,7 +2346,7 @@ pub fn tools() -> Value {
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
-        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","kind"],false),
+        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content. Optional row (0..63) asks the desktop to append the panel to the end of that rack row; without it new panels go to the end of row 0. Group related modules by row (e.g. control, voices, effects, mix) for an organized rack.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"content":preset_tools::content_schema(),"row":{"type":"integer","minimum":0,"maximum":layout_history::MAX_LAYOUT_ROW},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, content, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run, Stock SEQ3 Run/gates/passthrough, Push HOLD and all Random Values and Shift Register voltages plus PRNG are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),

@@ -6,7 +6,13 @@ include!("stock_vca_mix_topology.rs");
 // level and optional master-CV law. No strip output is normalized or inferred.
 const STOCK_VCA_MIX_CHANNEL_PARAMS: [&str; 4] = ["level1", "level2", "level3", "level4"];
 const STOCK_VCA_MIX_ALL_PARAMS: [&str; 7] = [
-    "level1", "level2", "level3", "level4", "mix_level", "channel_exp", "mix_exp",
+    "level1",
+    "level2",
+    "level3",
+    "level4",
+    "mix_level",
+    "channel_exp",
+    "mix_exp",
 ];
 const STOCK_VCA_MIX_KNOB_RADIUS: f32 = 17.0;
 const STOCK_VCA_MIX_KNOB_Y: f32 = 138.0;
@@ -22,10 +28,7 @@ fn stock_vca_mix_knob_center(index: usize) -> Pos2 {
 }
 
 fn stock_vca_mix_knob_rect(index: usize) -> Rect {
-    Rect::from_center_size(
-        stock_vca_mix_knob_center(index),
-        vec2(44.0, 44.0),
-    )
+    Rect::from_center_size(stock_vca_mix_knob_center(index), vec2(44.0, 44.0))
 }
 
 fn stock_vca_mix_value_rect(index: usize) -> Rect {
@@ -143,11 +146,18 @@ fn stock_vca_mix_paint_knob(
         let tick_length = if tick == 0 || tick == 4 { 3.0 } else { 1.8 };
         let outer = inner + tick_length * zoom;
         painter.line_segment(
-            [center + vec2(cos, sin) * inner, center + vec2(cos, sin) * outer],
+            [
+                center + vec2(cos, sin) * inner,
+                center + vec2(cos, sin) * outer,
+            ],
             Stroke::new(0.9 * zoom, black),
         );
     }
-    painter.circle_filled(center + vec2(0.8, 1.1) * zoom, radius + 1.0 * zoom, Color32::from_black_alpha(55));
+    painter.circle_filled(
+        center + vec2(0.8, 1.1) * zoom,
+        radius + 1.0 * zoom,
+        Color32::from_black_alpha(55),
+    );
     painter.circle_filled(center, radius, black);
     painter.circle_stroke(center, radius, Stroke::new(0.8 * zoom, rim));
     painter.circle_filled(center, radius - 2.0 * zoom, face);
@@ -178,7 +188,11 @@ impl Rack {
         rect: Rect,
         interactive: bool,
     ) -> Option<RackAction> {
-        let label = if parameter == "channel_exp" { "CHANNEL CV" } else { "MIX CV" };
+        let label = if parameter == "channel_exp" {
+            "CHANNEL CV"
+        } else {
+            "MIX CV"
+        };
         let enabled = node.params.get(parameter).copied().unwrap_or(0.0) >= 0.5;
         let text = format!("{label}  {}", if enabled { "EXP" } else { "LIN" });
         let response = crate::panel_skin::toggle_button(ui, rect, &text, enabled, self.zoom);
@@ -198,7 +212,10 @@ impl Rack {
             );
         }
         if self.precision_collects(node) {
-            self.register_precision_control(stock_vca_mix_edit(node, parameter, revision), response.rect);
+            self.register_precision_control(
+                stock_vca_mix_edit(node, parameter, revision),
+                response.rect,
+            );
         }
         let response = response.on_hover_text(if parameter == "channel_exp" {
             "Native chExp: each connected channel CV is divided by 10, negative values are floored at zero, then the CV is applied linearly or raised to the fourth power. Values above 10 V are not capped. This law multiplies the strip signal after level². Right-click for exact entry."
@@ -209,10 +226,16 @@ impl Rack {
             return None;
         }
         if response.secondary_clicked() {
-            self.open_precision_editor(stock_vca_mix_edit(node, parameter, revision), response.rect);
+            self.open_precision_editor(
+                stock_vca_mix_edit(node, parameter, revision),
+                response.rect,
+            );
         }
         if self.take_precision_request(&node.id, parameter) {
-            self.open_precision_editor(stock_vca_mix_edit(node, parameter, revision), response.rect);
+            self.open_precision_editor(
+                stock_vca_mix_edit(node, parameter, revision),
+                response.rect,
+            );
         }
         response.clicked().then(|| {
             self.select_primary(node.id.clone());
@@ -296,9 +319,16 @@ impl Rack {
             );
         }
 
-        for (index, parameter) in STOCK_VCA_MIX_CHANNEL_PARAMS.into_iter()
-            .chain(std::iter::once("mix_level")).enumerate() {
-            let max = if index == 4 { 2.0 } else { std::f32::consts::SQRT_2 };
+        for (index, parameter) in STOCK_VCA_MIX_CHANNEL_PARAMS
+            .into_iter()
+            .chain(std::iter::once("mix_level"))
+            .enumerate()
+        {
+            let max = if index == 4 {
+                2.0
+            } else {
+                std::f32::consts::SQRT_2
+            };
             let raw = node.params.get(parameter).copied().unwrap_or(1.0);
             let normalized = if raw.is_finite() {
                 (raw.clamp(0.0, max) / max).clamp(0.0, 1.0)
@@ -310,9 +340,15 @@ impl Rack {
             let id = egui::Id::new(("stock-vca-mix-knob", &node.id, parameter));
             let knob = ui.interact(knob_rect, id, Sense::click_and_drag());
             knob.widget_info(|| {
-                egui::WidgetInfo::slider(interactive, f64::from(raw), format!("{} {parameter}", node.id))
+                egui::WidgetInfo::slider(
+                    interactive,
+                    f64::from(raw),
+                    format!("{} {parameter}", node.id),
+                )
             });
-            if knob.drag_started_by(PointerButton::Primary) || knob.clicked_by(PointerButton::Primary) {
+            if knob.drag_started_by(PointerButton::Primary)
+                || knob.clicked_by(PointerButton::Primary)
+            {
                 self.select_primary(node.id.clone());
             }
             let input = self.parameter_knob_input(ui, &knob, normalized, interactive);
@@ -323,7 +359,11 @@ impl Rack {
                 .or_else(|| input.boundary.map(|high| if high { max } else { 0.0 }))
                 .or_else(|| {
                     (input.nudge != 0).then_some(input.nudge).map(|nudge| {
-                        let step = if ui.input(|i| i.modifiers.shift) { max * 0.1 } else { max * 0.01 };
+                        let step = if ui.input(|i| i.modifiers.shift) {
+                            max * 0.1
+                        } else {
+                            max * 0.01
+                        };
                         (normalized * max + nudge as f32 * step).clamp(0.0, max)
                     })
                 });
@@ -340,7 +380,10 @@ impl Rack {
                     action = Some(RackAction::Command("set_parameter", args));
                 }
             }
-            if let Some(cue) = self.construction_animation.parameter(&node.id, &node.kind, parameter) {
+            if let Some(cue) = self
+                .construction_animation
+                .parameter(&node.id, &node.kind, parameter)
+            {
                 self.register_construction_anchor(
                     ui,
                     node,
@@ -349,7 +392,12 @@ impl Rack {
                         rect: knob.rect,
                         old_text: stock_vca_mix_raw_label(cue.old),
                         new_text: stock_vca_mix_raw_label(cue.new),
-                        marker: None,
+                        marker: Some(crate::construction_motion::Marker::Rotary {
+                            center,
+                            radius: (STOCK_VCA_MIX_KNOB_RADIUS + 4.0) * z,
+                            old: (cue.old / max).clamp(0.0, 1.0),
+                            new: (cue.new / max).clamp(0.0, 1.0),
+                        }),
                     },
                     &[knob.id],
                 );
@@ -363,9 +411,18 @@ impl Rack {
             );
             let raw_outside_ui = raw.is_finite() && !(0.0..=max).contains(&raw);
             if raw_outside_ui {
-                let marker = Rect::from_center_size(point(stock_vca_mix_column(index) + 18.0, 116.0), vec2(13.0, 11.0) * z);
+                let marker = Rect::from_center_size(
+                    point(stock_vca_mix_column(index) + 18.0, 116.0),
+                    vec2(13.0, 11.0) * z,
+                );
                 painter.rect_filled(marker, 2.0 * z, Color32::from_rgb(156, 62, 43));
-                painter.text(marker.center(), Align2::CENTER_CENTER, "!", font(8.0), Color32::WHITE);
+                painter.text(
+                    marker.center(),
+                    Align2::CENTER_CENTER,
+                    "!",
+                    font(8.0),
+                    Color32::WHITE,
+                );
                 ui.interact(marker, ui.id().with((&node.id, parameter, "raw-outside-ui")), Sense::hover())
                     .on_hover_text(format!("Saved {parameter} value {raw:?} is outside knob travel 0–{max:.7}. The knob points to the nearest UI edge; the saved value stays unchanged until you edit it."));
             }
@@ -387,7 +444,13 @@ impl Rack {
             // The strip knob is a raw `levelN` setting that DSP squares; the
             // master `mix_level` remains a linear setting.
             let label = if index == 4 { "MIX LEVEL" } else { "LEVEL" };
-            painter.text(point(stock_vca_mix_column(index), 164.0), Align2::CENTER_CENTER, label, font(9.0), muted);
+            painter.text(
+                point(stock_vca_mix_column(index), 164.0),
+                Align2::CENTER_CENTER,
+                label,
+                font(9.0),
+                muted,
+            );
             let value_rect = screen(stock_vca_mix_value_rect(index));
             let value_response = ui.interact(
                 value_rect,
@@ -409,7 +472,10 @@ impl Rack {
                 "Exact loaded raw {parameter}: {raw:?}. The visible UI range is 0–{max:.7}; edits are bounded and never rewrite a loaded value during rendering. Click or right-click for exact entry."
             ));
             if self.precision_collects(node) {
-                self.register_precision_control(stock_vca_mix_edit(node, parameter, revision), value_rect);
+                self.register_precision_control(
+                    stock_vca_mix_edit(node, parameter, revision),
+                    value_rect,
+                );
             }
             self.precision_affordance(ui, &value_response);
             if interactive
@@ -418,7 +484,10 @@ impl Rack {
                     || self.take_precision_request(&node.id, parameter))
             {
                 consume_parameter_activation(ui.ctx());
-                self.open_precision_editor(stock_vca_mix_edit(node, parameter, revision), value_rect);
+                self.open_precision_editor(
+                    stock_vca_mix_edit(node, parameter, revision),
+                    value_rect,
+                );
             }
 
             if index < 4 {
@@ -455,14 +524,21 @@ impl Rack {
                         Color32::from_rgb(49, 126, 79)
                     };
                     let led = screen(Rect::from_min_size(
-                        pos2(stock_vca_mix_column(index) - 18.0 + segment as f32 * 4.8, STOCK_VCA_MIX_METER_Y - 3.0),
+                        pos2(
+                            stock_vca_mix_column(index) - 18.0 + segment as f32 * 4.8,
+                            STOCK_VCA_MIX_METER_Y - 3.0,
+                        ),
                         vec2(3.4, 6.0),
                     ));
                     self.lighting.rect(
                         &painter,
                         led,
                         1.0 * z,
-                        if lit { color } else { Color32::from_rgb(93, 93, 83) },
+                        if lit {
+                            color
+                        } else {
+                            Color32::from_rgb(93, 93, 83)
+                        },
                         if lit { brightness.unwrap_or(0.0) } else { 0.0 },
                         0.15,
                     );
@@ -485,7 +561,11 @@ impl Rack {
             Align2::CENTER_CENTER,
             if node.bypassed {
                 "VU HELD"
-            } else if self.module_lights.get(&node.id).is_some_and(|state| state.count >= 4) {
+            } else if self
+                .module_lights
+                .get(&node.id)
+                .is_some_and(|state| state.count >= 4)
+            {
                 "VU LIVE"
             } else {
                 "VU OFFLINE"

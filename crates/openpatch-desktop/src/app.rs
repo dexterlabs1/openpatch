@@ -1447,6 +1447,41 @@ impl OpenPatch {
             let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
+            let mut restored_positions = BTreeSet::new();
+            if s.revision() != self.revision {
+                // Preview positions never belong to the outgoing history state.
+                // Cancel even when a grouped edit retains the same state ID.
+                self.rack.cancel_module_drag();
+                self.history_layouts
+                    .insert(self.state_id, self.rack.layout());
+                if self.state_id != s.state_id() {
+                    self.state_id = s.state_id();
+                    if let Some(layout) = self.history_layouts.get(&self.state_id) {
+                        if self.rack.restore_layout(layout).is_ok() {
+                            if let Some(positions) = layout["positions"].as_object() {
+                                restored_positions.extend(positions.keys().cloned());
+                            }
+                        }
+                    }
+                }
+                let retained: BTreeSet<_> = s.history_state_ids().collect();
+                self.history_layouts.retain(|id, _| retained.contains(id));
+            }
+            // Row hints belong to the incoming committed state. Save the
+            // outgoing geometry and cancel preview drags before applying them,
+            // then let construction motion observe the final destination.
+            // Local add receipts may already have installed an explicit drop
+            // position at this exact state/revision before sync drains hints.
+            if let Some(layout) = self.history_layouts.get(&s.state_id()) {
+                if let Some(positions) = layout["positions"].as_object() {
+                    restored_positions.extend(positions.keys().cloned());
+                }
+            }
+            let mut placements = s.take_layout_placements();
+            placements.retain(|id, _| !restored_positions.contains(id));
+            if !placements.is_empty() {
+                self.rack.place_in_rows(s.patch(), &placements);
+            }
             if let Some(now) = self.smoke_motion_origin {
                 // The smoke fixture captures controlled presentation phases of
                 // a real commit. Normalize only its cloned presentation age;
@@ -1479,20 +1514,6 @@ impl OpenPatch {
                 );
             }
             if s.revision() != self.revision {
-                // Preview positions never belong to the outgoing history state.
-                // Cancel even when a grouped edit retains the same state ID.
-                self.rack.cancel_module_drag();
-                self.history_layouts
-                    .insert(self.state_id, self.rack.layout());
-                if self.state_id != s.state_id() {
-                    self.state_id = s.state_id();
-                    if let Some(layout) = self.history_layouts.get(&self.state_id) {
-                        let _ = self.rack.restore_layout(layout);
-                    }
-                }
-                let retained: BTreeSet<_> = s.history_state_ids().collect();
-                self.history_layouts.retain(|id, _| retained.contains(id));
-
                 self.patch = s.patch().clone();
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
@@ -2134,6 +2155,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::stock_mix_voice_layout())
                 .expect("bundled Stock Mix voice layout");
+        } else if title == "Noise into matter" {
+            self.rack
+                .restore_layout(&Self::stock_noise_layout())
+                .expect("bundled Stock Noise resonator layout");
         } else if title == "Stock VCA Mix voice" {
             self.rack
                 .restore_layout(&Self::stock_vca_mix_voice_layout())
@@ -2171,6 +2196,20 @@ impl OpenPatch {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "bass":[0,0],"fifth":[390,0],"upper":[780,0],
             "mix":[0,420],"scope":[270,420],"motion":[930,420],"out":[1320,420]
+        }})
+    }
+    fn stock_noise_layout() -> Value {
+        let noise = crate::rack::panel_width("stock_noise");
+        let clock = crate::rack::panel_width("gate");
+        let envelope = crate::rack::panel_width("adsr_eg");
+        let body = crate::rack::panel_width("modal_resonator");
+        let scope = crate::rack::panel_width("scope");
+        let output = crate::rack::panel_width("audio_stereo");
+        json!({"version":1,"zoom":0.7,"pan":[24,12],"positions":{
+            "noise":[0,0],"clock":[noise,0],"envelope":[noise+clock,0],
+            "amplifier":[noise+clock+envelope,0],
+            "body":[0,420],"scope":[body,420],"out":[body+scope,420],
+            "guide":[body+scope+output,420]
         }})
     }
     fn stock_vca_mix_voice_layout() -> Value {
@@ -3252,6 +3291,14 @@ impl OpenPatch {
                     serde_json::from_str(include_str!("../../../examples/stock-mix-voice.json"))
                         .expect("valid Stock Mix layered voice");
                 self.replace_from_menu(patch, "Stock Mix layered voice");
+                ui.close();
+            }
+            if ui.button("Noise into matter").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stock-noise-resonator.json"
+                ))
+                .expect("valid Stock Noise resonator");
+                self.replace_from_menu(patch, "Noise into matter");
                 ui.close();
             }
             if ui.button("Stock VCA Mix voice").clicked() {
@@ -6543,6 +6590,11 @@ impl OpenPatch {
             };
         }
         let (path, frame, captures) = (path.clone(), *frame, *captures);
+        if captures >= 139 {
+            assert!(frame < 2960, "Native screenshot timeout");
+            self.smoke_noise_tail(ctx, &path, captures);
+            return;
+        }
         if frame == 1 {
             let v = self
                 .visualizer
@@ -8423,22 +8475,27 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/139 at frame {frame}: {}",
+                "Native smoke: capture {}/142 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 139 {
-                self.allow_close = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
         }
         assert!(frame < 2960, "Native screenshot timeout");
     }
 }
+include!("stock_noise_fixture.rs");
 impl eframe::App for OpenPatch {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        let tail_id = egui::Id::new("native-smoke-noise-tail");
+        if let Some(mut tail) = ctx.data(|d| d.get_temp::<NoiseSmokeCapture>(tail_id)) {
+            if tail.index == 141 && !tail.query_sent {
+                input.events.push(egui::Event::Text("stock_noise".into()));
+                tail.query_sent = true;
+                ctx.data_mut(|d| d.insert_temp(tail_id, tail));
+            }
+        }
         if self
             .smoke_test
             .as_ref()
@@ -8791,6 +8848,9 @@ mod project_workflow_tests {
     }
     mod stock_mix_factory_tests {
         include!("stock_mix_factory_tests.rs");
+    }
+    mod stock_noise_factory_tests {
+        include!("stock_noise_factory_tests.rs");
     }
     mod stock_vca_mix_factory_tests {
         include!("stock_vca_mix_factory_tests.rs");

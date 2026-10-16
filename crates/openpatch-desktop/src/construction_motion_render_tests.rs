@@ -507,73 +507,181 @@ fn accepted_stock_lfo_construction_edits_anchor_all_six_controls_and_manual_togg
     session.replace_patch(before.clone(), None).unwrap();
     let previous = session.revision();
     let shared = session.into_shared();
-    let changes = [("rate", 2.0), ("pulse_width", 0.75), ("fm_amount", 0.3), ("pwm_amount", -0.4), ("offset", 0.0), ("invert", 1.0)];
+    let changes = [
+        ("rate", 2.0),
+        ("pulse_width", 0.75),
+        ("fm_amount", 0.3),
+        ("pwm_amount", -0.4),
+        ("offset", 0.0),
+        ("invert", 1.0),
+    ];
     let edits = changes.iter().map(|(name, value)| json!({"tool":"set_parameter","arguments":{"id":"target","parameter":name,"value":value}})).collect::<Vec<_>>();
     openpatch::control::execute_shared(&shared, "start_construction", json!({"expected_revision":previous,"title":"Shape Stock LFO","interval_ms":100,"steps":[{"label":"Set all six controls","edits":edits}]})).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let (after, revision, receipt) = loop {
         let session = shared.lock().unwrap();
         let receipt = session.construction_snapshot();
-        if receipt["completed_steps"] == 1 { break (session.patch().clone(), session.revision(), receipt); }
-        assert!(Instant::now() < deadline, "Construction did not commit: {receipt}");
+        if receipt["completed_steps"] == 1 {
+            break (session.patch().clone(), session.revision(), receipt);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Construction did not commit: {receipt}"
+        );
         drop(session);
         std::thread::sleep(Duration::from_millis(1));
     };
-    assert_eq!(receipt["last_commit"]["parameter_changes"].as_array().unwrap().len(), 6);
+    assert_eq!(
+        receipt["last_commit"]["parameter_changes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);
     let mut rack = Rack::default();
     frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, previous);
     let now = Instant::now();
-    rack.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        previous,
+        revision,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
     rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
-    let (action, output) = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
     assert!(action.is_none());
     assert_eq!(rack.construction_anchors.len(), 6);
     fn label_rect(shape: &egui::Shape, label: &str) -> Option<Rect> {
         match shape {
-            egui::Shape::Text(t) if t.galley.text() == label => Some(Rect::from_min_size(t.pos, t.galley.size())),
+            egui::Shape::Text(t) if t.galley.text() == label => {
+                Some(Rect::from_min_size(t.pos, t.galley.size()))
+            }
             egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| label_rect(shape, label)),
             _ => None,
         }
     }
     for (name, value) in changes {
         let anchor = &rack.construction_anchors[&("target".into(), name.into())];
-        let label = match name { "offset" => "±5 V".into(), "invert" => "Invert".into(), _ => stock_lfo_parameter_value(name, value, None) };
-        let actual_text = output.shapes.iter().find_map(|shape| label_rect(&shape.shape, &label)).expect("Actual corresponding control text");
-        assert!(anchor.rect.contains_rect(actual_text), "{name}: cue must surround its actual control");
+        let label = match name {
+            "offset" => "±5 V".into(),
+            "invert" => "Invert".into(),
+            _ => stock_lfo_parameter_value(name, value, None),
+        };
+        let actual_text = output
+            .shapes
+            .iter()
+            .find_map(|shape| label_rect(&shape.shape, &label))
+            .expect("Actual corresponding control text");
+        assert!(
+            anchor.rect.contains_rect(actual_text),
+            "{name}: cue must surround its actual control"
+        );
         if matches!(name, "offset" | "invert") {
             assert!(anchor.marker.is_none());
-            assert!((anchor.rect.height() - 26.0).abs() < 0.01);
-            assert_eq!((anchor.old_text.as_str(), anchor.new_text.as_str()), if name == "offset" { ("0–10 V", "±5 V") } else { ("Invert Off", "Invert On") });
+            assert!((anchor.rect.height() - 24.0).abs() < 0.01);
+            assert_eq!(
+                (anchor.old_text.as_str(), anchor.new_text.as_str()),
+                if name == "offset" {
+                    ("0–10 V", "±5 V")
+                } else {
+                    ("Invert Off", "Invert On")
+                }
+            );
         } else {
-            assert!(matches!(anchor.marker, Some(Marker::VerticalSlider { .. })));
+            assert!(matches!(anchor.marker, Some(Marker::Rotary { .. })));
         }
     }
     // The same accepted receipt cannot add interactive cue targets to a preview.
     let catalog = openpatch_core::catalog();
-    let module = catalog["modules"].as_array().unwrap().iter().find(|module| module["kind"] == "stock_lfo").unwrap();
+    let module = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["kind"] == "stock_lfo")
+        .unwrap();
     let mut preview = ModulePreview::new(module);
     preview.patch = after.clone();
     preview.renderer.positions.clear();
-    preview.renderer.positions.insert("target".into(), Pos2::ZERO);
-    preview.renderer.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    preview
+        .renderer
+        .positions
+        .insert("target".into(), Pos2::ZERO);
+    preview.renderer.observe_construction_transition_at(
+        &before,
+        &after,
+        previous,
+        revision,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
     let preview_ctx = egui::Context::default();
-    let output = preview_ctx.run(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))), ..Default::default() }, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| preview.show(ui, Rect::from_min_size(pos2(24.0, 12.0), preview.size()), &catalog));
-    });
+    let output = preview_ctx.run(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))),
+            ..Default::default()
+        },
+        |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                preview.show(
+                    ui,
+                    Rect::from_min_size(pos2(24.0, 12.0), preview.size()),
+                    &catalog,
+                )
+            });
+        },
+    );
     assert!(preview.renderer.construction_anchors.is_empty());
-    assert!(!text(&output).iter().any(|label| label.contains('→')));
+    for anchor in rack.construction_anchors.values() {
+        let badge = format!("{} → {}", anchor.old_text, anchor.new_text);
+        assert!(!text(&output).iter().any(|label| label == &badge));
+    }
     // A real press on each mode button cancels that cue immediately; release
     // retains the original parameter command and revision guard.
     for (index, name) in ["offset", "invert"].into_iter().enumerate() {
-        let at = rack.construction_anchors[&("target".into(), name.into())].rect.center();
-        frame_revision_state(&ctx, &mut rack, &after, 0.2 + index as f64 * 0.2, vec![egui::Event::PointerMoved(at), button(at, true)], true, true, revision);
-        assert!(rack.construction_animation.parameter("target", "stock_lfo", name).is_none());
-        let action = frame_revision_state(&ctx, &mut rack, &after, 0.3 + index as f64 * 0.2, vec![button(at, false)], true, true, revision).0;
-        assert!(matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["expected_revision"] == revision));
+        let at = rack.construction_anchors[&("target".into(), name.into())]
+            .rect
+            .center();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.2 + index as f64 * 0.2,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            revision,
+        );
+        assert!(rack
+            .construction_animation
+            .parameter("target", "stock_lfo", name)
+            .is_none());
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.3 + index as f64 * 0.2,
+            vec![button(at, false)],
+            true,
+            true,
+            revision,
+        )
+        .0;
+        assert!(
+            matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["expected_revision"] == revision)
+        );
     }
-    assert_eq!(serde_json::to_value(shared.lock().unwrap().patch()).unwrap(), serde_json::to_value(&after).unwrap(), "Presentation and manual actions await host publication");
+    assert_eq!(
+        serde_json::to_value(shared.lock().unwrap().patch()).unwrap(),
+        serde_json::to_value(&after).unwrap(),
+        "Presentation and manual actions await host publication"
+    );
 }
 
 #[test]
@@ -584,112 +692,441 @@ fn accepted_stock_vco_construction_edits_anchor_all_six_controls_and_manual_togg
     session.replace_patch(before.clone(), None).unwrap();
     let previous = session.revision();
     let shared = session.into_shared();
-    let changes = [("frequency", 12.0), ("pulse_width", 0.75), ("fm_amount", 0.3), ("pwm_amount", -0.4), ("linear_fm", 1.0), ("soft_sync", 1.0)];
+    let changes = [
+        ("frequency", 12.0),
+        ("pulse_width", 0.75),
+        ("fm_amount", 0.3),
+        ("pwm_amount", -0.4),
+        ("linear_fm", 1.0),
+        ("soft_sync", 1.0),
+    ];
     let edits = changes.iter().map(|(name, value)| json!({"tool":"set_parameter","arguments":{"id":"target","parameter":name,"value":value}})).collect::<Vec<_>>();
     openpatch::control::execute_shared(&shared, "start_construction", json!({"expected_revision":previous,"title":"Shape Stock VCO","interval_ms":100,"steps":[{"label":"Set all six controls","edits":edits}]})).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let (after, revision, receipt) = loop {
         let session = shared.lock().unwrap();
         let receipt = session.construction_snapshot();
-        if receipt["completed_steps"] == 1 { break (session.patch().clone(), session.revision(), receipt); }
-        assert!(Instant::now() < deadline, "Construction did not commit: {receipt}");
+        if receipt["completed_steps"] == 1 {
+            break (session.patch().clone(), session.revision(), receipt);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Construction did not commit: {receipt}"
+        );
         drop(session);
         std::thread::sleep(Duration::from_millis(1));
     };
-    assert_eq!(receipt["last_commit"]["parameter_changes"].as_array().unwrap().len(), 6);
+    assert_eq!(
+        receipt["last_commit"]["parameter_changes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);
     let mut rack = Rack::default();
     frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, previous);
     let now = Instant::now();
-    rack.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        previous,
+        revision,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
     rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
-    let (action, output) = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
     assert!(action.is_none());
     assert_eq!(rack.construction_anchors.len(), 6);
     fn label_rect(shape: &egui::Shape, label: &str) -> Option<Rect> {
         match shape {
-            egui::Shape::Text(t) if t.galley.text() == label => Some(Rect::from_min_size(t.pos, t.galley.size())),
+            egui::Shape::Text(t) if t.galley.text() == label => {
+                Some(Rect::from_min_size(t.pos, t.galley.size()))
+            }
             egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| label_rect(shape, label)),
             _ => None,
         }
     }
     for (name, value) in changes {
         let anchor = &rack.construction_anchors[&("target".into(), name.into())];
-        let label = match name { "linear_fm" => "Linear FM".into(), "soft_sync" => "Soft sync".into(), _ => stock_vco_parameter_value(name, value) };
-        let actual_text = output.shapes.iter().find_map(|shape| label_rect(&shape.shape, &label)).expect("Actual corresponding control text");
-        assert!(anchor.rect.contains_rect(actual_text), "{name}: cue must surround its actual control");
+        let label = match name {
+            "linear_fm" => "Linear FM".into(),
+            "soft_sync" => "Soft sync".into(),
+            _ => stock_vco_parameter_value(name, value),
+        };
+        let actual_text = output
+            .shapes
+            .iter()
+            .find_map(|shape| label_rect(&shape.shape, &label))
+            .expect("Actual corresponding control text");
+        assert!(
+            anchor.rect.contains_rect(actual_text),
+            "{name}: cue must surround its actual control"
+        );
         if matches!(name, "linear_fm" | "soft_sync") {
             assert!(anchor.marker.is_none());
-            assert!((anchor.rect.height() - 26.0).abs() < 0.01);
-            assert_eq!((anchor.old_text.as_str(), anchor.new_text.as_str()), if name == "linear_fm" { ("Exponential FM", "Linear FM") } else { ("Hard sync", "Soft sync") });
+            assert!((anchor.rect.height() - 24.0).abs() < 0.01);
+            assert_eq!(
+                (anchor.old_text.as_str(), anchor.new_text.as_str()),
+                if name == "linear_fm" {
+                    ("Exponential FM", "Linear FM")
+                } else {
+                    ("Hard sync", "Soft sync")
+                }
+            );
         } else {
-            assert!(matches!(anchor.marker, Some(Marker::VerticalSlider { .. })));
+            assert!(matches!(anchor.marker, Some(Marker::Rotary { .. })));
         }
     }
     // The same accepted receipt cannot add interactive cue targets to a preview.
     let catalog = openpatch_core::catalog();
-    let module = catalog["modules"].as_array().unwrap().iter().find(|module| module["kind"] == "stock_vco").unwrap();
+    let module = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["kind"] == "stock_vco")
+        .unwrap();
     let mut preview = ModulePreview::new(module);
     preview.patch = after.clone();
     preview.renderer.positions.clear();
-    preview.renderer.positions.insert("target".into(), Pos2::ZERO);
-    preview.renderer.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    preview
+        .renderer
+        .positions
+        .insert("target".into(), Pos2::ZERO);
+    preview.renderer.observe_construction_transition_at(
+        &before,
+        &after,
+        previous,
+        revision,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
     let preview_ctx = egui::Context::default();
-    let output = preview_ctx.run(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))), ..Default::default() }, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| preview.show(ui, Rect::from_min_size(pos2(24.0, 12.0), preview.size()), &catalog));
-    });
+    let output = preview_ctx.run(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))),
+            ..Default::default()
+        },
+        |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                preview.show(
+                    ui,
+                    Rect::from_min_size(pos2(24.0, 12.0), preview.size()),
+                    &catalog,
+                )
+            });
+        },
+    );
     assert!(preview.renderer.construction_anchors.is_empty());
-    assert!(!text(&output).iter().any(|label| label.contains('→')));
+    for anchor in rack.construction_anchors.values() {
+        let badge = format!("{} → {}", anchor.old_text, anchor.new_text);
+        assert!(!text(&output).iter().any(|label| label == &badge));
+    }
     // A real press on each mode button cancels that cue immediately; release
     // retains the original parameter command and revision guard.
     for (index, name) in ["linear_fm", "soft_sync"].into_iter().enumerate() {
-        let at = rack.construction_anchors[&("target".into(), name.into())].rect.center();
-        frame_revision_state(&ctx, &mut rack, &after, 0.2 + index as f64 * 0.2, vec![egui::Event::PointerMoved(at), button(at, true)], true, true, revision);
-        assert!(rack.construction_animation.parameter("target", "stock_vco", name).is_none());
-        let action = frame_revision_state(&ctx, &mut rack, &after, 0.3 + index as f64 * 0.2, vec![button(at, false)], true, true, revision).0;
-        assert!(matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["expected_revision"] == revision));
+        let at = rack.construction_anchors[&("target".into(), name.into())]
+            .rect
+            .center();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.2 + index as f64 * 0.2,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            revision,
+        );
+        assert!(rack
+            .construction_animation
+            .parameter("target", "stock_vco", name)
+            .is_none());
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.3 + index as f64 * 0.2,
+            vec![button(at, false)],
+            true,
+            true,
+            revision,
+        )
+        .0;
+        assert!(
+            matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["expected_revision"] == revision)
+        );
     }
-    assert_eq!(serde_json::to_value(shared.lock().unwrap().patch()).unwrap(), serde_json::to_value(&after).unwrap(), "Presentation and manual actions await host publication");
+    assert_eq!(
+        serde_json::to_value(shared.lock().unwrap().patch()).unwrap(),
+        serde_json::to_value(&after).unwrap(),
+        "Presentation and manual actions await host publication"
+    );
 }
 
 #[test]
 fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_press_takes_over() {
-    let mut changes = vec![("tempo".to_owned(),2.0),("steps".into(),5.0),("tempo_amount".into(),0.5),("steps_amount".into(),0.5)];
-    for row in 1..=3 { for step in 1..=8 { changes.push((format!("row{row}_{step}"),1.25)); } }
-    for gate in 1..=8 { changes.push((format!("gate{gate}"),0.0)); }
-    changes.extend([("running".into(),0.0),("passthrough".into(),1.0)]);
-    assert_eq!(changes.len(),38);
+    let mut changes = vec![
+        ("tempo".to_owned(), 2.0),
+        ("steps".into(), 5.0),
+        ("tempo_amount".into(), 0.5),
+        ("steps_amount".into(), 0.5),
+    ];
+    for row in 1..=3 {
+        for step in 1..=8 {
+            changes.push((format!("row{row}_{step}"), 1.25));
+        }
+    }
+    for gate in 1..=8 {
+        changes.push((format!("gate{gate}"), 0.0));
+    }
+    changes.extend([("running".into(), 0.0), ("passthrough".into(), 1.0)]);
+    assert_eq!(changes.len(), 38);
     for batch in changes.chunks(8) {
-        let workspace=tempfile::tempdir().unwrap();let mut session=openpatch::control::Session::new(workspace.path()).unwrap();
-        let before=patch("stock_seq3","tempo",1.0);session.replace_patch(before.clone(),None).unwrap();let previous=session.revision();let shared=session.into_shared();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        let before = patch("stock_seq3", "tempo", 1.0);
+        session.replace_patch(before.clone(), None).unwrap();
+        let previous = session.revision();
+        let shared = session.into_shared();
         let edits=batch.iter().map(|(name,value)|json!({"tool":"set_parameter","arguments":{"id":"target","parameter":name,"value":value}})).collect::<Vec<_>>();
         openpatch::control::execute_shared(&shared,"start_construction",json!({"expected_revision":previous,"title":"Shape Stock SEQ3","interval_ms":100,"steps":[{"label":"Set actual panel controls","edits":edits}]})).unwrap();
-        let deadline=Instant::now()+Duration::from_secs(5);
-        let (after,revision,receipt)=loop{let session=shared.lock().unwrap();let receipt=session.construction_snapshot();if receipt["completed_steps"]==1{break(session.patch().clone(),session.revision(),receipt);}assert!(Instant::now()<deadline,"Construction did not commit: {receipt}");drop(session);std::thread::sleep(Duration::from_millis(1));};
-        assert_eq!(receipt["last_commit"]["parameter_changes"].as_array().unwrap().len(),batch.len(),"Every requested value actually changes: {batch:?}; receipt {receipt}");
-        let ctx=egui::Context::default();crate::panel_skin::install_fonts(&ctx);let mut rack=Rack::default();rack.set_sequence_states(BTreeMap::new(),true);
-        frame_revision_state(&ctx,&mut rack,&before,0.0,vec![],true,true,previous);let now=Instant::now();rack.observe_construction_transition_at(&before,&after,previous,revision,&receipt,MotionMode::Full,now);rack.set_construction_clock_override(Some(now+Duration::from_millis(160)));
-        let (action,_)=frame_revision_state(&ctx,&mut rack,&after,0.1,vec![],true,true,revision);assert!(action.is_none());assert_eq!(rack.construction_anchors.len(),batch.len());
-        let mut targets=vec![];
-        for (name,_) in batch {
-            let anchor=rack.construction_anchors[&("target".into(),name.clone())].clone();
-            if stock_seq3_scalar(name) {assert!(anchor.rect.width()>=32.0);assert!(anchor.rect.height()>=19.0);}
-            else {assert!(anchor.marker.is_none());assert!(anchor.rect.height()<=25.1);}
-            assert!(anchor.rect.top()>70.0,"{name}: actual control, not header badge");targets.push((name.clone(),anchor.rect.center()));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (after, revision, receipt) = loop {
+            let session = shared.lock().unwrap();
+            let receipt = session.construction_snapshot();
+            if receipt["completed_steps"] == 1 {
+                break (session.patch().clone(), session.revision(), receipt);
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Construction did not commit: {receipt}"
+            );
+            drop(session);
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert_eq!(
+            receipt["last_commit"]["parameter_changes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            batch.len(),
+            "Every requested value actually changes: {batch:?}; receipt {receipt}"
+        );
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        let mut rack = Rack::default();
+        rack.set_sequence_states(BTreeMap::new(), true);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, previous);
+        let now = Instant::now();
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            previous,
+            revision,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
+        let (action, _) =
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
+        assert!(action.is_none());
+        assert_eq!(rack.construction_anchors.len(), batch.len());
+        let mut targets = vec![];
+        for (name, _) in batch {
+            let anchor = rack.construction_anchors[&("target".into(), name.clone())].clone();
+            if stock_seq3_scalar(name) {
+                assert!(anchor.rect.width() >= 32.0);
+                assert!(anchor.rect.height() >= 19.0);
+            } else {
+                assert!(anchor.marker.is_none());
+                assert!(anchor.rect.height() <= 25.1);
+            }
+            assert!(
+                anchor.rect.top() > 70.0,
+                "{name}: actual control, not header badge"
+            );
+            targets.push((name.clone(), anchor.rect.center()));
         }
-        let catalog=openpatch_core::catalog();let module=catalog["modules"].as_array().unwrap().iter().find(|m|m["kind"]=="stock_seq3").unwrap();let mut preview=ModulePreview::new(module);preview.patch=after.clone();preview.renderer.positions.clear();preview.renderer.positions.insert("target".into(),Pos2::ZERO);preview.renderer.observe_construction_transition_at(&before,&after,previous,revision,&receipt,MotionMode::Full,now);
-        let preview_ctx=egui::Context::default();let out=preview_ctx.run(egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,vec2(1000.0,600.0))),..Default::default()},|ctx|{egui::CentralPanel::default().show(ctx,|ui|preview.show(ui,Rect::from_min_size(pos2(24.0,12.0),preview.size()),&catalog));});
-        assert!(preview.renderer.construction_anchors.is_empty());assert!(!text(&out).iter().any(|t|t.contains(" → ")));
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == "stock_seq3")
+            .unwrap();
+        let mut preview = ModulePreview::new(module);
+        preview.patch = after.clone();
+        preview.renderer.positions.clear();
+        preview
+            .renderer
+            .positions
+            .insert("target".into(), Pos2::ZERO);
+        preview.renderer.observe_construction_transition_at(
+            &before,
+            &after,
+            previous,
+            revision,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        let preview_ctx = egui::Context::default();
+        let out = preview_ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1000.0, 600.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    preview.show(
+                        ui,
+                        Rect::from_min_size(pos2(24.0, 12.0), preview.size()),
+                        &catalog,
+                    )
+                });
+            },
+        );
+        assert!(preview.renderer.construction_anchors.is_empty());
+        assert!(!text(&out).iter().any(|t| t.contains(" → ")));
         // A pointer press on the real control cancels the corresponding cue.
         // Faders use their actual track center, not the union's lower readout.
-        for (index,(name,mut at)) in targets.into_iter().enumerate(){
-            if stock_seq3_scalar(&name){let local=sequence_cell(&name).map_or_else(||stock_seq3_parameter_position(&name),|(row,col)|pos2(238.0+col as f32*67.0,123.0+row as f32*71.5));at=pos2(24.0,12.0)+local.to_vec2();}
-            let t=0.3+index as f64*0.3;frame_revision_state(&ctx,&mut rack,&after,t,vec![egui::Event::PointerMoved(at),button(at,true)],true,true,revision);
-            assert!(rack.construction_animation.parameter("target","stock_seq3",&name).is_none(),"{name} manual takeover");frame_revision_state(&ctx,&mut rack,&after,t+0.1,vec![button(at,false)],true,true,revision);
-            if name=="passthrough"{egui::Popup::close_all(&ctx);}
+        for (index, (name, mut at)) in targets.into_iter().enumerate() {
+            if stock_seq3_scalar(&name) {
+                let local = sequence_cell(&name).map_or_else(
+                    || stock_seq3_parameter_position(&name),
+                    |(row, col)| pos2(238.0 + col as f32 * 67.0, 123.0 + row as f32 * 71.5),
+                );
+                at = pos2(24.0, 12.0) + local.to_vec2();
+            }
+            let t = 0.3 + index as f64 * 0.3;
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                t,
+                vec![egui::Event::PointerMoved(at), button(at, true)],
+                true,
+                true,
+                revision,
+            );
+            assert!(
+                rack.construction_animation
+                    .parameter("target", "stock_seq3", &name)
+                    .is_none(),
+                "{name} manual takeover"
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                t + 0.1,
+                vec![button(at, false)],
+                true,
+                true,
+                revision,
+            );
+            if name == "passthrough" {
+                egui::Popup::close_all(&ctx);
+            }
         }
     }
 }
 
 include!("stock_quantizer_construction_tests.rs");
+
+#[test]
+fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values() {
+    for (kind, parameter, old, new) in [
+        ("stock_vco", "frequency", -12.0, 24.0),
+        ("stock_lfo", "rate", 0.0, 2.0),
+        ("stock_vca_mix", "level1", 0.25, 1.0),
+    ] {
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        let mut rack = Rack::default();
+        let before = patch(kind, parameter, old);
+        let after = patch(kind, parameter, new);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let now = Instant::now();
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &snapshot(9, 10, kind, parameter, old, new),
+            MotionMode::Full,
+            now,
+        );
+        let mut positions = Vec::new();
+        for (frame, millis) in [90, 180].into_iter().enumerate() {
+            rack.set_construction_clock_override(Some(now + Duration::from_millis(millis)));
+            let (action, output) = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                0.1 + frame as f64 * 0.1,
+                vec![],
+                true,
+                true,
+                10,
+            );
+            assert!(action.is_none(), "Motion must not issue parameter commands");
+            assert_eq!(after.nodes[0].params[parameter], new);
+            let anchor = &rack.construction_anchors[&("target".into(), parameter.into())];
+            let Some(Marker::Rotary { center, radius, .. }) = anchor.marker.as_ref() else {
+                panic!("{kind}: accepted rotary edit needs its real rotary anchor");
+            };
+            let cursor = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Circle(circle)
+                        if (circle.radius - 1.7 * rack.zoom).abs() < 0.001
+                            && circle.fill.a() > 0
+                            && (circle.center.distance(*center) - *radius).abs() < 0.01 =>
+                    {
+                        Some(circle.center)
+                    }
+                    _ => None,
+                })
+                .expect("Visible construction cursor follows the knob's actual scale");
+            assert!(anchor.rect.expand(4.0).contains(cursor));
+            positions.push(cursor);
+        }
+        assert!(
+            positions[0].distance(positions[1]) > 0.1,
+            "{kind}: cursor must move with construction time"
+        );
+        // Reduced motion keeps the accepted control/value cue but suppresses
+        // traveling cursors, matching other construction controls.
+        let mut reduced = Rack::default();
+        frame_revision_state(&ctx, &mut reduced, &before, 0.4, vec![], true, true, 9);
+        reduced.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &snapshot(9, 10, kind, parameter, old, new),
+            MotionMode::Reduced,
+            now,
+        );
+        reduced.set_construction_clock_override(Some(now + Duration::from_millis(90)));
+        let (action, output) =
+            frame_revision_state(&ctx, &mut reduced, &after, 0.5, vec![], true, true, 10);
+        assert!(action.is_none());
+        let anchor = &reduced.construction_anchors[&("target".into(), parameter.into())];
+        let Some(Marker::Rotary { center, radius, .. }) = anchor.marker.as_ref() else {
+            panic!("Missing reduced control anchor");
+        };
+        assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Circle(circle) if (circle.radius - 1.7 * reduced.zoom).abs() < 0.001
+            && circle.fill.a() > 0 && (circle.center.distance(*center) - *radius).abs() < 0.01)));
+    }
+}

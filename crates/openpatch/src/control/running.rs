@@ -20,6 +20,8 @@ pub(super) struct EditEffects {
     working_saved: BTreeMap<String, SavedModuleState>,
     full_midi_restores: BTreeSet<String>,
     replaced: BTreeSet<String>,
+    // Host presentation only: requested rack rows for modules added here.
+    pub placements: BTreeMap<String, u32>,
     live_snapshot: Option<Value>,
     live_frame: Option<u64>,
 }
@@ -662,6 +664,10 @@ impl Session {
             if candidate.nodes.iter().any(|node| node.id == id) {
                 self.state_for_edit(candidate, id, effects, true)?;
             }
+            effects.placements.insert(
+                id.to_owned(),
+                layout_history::requested_row(args)?.unwrap_or(0),
+            );
         }
         let mut copies = Vec::new();
         if name == "duplicate_modules" {
@@ -692,6 +698,7 @@ impl Session {
             let id = string(args, "id")?;
             effects.retired.push(id.to_owned());
             effects.replaced.insert(id.to_owned());
+            effects.placements.remove(id);
             effects.working_saved.remove(id);
             effects.after_saved.remove(id);
             effects.load_saved.remove(id);

@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-10-16T16:54:22.606799+00:00",
+  "status": "pending",
+  "source_scope": "Stock Noise + Signal Atlas VCO/LFO rotaries + MCP row placement and history",
+  "reference_gate": {
+    "passed": true,
+    "report": "stock-noise-host-reference.json"
+  },
+  "desktop_tests": {
+    "passed": 1003,
+    "failed": 0,
+    "existing_ignored": 3,
+    "log": "native-test-output/stock-noise/desktop-tests-005.log"
+  },
+  "remaining": [
+    "strict lint completion",
+    "final Core frozen regressions",
+    "release executable MCP checks and performance comparison",
+    "native CI captures and platform checks",
+    "static ARM bundle validation"
+  ],
+  "native_mac_gui_launched": false,
+  "audio_device_opened": false,
+  "installed": false
+}

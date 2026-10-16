@@ -857,6 +857,16 @@ resizes validate geometry and block collisions. An open Notes draft becomes stal
 after any external revision; it stays available to copy or edit, with Apply
 blocked until explicit reload. [Full contract](ANNOTATIONS.md).
 
+`add_module` accepts an optional integer `row` (0–63), also inside
+`apply_edits`, `preview_edits` and construction plans. It is a presentation
+hint, not graph state: the committed request is queued for the desktop, which
+appends the panel to the right end of that rack row the first time it observes
+the module, in graph order within one commit, without moving other panels.
+Without `row`, a new panel goes to the end of row 0. Removing the module before
+the desktop observes it drops the request; preview and invalid rows record
+nothing. Use rows to build organized racks, for example clocks and sequencing,
+voices, modulation, effects, then mix and output.
+
 `stock_vcf` provides `lowpass` and `highpass` outputs, with `signal` setting
 polyphonic width and `cutoff_cv`, `resonance_cv`, `drive_cv` modulation inputs.
 Use `catalog` for stored frequency bounds: `frequency` is the reference's

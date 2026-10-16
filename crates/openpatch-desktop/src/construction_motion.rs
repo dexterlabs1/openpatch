@@ -583,6 +583,12 @@ mod tests;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Marker {
+    Rotary {
+        center: eframe::egui::Pos2,
+        radius: f32,
+        old: f32,
+        new: f32,
+    },
     VerticalSlider {
         rect: eframe::egui::Rect,
         old: f32,
@@ -593,6 +599,22 @@ pub(crate) enum Marker {
         old: f32,
         new: f32,
     },
+}
+
+/// The stock rotary faces share a 270-degree saved-parameter travel.
+/// This position is a transient construction cursor, not signal telemetry.
+pub(crate) fn rotary_position(
+    center: eframe::egui::Pos2,
+    radius: f32,
+    value: f32,
+) -> eframe::egui::Pos2 {
+    let value = if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let angle = std::f32::consts::PI * (0.75 + 1.5 * value);
+    center + eframe::egui::vec2(angle.cos(), angle.sin()) * radius
 }
 #[derive(Clone, Debug)]
 pub(crate) struct Anchor {

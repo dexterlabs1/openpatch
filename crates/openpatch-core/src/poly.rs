@@ -31,6 +31,7 @@ use crate::stock_delay::{self, StockDelay};
 use crate::stock_lfo::{self, StockLfo};
 use crate::stock_mid_side::{self, StockMidSide};
 use crate::stock_mix::{self, StockMix, StockMixSnapshot};
+use crate::stock_noise::{self, StockNoise, StockNoiseSnapshot};
 use crate::stock_octave::{self, StockOctave, StockOctaveSnapshot};
 use crate::stock_quantizer::{self, StockQuantizer};
 use crate::stock_seq3::{self, StockSeq3};
@@ -127,6 +128,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_delay"
                 | "stock_quantizer"
                 | "stock_vco"
+                | "stock_noise"
                 | "stock_lfo"
                 | "random_values"
                 | "random"
@@ -200,7 +202,8 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
             .iter()
             .position(|port| *port == name),
         "gates" => gates::INPUTS.iter().position(|port| *port == name),
-        "poly_constant" | "midi_cv" | "midi_cc" | "midi_gate" | "pulses" | "colored_noise" => None,
+        "poly_constant" | "midi_cv" | "midi_cc" | "midi_gate" | "pulses" | "colored_noise"
+        | "stock_noise" => None,
         "audio_stereo" => match name {
             "left" => Some(0),
             "right" => Some(1),
@@ -220,6 +223,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     }
     if kind == "colored_noise" {
         return colored_noise::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "stock_noise" {
+        return stock_noise::OUTPUTS.iter().position(|p| *p == name);
     }
     if kind == "poly_viz" || crate::content::is_annotation(kind) {
         return None;
@@ -355,7 +361,9 @@ enum VoicePolicy {
 }
 fn voice_policy(kind: &str) -> VoicePolicy {
     match kind {
-        "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
+        "constant" | "gate" | "white_noise" | "colored_noise" | "stock_noise" => {
+            VoicePolicy::Generator
+        }
         "sample_hold" => VoicePolicy::Primary(1),
         "stock_vcf" | "random" => VoicePolicy::Primary(3),
         "mixer" | "crossfade" | "modal_resonator" | "stock_vca" | "wavetable_vco" => {
@@ -375,6 +383,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "colored_noise" {
         colored_noise::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_noise" {
+        stock_noise::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -663,6 +676,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "colored_noise" {
         colored_noise::annotate(module);
     }
+    if kind == "stock_noise" {
+        stock_noise::annotate(module);
+    }
     routing::annotate(module);
     switch::annotate(module);
     utility_bank::annotate(module);
@@ -774,6 +790,7 @@ enum Model {
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
     StockVco(Box<StockVco>),
+    StockNoise(Box<StockNoise>),
     StockQuantizer(Box<StockQuantizer>),
     StockMidSide(StockMidSide),
     StockMix(StockMix),
@@ -816,6 +833,9 @@ impl Model {
         }
         if node.kind == "colored_noise" {
             return ColoredNoise::build(node, rate).map(|s| Self::ColoredNoise(Box::new(s)));
+        }
+        if node.kind == "stock_noise" {
+            return StockNoise::build(node, rate).map(|s| Self::StockNoise(Box::new(s)));
         }
         if node.kind == "modal_resonator" {
             return ModalResonator::build(node, rate).map(|s| Self::ModalResonator(Box::new(s)));
@@ -985,7 +1005,11 @@ impl Model {
     fn native_host(&self) -> bool {
         matches!(
             self,
-            Self::StockMidSide(_) | Self::StockMix(_) | Self::StockOctave(_) | Self::StockVcaMix(_)
+            Self::StockMidSide(_)
+                | Self::StockMix(_)
+                | Self::StockOctave(_)
+                | Self::StockVcaMix(_)
+                | Self::StockNoise(_)
         )
     }
     fn template(&self) -> Option<&Dsp> {
@@ -1033,6 +1057,15 @@ struct InputGroup {
     len: usize,
 }
 
+// Enabled only by a control-thread diagnostic request. The callback copies
+// canonical input storage before its end-of-frame cable publication.
+#[derive(Debug)]
+struct HostInputObservation {
+    node: usize,
+    port: usize,
+    seen: HostPortSnapshot,
+}
+
 #[derive(Debug)]
 pub(crate) struct PolyEngine {
     rate: u32,
@@ -1054,6 +1087,7 @@ pub(crate) struct PolyEngine {
     host: Option<HostPorts>,
     host_context_dirty: bool,
     host_sources: Vec<usize>,
+    host_input_observations: Vec<HostInputObservation>,
     // All logical producer ports, including disconnected ones. Native raw
     // producers retain their own storage and must never enter these spans.
     logical_output_spans: Vec<std::ops::Range<usize>>,
@@ -1108,6 +1142,12 @@ impl PolyEngine {
         matches!(
             self.nodes.get(index).map(|node| &node.model),
             Some(Model::StockVcaMix(_))
+        )
+    }
+    pub(crate) fn stock_noise_preserves_reset_history(&self, index: usize) -> bool {
+        matches!(
+            self.nodes.get(index).map(|node| &node.model),
+            Some(Model::StockNoise(_))
         )
     }
     pub(crate) fn host_reference_timing(&self) -> (u32, f32) {
@@ -1172,6 +1212,27 @@ impl PolyEngine {
         match &self.nodes.get(index)?.model {
             Model::StockMix(model) => Some(model.snapshot()),
             _ => None,
+        }
+    }
+    pub(crate) fn stock_noise_snapshot(&self, index: usize) -> Option<StockNoiseSnapshot> {
+        match &self.nodes.get(index)?.model {
+            Model::StockNoise(model) => Some(model.snapshot()),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_stock_noise_controlled_draws(
+        &mut self,
+        index: usize,
+        normal_bits: &[u32],
+        uniform_bits: &[u32],
+        normal_start: u64,
+        uniform_start: u64,
+    ) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::StockNoise(model)) => {
+                model.set_controlled_draws(normal_bits, uniform_bits, normal_start, uniform_start)
+            }
+            _ => false,
         }
     }
     pub(crate) fn stock_mix_legacy_data(&self, index: usize) -> Option<Value> {
@@ -1239,6 +1300,43 @@ impl PolyEngine {
             input_count: node.input_count,
             output_count: node.output_count as u8,
         })
+    }
+
+    /// Enable one passive process-time input observation before publishing the
+    /// graph to the audio thread. It adds no edge, output consumer or model tap.
+    pub(crate) fn enable_host_input_observer(&mut self, index: usize, port: usize) -> bool {
+        if self.host.is_none()
+            || self
+                .nodes
+                .get(index)
+                .is_none_or(|node| port >= usize::from(node.input_count))
+        {
+            return false;
+        }
+        if self
+            .host_input_observations
+            .iter()
+            .any(|entry| entry.node == index && entry.port == port)
+        {
+            return true;
+        }
+        self.host_input_observations.push(HostInputObservation {
+            node: index,
+            port,
+            seen: HostPortSnapshot::default(),
+        });
+        true
+    }
+
+    pub(crate) fn observed_host_input(
+        &self,
+        index: usize,
+        port: usize,
+    ) -> Option<HostPortSnapshot> {
+        self.host_input_observations
+            .iter()
+            .find(|entry| entry.node == index && entry.port == port)
+            .map(|entry| entry.seen)
     }
 
     /// The caller resolves effects off-thread and fences new incarnations during
@@ -1718,6 +1816,12 @@ impl PolyEngine {
         let Some(node) = self.nodes.get_mut(index) else {
             return false;
         };
+        // A recreated source instance is constructed fresh by graph compilation.
+        // The source's ordinary Reset event has no runtime callback or params.
+        if let Model::StockNoise(noise) = &mut node.model {
+            noise.initialize_state();
+            return true;
+        }
         let count = match &mut node.model {
             Model::MidiGate(m) => {
                 m.reset_state();
@@ -1844,6 +1948,7 @@ impl PolyEngine {
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
+            Model::StockNoise(noise) => noise.initialize_state(),
             Model::StockQuantizer(q) => q.initialize_state(),
             Model::Wavetable(oscillator) => oscillator.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
@@ -2011,6 +2116,8 @@ impl PolyEngine {
                 macro_voice::OUTPUTS.len()
             } else if node.kind == "colored_noise" {
                 colored_noise::OUTPUTS.len()
+            } else if node.kind == "stock_noise" {
+                stock_noise::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
             } else if let Some(ports) = studio_fx::output_names(&node.kind)
@@ -2035,6 +2142,7 @@ impl PolyEngine {
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
+                    "stock_noise" => stock_noise::OUTPUTS.len(),
                     "stock_quantizer" => stock_quantizer::OUTPUTS.len(),
                     "stock_mid_side" => stock_mid_side::OUTPUTS.len(),
                     "stock_mix" => stock_mix::OUTPUTS.len(),
@@ -2210,6 +2318,7 @@ impl PolyEngine {
             host: Some(HostPorts::new(nodes.len(), output_count)),
             host_context_dirty: false,
             host_sources,
+            host_input_observations: Vec::new(),
             logical_output_spans,
             port_lights,
             rate: patch.sample_rate,
@@ -2263,6 +2372,15 @@ impl PolyEngine {
             }
             self.host_context_dirty = false;
         }
+        if !self.host_input_observations.is_empty() {
+            let host = self
+                .host
+                .as_ref()
+                .expect("observed graph has canonical host ports");
+            for entry in &mut self.host_input_observations {
+                entry.seen = host.inputs[entry.node][entry.port];
+            }
+        }
         // Cable frames are from the previous sample. Groups and membership are
         // compiled in patch cable order, so this loop only reads fixed storage.
         for (index, group) in self.input_groups.iter().enumerate() {
@@ -2302,6 +2420,9 @@ impl PolyEngine {
         }
         for (node_index, node) in self.nodes.iter_mut().enumerate() {
             if node.model.native_host() {
+                if let Model::StockNoise(model) = &mut node.model {
+                    model.begin_frame();
+                }
                 let host = self
                     .host
                     .as_mut()
@@ -2322,6 +2443,7 @@ impl PolyEngine {
                             host.contexts[node_index].input_presence,
                             outputs,
                         ),
+                        Model::StockNoise(model) => model.process(outputs),
                         _ => unreachable!("native predicate validated model"),
                     }
                 } else if let Model::StockOctave(model) = &node.model {
@@ -2383,7 +2505,8 @@ impl PolyEngine {
                 Model::StockMidSide(_)
                 | Model::StockMix(_)
                 | Model::StockOctave(_)
-                | Model::StockVcaMix(_) => {
+                | Model::StockVcaMix(_)
+                | Model::StockNoise(_) => {
                     unreachable!("native model processed above")
                 }
                 Model::Score(_)
@@ -3095,6 +3218,34 @@ impl PolyEngine {
             self.port_lights.reset_epoch();
             return;
         }
+        // The observer belongs to the receiving graph, while its last seen
+        // value belongs to the same sink incarnation across topology edits.
+        // Excluding the source during recreation does not replace its sinks.
+        for entry in &mut self.host_input_observations {
+            if excluded[entry.node] {
+                continue;
+            }
+            let Some((id, _)) = self
+                .node_lookup
+                .iter()
+                .find(|(_, index)| **index == entry.node)
+            else {
+                continue;
+            };
+            let Some(&old_index) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if self.nodes[entry.node].kind != old.nodes[old_index].kind {
+                continue;
+            }
+            if let Some(previous) = old
+                .host_input_observations
+                .iter()
+                .find(|previous| previous.node == old_index && previous.port == entry.port)
+            {
+                entry.seen = previous.seen;
+            }
+        }
         self.adopt_port_lights(old, excluded, excluded_cables);
         if let (Some(host), Some(previous)) = (&mut self.host, &old.host) {
             for (id, &index) in &self.node_lookup {
@@ -3180,6 +3331,7 @@ impl PolyEngine {
             let bypass_changed = node.bypassed != previous.bypassed;
             match (&mut node.model, &previous.model) {
                 (Model::ColoredNoise(s), Model::ColoredNoise(old)) => s.adopt(old),
+                (Model::StockNoise(s), Model::StockNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),

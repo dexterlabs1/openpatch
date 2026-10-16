@@ -26,7 +26,7 @@ const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
         "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise" | "drum_voice"
-        | "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
+        | "modal_resonator" | "colored_noise" | "stock_noise" | "macro_voice" | "wavetable_vco" => {
             Color32::from_rgb(158, 92, 52)
         }
         "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(32, 120, 132),

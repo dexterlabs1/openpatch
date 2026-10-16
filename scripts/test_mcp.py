@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 77)
+        self.assertEqual(len(catalog["modules"]), 78)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 77)
+        self.assertEqual(len(catalog["modules"]), 78)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 77)
+        self.assertEqual(len(catalog["modules"]), 78)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,46 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_noise_native_contract_and_all_seven_analysis_ports(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        noise = modules["stock_noise"]
+        self.assertIn("colored_noise", modules)
+        self.assertEqual(noise["inputs"], [])
+        self.assertEqual(noise["params"], {})
+        self.assertEqual(noise["light_names"], [])
+        self.assertEqual(noise["outputs"], ["white", "pink", "red", "violet", "blue", "gray", "black"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "noise", "kind": "stock_noise"}]}})
+        before = self.patch_snapshot()
+        self.require_tool_error("set_parameter", {"id": "noise", "parameter": "seed", "value": 1})
+        self.require_tool_error("set_parameter", {"id": "noise", "parameter": "level", "value": .5})
+        for port in noise["outputs"]:
+            captured = self.payload(self.require_tool_success("capture_signal", {
+                "id": "noise", "port": port, "channel": 1, "seconds": .05, "points": 2400}))
+            values = [point["mean"] for point in captured["bins"]]
+            self.assertEqual(len(values), 2400)
+            self.assertTrue(all(value is not None and math.isfinite(value) for value in values), port)
+            self.assertTrue(any(abs(value) > 1e-5 for value in values), port)
+            if port == "gray":
+                self.assertEqual(values[:1023], [0] * 1023, "first FFT block requires 1024 connected samples")
+        self.assertEqual(self.patch_snapshot(), before, "offline inspection does not edit the live patch")
+        self.require_tool_success("set_bypass", {"id": "noise", "bypassed": True})
+        for port in noise["outputs"]:
+            captured = self.payload(self.require_tool_success("capture_signal", {
+                "id": "noise", "port": port, "channel": 1, "seconds": .002, "points": 96}))
+            self.assertEqual([point["mean"] for point in captured["bins"]], [0] * 96)
+
+    def test_add_module_row_schema_bounds_and_transaction_rejection(self) -> None:
+        tools = {tool["name"]: tool for tool in self.client.request("tools/list")["result"]["tools"]}
+        row = tools["add_module"]["inputSchema"]["properties"]["row"]
+        self.assertEqual((row["type"], row["minimum"], row["maximum"]), ("integer", 0, 63))
+        before = self.patch_snapshot()
+        for invalid in (-1, 64, .5, "2", True):
+            self.require_tool_error("add_module", {"id": "noise", "kind": "stock_noise", "row": invalid})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("add_module", {"id": "noise", "kind": "stock_noise", "row": 2})
+        self.assertTrue(any(node["id"] == "noise" for node in self.patch_snapshot()["patch"]["nodes"]))
 
     def test_stock_vca_mix_catalog_editing_bounds_and_atomic_revision(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

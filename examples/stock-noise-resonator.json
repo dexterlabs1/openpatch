@@ -1,0 +1,170 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "noise",
+      "kind": "stock_noise"
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 1.5,
+        "duty": 0.12
+      }
+    },
+    {
+      "id": "envelope",
+      "kind": "adsr_eg",
+      "params": {
+        "attack": 0.08,
+        "decay": 0.32,
+        "sustain": 0,
+        "release": 0.22
+      }
+    },
+    {
+      "id": "amplifier",
+      "kind": "stock_vca",
+      "params": {
+        "level": 0.3,
+        "response": 1
+      }
+    },
+    {
+      "id": "body",
+      "kind": "modal_resonator",
+      "params": {
+        "frequency": 164.8138,
+        "stiffness": 0.025,
+        "decay": 2,
+        "damping": 0.25,
+        "level": 1
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.04,
+        "trigger_enabled": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.2,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "NOISE INTO MATTER\n\nPink noise excites a body.\nClock → ADSR → VCA CV\nPink → VCA → EXCITE\n\nThe resonator models 16\ndamped mechanical modes.\nNo sampled sound.\nNo hardware calibration.\n\nScope X: white noise\nScope Y: body velocity\n\nSeven noise colors,\nseven different processes.\nGray: 1024-sample FFT."
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "noise-voice-0",
+      "from": "clock",
+      "output": "out",
+      "to": "envelope",
+      "input": "gate",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-1",
+      "from": "envelope",
+      "output": "out",
+      "to": "amplifier",
+      "input": "cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-2",
+      "from": "noise",
+      "output": "pink",
+      "to": "amplifier",
+      "input": "signal",
+      "color": [
+        174,
+        78,
+        116
+      ]
+    },
+    {
+      "id": "noise-voice-3",
+      "from": "amplifier",
+      "output": "out",
+      "to": "body",
+      "input": "excite",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-4",
+      "from": "noise",
+      "output": "white",
+      "to": "scope",
+      "input": "x",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-5",
+      "from": "body",
+      "output": "out",
+      "to": "scope",
+      "input": "y",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-6",
+      "from": "body",
+      "output": "out",
+      "to": "out",
+      "input": "left",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "noise-voice-7",
+      "from": "body",
+      "output": "out",
+      "to": "out",
+      "input": "right",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    }
+  ],
+  "output": "out"
+}
