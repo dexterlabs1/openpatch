@@ -1,6 +1,16 @@
 {
   "application_checks": {
     "format_check": true,
+    "initial_platform_ci": {
+      "checks_passed": 8,
+      "head": "2dcfb2c66abece4fe3a57a80397e89af1351d103",
+      "note": "Final panel polish requires fresh exact-head CI and capture review before merge.",
+      "png_inventory_per_run": 136,
+      "runs": [
+        38908335160,
+        38908460539
+      ]
+    },
     "offline_factory": {
       "CLI_sha256": "33541cb4e7a652dd709310d6c6169f0eadaa889a0d1d7aea78495bcc16d8c67d",
       "channels": 2,
@@ -8,17 +18,19 @@
         "native-test-output/stock-octave/cli-build-001/candidate-cli",
         "render",
         "examples/stock-octave-voice.json",
-        "native-test-output/stock-octave/stock-octave-voice-001.wav",
+        "native-test-output/stock-octave/stock-octave-voice-002.wav",
         "2"
       ],
       "frames": 96000,
       "mode": "offline file render; no native GUI/audio-device access",
       "passed": true,
-      "patch_sha256": "4d776adc150a77837d798516c31ae00e7e78e5cef4777368c8b70cfcdb11eb2f",
+      "patch_sha256": "7617ef8cff42fe880e98e1acad552fb2500bdbfc936864857160bedbff60be6c",
+      "pcm_identical_to_initial_factory": true,
       "peaks": [
         0.055419921875,
         0.055419921875
       ],
+      "recorded_at": "2026-10-16T13:54:39.818315+00:00",
       "rms": [
         0.004865512134749709,
         0.004865512134749709
@@ -35,7 +47,7 @@
     "rust": {
       "failed": 0,
       "ignored": 6,
-      "passed": 2042,
+      "passed": 2044,
       "suites": 68
     },
     "strict_clippy_all_targets": true
@@ -1400,11 +1412,9 @@
     "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n"
   },
   "pending_before_delivery": [
-    "unchanged older frozen regression gates",
-    "same-workload incremental performance comparison",
-    "separate optimized ARM desktop build and signed bundle static verification",
-    "exact-head cross-platform push/PR CI and all136 native captures validated/reviewed",
-    "merge and replace canonical installed app only after qualification"
+    "Final-head platform CI and native screenshot review",
+    "Final optimized signed package static verification and installation",
+    "Native Mac GUI and device qualification remains separate"
   ],
   "recorded_at": "2026-10-16T13:28:07.216144+00:00",
   "retained_failures": [
@@ -1412,7 +1422,11 @@
     "core-build-001: missing new optional field in existing Pulses literal",
     "app-tests-001: missing optional field in existing stress-test literal",
     "app-tests-002/003: keyboard focus/test initialization, darkroom geometry, count guard and initial telemetry checks; all corrected and final workspace green",
-    "clippy-001/002: iterator and unused source/test declarations corrected"
+    "clippy-001/002: iterator and unused source/test declarations corrected",
+    {
+      "failure": "Shared preview test expected integer helper on rack fixture whose saved value is fractional; corrected branch-specific assertions. Production unchanged by test correction.",
+      "log": "native-test-output/stock-octave/app-tests-polish-001.log"
+    }
   ],
   "safety_records": [
     {

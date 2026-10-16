@@ -128,6 +128,24 @@ fn stock_octave_numeric_editor_is_finite_and_bounded_and_out_of_range_stays_visi
 }
 
 #[test]
+fn stock_octave_saved_value_area_opens_exact_entry_and_factory_notes_fit_the_panel() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let patch = patch(1.0);
+    frame(&ctx, &mut rack, &patch, 0.0, vec![], 7);
+    let value = at(stock_octave_value_rect().center());
+    frame(&ctx, &mut rack, &patch, 0.1, vec![egui::Event::PointerMoved(value), button(value, true)], 7);
+    frame(&ctx, &mut rack, &patch, 0.2, vec![button(value, false)], 7);
+    assert!(rack.editing.as_ref().is_some_and(|edit| edit.id == "oct" && edit.parameter == "octaves"));
+
+    let example: Value = serde_json::from_str(include_str!("../../../examples/stock-octave-voice.json")).unwrap();
+    let notes = example["nodes"].as_array().unwrap().iter()
+        .find(|node| node["kind"] == "notes").unwrap()["content"]["text"].as_str().unwrap();
+    assert!(notes.lines().count() <= 17);
+    assert!(notes.lines().all(|line| line.chars().count() <= 27));
+}
+
+#[test]
 fn stock_octave_panel_separates_saved_setting_from_actual_cv_and_unavailable_state() {
     fn texts(output: &egui::FullOutput) -> String {
         fn visit(shape: &egui::Shape, out: &mut String) {
@@ -143,19 +161,42 @@ fn stock_octave_panel_separates_saved_setting_from_actual_cv_and_unavailable_sta
     }
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
-    let patch = patch(2.0);
-    let (_, unavailable) = frame(&ctx, &mut rack, &patch, 0.0, vec![], 3);
+    let configured = patch(2.0);
+    let (_, unavailable) = frame(&ctx, &mut rack, &configured, 0.0, vec![], 3);
     let unavailable = texts(&unavailable);
-    assert!(unavailable.contains("SAVED AUTHORED VALUE"));
-    assert!(unavailable.contains("ACTUAL CH 0 EFFECTIVE OFFSET"));
+    assert!(unavailable.contains("SHIFT VALUE"));
+    assert!(unavailable.contains("EFFECTIVE SHIFT"));
     assert!(unavailable.contains("TELEMETRY UNAVAILABLE"));
     assert!(!unavailable.contains("+0 oct"), "unavailable channel telemetry is never shown as a fabricated zero");
     rack.module_lights.insert("oct".into(), ModuleLightState { octave_shift: Some(-3), ..Default::default() });
-    let (_, observed) = frame(&ctx, &mut rack, &patch, 0.1, vec![], 3);
+    let (_, observed) = frame(&ctx, &mut rack, &configured, 0.1, vec![], 3);
     let observed = texts(&observed);
     assert!(observed.contains("+2.000 oct"));
     assert!(observed.contains("-3 oct"));
-    assert!(observed.contains("FROZEN IN BYPASS"));
+    assert!(observed.contains("CH 1 · HOLDS IN BYPASS"));
+    let (_, custom) = frame(&ctx, &mut rack, &patch(2.5), 0.2, vec![], 3);
+    assert!(texts(&custom).contains("CUSTOM VALUE"));
+    let (_, outside) = frame(&ctx, &mut rack, &patch(6.25), 0.3, vec![], 3);
+    assert!(texts(&outside).contains("OUTSIDE ±4 · SELECT A SHIFT"));
+}
+
+#[test]
+fn stock_octave_signed_extreme_readouts_fit_the_numeric_display() {
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let patch = patch(0.0);
+    let mut rack = Rack::default();
+    for offset in [i32::MIN, i32::MAX] {
+        rack.module_lights.insert("oct".into(), ModuleLightState { octave_shift: Some(offset), ..Default::default() });
+        let time = if offset == i32::MIN { 0.0 } else { 1.0 };
+        let (_, output) = frame(&ctx, &mut rack, &patch, time, vec![], 5);
+        let label = format!("{offset:+} oct");
+        let width = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == label => Some(text.galley.size().x),
+            _ => None,
+        }).expect("actual integer offset readout");
+        assert!(width <= 142.0, "{label} is {width}px wide in Rajdhani");
+    }
 }
 
 #[test]
@@ -195,7 +236,7 @@ fn stock_octave_authored_selector_and_actual_readout_remain_emissive_in_darkness
         _ => false,
     }), "the restrained authored-state indicator remains emissive");
     assert_eq!(text_color(&lit, "+3 oct"), text_color(&dark, "+3 oct"), "actual offset remains emissive");
-    assert_ne!(text_color(&lit, "SAVED AUTHORED VALUE"), text_color(&dark, "SAVED AUTHORED VALUE"), "ordinary panel text still dims");
+    assert_ne!(text_color(&lit, "SHIFT VALUE"), text_color(&dark, "SHIFT VALUE"), "ordinary panel text still dims");
     let mut dark_text = String::new();
     for shape in &dark.shapes {
         if let egui::Shape::Text(text) = &shape.shape {
@@ -254,10 +295,12 @@ fn stock_octave_shared_rack_and_browser_face_match_at_supported_scales() {
     for scale in [0.25, 0.42, 0.7, 1.0, 1.75] {
         let rack = rendered(false, scale, module, &catalog);
         let browser = rendered(true, scale, module, &catalog);
-        for label in ["STOCK OCTAVE", "AUTHORED SHIFT", "SAVED AUTHORED VALUE", "ACTUAL CH 0 EFFECTIVE OFFSET", "TELEMETRY UNAVAILABLE", "+0"] {
+        for label in ["STOCK OCTAVE", "SHIFT (OCTAVES)", "SHIFT VALUE", "EFFECTIVE SHIFT", "TELEMETRY UNAVAILABLE", "+0"] {
             assert!(rack.iter().any(|text| text == label), "rack missing {label} at scale {scale}");
             assert!(browser.iter().any(|text| text == label), "browser missing {label} at scale {scale}");
         }
+        assert!(rack.iter().any(|text| text == "CUSTOM VALUE"), "loaded fractional rack value at scale {scale}");
+        assert!(browser.iter().any(|text| text == "CLICK VALUE TO TYPE"), "default browser value at scale {scale}");
         for value in -4..=4 {
             assert!(stock_octave_selector_rect(value).intersect(Rect::from_min_size(Pos2::ZERO, vec2(panel_width("stock_octave"), PANEL_HEIGHT))).is_positive());
         }

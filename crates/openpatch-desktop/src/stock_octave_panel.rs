@@ -9,7 +9,7 @@ fn stock_octave_selector_rect(value: i32) -> Rect {
 }
 
 fn stock_octave_value_rect() -> Rect {
-    Rect::from_min_max(pos2(19.0, 282.0), pos2(161.0, 307.0))
+    Rect::from_min_max(pos2(19.0, 269.0), pos2(161.0, 291.0))
 }
 
 fn stock_octave_authored_label(raw: f32) -> String {
@@ -92,14 +92,7 @@ impl Rack {
             && ui.input(|input| input.focused)
             && !egui::Popup::is_any_open(ui.ctx());
 
-        painter.text(p(90.0, 88.0), Align2::CENTER_CENTER, "AUTHORED SHIFT", font(10.0), INK);
-        painter.text(
-            p(90.0, 103.0),
-            Align2::CENTER_CENTER,
-            "SELECT A FIXED TRANSPOSITION",
-            font(7.0),
-            MUTED,
-        );
+        painter.text(p(90.0, 88.0), Align2::CENTER_CENTER, "SHIFT (OCTAVES)", font(11.0), INK);
         for value in -4..=4 {
             let button_rect = screen(stock_octave_selector_rect(value));
             let id = egui::Id::new(("stock-octave", &node.id, value));
@@ -243,24 +236,24 @@ impl Rack {
             egui::Id::new(("value", &node.id, "octaves")),
             Sense::click(),
         );
-        painter.text(p(90.0, 267.0), Align2::CENTER_CENTER, "SAVED AUTHORED VALUE", font(8.0), MUTED);
+        painter.text(p(90.0, 263.0), Align2::CENTER_CENTER, "SHIFT VALUE", font(8.5), MUTED);
         let authored_text = stock_octave_authored_label(raw);
         painter.text(
             value_rect.center(),
             Align2::CENTER_CENTER,
             authored_text,
-            font(13.0),
+            font(16.0),
             if selected.is_some() { INK } else { Color32::from_rgb(164, 72, 46) },
         );
         if selected.is_none() {
             let status = if raw.is_finite() && (-4.0..=4.0).contains(&raw) {
-                "CUSTOM FRACTION · NO DETENT SELECTED"
+                "CUSTOM VALUE"
             } else {
-                "OUTSIDE ±4 RANGE · CHOOSE A DETENT TO RESET"
+                "OUTSIDE ±4 · SELECT A SHIFT"
             };
-            painter.text(p(90.0, 316.0), Align2::CENTER_CENTER, status, font(6.7), Color32::from_rgb(145, 59, 38));
+            painter.text(p(90.0, 296.0), Align2::CENTER_CENTER, status, font(7.0), Color32::from_rgb(145, 59, 38));
         } else {
-            painter.text(p(90.0, 316.0), Align2::CENTER_CENTER, "RIGHT-CLICK VALUE FOR EXACT ENTRY (−4 TO +4)", font(6.5), MUTED);
+            painter.text(p(90.0, 296.0), Align2::CENTER_CENTER, "CLICK VALUE TO TYPE", font(7.0), MUTED);
         }
         if self.precision_collects(node) {
             self.register_precision_control(stock_octave_edit(node, revision), value_rect);
@@ -274,19 +267,19 @@ impl Rack {
         }
         value_response.on_hover_text(format!("Saved raw octaves parameter: {raw:?}. Selectors edit integer octaves; exact entry accepts finite values from −4 through +4."));
 
-        painter.line_segment([p(17.0, 322.0), p(163.0, 322.0)], Stroke::new(0.8 * z, Color32::from_gray(161)));
-        painter.text(p(90.0, 328.0), Align2::CENTER_CENTER, "ACTUAL CH 0 EFFECTIVE OFFSET", font(6.8), INK);
+        painter.line_segment([p(17.0, 303.0), p(163.0, 303.0)], Stroke::new(0.8 * z, Color32::from_gray(161)));
+        painter.text(p(90.0, 314.0), Align2::CENTER_CENTER, "EFFECTIVE SHIFT", font(9.0), INK);
         match self.module_lights.get(&node.id).and_then(|state| state.octave_shift) {
             Some(offset) => {
                 let actual_start = crate::lighting::next(&painter);
-                painter.text(p(90.0, 340.0), Align2::CENTER_CENTER, format!("{offset:+} oct"), font(12.0), Color32::from_rgb(71, 136, 97));
+                painter.text(p(90.0, 332.0), Align2::CENTER_CENTER, format!("{offset:+} oct"), font(18.0), Color32::from_rgb(71, 136, 97));
                 // Actual channel telemetry stays legible in the dark room; unavailable state does not glow.
                 self.lighting.preserve(&painter, actual_start);
-                painter.text(p(90.0, 350.0), Align2::CENTER_CENTER, "LAST PROCESSED · FROZEN IN BYPASS", font(4.8), MUTED);
+                painter.text(p(90.0, 347.0), Align2::CENTER_CENTER, "CH 1 · HOLDS IN BYPASS", font(6.5), MUTED);
             }
             None => {
-                painter.text(p(90.0, 340.0), Align2::CENTER_CENTER, "—", font(12.0), MUTED);
-                painter.text(p(90.0, 350.0), Align2::CENTER_CENTER, "TELEMETRY UNAVAILABLE", font(5.8), MUTED);
+                painter.text(p(90.0, 332.0), Align2::CENTER_CENTER, "—", font(18.0), MUTED);
+                painter.text(p(90.0, 347.0), Align2::CENTER_CENTER, "TELEMETRY UNAVAILABLE", font(6.5), MUTED);
             }
         }
         action

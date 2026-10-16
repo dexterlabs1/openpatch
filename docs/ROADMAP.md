@@ -275,11 +275,17 @@ inactive raw lane is discarded. Undefined native C++ conversions are separate
 Rust safety obligations and never executed by the SDK oracle.
 
 The shared panel, exact editing, project/preset retention, MCP and callback
-allocation checks pass locally: 2,042 Rust tests, 106 Python checks and strict
-Clippy/formatting. The connected factory renders stereo offline. Regression
-gates, performance, optimized packaging, platform CI and native capture review
-remain before delivery. No release or hardware claim is made by the DSP result alone. Native Mac/device qualification and general Rack
-import remain open. MIDI/live-performance priorities remain last.
+allocation checks pass locally: 2,044 Rust tests, 106 Python checks and strict
+Clippy/formatting. The connected factory renders stereo offline. The
+[regression reruns](benchmarks/stock-octave-regressions.json) pass the paired
+Mid Side gate, output-lifecycle comparison and rounding gate; the separate
+paired Stock Mix result is retained alongside them.
+The [paired performance report](benchmarks/stock-octave-performance-attempt-001.json.gz)
+finds +0.879% median cost for mono legacy routing; the other three workload
+ranges cross parity. No speed advantage is claimed. Optimized packaging,
+platform CI and native capture review remain before delivery. No release or
+hardware claim is made by the DSP result alone. Native Mac/device qualification
+and general Rack import remain open. MIDI/live-performance priorities remain last.
 
 ## Clocked routing
 

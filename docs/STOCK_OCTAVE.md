@@ -58,10 +58,28 @@ Both complete JSONL traces are byte-identical (SHA-256
 `d25afd221a2790b55b109d5572790adfe86962ffd9dc15a3ac9e0b9401bfddc2`).
 The [retained report](benchmarks/stock-octave-host-reference.json) links both
 lossless traces and the inputs, frozen declaration and build/source hashes.
-All 2,042 Rust tests (six existing ignored), 106 Python checks and strict
+All 2,044 Rust tests (six existing ignored), 106 Python checks and strict
 workspace Clippy/formatting pass. The factory renders stereo offline. Older
-regression gates, performance, optimized packaging, platform CI and capture
-review remain pending before delivery; native-device qualification is separate.
+regression gates also pass: [the compact regression report](benchmarks/stock-octave-regressions.json)
+records the rerun Mid Side, output-lifecycle and rounding results, alongside the
+separately built paired Stock Mix result. Lossless [Stock Octave regression](benchmarks/stock-octave-regressions-001.json.gz)
+and [Stock Mix paired](benchmarks/stock-mix-paired-reference-attempt-001.json.gz)
+reports retain full provenance, limitations and failure fields.
+
+The [lossless performance report](benchmarks/stock-octave-performance-attempt-001.json.gz)
+compares the 75-kind baseline with the 76-kind Stock Octave candidate on one
+Apple M1 Max. At 48 kHz, each of four fixed workloads ran five paired 5-second
+measurements after warmup; all paired checksums match. Paired median candidate
+cost relative to baseline was +0.879% for mono legacy routing, +0.137% for mono
+mixed Stock/analog, +0.460% for 16-lane legacy routing and +0.432% for 16-lane
+mixed Stock/analog. The latter three paired ratio ranges cross parity; the mono
+legacy routing range is +0.692% to +1.050%. Timing covers DSP and checksum
+reduction, excluding compilation, patch replacement and RPC. This is one host
+and four workloads, without callback, device, UI or SDK timing, thermal or power
+control, or full sample-trace equivalence. No speed advantage is claimed.
+
+Optimized packaging, platform CI and native capture review remain pending before
+delivery; native-device qualification is separate.
 
 The matrix includes every pitch/CV width from 0 through 16, signed half ties and
 neighbors, every finite pitch exponent, wide conversion cases, signed zeros,
