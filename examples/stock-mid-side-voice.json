@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "left",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -7,
+        "fm_amount": 0
+      }
+    },
+    {
+      "id": "right",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -3,
+        "fm_amount": 0
+      }
+    },
+    {
+      "id": "width",
+      "kind": "stock_mid_side",
+      "params": {
+        "encode_width": 1,
+        "decode_width": 0.7
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -2,
+        "offset": 0,
+        "invert": 0
+      }
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "params": {
+        "time": 0.25,
+        "trigger_enabled": 0,
+        "x_scale": 1,
+        "y_scale": 1
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.35,
+        "dc_block": 1
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "left",
+      "output": "sine",
+      "to": "width",
+      "input": "left"
+    },
+    {
+      "from": "right",
+      "output": "sine",
+      "to": "width",
+      "input": "right"
+    },
+    {
+      "from": "motion",
+      "output": "sine",
+      "to": "width",
+      "input": "decode_cv"
+    },
+    {
+      "from": "width",
+      "output": "mid",
+      "to": "scope",
+      "input": "x"
+    },
+    {
+      "from": "width",
+      "output": "side",
+      "to": "scope",
+      "input": "y"
+    },
+    {
+      "from": "width",
+      "output": "left",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "width",
+      "output": "right",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

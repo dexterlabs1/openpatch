@@ -1,0 +1,7925 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "consumer_mask_00_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_00_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_00_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_00_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_01_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_01_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_01_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_01_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_02_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_02_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_02_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_02_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_03_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_03_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_03_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_03_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_04_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_04_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_04_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_04_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_05_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_05_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_05_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_05_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_06_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_06_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_06_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_06_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_07_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_07_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_07_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_07_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 0,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_08_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_08_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_08_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_08_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_09_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_09_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_09_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_09_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_10_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_10_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_10_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_10_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_11_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_11_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_11_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_11_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 0,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_12_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_12_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_12_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_12_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_13_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_13_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_13_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_13_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 0,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_14_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_14_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_14_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_14_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_15_width_mode_0",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_15_width_mode_1",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 0
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_15_width_mode_2",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "consumer_mask_15_width_mode_3",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.1.channels": 1,
+            "outputs.2.channels": 1,
+            "outputs.3.channels": 1,
+            "outputs.0.values.0": 0,
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 0,
+            "outputs.3.values.0": 0,
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 6,
+            "inputs.2.values.0": 2,
+            "frame": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2,
+            "frame": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "frame": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "second_consumer_handover",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "connect",
+          "id": "second",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 4
+        },
+        {
+          "op": "disconnect",
+          "id": "o0",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 4,
+            "output_cables.0": 1
+          }
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "disconnect",
+          "id": "second",
+          "expect": {
+            "outputs.0.channels": 0,
+            "outputs.0.values.0": 4,
+            "output_cables.0": 0
+          }
+        },
+        {
+          "op": "connect",
+          "id": "again",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "stacked_remove_one_then_last",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 0,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "connect",
+          "id": "stack",
+          "source": "source",
+          "port": 0,
+          "destination": "module",
+          "input": 1
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "inputs.1.values.0": 8
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 5
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "stack",
+          "expect": {
+            "inputs.1.values.0": 8,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 5,
+            "inputs.1.values.0": 6
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "l",
+          "expect": {
+            "inputs.1.channels": 0,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 0
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 1,
+            "outputs.1.values.0": -1
+          }
+        }
+      ]
+    },
+    {
+      "id": "stacked_poly_to_mono_retirement",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6,
+            8,
+            10,
+            12
+          ]
+        },
+        {
+          "op": "source",
+          "port": 0,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "stack",
+          "source": "source",
+          "port": 0,
+          "destination": "module",
+          "input": 1
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "inputs.1.channels": 4,
+            "inputs.1.values.3": 14,
+            "outputs.0.values.3": 7
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "l",
+          "expect": {
+            "inputs.1.channels": 4,
+            "inputs.1.values.3": 14
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.3": 7,
+            "inputs.1.channels": 1,
+            "inputs.1.values.3": 0
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "width_16_to_1_to_zero_then_disconnect",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 16,
+            "outputs.0.values.15": 4
+          }
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            8
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            4
+          ]
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 16,
+            "inputs.1.channels": 1,
+            "inputs.1.values.15": 0
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 6,
+            "outputs.0.values.15": 0
+          }
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": []
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": []
+        },
+        {
+          "op": "step",
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "outputs.0.values.0": 6
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 0
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "l"
+        },
+        {
+          "op": "disconnect",
+          "id": "r"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "inputs.1.channels": 0,
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "private_encoder_tail_disconnected",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            8
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            4
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.8": 2
+          }
+        },
+        {
+          "op": "source",
+          "port": 4,
+          "values": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "mid",
+          "source": "source",
+          "port": 4,
+          "destination": "module",
+          "input": 4
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.channels": 16,
+            "outputs.2.values.8": 12,
+            "outputs.3.values.8": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "private_encoder_tail_connected",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            8
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            4
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.8": 0
+          }
+        },
+        {
+          "op": "source",
+          "port": 4,
+          "values": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "mid",
+          "source": "source",
+          "port": 4,
+          "destination": "module",
+          "input": 4
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.channels": 16,
+            "outputs.2.values.8": 10,
+            "outputs.3.values.8": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "decoder_independent_overrides",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6,
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "source",
+          "port": 4,
+          "values": [
+            10
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "mid",
+          "source": "source",
+          "port": 4,
+          "destination": "module",
+          "input": 4
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.channels": 1,
+            "outputs.2.values.0": 2
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.values.0": 12,
+            "outputs.3.values.0": 8
+          }
+        },
+        {
+          "op": "source",
+          "port": 5,
+          "values": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "side",
+          "source": "source",
+          "port": 5,
+          "destination": "module",
+          "input": 5
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.channels": 4,
+            "outputs.2.values.0": 11,
+            "outputs.2.values.3": 4,
+            "outputs.3.values.3": -4
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "mid"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.values.0": 5,
+            "outputs.2.values.3": 8
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "side"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.values.0": 6,
+            "outputs.3.values.0": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "bypass_both_edges_reconnect_and_noops",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "bypass",
+          "value": true,
+          "expect": {
+            "outputs.0.values.0": 0,
+            "outputs.0.channels": 1,
+            "bypassed": true
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.2.values.0": 0
+          }
+        },
+        {
+          "op": "bypass",
+          "value": true,
+          "expect": {
+            "outputs.0.values.0": 0
+          }
+        },
+        {
+          "op": "disconnect",
+          "id": "o0",
+          "expect": {
+            "outputs.0.channels": 0
+          }
+        },
+        {
+          "op": "connect",
+          "id": "new",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 4
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 0
+          }
+        },
+        {
+          "op": "bypass",
+          "value": false,
+          "expect": {
+            "outputs.0.channels": 1,
+            "outputs.0.values.0": 0,
+            "bypassed": false
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4,
+            "outputs.2.values.0": 6
+          }
+        },
+        {
+          "op": "bypass",
+          "value": false,
+          "expect": {
+            "outputs.0.values.0": 4
+          }
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 1,
+          "expect": {
+            "outputs.0.values.0": 4
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.0.values.0": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "reset_parameters_only_preserves_port_storage",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "param",
+          "index": 0,
+          "value": 2
+        },
+        {
+          "op": "param",
+          "index": 1,
+          "value": 0.5
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6
+          }
+        },
+        {
+          "op": "reset",
+          "expect": {
+            "params.0": 1,
+            "params.1": 1,
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 6,
+            "inputs.1.values.0": 6
+          }
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.0": 2,
+            "outputs.2.values.0": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "width_cv_exact_dyadic_anchor",
+      "sample_rate": 48000,
+      "events": [
+        {
+          "op": "source",
+          "port": 1,
+          "values": [
+            6
+          ]
+        },
+        {
+          "op": "source",
+          "port": 2,
+          "values": [
+            2
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "l",
+          "source": "source",
+          "port": 1,
+          "destination": "module",
+          "input": 1,
+          "expect": {
+            "inputs.1.channels": 1,
+            "inputs.1.values.0": 0,
+            "input_cables.1": 1
+          }
+        },
+        {
+          "op": "connect",
+          "id": "r",
+          "source": "source",
+          "port": 2,
+          "destination": "module",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o0",
+          "source": "module",
+          "port": 0,
+          "destination": "sink",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "o1",
+          "source": "module",
+          "port": 1,
+          "destination": "sink",
+          "input": 1
+        },
+        {
+          "op": "connect",
+          "id": "o2",
+          "source": "module",
+          "port": 2,
+          "destination": "sink",
+          "input": 2
+        },
+        {
+          "op": "connect",
+          "id": "o3",
+          "source": "module",
+          "port": 3,
+          "destination": "sink",
+          "input": 3
+        },
+        {
+          "op": "source",
+          "port": 0,
+          "values": [
+            5
+          ]
+        },
+        {
+          "op": "source",
+          "port": 3,
+          "values": [
+            5
+          ]
+        },
+        {
+          "op": "connect",
+          "id": "ecv",
+          "source": "source",
+          "port": 0,
+          "destination": "module",
+          "input": 0
+        },
+        {
+          "op": "connect",
+          "id": "dcv",
+          "source": "source",
+          "port": 3,
+          "destination": "module",
+          "input": 3
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.0": 4,
+            "outputs.2.values.0": 12,
+            "outputs.3.values.0": -4
+          }
+        },
+        {
+          "op": "source",
+          "port": 0,
+          "values": [
+            -10
+          ]
+        },
+        {
+          "op": "source",
+          "port": 3,
+          "values": [
+            -10
+          ]
+        },
+        {
+          "op": "step"
+        },
+        {
+          "op": "step",
+          "expect": {
+            "outputs.1.values.0": 0,
+            "outputs.2.values.0": 4,
+            "outputs.3.values.0": 4
+          }
+        }
+      ]
+    }
+  ]
+}

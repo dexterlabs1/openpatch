@@ -906,15 +906,29 @@ impl ModulePlan {
     }
     /// Large Delay allocations move once; the caller must freeze the donor if
     /// any runtime moved. Exclusion and observer rules are shared with snapshots.
-    pub(super) fn handoff_state(
+    pub(super) fn handoff_state_with_host_exclusions(
         &mut self,
         engine: &mut Engine,
         previous: &Self,
         old: &mut Engine,
+        host_resets: &[ModuleHandle],
     ) -> bool {
         let mut moved = false;
         self.with_adoption_exclusions(previous, |modules, cables| {
-            moved = engine.handoff_state_from_excluding_routes(old, modules, cables);
+            let first = modules.first().or_else(|| host_resets.first());
+            if let Some(first) = first {
+                let mut merged = [*first; MAX_NODES];
+                let mut len = 0;
+                for handle in modules.iter().chain(host_resets) {
+                    if !merged[..len].contains(handle) {
+                        merged[len] = *handle;
+                        len += 1;
+                    }
+                }
+                moved = engine.handoff_state_from_excluding_routes(old, &merged[..len], cables);
+            } else {
+                moved = engine.handoff_state_from_excluding_routes(old, &[], cables);
+            }
         });
         moved
     }

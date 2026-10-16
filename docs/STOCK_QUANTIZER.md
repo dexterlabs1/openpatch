@@ -155,7 +155,8 @@ callback scale painting, shared geometry at five zooms and the factory example.
 Strict Clippy, formatting, all 94 Python/MCP checks (zero skipped) and an
 optimized ARM workspace build pass. A separate ad-hoc signed Mac bundle matches
 the tested release sections and UUIDs, including exact bundled fonts/licenses;
-it was not installed or launched. The 127 configured native captures and platform
-CI remain pending for this milestone; the passing DSP report does not
-mark those checks as passed. Native Mac window/input
-and physical audio-device qualification remain separate open gates.
+it was not installed or launched. All 127 configured native captures were
+validated and visually reviewed. All eight jobs passed on both the exact-head
+push and PR runs before [PR14](https://github.com/dexterlabs1/openpatch/pull/14)
+merged. Native Mac window/input and physical audio-device qualification remain
+separate open gates.

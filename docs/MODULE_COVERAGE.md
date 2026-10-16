@@ -157,15 +157,17 @@ VCV equivalents.
 Its 3,421,221 reference frames, local host/UI tests, platform CI and reviewed
 native captures passed in [PR13](https://github.com/dexterlabs1/openpatch/pull/13).
 The older sequencer remains available under its existing contract.
-[Stock Quantizer](STOCK_QUANTIZER.md) brings the current catalog to **73 kinds**.
+[Stock Quantizer](STOCK_QUANTIZER.md) brought the catalog to **73 kinds at that milestone**.
 Its separate source-style lookup preserves the original quantizer while adding
 stock empty-scale/tie behavior, actual played-note telemetry and durable scale
 editing. All 267,483 actual-class frames pass with 11,745,768 exact meaningful
 fields, plus 315 separate Rust-only safety frames. The complete Rust workspace
 passes 1,923 tests (six existing ignored), including all 17 focused desktop
 Quantizer tests. Strict Clippy, all 94 Python/MCP checks, an optimized ARM build
-and a separately signed bundle pass. The 127 configured native captures and
-platform CI remain pending; native Mac/device and complete Rack host/import qualification remain open.
+and a separately signed bundle pass. All 127 native captures were validated
+and reviewed, and both exact-head CI runs passed all eight jobs before
+[PR14](https://github.com/dexterlabs1/openpatch/pull/14) merged. Native Mac/device
+and complete Rack host/import qualification remain open.
 
 ## Implemented functional utility contracts
 
@@ -289,12 +291,12 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Sequential Switch 1 to 4 | Routing | Implemented documented signal role: `switch_1to4`, 2–4 routes, clock/reset, de-click and live indicators | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Sequential Switch 4 to 1 | Routing | Implemented documented signal role: `switch_4to1`, polyphonic selection, mode-specific mono behavior and de-click | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison and full host workflow acceptance remain open |
-| Quantizer | Pitch utility | Separate `stock_quantizer`: stock half-semitone lookup, lower integer-distance ties, chromatic empty bank, durable scale, raw bypass and actual played-note union; older `quantizer` preserved | All 267,483 actual-class frames pass with exact meaningful fields; 315 safety frames pass separately. Complete Rust workspace passes (1,923 tests; six existing ignored). Strict Clippy, all 94 MCP checks and the separate ARM bundle pass; native captures and platform CI pending; broader graph/tap, native Mac/device and import qualification remain separate. [Stock contract](STOCK_QUANTIZER.md). |
+| Quantizer | Pitch utility | Separate `stock_quantizer`: stock half-semitone lookup, lower integer-distance ties, chromatic empty bank, durable scale, raw bypass and actual played-note union; older `quantizer` preserved | All 267,483 actual-class frames pass with exact meaningful fields; 315 safety frames pass separately. Complete Rust workspace passes (1,923 tests; six existing ignored). Strict Clippy, all 94 MCP checks and the separate ARM bundle pass; 127 native captures reviewed and both exact-head platform CI runs passed in [PR14](https://github.com/dexterlabs1/openpatch/pull/14); broader graph/tap, native Mac/device and import qualification remain separate. [Stock contract](STOCK_QUANTIZER.md). |
 | Split | Polyphony | Implemented `poly_split`: 16 named mono outputs, exact raw-slot copy, measured input count and shared rack/browser display; no saved controls or invented lamps | 1,065 normal and 204 raw diagnostic cases match the actual class; 115 native PNGs validated, new views reviewed and macOS/Windows/Linux CI passed in [PR10](https://github.com/dexterlabs1/openpatch/pull/10). Native devices and Rack import remain separate gates. [Contract](POLYPHONIC_SPLIT.md). |
 | Merge | Polyphony | Implemented bounded `poly_merge`: sparse first-lane assembly, backward-compatible Auto/forced 0–16, measured automatic/output counts and shared dropdown panel; 16,416-row actual-class comparison passes | Rack state mapping and native-device qualification; 112 captures validated and macOS/Windows/Linux CI passed in PR9. [Contract](POLYPHONIC_MERGE.md). |
 | Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
 | Viz | Measurement | Implemented signal/display role: `poly_viz`, input-only, 16 paired indicators, channel activity and sampled signed smoothing | Full upstream host comparison, Rack import and native device qualification remain; [contract](POLYPHONIC_VIZ.md) |
-| Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
+| Mid/Side | Stereo | Separate `stock_mid_side` adds additive width CV, raw internal normaling, rounded-quartet storage and source bypass behavior; original `mid_side` preserved | Final optimized production host comparison passes all 74 frozen histories / 890 snapshots byte-identical to genuine Rack. Shared-panel, playable factory, Session/callback and MCP tests pass. Always-on transport CPU regression measured and disclosed; local ARM build/bundle checks pass; platform CI and native capture review pending. [Stock contract](STOCK_MID_SIDE.md). Full host/hardware compatibility remains open. |
 | Noise | Source | Seven-output `colored_noise`: white, pink, red, violet, blue, inverse-A gray and uniform black; deterministic seed and level; [contract](COLORED_NOISE.md) | Original filters with declared spectral and voltage budgets; source waveform/filter equivalence and native device qualification remain open. Legacy `white_noise` retained. |
 | Random | Modulation | Implemented bounded `random`: six inputs, shared clock/phase, probability/spread, four interpolated CV outputs and mono TRIG, external-driven 1–16 lanes, native seed and shared panel | Checked 75-case controlled-draw actual-class comparison, retained proof and local host/MCP/release checks pass; three-platform CI and reviewed native captures passed in [PR6](https://github.com/dexterlabs1/openpatch/pull/6). Global PRNG identity and native device parity are not claimed; [contract](RANDOM.md). |
 | CV Mix | Mixing | Implemented signal role: `cv_mix`, three bipolar gains and independent 10 V normals | Direct reference traces, Rack import and native qualification; [contract](VOLTAGE_UTILITIES.md) |

@@ -3054,10 +3054,10 @@ impl Rack {
                     action = Some(edit);
                 }
             }
-            if node.kind == "mid_side" {
+            if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
-                        point(x, 78.0),
+                        point(x, 72.0),
                         Align2::CENTER_CENTER,
                         label,
                         crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
@@ -3551,7 +3551,10 @@ impl Rack {
                         ),
                         23.0,
                     )
-                } else if node.kind == "mid_side" {
+                } else if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
+                    // Give the section heading and the separate WIDTH caption
+                    // distinct lines above the unchanged fader and value well.
+                    label_gap = 5.0;
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if node.kind == "mix6" {
                     (pos2(width * 0.5, 125.0), 32.0)
@@ -3771,7 +3774,7 @@ impl Rack {
                 } else if node.kind == "gates" {
                     110.0
                 } else if count >= 4
-                    || node.kind == "mid_side"
+                    || matches!(node.kind.as_str(), "mid_side" | "stock_mid_side")
                     || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
                 {
                     width * 0.5 - 12.0
@@ -9876,7 +9879,12 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
             )
         };
     }
-    if kind == "mid_side" {
+    if matches!(kind, "mid_side" | "stock_mid_side") {
+        let index = if input && kind == "stock_mid_side" {
+            [4, 0, 1, 5, 2, 3][index]
+        } else {
+            index
+        };
         return if input {
             match index {
                 0 | 1 => pos2(width * (0.15 + index as f32 * 0.20), 245.0),
@@ -10824,7 +10832,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "midi_cv" => HP * 24.0,
         "midi_cc" | "midi_gate" => HP * 32.0,
         "audio_stereo" | "octave" | "push" => HP * 12.0,
-        "mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
+        "mid_side" | "stock_mid_side" | "mult" | "multi_lfo" | "multi_vco" => HP * 20.0,
         "mix6" => HP * 16.0,
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
@@ -10875,6 +10883,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "midi_gate" => "MIDI GATE",
         "audio_stereo" => "STEREO AUDIO",
         "mid_side" => "MID / SIDE",
+        "stock_mid_side" => "STOCK MID/SIDE",
         "mix6" => "MIX 6",
         "octave" => "OCTAVE",
         "mult" => "MULT",
@@ -11142,7 +11151,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "mpe",
             "high_resolution",
         ],
-        "mid_side" => &["encode_width", "decode_width"],
+        "mid_side" | "stock_mid_side" => &["encode_width", "decode_width"],
         "mix6" => &["level", "average", "invert"],
         "octave" => &["octaves"],
         "white_noise" | "colored_noise" => &["level", "seed"],
@@ -13028,7 +13037,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            73,
+            74,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19703,6 +19712,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_mid_side_ui_tests {
+        include!("stock_mid_side_ui_tests.rs");
     }
     mod stock_quantizer_ui_tests {
         include!("stock_quantizer_ui_tests.rs");

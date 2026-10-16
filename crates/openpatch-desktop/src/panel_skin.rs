@@ -43,8 +43,10 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
             Color32::from_rgb(59, 119, 108)
         }
-        "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "switch_1to4"
-        | "switch_4to1" | "quantizer" | "stock_quantizer" => Color32::from_rgb(79, 116, 141),
+        "mult" | "mid_side" | "stock_mid_side" | "octave" | "poly_split" | "poly_merge"
+        | "switch_1to4" | "switch_4to1" | "quantizer" | "stock_quantizer" => {
+            Color32::from_rgb(79, 116, 141)
+        }
         "scope" | "poly_viz" => Color32::from_rgb(48, 105, 166),
         "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" | "midi_gate" => {
             Color32::from_rgb(65, 84, 119)

@@ -4,6 +4,9 @@ use super::*;
 #[derive(Default)]
 pub(super) struct EditEffects {
     pub learn_reconciliation: bool,
+    pub lifecycle_captured: bool,
+    pub forward_lifecycle: HostLifecycleDelta,
+    pub reverse_lifecycle: HostLifecycleDelta,
     pub retired: Vec<String>,
     pub retired_cables: Vec<String>,
     pub initialized: BTreeSet<String>,
@@ -360,7 +363,21 @@ impl Session {
         } else {
             BTreeMap::new()
         };
+        let lifecycle_before = host_lifecycle::may_change_topology(name)
+            .then(|| host_lifecycle::Topology::capture(candidate));
+        let retired_before = effects.retired.len();
         self.apply_session_edit_inner(candidate, name, args, effects)?;
+        effects.lifecycle_captured = true;
+        if let Some(before) = lifecycle_before {
+            let after = host_lifecycle::Topology::capture(candidate);
+            let retired = &effects.retired[retired_before..];
+            effects
+                .forward_lifecycle
+                .append(&before.transition(&after, retired));
+            effects.reverse_lifecycle = after
+                .transition(&before, retired)
+                .then(std::mem::take(&mut effects.reverse_lifecycle));
+        }
         if topology {
             let after: BTreeMap<_, _> = candidate
                 .cables

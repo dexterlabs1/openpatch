@@ -435,3 +435,38 @@ The actual callback matched its uninstrumented audio exactly, and separate
 first-buffer/adoption tests found no heap activity. This measures the complete
 headless workload rather than isolated amplification or physical device behavior;
 it does not demonstrate a VCV Rack speed advantage.
+
+
+### Retained host-port transport: measured incremental cost
+
+Stock Mid/Side requires retained raw input/output storage and ordered connection
+history. The version-2 host now maintains that storage even before a native
+consumer is added. Legacy patches therefore incur the transport cost too.
+The [four-attempt report](benchmarks/host-transport-overhead.json) retains every
+paired measurement, workload, binary/source identity, signal-statistics check,
+and summary, including the reverted publication-fusion experiment.
+
+The selected final candidate was measured against main `5844d26` using separate
+release artifacts and an isolated candidate target directory. On one Apple M1
+Max at 48 kHz, five alternating-order pairs per workload gave:
+
+| Workload | Main median ns/frame | Candidate median ns/frame | Median paired time increase |
+|---|---:|---:|---:|
+| Routing, mono | 261.01 | 342.41 | 30.11% |
+| Routing, 16 channels | 1204.43 | 1325.78 | 10.24% |
+| Mixed stock/analog voice, mono | 1693.69 | 1728.39 | 2.01% |
+| Mixed stock/analog voice, 16 voices | 19595.71 | 19659.45 | 0.24% |
+
+This is a correctness foundation with a measurable routing regression, not a
+performance-neutral change. The mixed sixteen-voice difference is near observed
+within-run variation. The final small mono branch does not establish a material
+speedup over the earlier candidates. Exact reported signal statistics and all
+warmup/timed checksums match the baseline. The harness's completed status means
+those experiment guards passed; it imposes no performance-regression threshold.
+
+Each timed call renders five seconds of audio; that is not five seconds of
+wall-clock measurement. Four offline workloads on one host do not qualify
+compilation, adoption, memory, callback deadlines, physical devices, UI load or
+VCV Rack performance. A shared-target build that returned the old baseline
+executable was rejected before timing and retained in the report. Broader CPU
+optimization and callback qualification remain open.

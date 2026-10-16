@@ -63,9 +63,9 @@ uses `f32`; the completed input sum is not clipped or sanitized, although a
 downstream module may apply its documented arithmetic bound. Cable order can
 affect floating-point rounding; node order and callback partitioning cannot.
 
-Initial and newly connected cables contain a zero-channel frame, so downstream
-inputs initially use their unpatched behavior. They do not start as one-channel
-zero signals. Self-loops and multi-node loops follow the same rule as every
+On the established logical-frame path, initial and newly connected cables
+contain a zero-channel frame, so downstream inputs initially use their unpatched
+behavior. Native retained-port models use the connection lifecycle below. Self-loops and multi-node loops follow the same rule as every
 other cable. Callback length never determines feedback delay. Module-internal
 oversampling and filter delays remain additional, documented latency.
 
@@ -120,6 +120,44 @@ callback. Same-ID compatible edits continue normally. Direct core callers can
 still compile idless older patches without mutation; unique idless routes retain
 endpoint-based adoption across node/cable reorder. See
 [rack editing and runtime identity](RACK_EDITING.md).
+
+## Native retained-port path
+
+`stock_mid_side` is the first consumer of the common raw host-port store.
+Every version-2 graph keeps this store, including graphs built before a native
+consumer exists. Existing processors keep their established logical-frame DSP
+and publish through an explicit producer adapter; this does not silently change
+their voice policy or establish Rack equivalence for every older model.
+
+Native models read retained input ports at the start of the frame. After all
+models finish, connected input groups receive the actual current source ports
+in saved cable order. Private storage keeps all sixteen raw slots, including
+inactive tails; public `PortFrame` values still zero inactive lanes. A first
+physical input connection sets its count to one without clearing its raw slots.
+Removing the last connection immediately clears all sixteen slots and sets count
+zero. Removing one contributor from a remaining stack retains the previous
+aggregate until the next end-of-frame transfer. A connected output requested at
+zero channels becomes mono zero; disconnected output storage stays at count zero.
+The selected render endpoint counts as a consumer. Passive snapshots and tap
+resolution do not create consumers.
+
+Compatible private input history follows module/port identity across adoption,
+independently of the compiled input-group index. Session records ordered
+first/last connection and actual bypass edges before final patch coalescing,
+including atomic child edits and undo/redo. Each sealed audio ticket binds one
+revision, patch, wave-bank set and finite lifecycle transform. Later edits wait
+in a separate tail. Pending unqueued graphs compose effects forward; the active
+callback applies them once after adoption, without heap work. Scope rebuilds use
+Audio's exact accepted patch rather than a newer UI revision. Incarnation fences
+discard history from deleted/recreated or incompatible modules.
+
+The [Stock Mid/Side contract](STOCK_MID_SIDE.md) records model-specific raw
+normaling and bypass behavior. Its complete bounded production trace matches the
+genuine Rack Engine across 74 histories and 890 snapshots. The separate output
+lifecycle gate proves 224,988 histories with zero DSP samples. These are bounded
+host proofs, not complete Rack compatibility. Always-on storage and transfer add
+[measured CPU cost](PERFORMANCE.md#retained-host-port-transport-measured-incremental-cost)
+to legacy patches too.
 
 ## Foundation utilities
 

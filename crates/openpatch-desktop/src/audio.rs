@@ -26,6 +26,7 @@ pub use scope_stream::{ScopeEndpoint, ScopePacket, ScopeSelection};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+include!("audio_host_lifecycle.rs");
 
 #[cfg(test)]
 use openpatch_core::WavePreparationCache;
@@ -389,6 +390,7 @@ struct PreparedGraph {
     port_lights: Option<PortLightProducer>,
     port_light_reader: Option<PortLightReader>,
     port_light_control: u64,
+    host_lifecycle: PreparedHostLifecycle,
 }
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
@@ -400,6 +402,7 @@ impl From<Engine> for PreparedGraph {
             port_lights: None,
             port_light_reader: None,
             port_light_control: 1,
+            host_lifecycle: PreparedHostLifecycle::default(),
         }
     }
 }
@@ -487,6 +490,7 @@ fn prepare_graph_for_control(
         port_lights: None,
         port_light_reader: None,
         port_light_control,
+        host_lifecycle: PreparedHostLifecycle::default(),
     };
     graph.prepare_port_lights_for_control(&device_patch, port_light_control)?;
     Ok(graph)
@@ -512,6 +516,9 @@ pub struct Audio {
     scope_packets: Consumer<ScopePacket>,
     performance: Arc<Performance>,
     submitted_revision: u64,
+    // Exact control-side graph paired with submitted_revision and banks. Scope
+    // rebuilds must not substitute a newer UI patch for a sealed Session ticket.
+    accepted_patch: Patch,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
     port_light_reader: PortLightReader,
 }
@@ -611,6 +618,7 @@ impl Audio {
             scope_packets,
             performance,
             submitted_revision: 0,
+            accepted_patch: patch.clone(),
             prepared_wave_banks: banks,
             port_light_reader,
         })
@@ -621,14 +629,20 @@ impl Audio {
     #[cfg(test)]
     pub fn submit_patch_at_revision(&mut self, patch: &Patch, revision: u64) -> Result<(), String> {
         let banks = patch.prepare_wave_banks(&WavePreparationCache::default())?;
-        self.submit_patch_with_wave_banks(patch, revision, banks)
+        self.submit_patch_with_host_lifecycle(
+            patch,
+            revision,
+            banks,
+            &HostLifecycleDelta::default(),
+        )
     }
 
-    pub fn submit_patch_with_wave_banks(
+    pub fn submit_patch_with_host_lifecycle(
         &mut self,
         patch: &Patch,
         revision: u64,
         banks: Arc<PreparedWaveBanks>,
+        delta: &HostLifecycleDelta,
     ) -> Result<(), String> {
         if revision < self.submitted_revision {
             return Err("Stale audio patch revision".into());
@@ -648,9 +662,17 @@ impl Audio {
         )?;
         graph.modules = self.performance.plan(patch, &graph.engine, revision)?;
         graph.revision = revision;
+        let mut combined = self
+            .pending
+            .as_ref()
+            .map(|pending| pending.host_lifecycle.named.clone())
+            .unwrap_or_default();
+        combined.append(delta);
+        graph.host_lifecycle = PreparedHostLifecycle::prepare(&graph.engine, combined)?;
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.submitted_revision = revision;
+        self.accepted_patch = patch.clone();
         self.prepared_wave_banks = banks;
         self.scope_generation = generation;
         self.service();
@@ -779,9 +801,13 @@ impl Audio {
     /// playback and requested generation unchanged. Closing disables capture.
     pub fn set_scope(
         &mut self,
-        patch: &Patch,
+        _ui_patch: &Patch,
         selection: Option<ScopeSelection>,
     ) -> Result<u64, String> {
+        // The UI may already show a revision beyond a retained Session ticket.
+        // Rebuild the last accepted graph, including its pending ordered edges;
+        // a subsequent ticket alone may advance patch/revision/banks together.
+        let patch = &self.accepted_patch;
         let binding = selection
             .map(|selection| ScopeBinding::new(patch, selection))
             .transpose()?;
@@ -802,6 +828,12 @@ impl Audio {
             .performance
             .plan(patch, &graph.engine, self.submitted_revision)?;
         graph.revision = self.submitted_revision;
+        let delta = self
+            .pending
+            .as_ref()
+            .map(|pending| pending.host_lifecycle.named.clone())
+            .unwrap_or_default();
+        graph.host_lifecycle = PreparedHostLifecycle::prepare(&graph.engine, delta)?;
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.scope_binding = binding;
@@ -1124,10 +1156,11 @@ impl Callback {
             let mut moved = false;
             if let Some(previous) = self.graphs.previous.as_mut() {
                 let active = &mut self.graphs.active;
-                moved = active.modules.handoff_state(
+                moved = active.modules.handoff_state_with_host_exclusions(
                     &mut active.engine,
                     &previous.modules,
                     &mut previous.engine,
+                    &active.host_lifecycle.resets,
                 );
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
@@ -1149,6 +1182,7 @@ impl Callback {
                 previous.engine.set_port_lights_enabled(false);
             }
             let active = &mut self.graphs.active;
+            active.host_lifecycle.apply(&mut active.engine);
             active.modules.initialize_pending(
                 &mut active.engine,
                 self.graphs.previous.as_ref().map(|graph| &graph.modules),
@@ -5827,6 +5861,7 @@ mod tests {
     include!("stock_quantizer_audio_tests.rs");
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
+    include!("host_lifecycle_audio_tests.rs");
 }
 
 #[cfg(test)]

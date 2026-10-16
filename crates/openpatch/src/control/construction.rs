@@ -469,6 +469,7 @@ impl Session {
             closing: self.closing,
             live_module_events: None,
             construction: Construction::default(),
+            host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
         }

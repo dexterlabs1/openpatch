@@ -4,6 +4,9 @@
 use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
+use crate::host_ports::{
+    self, HostContext, HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot, HostPorts,
+};
 use crate::macro_voice::{self, MacroVoice};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::midi_cc::{self, MidiCc};
@@ -25,6 +28,7 @@ use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
 use crate::stock_delay::{self, StockDelay};
 use crate::stock_lfo::{self, StockLfo};
+use crate::stock_mid_side::{self, StockMidSide};
 use crate::stock_quantizer::{self, StockQuantizer};
 use crate::stock_seq3::{self, StockSeq3};
 use crate::stock_vca::{self, StockVca};
@@ -95,6 +99,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || matches!(
             kind,
             "poly_constant"
+                | "stock_mid_side"
                 | "poly_split"
                 | "poly_merge"
                 | "poly_sum"
@@ -163,6 +168,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         return ports.iter().position(|port| *port == name);
     }
     match kind {
+        "stock_mid_side" => stock_mid_side::INPUTS.iter().position(|port| *port == name),
         "stock_quantizer" => stock_quantizer::INPUTS
             .iter()
             .position(|port| *port == name),
@@ -260,6 +266,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         stock_seq3::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_mid_side" {
+        stock_mid_side::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "stock_quantizer" {
         stock_quantizer::OUTPUTS
             .iter()
@@ -430,6 +440,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         sequence::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_mid_side" {
+        stock_mid_side::OUTPUTS
+            .iter()
+            .map(|port| (*port).to_owned())
             .collect::<Vec<_>>()
     } else if kind == "stock_quantizer" {
         stock_quantizer::OUTPUTS
@@ -668,6 +683,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_delay" {
         stock_delay::annotate(module);
     }
+    if kind == "stock_mid_side" {
+        stock_mid_side::annotate(module);
+    }
     if kind == "adsr_eg" {
         adsr_eg::annotate(module);
     }
@@ -717,6 +735,7 @@ enum Model {
     StockLfo(Box<StockLfo>),
     StockVco(Box<StockVco>),
     StockQuantizer(Box<StockQuantizer>),
+    StockMidSide(StockMidSide),
     MultiVco(Box<MultiVco>),
     Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
@@ -821,6 +840,9 @@ impl Model {
         if node.kind == "seq3" {
             return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
         }
+        if node.kind == "stock_mid_side" {
+            return StockMidSide::build(node).map(Self::StockMidSide);
+        }
         if node.kind == "stock_quantizer" {
             return Ok(Self::StockQuantizer(Box::new(StockQuantizer::build(
                 node, rate,
@@ -923,10 +945,12 @@ struct PolyNode {
     inputs: [Option<usize>; MAX_PORTS],
     output_start: usize,
     output_count: usize,
+    input_count: u8,
+    physical_input_mask: u16,
     bypassed: bool,
-    bypass_inputs: [Option<usize>; MAX_PORTS],
-    connected_mask: u16,
-    base_connected_mask: u16,
+    bypass_inputs: [Option<usize>; host_ports::OUTPUT_PORTS],
+    connected_mask: u32,
+    base_connected_mask: u32,
 }
 #[derive(Debug)]
 struct Edge {
@@ -945,6 +969,8 @@ enum EdgeIdentity {
 
 #[derive(Debug)]
 struct InputGroup {
+    destination_node: usize,
+    destination_port: usize,
     start: usize,
     len: usize,
 }
@@ -964,11 +990,173 @@ pub(crate) struct PolyEngine {
     input_edges: Vec<usize>,
     input_frames: Vec<PortFrame>,
     outputs: Vec<PortFrame>,
+    // Every v2 graph retains canonical ports, even before its first native model.
+    host: Option<HostPorts>,
+    host_context_dirty: bool,
+    host_sources: Vec<usize>,
     selected: Option<usize>,
     stereo: bool,
     pub(crate) port_lights: crate::port_lights::Observer,
 }
 impl PolyEngine {
+    fn compiled_input_presence(&self, index: usize) -> u16 {
+        self.nodes[index].physical_input_mask
+    }
+
+    pub(crate) fn host_port_layout(&self, index: usize) -> Option<(u8, u8, u16, u32, bool)> {
+        self.host.as_ref()?;
+        let node = self.nodes.get(index)?;
+        Some((
+            node.input_count,
+            node.output_count as u8,
+            self.compiled_input_presence(index),
+            node.connected_mask,
+            node.bypassed,
+        ))
+    }
+
+    pub(crate) fn resolve_host_port(
+        &self,
+        index: usize,
+        direction: crate::PortDirection,
+        name: &str,
+    ) -> Option<usize> {
+        self.host.as_ref()?;
+        let node = self.nodes.get(index)?;
+        match direction {
+            crate::PortDirection::Input => input_port(&node.kind, node.model.template(), name),
+            crate::PortDirection::Output => output_port(&node.kind, name),
+        }
+    }
+
+    pub(crate) fn host_module_snapshot(&self, index: usize) -> Option<HostModuleSnapshot> {
+        let host = self.host.as_ref()?;
+        let node = self.nodes.get(index)?;
+        let mut outputs = [HostPortSnapshot::default(); host_ports::OUTPUT_PORTS];
+        outputs[..node.output_count].copy_from_slice(
+            &host.outputs[node.output_start..node.output_start + node.output_count],
+        );
+        let context = host.contexts[index];
+        Some(HostModuleSnapshot {
+            inputs: host.inputs[index],
+            outputs,
+            input_presence: context.input_presence,
+            output_consumers: context.output_consumers,
+            bypassed: context.bypassed,
+            input_count: node.input_count,
+            output_count: node.output_count as u8,
+        })
+    }
+
+    /// The caller resolves effects off-thread and fences new incarnations during
+    /// adoption. Validate the complete target context before any raw mutation.
+    pub(crate) fn apply_host_port_lifecycle(
+        &mut self,
+        index: usize,
+        delta: &HostPortLifecycle,
+    ) -> bool {
+        let Some((inputs, outputs, presence, consumers, bypassed)) = self.host_port_layout(index)
+        else {
+            return false;
+        };
+        if delta.input_presence != presence
+            || delta.output_consumers != consumers
+            || delta.bypassed != bypassed
+            || delta.inputs[usize::from(inputs)..]
+                .iter()
+                .any(|effect| *effect != crate::InputLifecycleTransform::identity())
+            || delta.outputs[usize::from(outputs)..]
+                .iter()
+                .any(|effect| *effect != crate::OutputLifecycleTransform::identity())
+        {
+            return false;
+        }
+        let node = &self.nodes[index];
+        let host = self
+            .host
+            .as_mut()
+            .expect("layout validated canonical storage");
+        for (input, effect) in host.inputs[index][..usize::from(inputs)]
+            .iter_mut()
+            .zip(&delta.inputs)
+        {
+            // Counts are private, produced only by validated host operations.
+            let result = effect.apply(&mut input.channels, &mut input.values);
+            debug_assert!(result.is_ok());
+        }
+        for (output, effect) in host.outputs
+            [node.output_start..node.output_start + node.output_count]
+            .iter_mut()
+            .zip(&delta.outputs)
+        {
+            let result = effect.apply(&mut output.channels, &mut output.values);
+            debug_assert!(result.is_ok());
+        }
+        host.contexts[index] = HostContext {
+            input_presence: delta.input_presence,
+            output_consumers: delta.output_consumers,
+            bypassed: delta.bypassed,
+        };
+        if matches!(node.model, Model::StockMidSide(_)) {
+            for (frame, port) in self.outputs
+                [node.output_start..node.output_start + node.output_count]
+                .iter_mut()
+                .zip(&host.outputs[node.output_start..node.output_start + node.output_count])
+            {
+                *frame = port.frame();
+            }
+        }
+        true
+    }
+
+    /// Direct Engine callers get deterministic net reconciliation at the next
+    /// sample. Ordered, coalesced graph edits must supply their explicit delta
+    /// after adoption and before this point. Adoption itself never reconciles.
+    fn reconcile_host_context(&mut self, index: usize) {
+        let Some(host) = &self.host else { return };
+        let previous = host.contexts[index];
+        let node = &self.nodes[index];
+        let presence = self.compiled_input_presence(index);
+        if previous.input_presence == presence
+            && previous.output_consumers == node.connected_mask
+            && previous.bypassed == node.bypassed
+        {
+            return;
+        }
+        let mut delta = HostPortLifecycle {
+            input_presence: presence,
+            output_consumers: node.connected_mask,
+            bypassed: node.bypassed,
+            ..HostPortLifecycle::default()
+        };
+        for port in 0..usize::from(node.input_count) {
+            let bit = 1 << port;
+            if (previous.input_presence ^ presence) & bit != 0 {
+                delta.inputs[port] = if presence & bit != 0 {
+                    crate::InputLifecycleTransform::connect()
+                } else {
+                    crate::InputLifecycleTransform::disconnect()
+                };
+            }
+        }
+        for port in 0..node.output_count {
+            let bit = 1 << port;
+            if (previous.output_consumers ^ node.connected_mask) & bit != 0 {
+                delta.outputs[port] = if node.connected_mask & bit != 0 {
+                    crate::OutputLifecycleTransform::connect()
+                } else {
+                    crate::OutputLifecycleTransform::disconnect()
+                };
+            }
+            if previous.bypassed != node.bypassed {
+                delta.outputs[port] =
+                    delta.outputs[port].then(crate::OutputLifecycleTransform::bypass_edge());
+            }
+        }
+        let applied = self.apply_host_port_lifecycle(index, &delta);
+        debug_assert!(applied);
+    }
+
     pub(crate) fn resolve_port_light(
         &self,
         id: &str,
@@ -1029,25 +1217,20 @@ impl PolyEngine {
         }
     }
     pub(crate) fn begin_taps(&mut self, taps: &[Option<usize>]) {
-        for node in &mut self.nodes {
+        for index in 0..self.nodes.len() {
+            let node = &mut self.nodes[index];
             for tap in taps.iter().flatten() {
-                if matches!(
-                    node.model,
-                    Model::MidiCc(_)
-                        | Model::StockVcf(_)
-                        | Model::StockLfo(_)
-                        | Model::StockVco(_)
-                        | Model::StockQuantizer(_)
-                ) && (node.output_start..node.output_start + node.output_count).contains(tap)
-                {
+                if (node.output_start..node.output_start + node.output_count).contains(tap) {
                     node.connected_mask |= 1 << (tap - node.output_start);
                 }
             }
+            self.reconcile_host_context(index);
         }
     }
     pub(crate) fn end_taps(&mut self) {
-        for node in &mut self.nodes {
-            node.connected_mask = node.base_connected_mask;
+        for index in 0..self.nodes.len() {
+            self.nodes[index].connected_mask = self.nodes[index].base_connected_mask;
+            self.reconcile_host_context(index);
         }
     }
     pub(crate) fn resolve_cable_state(&self, id: &str) -> Result<usize, String> {
@@ -1573,6 +1756,7 @@ impl PolyEngine {
         if patch.cables.len() > MAX_CABLES {
             return Err(format!("patch exceeds {MAX_CABLES} cables"));
         }
+        let port_catalog = crate::catalog();
         let mut node_lookup = BTreeMap::new();
         let mut nodes = Vec::with_capacity(patch.nodes.len());
         let mut output_count = 0;
@@ -1599,8 +1783,20 @@ impl PolyEngine {
                 inputs: [None; MAX_PORTS],
                 output_start: output_count,
                 output_count: 0,
+                input_count: if node.kind == "stock_mid_side" {
+                    stock_mid_side::INPUTS.len() as u8
+                } else {
+                    port_catalog["modules"]
+                        .as_array()
+                        .and_then(|modules| {
+                            modules.iter().find(|module| module["kind"] == node.kind)
+                        })
+                        .and_then(|module| module["inputs"].as_array())
+                        .map_or(0, |ports| ports.len() as u8)
+                },
+                physical_input_mask: 0,
                 bypassed: node.bypassed,
-                bypass_inputs: [None; MAX_PORTS],
+                bypass_inputs: [None; host_ports::OUTPUT_PORTS],
                 connected_mask: 0,
                 base_connected_mask: 0,
             });
@@ -1635,6 +1831,7 @@ impl PolyEngine {
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "stock_quantizer" => stock_quantizer::OUTPUTS.len(),
+                    "stock_mid_side" => stock_mid_side::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     "stock_seq3" => stock_seq3::OUTPUTS.len(),
@@ -1652,6 +1849,12 @@ impl PolyEngine {
                 }
             };
             let compiled = nodes.last_mut().unwrap();
+            if count > host_ports::OUTPUT_PORTS || usize::from(compiled.input_count) > MAX_PORTS {
+                return Err(format!(
+                    "node '{}': host port count exceeds supported capacity",
+                    node.id
+                ));
+            }
             compiled.output_count = count;
             for (input, output) in crate::bypass::routes(&node.kind) {
                 compiled.bypass_inputs[output_port(&node.kind, output).unwrap()] =
@@ -1666,6 +1869,7 @@ impl PolyEngine {
         let mut cable_lookup = BTreeMap::new();
         let mut group_lookup = BTreeMap::<(usize, usize), usize>::new();
         let mut group_edges = Vec::<Vec<usize>>::new();
+        let mut group_destinations = Vec::new();
         let mut legacy_occurrences = BTreeMap::<EdgeKey, usize>::new();
         for (index, cable) in patch.cables.iter().enumerate() {
             let source = *node_lookup
@@ -1686,9 +1890,11 @@ impl PolyEngine {
             let group = *group_lookup.entry((destination, input)).or_insert_with(|| {
                 let index = group_edges.len();
                 group_edges.push(Vec::new());
+                group_destinations.push((destination, input));
                 index
             });
             nodes[destination].inputs[input] = Some(group);
+            nodes[destination].physical_input_mask |= 1 << input;
             group_edges[group].push(index);
             let route = (
                 cable.from.clone(),
@@ -1721,8 +1927,10 @@ impl PolyEngine {
         }
         let mut input_groups = Vec::with_capacity(group_edges.len());
         let mut input_edges = Vec::with_capacity(edges.len());
-        for members in group_edges {
+        for (index, members) in group_edges.into_iter().enumerate() {
             input_groups.push(InputGroup {
+                destination_node: group_destinations[index].0,
+                destination_port: group_destinations[index].1,
                 start: input_edges.len(),
                 len: members.len(),
             });
@@ -1746,28 +1954,11 @@ impl PolyEngine {
         }
         for edge in &edges {
             let node = &mut nodes[edge.source_node];
-            if matches!(
-                node.model,
-                Model::MidiCc(_)
-                    | Model::StockVcf(_)
-                    | Model::StockLfo(_)
-                    | Model::StockVco(_)
-                    | Model::StockQuantizer(_)
-            ) {
-                node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
-            }
+            node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
         }
         if let Some(output) = selected {
             for node in &mut nodes {
-                if matches!(
-                    node.model,
-                    Model::MidiCc(_)
-                        | Model::StockVcf(_)
-                        | Model::StockLfo(_)
-                        | Model::StockVco(_)
-                        | Model::StockQuantizer(_)
-                ) && (node.output_start..node.output_start + node.output_count).contains(&output)
-                {
+                if (node.output_start..node.output_start + node.output_count).contains(&output) {
                     node.base_connected_mask |= 1 << (output - node.output_start);
                 }
             }
@@ -1791,7 +1982,14 @@ impl PolyEngine {
                 edge.source_port,
             );
         }
-        Ok(Self {
+        let host_sources = input_edges
+            .iter()
+            .map(|&edge| edges[edge].source_port)
+            .collect();
+        let mut engine = Self {
+            host: Some(HostPorts::new(nodes.len(), output_count)),
+            host_context_dirty: false,
+            host_sources,
             port_lights,
             rate: patch.sample_rate,
             nodes,
@@ -1813,7 +2011,11 @@ impl PolyEngine {
                     .iter()
                     .any(|n| &n.id == id && n.kind == "audio_stereo")
             }),
-        })
+        };
+        for index in 0..engine.nodes.len() {
+            engine.reconcile_host_context(index);
+        }
+        Ok(engine)
     }
     pub(crate) fn output_channels(&self) -> u16 {
         if self.stereo {
@@ -1833,6 +2035,12 @@ impl PolyEngine {
         }
     }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
+        if self.host_context_dirty {
+            for index in 0..self.nodes.len() {
+                self.reconcile_host_context(index);
+            }
+            self.host_context_dirty = false;
+        }
         // Cable frames are from the previous sample. Groups and membership are
         // compiled in patch cable order, so this loop only reads fixed storage.
         for (index, group) in self.input_groups.iter().enumerate() {
@@ -1870,7 +2078,26 @@ impl PolyEngine {
             }
             self.input_frames[index] = sum;
         }
-        for node in &mut self.nodes {
+        for (node_index, node) in self.nodes.iter_mut().enumerate() {
+            if let Model::StockMidSide(model) = &node.model {
+                let host = self
+                    .host
+                    .as_mut()
+                    .expect("native model has compiled host ports");
+                let outputs =
+                    &mut host.outputs[node.output_start..node.output_start + node.output_count];
+                if !node.bypassed {
+                    model.process(&host.inputs[node_index], outputs);
+                }
+                for (frame, raw) in self.outputs
+                    [node.output_start..node.output_start + node.output_count]
+                    .iter_mut()
+                    .zip(outputs)
+                {
+                    *frame = raw.frame();
+                }
+                continue;
+            }
             if let Model::StockQuantizer(q) = &mut node.model {
                 let input = node.inputs[0]
                     .map(|edge| self.input_frames[edge])
@@ -1915,6 +2142,7 @@ impl PolyEngine {
                 .unwrap_or_default();
             match &mut node.model {
                 Model::Annotation => {}
+                Model::StockMidSide(_) => unreachable!("native model processed above"),
                 Model::Score(_)
                 | Model::StudioFx(_)
                 | Model::VoiceTools(_)
@@ -2029,7 +2257,7 @@ impl PolyEngine {
                     p.process(
                         &inputs,
                         &mut self.outputs[node.output_start..node.output_start + node.output_count],
-                        node.connected_mask,
+                        node.connected_mask as u16,
                     );
                 }
                 Model::AdsrEg(p) => {
@@ -2260,7 +2488,7 @@ impl PolyEngine {
                     }
                     vco.process(
                         &inputs,
-                        node.connected_mask,
+                        node.connected_mask as u16,
                         &mut self.outputs
                             [node.output_start..node.output_start + stock_vco::OUTPUTS.len()],
                     );
@@ -2274,7 +2502,7 @@ impl PolyEngine {
                     }
                     lfo.process(
                         &inputs,
-                        node.connected_mask,
+                        node.connected_mask as u16,
                         &mut self.outputs
                             [node.output_start..node.output_start + stock_lfo::OUTPUTS.len()],
                     );
@@ -2332,7 +2560,7 @@ impl PolyEngine {
                 ),
                 Model::MidiCc(midi) => midi.process(
                     &mut self.outputs[node.output_start..node.output_start + node.output_count],
-                    node.connected_mask,
+                    node.connected_mask as u16,
                 ),
                 Model::Midi(midi) => midi.process(
                     &mut self.outputs[node.output_start..node.output_start + MIDI_OUTPUTS.len()],
@@ -2360,13 +2588,31 @@ impl PolyEngine {
                 }
             }
         }
+        if let Some(host) = &mut self.host {
+            for node in &self.nodes {
+                if !matches!(node.model, Model::StockMidSide(_)) {
+                    for port in node.output_start..node.output_start + node.output_count {
+                        host.outputs[port].write_logical(&self.outputs[port]);
+                    }
+                }
+            }
+        }
         // Passive extraction reads the actual processed input sums and outputs.
         // edge_frames below are next sample's inputs, not this observation.
         if self.port_lights.due() {
             for binding in &mut self.port_lights.bindings {
                 let frame = match binding.direction {
-                    crate::PortDirection::Input => &self.input_frames[binding.source],
-                    crate::PortDirection::Output => &self.outputs[binding.source],
+                    crate::PortDirection::Input
+                        if matches!(self.nodes[binding.node].model, Model::StockMidSide(_)) =>
+                    {
+                        self.host
+                            .as_ref()
+                            .expect("native input has canonical storage")
+                            .inputs[binding.node][binding.port]
+                            .frame()
+                    }
+                    crate::PortDirection::Input => self.input_frames[binding.source],
+                    crate::PortDirection::Output => self.outputs[binding.source],
                 };
                 binding.state = Some(crate::port_lights::step_port_light(
                     binding.state.unwrap_or_default(),
@@ -2382,6 +2628,15 @@ impl PolyEngine {
         // cycles, including self-loops, therefore have a defined sample delay.
         for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
             *frame = self.outputs[edge.source_port];
+        }
+        if let Some(host) = &mut self.host {
+            for group in &self.input_groups {
+                host_ports::transfer_input(
+                    &mut host.inputs[group.destination_node][group.destination_port],
+                    &host.outputs,
+                    &self.host_sources[group.start..group.start + group.len],
+                );
+            }
         }
         self.selected
             .map(|port| self.outputs[port])
@@ -2593,11 +2848,34 @@ impl PolyEngine {
         excluded_cables: &[bool; MAX_CABLES],
         copy_delay: bool,
     ) {
+        self.host_context_dirty = true;
         if self.rate != old.rate {
             self.port_lights.reset_epoch();
             return;
         }
         self.adopt_port_lights(old, excluded, excluded_cables);
+        if let (Some(host), Some(previous)) = (&mut self.host, &old.host) {
+            for (id, &index) in &self.node_lookup {
+                if excluded[index] {
+                    continue;
+                }
+                let Some(&old_index) = old.node_lookup.get(id) else {
+                    continue;
+                };
+                let node = &self.nodes[index];
+                let old_node = &old.nodes[old_index];
+                if node.kind != old_node.kind {
+                    continue;
+                }
+                host.inputs[index] = previous.inputs[old_index];
+                host.contexts[index] = previous.contexts[old_index];
+                host.outputs[node.output_start..node.output_start + node.output_count]
+                    .copy_from_slice(
+                        &previous.outputs
+                            [old_node.output_start..old_node.output_start + old_node.output_count],
+                    );
+            }
+        }
         for (id, index) in &self.node_lookup {
             if excluded[*index] {
                 continue;

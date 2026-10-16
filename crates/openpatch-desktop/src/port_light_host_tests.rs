@@ -321,6 +321,7 @@ mod port_light_host {
             scope_packets: callback.scope_packets.take().unwrap(),
             performance: callback.performance.clone(),
             submitted_revision: 0,
+            accepted_patch: patch.clone(),
             port_light_reader: reader(&callback),
         };
         render(&mut callback, 64);

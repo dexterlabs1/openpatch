@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 73)
+        self.assertEqual(len(catalog["modules"]), 74)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 73)
+        self.assertEqual(len(catalog["modules"]), 74)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 73)
+        self.assertEqual(len(catalog["modules"]), 74)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,94 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_mid_side_named_ports_additive_cv_and_reset_analysis_through_mcp(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_mid_side"]
+        self.assertEqual(descriptor["inputs"], ["encode_cv", "left", "right", "decode_cv", "mid", "side"])
+        self.assertEqual(descriptor["outputs"], ["mid", "side", "left", "right"])
+        self.assertEqual(descriptor["light_names"], [])
+        self.assertEqual(descriptor["bypass"]["routes"], [])
+        for parameter in ("encode_width", "decode_width"):
+            self.assertEqual([descriptor["params"][parameter][key] for key in ("min", "max", "default")], [0, 2, 1])
+        self.assertEqual(modules["mid_side"]["inputs"], ["left", "right", "mid", "side", "encode_cv", "decode_cv"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000, "nodes": []}})
+        self.require_tool_success("add_module", {"id": "legacy", "kind": "mid_side"})
+        self.require_tool_success("add_module", {"id": "width", "kind": "stock_mid_side",
+            "params": {"encode_width": 1, "decode_width": .5}})
+        for node, value, port in [("left", 2, "left"), ("right", -6, "right"), ("cv", 5, "encode_cv")]:
+            self.require_tool_success("add_module", {"id": node, "kind": "constant", "params": {"value": value}})
+            self.require_tool_success("connect", {"from": node, "to": "width", "input": port})
+        before = self.patch_snapshot()
+        # Additive encode width is 1 + 5/10*2 = 2: M=-2, S=8.
+        # Decoder normals use these encoder outputs, with width .5: L=2, R=-6.
+        # The first native module sample consumes connected mono-zero inputs.
+        for port, expected in [("mid", -2), ("side", 8), ("left", 2), ("right", -6)]:
+            arguments = {"id": "width", "port": port, "seconds": .002,
+                         "expected_revision": before["revision"]}
+            measured = self.payload(self.require_tool_success("analyze_signal", arguments))
+            self.assertEqual((measured["frames"], measured["min_channels"], measured["max_channels"]), (96, 1, 1))
+            self.assertEqual(len(measured["channels"]), 1)
+            channel = measured["channels"][0]
+            self.assertEqual(channel["active_frames"], 96)
+            self.assertEqual(channel["mean"], expected * 95 / 96)
+            self.assertEqual(channel["peak"], abs(expected))
+            self.assertEqual((channel["min"], channel["max"]), (min(0, expected), max(0, expected)))
+            self.assertEqual(measured["state"], "analyzed offline from reset")
+            trace = self.payload(self.require_tool_success("capture_signal", {**arguments, "points": 96, "channel": 1}))
+            self.assertEqual(trace["summary"]["active_frames"], 96)
+            self.assertEqual([point["mean"] for point in trace["bins"]], [0] + [expected] * 95)
+        self.assertEqual(self.patch_snapshot(), before, "Offline diagnostics must not mutate the patch or history")
+
+    def test_stock_mid_side_presets_initialize_bypass_files_and_atomic_validation(self) -> None:
+        parameters = {"encode_width": .25, "decode_width": 1.5}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "width", "kind": "stock_mid_side", "params": parameters, "bypassed": True}],
+            "output": "width", "output_port": "left"}})
+        original = self.patch_snapshot()
+        captured = self.payload(self.require_tool_success("capture_module_preset", {"id": "width"}))
+        self.assertEqual(captured["state_source"], "saved_parameters")
+        self.assertIsNone(captured["frame"])
+        preset = captured["preset"]
+        self.assertEqual(preset["kind"], "stock_mid_side")
+        self.assertEqual(preset["params"], parameters)
+        self.assertIs(preset["bypassed"], True)
+        self.require_tool_success("save_module_preset", {"filename": "width.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "width.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.assertEqual(self.patch_snapshot(), original)
+        self.require_tool_success("initialize_modules", {"ids": ["width"]})
+        initialized = self.patch_snapshot()["patch"]["nodes"][0]
+        self.assertEqual(initialized["params"], {"encode_width": 1, "decode_width": 1})
+        self.assertIs(initialized["bypassed"], True)
+        self.require_tool_success("set_bypass", {"id": "width", "bypassed": False})
+        self.assertFalse(self.patch_snapshot()["patch"]["nodes"][0].get("bypassed", False))
+        self.require_tool_success("apply_module_preset", {"id": "width", "preset": reviewed})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        stable = self.patch_snapshot()
+        for parameter, invalid in [("encode_width", -.01), ("encode_width", 2.01),
+                                   ("decode_width", -.01), ("decode_width", 2.01), ("unknown", 1)]:
+            self.require_tool_error("apply_edits", {"expected_revision": stable["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "width", "parameter": "encode_width", "value": .75}},
+                {"tool": "set_parameter", "arguments": {"id": "width", "parameter": parameter, "value": invalid}},
+            ]})
+            self.assertEqual(self.patch_snapshot(), stable, "Invalid later edit must roll back the earlier width and history")
+        for invalid in (0, 1, "true"):
+            self.require_tool_error("set_bypass", {"id": "width", "bypassed": invalid})
+            self.assertEqual(self.patch_snapshot(), stable)
+        project = self.payload(self.require_tool_success("capture_project_patch", {"expected_revision": stable["revision"]}))
+        self.assertEqual(project["state_source"], "parameters")
+        self.assertIsNone(project["frame"], "This project capture does not claim captured runtime port storage")
+        self.assertEqual(project["patch"], stable["patch"])
+        self.assertEqual(self.patch_snapshot(), stable)
+        self.require_tool_success("save_patch", {"filename": "stock-mid-side.json"})
+        self.require_tool_success("set_parameter", {"id": "width", "parameter": "decode_width", "value": 0})
+        self.require_tool_success("set_bypass", {"id": "width", "bypassed": False})
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-mid-side.json"}))
+        self.assertEqual(loaded["patch"], project["patch"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("replace_patch", {"patch": project["patch"]})
+        self.assertEqual(self.patch_snapshot()["patch"], project["patch"])
 
     def test_stock_quantizer_table_empty_bank_and_named_pitch_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

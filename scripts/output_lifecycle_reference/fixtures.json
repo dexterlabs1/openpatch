@@ -1,0 +1,2207 @@
+{
+  "acceptance_sha256": "a66fb8df2ca5d31b842feddbc30303b103e719c449b19bc7616989c9c1b242d2",
+  "actual_engine_dsp_frames": 0,
+  "cases": 224988,
+  "declared_before_first_comparison": true,
+  "generator_sha256": "76bfd25a653cff25afdc4e0ff895f72179b5ac24824194328ebce2a88bf9dcbb",
+  "groups": [
+    {
+      "cases": 3280,
+      "end_row_exclusive": 3280,
+      "name": "independent_p0_count00",
+      "start_row": 0
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 6560,
+      "name": "independent_p0_count01",
+      "start_row": 3280
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 9840,
+      "name": "independent_p0_count02",
+      "start_row": 6560
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 13120,
+      "name": "independent_p0_count03",
+      "start_row": 9840
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 16400,
+      "name": "independent_p0_count04",
+      "start_row": 13120
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 19680,
+      "name": "independent_p0_count05",
+      "start_row": 16400
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 22960,
+      "name": "independent_p0_count06",
+      "start_row": 19680
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 26240,
+      "name": "independent_p0_count07",
+      "start_row": 22960
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 29520,
+      "name": "independent_p0_count08",
+      "start_row": 26240
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 32800,
+      "name": "independent_p0_count09",
+      "start_row": 29520
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 36080,
+      "name": "independent_p0_count10",
+      "start_row": 32800
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 39360,
+      "name": "independent_p0_count11",
+      "start_row": 36080
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 42640,
+      "name": "independent_p0_count12",
+      "start_row": 39360
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 45920,
+      "name": "independent_p0_count13",
+      "start_row": 42640
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 49200,
+      "name": "independent_p0_count14",
+      "start_row": 45920
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 52480,
+      "name": "independent_p0_count15",
+      "start_row": 49200
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 55760,
+      "name": "independent_p0_count16",
+      "start_row": 52480
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 59040,
+      "name": "independent_p1_count00",
+      "start_row": 55760
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 62320,
+      "name": "independent_p1_count01",
+      "start_row": 59040
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 65600,
+      "name": "independent_p1_count02",
+      "start_row": 62320
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 68880,
+      "name": "independent_p1_count03",
+      "start_row": 65600
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 72160,
+      "name": "independent_p1_count04",
+      "start_row": 68880
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 75440,
+      "name": "independent_p1_count05",
+      "start_row": 72160
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 78720,
+      "name": "independent_p1_count06",
+      "start_row": 75440
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 82000,
+      "name": "independent_p1_count07",
+      "start_row": 78720
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 85280,
+      "name": "independent_p1_count08",
+      "start_row": 82000
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 88560,
+      "name": "independent_p1_count09",
+      "start_row": 85280
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 91840,
+      "name": "independent_p1_count10",
+      "start_row": 88560
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 95120,
+      "name": "independent_p1_count11",
+      "start_row": 91840
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 98400,
+      "name": "independent_p1_count12",
+      "start_row": 95120
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 101680,
+      "name": "independent_p1_count13",
+      "start_row": 98400
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 104960,
+      "name": "independent_p1_count14",
+      "start_row": 101680
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 108240,
+      "name": "independent_p1_count15",
+      "start_row": 104960
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 111520,
+      "name": "independent_p1_count16",
+      "start_row": 108240
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 114800,
+      "name": "independent_p2_count00",
+      "start_row": 111520
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 118080,
+      "name": "independent_p2_count01",
+      "start_row": 114800
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 121360,
+      "name": "independent_p2_count02",
+      "start_row": 118080
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 124640,
+      "name": "independent_p2_count03",
+      "start_row": 121360
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 127920,
+      "name": "independent_p2_count04",
+      "start_row": 124640
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 131200,
+      "name": "independent_p2_count05",
+      "start_row": 127920
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 134480,
+      "name": "independent_p2_count06",
+      "start_row": 131200
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 137760,
+      "name": "independent_p2_count07",
+      "start_row": 134480
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 141040,
+      "name": "independent_p2_count08",
+      "start_row": 137760
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 144320,
+      "name": "independent_p2_count09",
+      "start_row": 141040
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 147600,
+      "name": "independent_p2_count10",
+      "start_row": 144320
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 150880,
+      "name": "independent_p2_count11",
+      "start_row": 147600
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 154160,
+      "name": "independent_p2_count12",
+      "start_row": 150880
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 157440,
+      "name": "independent_p2_count13",
+      "start_row": 154160
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 160720,
+      "name": "independent_p2_count14",
+      "start_row": 157440
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 164000,
+      "name": "independent_p2_count15",
+      "start_row": 160720
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 167280,
+      "name": "independent_p2_count16",
+      "start_row": 164000
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 170560,
+      "name": "independent_p3_count00",
+      "start_row": 167280
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 173840,
+      "name": "independent_p3_count01",
+      "start_row": 170560
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 177120,
+      "name": "independent_p3_count02",
+      "start_row": 173840
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 180400,
+      "name": "independent_p3_count03",
+      "start_row": 177120
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 183680,
+      "name": "independent_p3_count04",
+      "start_row": 180400
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 186960,
+      "name": "independent_p3_count05",
+      "start_row": 183680
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 190240,
+      "name": "independent_p3_count06",
+      "start_row": 186960
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 193520,
+      "name": "independent_p3_count07",
+      "start_row": 190240
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 196800,
+      "name": "independent_p3_count08",
+      "start_row": 193520
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 200080,
+      "name": "independent_p3_count09",
+      "start_row": 196800
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 203360,
+      "name": "independent_p3_count10",
+      "start_row": 200080
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 206640,
+      "name": "independent_p3_count11",
+      "start_row": 203360
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 209920,
+      "name": "independent_p3_count12",
+      "start_row": 206640
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 213200,
+      "name": "independent_p3_count13",
+      "start_row": 209920
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 216480,
+      "name": "independent_p3_count14",
+      "start_row": 213200
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 219760,
+      "name": "independent_p3_count15",
+      "start_row": 216480
+    },
+    {
+      "cases": 3280,
+      "end_row_exclusive": 223040,
+      "name": "independent_p3_count16",
+      "start_row": 219760
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223160,
+      "name": "multi_initial_0",
+      "start_row": 223040
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223280,
+      "name": "multi_initial_1",
+      "start_row": 223160
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223400,
+      "name": "multi_initial_2",
+      "start_row": 223280
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223520,
+      "name": "multi_initial_3",
+      "start_row": 223400
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223640,
+      "name": "multi_initial_4",
+      "start_row": 223520
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223760,
+      "name": "multi_initial_5",
+      "start_row": 223640
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 223880,
+      "name": "multi_initial_6",
+      "start_row": 223760
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224000,
+      "name": "multi_initial_7",
+      "start_row": 223880
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224120,
+      "name": "multi_initial_8",
+      "start_row": 224000
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224240,
+      "name": "multi_initial_9",
+      "start_row": 224120
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224360,
+      "name": "multi_initial_a",
+      "start_row": 224240
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224480,
+      "name": "multi_initial_b",
+      "start_row": 224360
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224600,
+      "name": "multi_initial_c",
+      "start_row": 224480
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224720,
+      "name": "multi_initial_d",
+      "start_row": 224600
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224840,
+      "name": "multi_initial_e",
+      "start_row": 224720
+    },
+    {
+      "cases": 120,
+      "end_row_exclusive": 224960,
+      "name": "multi_initial_f",
+      "start_row": 224840
+    },
+    {
+      "cases": 28,
+      "end_row_exclusive": 224988,
+      "name": "hand",
+      "start_row": 224960
+    }
+  ],
+  "hand_anchors": [
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 0,
+        "counts": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/disconnect_then_bypass/profile0",
+      "profile": 0,
+      "row": 224960
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 0,
+        "counts": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/disconnect_then_bypass/profile1",
+      "profile": 1,
+      "row": 224961
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 0,
+        "counts": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/bypass_then_disconnect/profile0",
+      "profile": 0,
+      "row": 224962
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 0,
+        "counts": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/bypass_then_disconnect/profile1",
+      "profile": 1,
+      "row": 224963
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/reconnect_lowers_clear_extent/profile0",
+      "profile": 0,
+      "row": 224964
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/reconnect_lowers_clear_extent/profile1",
+      "profile": 1,
+      "row": 224965
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/second_keeps_old_clear_extent/profile0",
+      "profile": 0,
+      "row": 224966
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          16,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/second_keeps_old_clear_extent/profile1",
+      "profile": 1,
+      "row": 224967
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/same_false_preserves/profile0",
+      "profile": 0,
+      "row": 224968
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          16,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/same_false_preserves/profile1",
+      "profile": 1,
+      "row": 224969
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/same_true_after_disconnected_connect/profile0",
+      "profile": 0,
+      "row": 224970
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/same_true_after_disconnected_connect/profile1",
+      "profile": 1,
+      "row": 224971
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/unbypass_is_clearing_edge/profile0",
+      "profile": 0,
+      "row": 224972
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/unbypass_is_clearing_edge/profile1",
+      "profile": 1,
+      "row": 224973
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/initially_empty_connect_bypass/profile0",
+      "profile": 0,
+      "row": 224974
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/initially_empty_connect_bypass/profile1",
+      "profile": 1,
+      "row": 224975
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          7,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/two_initial_consumers_nonlast_remove/profile0",
+      "profile": 0,
+      "row": 224976
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          7,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/two_initial_consumers_nonlast_remove/profile1",
+      "profile": 1,
+      "row": 224977
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          7,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/two_initial_consumers_clear/profile0",
+      "profile": 0,
+      "row": 224978
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          7,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 2,
+        "counts": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/two_initial_consumers_clear/profile1",
+      "profile": 1,
+      "row": 224979
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          7,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/idempotent_cables_preserve/profile0",
+      "profile": 0,
+      "row": 224980
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "consumer_mask": 1,
+        "counts": [
+          7,
+          0,
+          0,
+          0
+        ]
+      },
+      "name": "hand/idempotent_cables_preserve/profile1",
+      "profile": 1,
+      "row": 224981
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          0
+        ],
+        "consumer_mask": 85,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/heterogeneous_disconnected_at_bypass/profile0",
+      "profile": 0,
+      "row": 224982
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          0
+        ],
+        "consumer_mask": 85,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/heterogeneous_disconnected_at_bypass/profile1",
+      "profile": 1,
+      "row": 224983
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          16
+        ],
+        "consumer_mask": 149,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/heterogeneous_second_at_bypass/profile0",
+      "profile": 0,
+      "row": 224984
+    },
+    {
+      "anchor": {
+        "bypassed": 1,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          16
+        ],
+        "consumer_mask": 149,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/heterogeneous_second_at_bypass/profile1",
+      "profile": 1,
+      "row": 224985
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          16
+        ],
+        "consumer_mask": 85,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/toggle_twice_is_not_identity/profile0",
+      "profile": 0,
+      "row": 224986
+    },
+    {
+      "anchor": {
+        "bypassed": 0,
+        "clear_prefixes": [
+          1,
+          3,
+          7,
+          16
+        ],
+        "consumer_mask": 85,
+        "counts": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "name": "hand/toggle_twice_is_not_identity/profile1",
+      "profile": 1,
+      "row": 224987
+    }
+  ],
+  "independent_cases": 223040,
+  "independent_cases_by_word_length": {
+    "0": 68,
+    "1": 204,
+    "2": 612,
+    "3": 1836,
+    "4": 5508,
+    "5": 16524,
+    "6": 49572,
+    "7": 148716
+  },
+  "independent_words_per_port_count": 3280,
+  "input_sha256": "74991d5447a2ba002b122c61260cf9cc4bbc8db91ac4f258344ea9841e40e088",
+  "max_operations": 17,
+  "observed_final_rows": 224988,
+  "readme_sha256": "e547325773b1e8890be6c0c534a0dc7c7673eaf612e0edb0cc9a0828aac36d7d",
+  "schema": 1,
+  "seed_profile_case_counts": [
+    112494,
+    112494
+  ],
+  "supplemental_scripts": [
+    {
+      "name": "empty",
+      "opcodes": []
+    },
+    {
+      "name": "bypass",
+      "opcodes": [
+        16
+      ]
+    },
+    {
+      "name": "double_bypass",
+      "opcodes": [
+        16,
+        16
+      ]
+    },
+    {
+      "name": "triple_bypass",
+      "opcodes": [
+        16,
+        16,
+        16
+      ]
+    },
+    {
+      "name": "same_false",
+      "opcodes": [
+        17,
+        17
+      ]
+    },
+    {
+      "name": "same_true",
+      "opcodes": [
+        18,
+        18
+      ]
+    },
+    {
+      "name": "explicit_roundtrip",
+      "opcodes": [
+        18,
+        18,
+        17,
+        17
+      ]
+    },
+    {
+      "name": "connect_slot0_all",
+      "opcodes": [
+        0,
+        2,
+        4,
+        6
+      ]
+    },
+    {
+      "name": "disconnect_slot0_all",
+      "opcodes": [
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "connect_slot1_all",
+      "opcodes": [
+        1,
+        3,
+        5,
+        7
+      ]
+    },
+    {
+      "name": "disconnect_slot1_all",
+      "opcodes": [
+        9,
+        11,
+        13,
+        15
+      ]
+    },
+    {
+      "name": "connect_all_then_bypass",
+      "opcodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        16
+      ]
+    },
+    {
+      "name": "bypass_disconnect_all_reconnect",
+      "opcodes": [
+        16,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        1,
+        3,
+        5,
+        7
+      ]
+    },
+    {
+      "name": "disconnect_all_bypass_connect_all",
+      "opcodes": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "name": "all_second_handover_bypass",
+      "opcodes": [
+        1,
+        3,
+        5,
+        7,
+        8,
+        10,
+        12,
+        14,
+        16
+      ]
+    },
+    {
+      "name": "all_last_disconnect_bypass",
+      "opcodes": [
+        1,
+        3,
+        5,
+        7,
+        8,
+        10,
+        12,
+        14,
+        9,
+        11,
+        13,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "p0_second",
+      "opcodes": [
+        1
+      ]
+    },
+    {
+      "name": "p0_second_noop",
+      "opcodes": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "p0_handover",
+      "opcodes": [
+        1,
+        8
+      ]
+    },
+    {
+      "name": "p0_handover_back",
+      "opcodes": [
+        1,
+        8,
+        0,
+        9
+      ]
+    },
+    {
+      "name": "p0_last_then_second",
+      "opcodes": [
+        8,
+        1
+      ]
+    },
+    {
+      "name": "p0_last_bypass_second",
+      "opcodes": [
+        8,
+        16,
+        1
+      ]
+    },
+    {
+      "name": "p0_second_bypass_first_remove",
+      "opcodes": [
+        1,
+        16,
+        8
+      ]
+    },
+    {
+      "name": "p0_bypass_last_second",
+      "opcodes": [
+        16,
+        8,
+        1
+      ]
+    },
+    {
+      "name": "p0_last_second_bypass",
+      "opcodes": [
+        8,
+        1,
+        16
+      ]
+    },
+    {
+      "name": "p0_full_disconnect_reconnect",
+      "opcodes": [
+        1,
+        8,
+        9,
+        0
+      ]
+    },
+    {
+      "name": "p0_handover_bypass_back",
+      "opcodes": [
+        1,
+        8,
+        16,
+        0,
+        9
+      ]
+    },
+    {
+      "name": "p0_false_then_true",
+      "opcodes": [
+        1,
+        17,
+        8,
+        18
+      ]
+    },
+    {
+      "name": "p0_disconnected_bypass_both",
+      "opcodes": [
+        8,
+        9,
+        16,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "p0_second_remove_last_reconnect",
+      "opcodes": [
+        1,
+        9,
+        8,
+        0
+      ]
+    },
+    {
+      "name": "p0_second_two_edges",
+      "opcodes": [
+        1,
+        16,
+        9,
+        16
+      ]
+    },
+    {
+      "name": "p0_bypass_reassert_after_connect",
+      "opcodes": [
+        8,
+        18,
+        1,
+        18
+      ]
+    },
+    {
+      "name": "p0_unbypass_after_connect",
+      "opcodes": [
+        8,
+        18,
+        1,
+        17
+      ]
+    },
+    {
+      "name": "p1_second",
+      "opcodes": [
+        3
+      ]
+    },
+    {
+      "name": "p1_second_noop",
+      "opcodes": [
+        3,
+        3
+      ]
+    },
+    {
+      "name": "p1_handover",
+      "opcodes": [
+        3,
+        10
+      ]
+    },
+    {
+      "name": "p1_handover_back",
+      "opcodes": [
+        3,
+        10,
+        2,
+        11
+      ]
+    },
+    {
+      "name": "p1_last_then_second",
+      "opcodes": [
+        10,
+        3
+      ]
+    },
+    {
+      "name": "p1_last_bypass_second",
+      "opcodes": [
+        10,
+        16,
+        3
+      ]
+    },
+    {
+      "name": "p1_second_bypass_first_remove",
+      "opcodes": [
+        3,
+        16,
+        10
+      ]
+    },
+    {
+      "name": "p1_bypass_last_second",
+      "opcodes": [
+        16,
+        10,
+        3
+      ]
+    },
+    {
+      "name": "p1_last_second_bypass",
+      "opcodes": [
+        10,
+        3,
+        16
+      ]
+    },
+    {
+      "name": "p1_full_disconnect_reconnect",
+      "opcodes": [
+        3,
+        10,
+        11,
+        2
+      ]
+    },
+    {
+      "name": "p1_handover_bypass_back",
+      "opcodes": [
+        3,
+        10,
+        16,
+        2,
+        11
+      ]
+    },
+    {
+      "name": "p1_false_then_true",
+      "opcodes": [
+        3,
+        17,
+        10,
+        18
+      ]
+    },
+    {
+      "name": "p1_disconnected_bypass_both",
+      "opcodes": [
+        10,
+        11,
+        16,
+        3,
+        2
+      ]
+    },
+    {
+      "name": "p1_second_remove_last_reconnect",
+      "opcodes": [
+        3,
+        11,
+        10,
+        2
+      ]
+    },
+    {
+      "name": "p1_second_two_edges",
+      "opcodes": [
+        3,
+        16,
+        11,
+        16
+      ]
+    },
+    {
+      "name": "p1_bypass_reassert_after_connect",
+      "opcodes": [
+        10,
+        18,
+        3,
+        18
+      ]
+    },
+    {
+      "name": "p1_unbypass_after_connect",
+      "opcodes": [
+        10,
+        18,
+        3,
+        17
+      ]
+    },
+    {
+      "name": "p2_second",
+      "opcodes": [
+        5
+      ]
+    },
+    {
+      "name": "p2_second_noop",
+      "opcodes": [
+        5,
+        5
+      ]
+    },
+    {
+      "name": "p2_handover",
+      "opcodes": [
+        5,
+        12
+      ]
+    },
+    {
+      "name": "p2_handover_back",
+      "opcodes": [
+        5,
+        12,
+        4,
+        13
+      ]
+    },
+    {
+      "name": "p2_last_then_second",
+      "opcodes": [
+        12,
+        5
+      ]
+    },
+    {
+      "name": "p2_last_bypass_second",
+      "opcodes": [
+        12,
+        16,
+        5
+      ]
+    },
+    {
+      "name": "p2_second_bypass_first_remove",
+      "opcodes": [
+        5,
+        16,
+        12
+      ]
+    },
+    {
+      "name": "p2_bypass_last_second",
+      "opcodes": [
+        16,
+        12,
+        5
+      ]
+    },
+    {
+      "name": "p2_last_second_bypass",
+      "opcodes": [
+        12,
+        5,
+        16
+      ]
+    },
+    {
+      "name": "p2_full_disconnect_reconnect",
+      "opcodes": [
+        5,
+        12,
+        13,
+        4
+      ]
+    },
+    {
+      "name": "p2_handover_bypass_back",
+      "opcodes": [
+        5,
+        12,
+        16,
+        4,
+        13
+      ]
+    },
+    {
+      "name": "p2_false_then_true",
+      "opcodes": [
+        5,
+        17,
+        12,
+        18
+      ]
+    },
+    {
+      "name": "p2_disconnected_bypass_both",
+      "opcodes": [
+        12,
+        13,
+        16,
+        5,
+        4
+      ]
+    },
+    {
+      "name": "p2_second_remove_last_reconnect",
+      "opcodes": [
+        5,
+        13,
+        12,
+        4
+      ]
+    },
+    {
+      "name": "p2_second_two_edges",
+      "opcodes": [
+        5,
+        16,
+        13,
+        16
+      ]
+    },
+    {
+      "name": "p2_bypass_reassert_after_connect",
+      "opcodes": [
+        12,
+        18,
+        5,
+        18
+      ]
+    },
+    {
+      "name": "p2_unbypass_after_connect",
+      "opcodes": [
+        12,
+        18,
+        5,
+        17
+      ]
+    },
+    {
+      "name": "p3_second",
+      "opcodes": [
+        7
+      ]
+    },
+    {
+      "name": "p3_second_noop",
+      "opcodes": [
+        7,
+        7
+      ]
+    },
+    {
+      "name": "p3_handover",
+      "opcodes": [
+        7,
+        14
+      ]
+    },
+    {
+      "name": "p3_handover_back",
+      "opcodes": [
+        7,
+        14,
+        6,
+        15
+      ]
+    },
+    {
+      "name": "p3_last_then_second",
+      "opcodes": [
+        14,
+        7
+      ]
+    },
+    {
+      "name": "p3_last_bypass_second",
+      "opcodes": [
+        14,
+        16,
+        7
+      ]
+    },
+    {
+      "name": "p3_second_bypass_first_remove",
+      "opcodes": [
+        7,
+        16,
+        14
+      ]
+    },
+    {
+      "name": "p3_bypass_last_second",
+      "opcodes": [
+        16,
+        14,
+        7
+      ]
+    },
+    {
+      "name": "p3_last_second_bypass",
+      "opcodes": [
+        14,
+        7,
+        16
+      ]
+    },
+    {
+      "name": "p3_full_disconnect_reconnect",
+      "opcodes": [
+        7,
+        14,
+        15,
+        6
+      ]
+    },
+    {
+      "name": "p3_handover_bypass_back",
+      "opcodes": [
+        7,
+        14,
+        16,
+        6,
+        15
+      ]
+    },
+    {
+      "name": "p3_false_then_true",
+      "opcodes": [
+        7,
+        17,
+        14,
+        18
+      ]
+    },
+    {
+      "name": "p3_disconnected_bypass_both",
+      "opcodes": [
+        14,
+        15,
+        16,
+        7,
+        6
+      ]
+    },
+    {
+      "name": "p3_second_remove_last_reconnect",
+      "opcodes": [
+        7,
+        15,
+        14,
+        6
+      ]
+    },
+    {
+      "name": "p3_second_two_edges",
+      "opcodes": [
+        7,
+        16,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "p3_bypass_reassert_after_connect",
+      "opcodes": [
+        14,
+        18,
+        7,
+        18
+      ]
+    },
+    {
+      "name": "p3_unbypass_after_connect",
+      "opcodes": [
+        14,
+        18,
+        7,
+        17
+      ]
+    },
+    {
+      "name": "cross_0_1_disconnect_before_bypass",
+      "opcodes": [
+        8,
+        16,
+        3,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_1_other_connect_before_bypass",
+      "opcodes": [
+        3,
+        8,
+        16,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_1_handover",
+      "opcodes": [
+        1,
+        10,
+        16,
+        8,
+        2
+      ]
+    },
+    {
+      "name": "cross_0_2_disconnect_before_bypass",
+      "opcodes": [
+        8,
+        16,
+        5,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_2_other_connect_before_bypass",
+      "opcodes": [
+        5,
+        8,
+        16,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_2_handover",
+      "opcodes": [
+        1,
+        12,
+        16,
+        8,
+        4
+      ]
+    },
+    {
+      "name": "cross_0_3_disconnect_before_bypass",
+      "opcodes": [
+        8,
+        16,
+        7,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_3_other_connect_before_bypass",
+      "opcodes": [
+        7,
+        8,
+        16,
+        0
+      ]
+    },
+    {
+      "name": "cross_0_3_handover",
+      "opcodes": [
+        1,
+        14,
+        16,
+        8,
+        6
+      ]
+    },
+    {
+      "name": "cross_1_0_disconnect_before_bypass",
+      "opcodes": [
+        10,
+        16,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_0_other_connect_before_bypass",
+      "opcodes": [
+        1,
+        10,
+        16,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_0_handover",
+      "opcodes": [
+        3,
+        8,
+        16,
+        10,
+        0
+      ]
+    },
+    {
+      "name": "cross_1_2_disconnect_before_bypass",
+      "opcodes": [
+        10,
+        16,
+        5,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_2_other_connect_before_bypass",
+      "opcodes": [
+        5,
+        10,
+        16,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_2_handover",
+      "opcodes": [
+        3,
+        12,
+        16,
+        10,
+        4
+      ]
+    },
+    {
+      "name": "cross_1_3_disconnect_before_bypass",
+      "opcodes": [
+        10,
+        16,
+        7,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_3_other_connect_before_bypass",
+      "opcodes": [
+        7,
+        10,
+        16,
+        2
+      ]
+    },
+    {
+      "name": "cross_1_3_handover",
+      "opcodes": [
+        3,
+        14,
+        16,
+        10,
+        6
+      ]
+    },
+    {
+      "name": "cross_2_0_disconnect_before_bypass",
+      "opcodes": [
+        12,
+        16,
+        1,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_0_other_connect_before_bypass",
+      "opcodes": [
+        1,
+        12,
+        16,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_0_handover",
+      "opcodes": [
+        5,
+        8,
+        16,
+        12,
+        0
+      ]
+    },
+    {
+      "name": "cross_2_1_disconnect_before_bypass",
+      "opcodes": [
+        12,
+        16,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_1_other_connect_before_bypass",
+      "opcodes": [
+        3,
+        12,
+        16,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_1_handover",
+      "opcodes": [
+        5,
+        10,
+        16,
+        12,
+        2
+      ]
+    },
+    {
+      "name": "cross_2_3_disconnect_before_bypass",
+      "opcodes": [
+        12,
+        16,
+        7,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_3_other_connect_before_bypass",
+      "opcodes": [
+        7,
+        12,
+        16,
+        4
+      ]
+    },
+    {
+      "name": "cross_2_3_handover",
+      "opcodes": [
+        5,
+        14,
+        16,
+        12,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_0_disconnect_before_bypass",
+      "opcodes": [
+        14,
+        16,
+        1,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_0_other_connect_before_bypass",
+      "opcodes": [
+        1,
+        14,
+        16,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_0_handover",
+      "opcodes": [
+        7,
+        8,
+        16,
+        14,
+        0
+      ]
+    },
+    {
+      "name": "cross_3_1_disconnect_before_bypass",
+      "opcodes": [
+        14,
+        16,
+        3,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_1_other_connect_before_bypass",
+      "opcodes": [
+        3,
+        14,
+        16,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_1_handover",
+      "opcodes": [
+        7,
+        10,
+        16,
+        14,
+        2
+      ]
+    },
+    {
+      "name": "cross_3_2_disconnect_before_bypass",
+      "opcodes": [
+        14,
+        16,
+        5,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_2_other_connect_before_bypass",
+      "opcodes": [
+        5,
+        14,
+        16,
+        6
+      ]
+    },
+    {
+      "name": "cross_3_2_handover",
+      "opcodes": [
+        7,
+        12,
+        16,
+        14,
+        4
+      ]
+    }
+  ],
+  "validator_sha256": "5ff705a87bd7de27b49a7900e5ae3a5d3042cb124425cc7e03a42ef9db7b39a9"
+}
