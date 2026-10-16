@@ -1849,3 +1849,103 @@ fn stock_quantizer_first_callbacks_state_bank_load_bypass_and_taps_use_no_heap()
         .flatten()
         .all(|sample| sample.active && sample.value.is_finite()));
 }
+
+#[test]
+fn stock_octave_first_callbacks_adoption_reset_and_telemetry_use_no_heap() {
+    let p = patch(
+        vec![
+            node("pitch", "poly_constant", &[("channels", 16.0)]),
+            node("oct", "stock_octave", &[("octaves", 2.0)]),
+        ],
+        vec![cable("pitch", "out", "oct", "pitch")],
+        "oct",
+    );
+    let mut old = p.compile().unwrap();
+    let mut next = p.compile().unwrap();
+    let mut bypass_patch = p.clone();
+    bypass_patch.nodes[1].bypassed = true;
+    let mut bypass = bypass_patch.compile().unwrap();
+    let old_handle = old.resolve_module_state("oct").unwrap();
+    let next_handle = next.resolve_module_state("oct").unwrap();
+    let bypass_handle = bypass.resolve_module_state("oct").unwrap();
+    let source = old.resolve_module_state("pitch").unwrap();
+    let taps = [
+        Some(old.resolve_tap("oct", "out", 0).unwrap()),
+        Some(old.resolve_tap("oct", "out", 15).unwrap()),
+    ];
+    let mut audio = [[0.0; 2]; 129];
+    let mut tapped = [[openpatch_core::TapSample::default(); 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut accepted = true;
+    MEMORY_OPERATIONS.with(|n| n.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        accepted &= old.set_host_reference_source(
+            source,
+            PortFrame {
+                channels: 16,
+                values: [0.25; 16],
+            },
+        );
+        old.process_audio_block_with_taps(&mut audio[..length], &taps, &mut tapped[..length]);
+        next.adopt_state_from(&old);
+        let _ = next.stock_octave_snapshot(next_handle);
+        accepted &= next.initialize_module_state(next_handle);
+        next.process_poly_block(&mut frames[..length]);
+        bypass.adopt_state_from(&old);
+        bypass.process_poly_block(&mut frames[..length]);
+        let _ = old.module_lights(old_handle);
+        let _ = next.module_lights(next_handle);
+        let _ = bypass.module_lights(bypass_handle);
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(accepted);
+    assert_eq!(old.module_lights(old_handle).unwrap().octave_shift, Some(2));
+    assert_eq!(
+        bypass.module_lights(bypass_handle).unwrap().octave_shift,
+        Some(2)
+    );
+    assert!(frames
+        .iter()
+        .all(|f| f.values.iter().all(|v| v.is_finite())));
+}
+
+#[test]
+fn passive_compiled_registry_reports_stacked_and_legacy_routes_without_consuming_outputs() {
+    let mut p = patch(
+        vec![
+            node("a", "poly_constant", &[]),
+            node("b", "poly_constant", &[]),
+            node("oct", "stock_octave", &[]),
+        ],
+        vec![
+            cable("a", "out", "oct", "pitch"),
+            cable("b", "out", "oct", "pitch"),
+            cable("a", "out", "oct", "shift_cv"),
+        ],
+        "oct",
+    );
+    p.cables[0].id = Some("pitch-a".into());
+    p.cables[1].id = Some("pitch-b".into());
+    let mut engine = p.compile().unwrap();
+    engine.process_poly_block(&mut [PortFrame::default(); 3]);
+    let handle = engine.resolve_module_state("oct").unwrap();
+    let before = engine.host_module_snapshot(handle).unwrap();
+    let registry = engine.host_cable_registry().unwrap();
+    assert_eq!(registry.len(), 3);
+    assert_eq!(
+        registry[0],
+        openpatch_core::HostCableSnapshot {
+            id: Some("pitch-a".into()),
+            source: "a".into(),
+            source_port: 0,
+            destination: "oct".into(),
+            destination_port: 0
+        }
+    );
+    assert_eq!(registry[1].id.as_deref(), Some("pitch-b"));
+    assert_eq!(registry[2].id, None);
+    assert_eq!(registry[2].destination_port, 1);
+    assert_eq!(engine.host_module_snapshot(handle).unwrap(), before);
+}

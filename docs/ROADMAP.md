@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 75 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof and merged platform/capture evidence; its remaining gates are tracked below. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 76 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof and merged platform/capture evidence; its remaining gates are tracked below. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 75 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 75 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 76 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 75 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -262,6 +262,30 @@ sets were validated and reviewed. The qualified ARM app is installed, with
 its signature and executable hashes verified; it has not been launched for
 native input/device qualification. Hardware accuracy remains unqualified; no
 speed advantage is claimed.
+
+## Stock Octave: paired host proof passed; application qualification in progress
+
+A separate [Stock Octave](STOCK_OCTAVE.md) preserves the original `octave`
+utility while adding source-order float32 conversions, raw lane reads, native
+bypass, unbounded finite saved parameters and actual channel-zero display state.
+The independently frozen genuine Rack Engine and actual optimized Core gates
+pass 30,120 cases, 91,479 snapshots and 3,885 explicit anchors across three sample
+rates. Complete traces are byte-identical; no constructor, no-sample event or
+inactive raw lane is discarded. Undefined native C++ conversions are separate
+Rust safety obligations and never executed by the SDK oracle.
+
+The shared panel, exact editing, project/preset retention, MCP and callback
+allocation checks pass locally: 2,044 Rust tests, 106 Python checks and strict
+Clippy/formatting. The connected factory renders stereo offline. The
+[regression reruns](benchmarks/stock-octave-regressions.json) pass the paired
+Mid Side gate, output-lifecycle comparison and rounding gate; the separate
+paired Stock Mix result is retained alongside them.
+The [paired performance report](benchmarks/stock-octave-performance-attempt-001.json.gz)
+finds +0.879% median cost for mono legacy routing; the other three workload
+ranges cross parity. No speed advantage is claimed. Optimized packaging,
+platform CI and native capture review remain before delivery. No release or
+hardware claim is made by the DSP result alone. Native Mac/device qualification
+and general Rack import remain open. MIDI/live-performance priorities remain last.
 
 ## Clocked routing
 

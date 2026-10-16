@@ -1,0 +1,56 @@
+{
+  "completed_at": "2026-10-16T13:37:15.744724+00:00",
+  "passed": true,
+  "scope": "Mid Side, output-lifecycle and rounding gates rerun against the Stock Octave Core build; the separate Stock Mix paired result is included for context. These are regression results, not a new Stock Octave oracle.",
+  "core_binary_sha256": "673fef984c1713a7e1e65c86d703cfeea6a7aa03180c116c5733e20ec448f058",
+  "gates": {
+    "mid_side": {
+      "passed": true,
+      "cases": 74,
+      "snapshots": 890,
+      "hand_anchors": 1472,
+      "discarded_snapshots": 0,
+      "paired_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241"
+    },
+    "output_lifecycle": {
+      "passed": true,
+      "cases": 224988,
+      "compared_fields": 15749160,
+      "failed_cases": 0,
+      "mismatched_fields": 0,
+      "protocol_failures": 0,
+      "independent_anchors_checked": 3920,
+      "independent_invariants_checked": 59581964,
+      "actual_engine_dsp_frames": 0,
+      "qualification_basis": "Bounded producer-output lifecycle with exact raw storage. Rust and SDK trace hashes differ; all declared fields compare exactly."
+    },
+    "rounding": {
+      "passed": true,
+      "cases": 192,
+      "snapshots": 576,
+      "hand_anchors": 1728,
+      "discarded_snapshots": 0,
+      "paired_trace_sha256": "8d3586217674b7fa2a49de8bb5b2a0f1021df3d77e46fed57bdbd971050ddfec"
+    },
+    "stock_mix_paired": {
+      "passed": true,
+      "scope": "Whole actual Core and genuine Rack Engine snapshots in the separately built paired reference result.",
+      "cases": 28383,
+      "snapshots": 86355,
+      "hand_anchors": 708,
+      "discarded_snapshots": 0,
+      "sample_rates_hz": [44100, 48000, 96000],
+      "paired_trace_sha256": "59e6df1c9c29b3cae2b8247ea8dacf28d4f09645bf95df6df9d5132b81dbc934"
+    }
+  },
+  "full_reports": {
+    "stock_octave_regressions": {
+      "path": "stock-octave-regressions-001.json.gz",
+      "uncompressed_sha256": "8a4219f019fa8f97ade3ad7eef046c458492c25351be86e70c77efc1b8d57bd5"
+    },
+    "stock_mix_paired": {
+      "path": "stock-mix-paired-reference-attempt-001.json.gz",
+      "uncompressed_sha256": "02f228a2d7186a50c2fbbcd1f0ee8e78d29c342e1c80891d4923b67f18205b77"
+    }
+  }
+}

@@ -117,7 +117,7 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("analog_vco", "waveform") | ("crossfade", "law") => Enum,
         ("quantizer", "scale_mask")
         | ("poly_constant", "channels")
-        | ("octave", "octaves")
+        | ("octave" | "stock_octave", "octaves")
         | ("switch_1to4" | "switch_4to1", "steps") => InclusiveInteger,
         ("mix6", "invert" | "average")
         | ("vca_mix", "channel_exp" | "mix_exp")

@@ -37,11 +37,13 @@ mod host_ports;
 mod native_float;
 mod stock_mid_side;
 mod stock_mix;
+mod stock_octave;
 #[doc(hidden)]
 pub use stock_mix::StockMixSnapshot;
+pub use stock_octave::StockOctaveSnapshot;
 mod stock_quantizer;
 #[doc(hidden)]
-pub use host_ports::{HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot};
+pub use host_ports::{HostCableSnapshot, HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot};
 pub use stock_quantizer::rotate_stock_quantizer_mask;
 #[doc(hidden)]
 pub use stock_quantizer::{StockQuantizerProbe, StockQuantizerSnapshot};
@@ -373,6 +375,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_mix::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_octave::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1430,6 +1436,70 @@ impl Engine {
         }
         match &self.inner {
             EngineKind::Poly(engine) => engine.stock_mix_legacy_data(handle.node),
+            _ => None,
+        }
+    }
+    /// Inspect Stock Octave's actual raw parameter and channel-zero display state.
+    #[doc(hidden)]
+    pub fn stock_octave_snapshot(&self, handle: ModuleHandle) -> Option<StockOctaveSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_octave_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Apply the source's legacy root-level octave migration to actual runtime state.
+    #[doc(hidden)]
+    pub fn load_stock_octave_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.load_stock_octave_legacy_data(handle.node, value),
+            _ => false,
+        }
+    }
+    /// Source dataToJson has no Octave-specific data and returns null.
+    #[doc(hidden)]
+    pub fn stock_octave_legacy_data(&self, handle: ModuleHandle) -> Option<Value> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_octave_legacy_data(handle.node),
+            _ => None,
+        }
+    }
+    /// Set a desired poly_constant producer frame for native reference gating.
+    /// Actual canonical host-port storage is affected only by normal processing.
+    #[doc(hidden)]
+    pub fn set_host_reference_source(&mut self, handle: ModuleHandle, frame: PortFrame) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.set_host_reference_source(handle.node, frame),
+            _ => false,
+        }
+    }
+    /// Read a desired native reference producer frame without consuming its output.
+    #[doc(hidden)]
+    pub fn get_host_reference_source(&self, handle: ModuleHandle) -> Option<PortFrame> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.get_host_reference_source(handle.node),
+            _ => None,
+        }
+    }
+    /// Inspect actual compiled cable endpoints on the control thread.
+    #[doc(hidden)]
+    pub fn host_cable_registry(&self) -> Option<Vec<HostCableSnapshot>> {
+        match &self.inner {
+            EngineKind::Poly(engine) => Some(engine.host_cable_registry()),
             _ => None,
         }
     }

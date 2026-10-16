@@ -1,0 +1,76 @@
+{
+  "format_version": 1,
+  "status": "FROZEN after independent Root source review and successful input-only preflight; external hash lock precedes first compiler/DSP execution",
+  "target": "Fundamental Octave at 10dd0160c664770910e5584b7b00498cc48d9ddd inside genuine Rack Engine 2.6.6 on ARM macOS",
+  "source_sha256": "d0ee41f787180db1c223dc15018619798797e875d86a73e62e53748b0ea835a6",
+  "sample_rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "fresh_families_per_rate": {
+    "width": 4335,
+    "tie": 360,
+    "finite-pitch": 1530,
+    "conversion": 3792
+  },
+  "explicit_cases_per_rate": 23,
+  "case_count": 30120,
+  "snapshot_count": 91479,
+  "event_count_excluding_initial": 61359,
+  "cardinality_policy": "Root must retain input-only exact counts and SHA256 in the reviewed external declaration lock before any compiler/DSP execution; generator families and all explicit histories are frozen by file hashes.",
+  "constructor": "Fresh actual sources, Octave and sinks; assign held sources and immediate parameter, invoke actual dataFromJson, then connect masks. Snapshot event=-1 before any DSP. Each step executes exactly one Engine frame.",
+  "comparison": "Exact whole-object equality for every constructor and every event; all 16 raw slots for every port, integer float32 bits, no float tolerances, no filtered inactive lanes or discarded samples.",
+  "raw_port_counts": {
+    "source_outputs": 2,
+    "inputs": 2,
+    "outputs": 1,
+    "sink_inputs": 2
+  },
+  "snapshot_fields": [
+    "case",
+    "event",
+    "op",
+    "frame",
+    "bypassed",
+    "parameter_bits",
+    "last_octave",
+    "saved_data",
+    "source_outputs",
+    "inputs",
+    "outputs",
+    "sink_inputs",
+    "source_config",
+    "input_cables",
+    "output_cables",
+    "source_cables",
+    "sink_cables",
+    "cable_registry",
+    "output_consumer_mask"
+  ],
+  "host_events": [
+    "source",
+    "parameter",
+    "data_load",
+    "save",
+    "reset",
+    "bypass",
+    "connect",
+    "disconnect",
+    "adopt",
+    "recreate",
+    "step"
+  ],
+  "ordinary_domain": "Finite binary32 pitch, CV and parameter controls. On every nonbypassed processing sample both conversions must be defined: roundf(parameter) to i32, then binary32(binary32(knob_i32)+roundf(CV)) to i32. Rounded CV itself need not fit i32. The independent rational preflight checks all possible retained CV controls against each processed parameter before compilation. Source1 is the only CV source and CV stacking/feedback are excluded from this declared topology, while pitch stacking is covered.",
+  "arithmetic_environment": "Genuine ARM Engine nearest rounding and signed FTZ/DAZ. No alternate rounding allowance, ULP tolerance or global production flags. Source copies preserve signed-zero/subnormal bits; output arithmetic follows actual class. All defined large conversions and finite-pitch magnitudes belong to fidelity, not safety exclusions.",
+  "safety_records": "fixtures.py --safety-output emits separately frozen nonfinite and undefined-conversion descriptors. SDK adapter never executes these records. They are local safety obligations with no invented Rack result, and cannot be used to remove defined-domain failures.",
+  "adoption": "Same live actual SDK Octave, immediate receiving parameter assignment only. Production must rebuild/adopt a same-incarnation actual Core graph with receiving parameter winning while retained ports and lastOctave survive. Recreation removes incident cables and creates a fresh module with zero parameter and lastOctave; sources/sinks/frame survive.",
+  "legacy_data": "Actual dataFromJson: missing key or nonobject root retains parameter; present octave key uses Jansson json_integer_value (noninteger becomes 0), then int64-to-f32 raw Param::setValue without UI clamp. Parameter then data initialization makes legacy key authoritative. saved_data is actual default dataToJson, nullptr represented as JSON null; lastOctave is not serialized.",
+  "bypass": "Actual Engine::bypassModule and actual Module::processBypass via Engine processing, including configured pitch-to-output route. No adapter-written bypass equation. lastOctave freezes while bypassed.",
+  "failure_policy": "Retain every attempt, frozen artifacts, input, full traces and failures. No post-failure exclusions, case edits, field filtering or tolerance relaxation. Any revision requires an explicitly superseding reviewed freeze with prior failures retained.",
+  "limits": [
+    "This finite sampled matrix is not exhaustive over every binary32 combination",
+    "Undefined C++ conversions and nonfinite controls are separate safety records, never genuine DSP executions",
+    "No Rack RNG identity, general Rack patch import, cross-rate adoption, UI/device deadline or hardware accuracy claim"
+  ]
+}

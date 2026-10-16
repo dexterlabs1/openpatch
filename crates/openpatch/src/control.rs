@@ -51,6 +51,8 @@ mod sequence_tests;
 #[cfg(test)]
 mod stack_tests;
 #[cfg(test)]
+mod stock_octave_tests;
+#[cfg(test)]
 mod stock_quantizer_tests;
 #[cfg(test)]
 mod stock_seq3_tests;
@@ -1974,11 +1976,21 @@ fn apply_edit(
                 .iter_mut()
                 .find(|n| n.id == id)
                 .ok_or("module not found")?;
-            let value = args
+            let raw_value = args
                 .get("value")
                 .and_then(Value::as_f64)
-                .ok_or("value must be a number")? as f32;
+                .ok_or("value must be a number")?;
             let parameter = string(args, "parameter")?;
+            if node.kind == "stock_octave"
+                && parameter == "octaves"
+                && (!raw_value.is_finite() || !(-4.0..=4.0).contains(&raw_value))
+            {
+                return Err(
+                    "Stock Octave octaves must be finite and in -4..=4 for interactive edits"
+                        .into(),
+                );
+            }
+            let value = raw_value as f32;
             let previous_mappings = midi_cc::node_mappings(node);
             node.params.insert(parameter.into(), value);
             if midi_cc::mapping_cell_for(&node.kind, parameter).is_some() {

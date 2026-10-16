@@ -103,6 +103,7 @@ impl Pulses {
             clock_frequency: None,
             playing_notes: None,
             waveform_position: None,
+            octave_shift: None,
             count: 10,
             brightness: std::array::from_fn(|button| {
                 [

@@ -220,6 +220,7 @@ impl Mixing {
     pub(crate) fn lights(&self) -> Option<ModuleLightState> {
         match self {
             Self::Vca(v) => Some(ModuleLightState {
+                octave_shift: None,
                 input_channels: None,
                 output_channels: None,
                 automatic_channels: None,

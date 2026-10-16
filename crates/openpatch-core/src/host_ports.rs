@@ -74,6 +74,18 @@ pub struct HostModuleSnapshot {
     pub output_count: u8,
 }
 
+/// Control-thread inspection of actual compiled cable endpoints. This allocates
+/// only when explicitly requested and never changes consumers or processes audio.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct HostCableSnapshot {
+    pub id: Option<String>,
+    pub source: String,
+    pub source_port: u8,
+    pub destination: String,
+    pub destination_port: u8,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HostContext {
     pub input_presence: u16,

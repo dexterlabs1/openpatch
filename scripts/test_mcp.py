@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 75)
+        self.assertEqual(len(catalog["modules"]), 76)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 75)
+        self.assertEqual(len(catalog["modules"]), 76)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 75)
+        self.assertEqual(len(catalog["modules"]), 76)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,108 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_octave_catalog_interactive_bounds_and_atomic_revision(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        stock = modules["stock_octave"]
+        self.assertIn("octave", modules)
+        self.assertEqual(stock["inputs"], ["pitch", "shift_cv"])
+        self.assertEqual(stock["outputs"], ["out"])
+        self.assertEqual(stock["params"]["octaves"]["values"], list(range(-4, 5)))
+        self.assertEqual([stock["params"]["octaves"][key] for key in ("min", "max", "step")], [-4, 4, 1])
+        self.assertEqual(stock["bypass"]["routes"], [{"input": "pitch", "output": "out"}])
+        self.assertEqual(stock["light_names"], [])
+        self.assertEqual(modules["octave"]["params"]["octaves"]["max"], 4)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "stock", "kind": "stock_octave", "params": {"octaves": 20.5}},
+            {"id": "old", "kind": "octave", "params": {"octaves": 1}}], "output": "stock"}})
+        initial = self.patch_snapshot()
+        self.assertEqual(initial["patch"]["nodes"][0]["params"]["octaves"], 20.5)
+        for value in (-4.01, 4.01, 40):
+            self.require_tool_error("set_parameter", {"id": "stock", "parameter": "octaves",
+                "value": value, "expected_revision": initial["revision"]})
+            self.assertEqual(self.patch_snapshot(), initial)
+        invalid_batch = {"expected_revision": initial["revision"], "edits": [
+            {"tool": "set_parameter", "arguments": {"id": "stock", "parameter": "octaves", "value": 2.5}},
+            {"tool": "set_parameter", "arguments": {"id": "stock", "parameter": "octaves", "value": 4.5}}]}
+        self.require_tool_error("preview_edits", invalid_batch)
+        self.require_tool_error("apply_edits", invalid_batch)
+        self.assertEqual(self.patch_snapshot(), initial)
+        self.require_tool_success("set_parameter", {"id": "stock", "parameter": "octaves", "value": -3.5,
+            "expected_revision": initial["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(changed["patch"]["nodes"][0]["params"]["octaves"], -3.5)
+        self.assertEqual(changed["patch"]["nodes"][1]["params"]["octaves"], 1)
+        self.require_tool_error("set_parameter", {"id": "old", "parameter": "octaves", "value": 1.5})
+        self.require_tool_error("set_parameter", {"id": "stock", "parameter": "octaves", "value": 2,
+            "expected_revision": initial["revision"]})
+        self.assertEqual(self.patch_snapshot(), changed)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], initial["patch"])
+
+    def test_stock_octave_raw_saved_project_preset_and_history(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "stock", "kind": "stock_octave", "params": {"octaves": -9.25}}], "output": "stock"}})
+        original = self.patch_snapshot()
+        project = self.payload(self.require_tool_success("capture_project_patch"))
+        self.assertEqual(project["patch"], original["patch"])
+        self.assertIsNone(project["frame"])
+        captured = self.payload(self.require_tool_success("capture_module_preset", {"id": "stock"}))
+        preset = captured["preset"]
+        self.assertEqual(preset["params"]["octaves"], -9.25)
+        self.assertEqual(captured["state_source"], "saved_parameters")
+        self.require_tool_success("save_module_preset", {"filename": "stock-octave.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "stock-octave.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.require_tool_success("save_patch", {"filename": "stock-octave.json"})
+        self.require_tool_success("set_parameter", {"id": "stock", "parameter": "octaves", "value": 0.5})
+        before_apply = self.patch_snapshot()
+        self.require_tool_success("apply_module_preset", {"id": "stock", "preset": reviewed})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before_apply["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], original["patch"])
+        self.require_tool_success("set_parameter", {"id": "stock", "parameter": "octaves", "value": 2.5})
+        self.assertEqual(self.payload(self.require_tool_success("load_patch", {"filename": "stock-octave.json"}))["patch"], original["patch"])
+        self.require_tool_success("replace_patch", {"patch": project["patch"]})
+        self.assertEqual(self.patch_snapshot()["patch"], original["patch"])
+
+    def test_stock_octave_poly_cv_raw_short_lanes_and_bypass_signal(self) -> None:
+        def graph(cv: list[float]) -> dict[str, Any]:
+            return {"version": 2, "sample_rate": 48000, "nodes": [
+                {"id": "pitch", "kind": "poly_constant", "params": {
+                    "channels": 3, "v1": 1, "v2": 2, "v3": 3}},
+                {"id": "cv", "kind": "poly_constant", "params": {
+                    "channels": len(cv), **{f"v{i}": value for i, value in enumerate(cv, start=1)}}},
+                {"id": "shift", "kind": "stock_octave", "params": {"octaves": -1}}],
+                "cables": [{"from": "pitch", "to": "shift", "input": "pitch"},
+                           {"from": "cv", "to": "shift", "input": "shift_cv"}]}
+
+        def trace(expected_first: list[float | None], expected_steady: list[float]) -> None:
+            before = self.patch_snapshot()
+            analyzed = self.payload(self.require_tool_success("analyze_signal", {
+                "id": "shift", "seconds": .002, "expected_revision": before["revision"]}))
+            self.assertEqual((analyzed["frames"], analyzed["min_channels"], analyzed["max_channels"]),
+                             (96, 1, 3))
+            self.assertEqual([channel["active_frames"] for channel in analyzed["channels"]],
+                             [96, 95, 95])
+            for channel, (first, steady) in enumerate(zip(expected_first, expected_steady), start=1):
+                captured = self.payload(self.require_tool_success("capture_signal", {
+                    "id": "shift", "channel": channel, "seconds": .002, "points": 96,
+                    "expected_revision": before["revision"]}))
+                self.assertEqual([point["mean"] for point in captured["bins"]],
+                                 [first] + [steady] * 95)
+            self.assertEqual(self.patch_snapshot(), before,
+                             "Headless analysis must not change patch, revision, or history")
+
+        self.require_tool_success("replace_patch", {"patch": graph([2])})
+        # Pitch width3 determines voices. Mono CV broadcasts +2 to all lanes;
+        # the initial connected mono-zero frame yields knob-only -1.
+        trace([-1, None, None], [2, 3, 4])
+        self.require_tool_success("replace_patch", {"patch": graph([-1, 3])})
+        # CV width2 is not broadcast. Inactive third raw CV lane reads zero.
+        trace([-1, None, None], [-1, 4, 2])
+        self.require_tool_success("set_bypass", {"id": "shift", "bypassed": True})
+        # Rack's configured bypass route copies raw pitch, skipping both shifts.
+        trace([0, None, None], [1, 2, 3])
 
     def test_stock_mix_raw_poly_lanes_connected_zero_divisor_and_ordered_sum(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

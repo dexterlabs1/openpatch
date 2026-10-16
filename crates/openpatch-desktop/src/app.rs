@@ -2134,6 +2134,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::stock_mix_voice_layout())
                 .expect("bundled Stock Mix voice layout");
+        } else if title == "Stock Octave voice" {
+            self.rack
+                .restore_layout(&Self::stock_octave_voice_layout())
+                .expect("bundled Stock Octave voice layout");
         } else if title == "Mid/Side stereo voice" {
             self.rack
                 .restore_layout(&Self::stock_mid_side_voice_layout())
@@ -2163,6 +2167,22 @@ impl OpenPatch {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "bass":[0,0],"fifth":[390,0],"upper":[780,0],
             "mix":[0,420],"scope":[270,420],"motion":[930,420],"out":[1320,420]
+        }})
+    }
+    fn stock_octave_voice_layout() -> Value {
+        let chord = crate::rack::panel_width("poly_constant");
+        let octave = crate::rack::panel_width("stock_octave");
+        let motion = crate::rack::panel_width("stock_lfo");
+        let scope = crate::rack::panel_width("scope");
+        let voice = crate::rack::panel_width("stock_vco");
+        let clock = crate::rack::panel_width("gate");
+        let envelope = crate::rack::panel_width("adsr_eg");
+        let amplifier = crate::rack::panel_width("stock_vca");
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "chord":[0,0],"octave":[chord,0],"motion":[chord+octave,0],
+            "scope":[chord+octave+motion,0],"guide":[chord+octave+motion+scope,0],
+            "voice":[0,420],"clock":[voice,420],"envelope":[voice+clock,420],
+            "amplifier":[voice+clock+envelope,420],"out":[voice+clock+envelope+amplifier,420]
         }})
     }
     fn stock_mid_side_voice_layout() -> Value {
@@ -3216,6 +3236,13 @@ impl OpenPatch {
                     serde_json::from_str(include_str!("../../../examples/stock-mix-voice.json"))
                         .expect("valid Stock Mix layered voice");
                 self.replace_from_menu(patch, "Stock Mix layered voice");
+                ui.close();
+            }
+            if ui.button("Stock Octave voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-octave-voice.json"))
+                        .expect("valid Stock Octave voice");
+                self.replace_from_menu(patch, "Stock Octave voice");
                 ui.close();
             }
             if ui.button("Mid/Side stereo voice").clicked() {
@@ -5721,6 +5748,53 @@ impl OpenPatch {
         scope
     }
 
+    fn prepare_stock_octave_fixture(&mut self) {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-octave-voice.json"))
+                .expect("valid Stock Octave voice");
+        let mut engine = patch.compile().expect("Stock Octave fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let mut audio = vec![[0.0; 2]; 24032];
+        engine.process_audio_block(&mut audio);
+        let lights: BTreeMap<_, _> = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let handle = engine.resolve_module_lights(&node.id).ok()?;
+                Some((node.id.clone(), engine.module_lights(handle)?))
+            })
+            .collect();
+        assert!(lights
+            .get("octave")
+            .and_then(|state| state.octave_shift)
+            .is_some());
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::stock_octave_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock Octave · polyphonic pitch shifter".into();
+        self.status = "Three pitch lanes · LFO shift CV · actual last channel 0 effective offset · attenuated stereo voice".into();
+    }
+
     fn prepare_stock_mid_side_fixture(&mut self) -> openpatch_core::ScopeSnapshot {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-mid-side-voice.json"))
@@ -7848,6 +7922,25 @@ impl OpenPatch {
             self.title = "Stock Mix · shared browser thumbnail".into();
             self.status = "Same Stock Mix panel in rack and filtered browser · saved Average / Invert flags · inactive preview telemetry".into();
         }
+        if frame == 2932 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_octave_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2942 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock Octave · configured selector remains visible · no module lamps · last actual channel 0 offset shown honestly".into();
+        }
+        if frame == 2948 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.7);
+            self.browse();
+            self.library.request_focus();
+            self.title = "Stock Octave · shared browser panel".into();
+            self.status = "Same Stock Octave renderer in rack and filtered browser · selector is authored state, offset is observed channel 0 telemetry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7994,6 +8087,9 @@ impl OpenPatch {
                 | 2866
                 | 2898
                 | 2930
+                | 2938
+                | 2944
+                | 2950
         ) {
             let token = if let Some(receipt) = crate::smoke_schedule::request(frame, captures) {
                 assert!(
@@ -8169,6 +8265,9 @@ impl OpenPatch {
                 130 => path.with_file_name("rack-stock-mix.png"),
                 131 => path.with_file_name("rack-stock-mix-lights-out.png"),
                 132 => path.with_file_name("stock-mix-library.png"),
+                133 => path.with_file_name("rack-stock-octave.png"),
+                134 => path.with_file_name("rack-stock-octave-lights-out.png"),
+                135 => path.with_file_name("stock-octave-library.png"),
                 _ => unreachable!("Unexpected native smoke capture index"),
             };
             image::save_buffer(
@@ -8183,13 +8282,13 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/133 at frame {frame}: {}",
+                "Native smoke: capture {}/136 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 133 {
+            if captures == 136 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -8222,6 +8321,9 @@ impl eframe::App for OpenPatch {
         if let Some((_, frame, _)) = &self.smoke_test {
             if *frame == 2918 {
                 input.events.push(egui::Event::Text("stock_mix".into()));
+            }
+            if *frame == 2950 {
+                input.events.push(egui::Event::Text("stock_octave".into()));
             }
             if *frame == 2818 {
                 input
