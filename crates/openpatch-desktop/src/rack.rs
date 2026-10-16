@@ -17,6 +17,7 @@ use cable_menu::CableMenu;
 
 include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
+include!("stock_lfo_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -2888,6 +2889,9 @@ impl Rack {
                     MUTED,
                 );
             }
+            if node.kind == "stock_lfo" {
+                self.stock_lfo_lights(ui, node, rect);
+            }
             if node.kind == "poly_split" {
                 self.split_panel(ui, node, rect);
             }
@@ -3139,6 +3143,65 @@ impl Rack {
                     response.on_hover_text(if *name=="linear_fm"{"Use linear FM. Off selects exponential FM. This mode is saved with the patch."}else{"Use soft sync. Off selects hard sync. This mode is saved with the patch."});
                     continue;
                 }
+                if node.kind == "stock_lfo" && matches!(*name, "offset" | "invert") {
+                    let enabled = value_or_default(node, name, spec) >= 0.5;
+                    let x = if *name == "offset" { 20.0 } else { 200.0 };
+                    let response = crate::panel_skin::toggle_button(
+                        ui,
+                        Rect::from_min_size(point(x, 280.0), vec2(120.0, 26.0) * self.zoom),
+                        if *name == "offset" {
+                            if enabled {
+                                "0–10 V"
+                            } else {
+                                "±5 V"
+                            }
+                        } else {
+                            "Invert"
+                        },
+                        enabled,
+                        self.zoom,
+                    );
+                    if mode.is_interactive() {
+                        if let Some(cue) = self
+                            .construction_animation
+                            .parameter(&node.id, &node.kind, name)
+                        {
+                            let label = |value: f32| {
+                                if *name == "offset" {
+                                    if value >= 0.5 {
+                                        "0–10 V"
+                                    } else {
+                                        "±5 V"
+                                    }
+                                } else if value >= 0.5 {
+                                    "Invert On"
+                                } else {
+                                    "Invert Off"
+                                }
+                            };
+                            self.register_construction_anchor(
+                                ui,
+                                node,
+                                name,
+                                crate::construction_motion::Anchor {
+                                    rect: response.rect,
+                                    old_text: label(cue.old).into(),
+                                    new_text: label(cue.new).into(),
+                                    marker: None,
+                                },
+                                &[response.id],
+                            );
+                        }
+                    }
+                    if response.clicked() {
+                        self.select_primary(node.id.clone());
+                        action = Some(RackAction::Command(
+                            "set_parameter",
+                            json!({"id":node.id,"parameter":name,"value":if enabled {0.0} else {1.0},"expected_revision":revision}),
+                        ));
+                    }
+                    continue;
+                }
                 if node.kind == "multi_lfo" && matches!(*name, "unipolar" | "invert") {
                     let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
                     let rect = Rect::from_min_size(
@@ -3351,6 +3414,14 @@ impl Rack {
                         random_parameter_position(index),
                         if *name == "unipolar" { 10.0 } else { 14.0 },
                     )
+                } else if node.kind == "stock_lfo" {
+                    (
+                        pos2(
+                            if index.is_multiple_of(2) { 90.0 } else { 270.0 },
+                            125.0 + (index / 2) as f32 * 104.0,
+                        ),
+                        23.0,
+                    )
                 } else if is_wavetable(&node.kind) {
                     (wavetable_parameter_position(index), 18.0)
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
@@ -3389,12 +3460,15 @@ impl Rack {
                 let geometric =
                     matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") && *name == "frequency";
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
-                let hz_rate = wave_rate || (node.kind == "random" && *name == "rate");
-                let clock_ratio = ((node.kind == "multi_lfo" && geometric) || wave_rate)
-                    && patch
-                        .cables
-                        .iter()
-                        .any(|c| c.to == node.id && c.input == "clock");
+                let stock_rate = node.kind == "stock_lfo" && *name == "rate";
+                let observed_clock = stock_lfo_clock(self.module_lights.get(&node.id));
+                let hz_rate = wave_rate || stock_rate || (node.kind == "random" && *name == "rate");
+                let clock_ratio = (stock_rate && observed_clock.is_some_and(|clock| clock != 2.0))
+                    || (((node.kind == "multi_lfo" && geometric) || wave_rate)
+                        && patch
+                            .cables
+                            .iter()
+                            .any(|c| c.to == node.id && c.input == "clock"));
                 let gain_power = (node.kind == "vca_mix").then_some(if *name == "mix_level" {
                     1.0
                 } else {
@@ -3402,7 +3476,7 @@ impl Rack {
                 });
                 let fade_percent = node.kind == "fade"
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
-                let vco_percent = (node.kind == "multi_vco"
+                let vco_percent = (matches!(node.kind.as_str(), "multi_vco" | "stock_lfo")
                     && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
                     || (is_wavetable(&node.kind)
                         && matches!(*name, "position" | "fm_amount" | "position_cv_amount"));
@@ -3422,7 +3496,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if node.kind == "random" {
+                let display_value = if node.kind == "stock_lfo" {
+                    stock_lfo_parameter_value(name, value, observed_clock)
+                } else if node.kind == "random" {
                     random_parameter_value(name, value)
                 } else if wave_rate {
                     wavetable_rate_value(value, clock_ratio)
@@ -3786,6 +3862,8 @@ impl Rack {
                     center - vec2(0.0, (radius + label_gap) * self.zoom),
                     if node.kind == "seq3" {
                         ""
+                    } else if node.kind == "stock_lfo" {
+                        stock_lfo_parameter_label(name, clock_ratio)
                     } else if node.kind == "random" {
                         random_parameter_label(name)
                     } else if wave_rate && clock_ratio {
@@ -3833,7 +3911,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if node.kind == "random" {
+                        let old_text = if node.kind == "stock_lfo" {
+                            stock_lfo_parameter_value(name, old, observed_clock)
+                        } else if node.kind == "random" {
                             random_parameter_value(name, old)
                         } else if wave_rate {
                             wavetable_rate_value(old, clock_ratio)
@@ -3958,7 +4038,11 @@ impl Rack {
                     false,
                     self.zoom,
                     is_voltage_utility(&node.kind) || node.kind == "sh_asr",
-                    if node.kind == "sh_asr" { 12.0 } else { 18.0 },
+                    if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo") {
+                        12.0
+                    } else {
+                        18.0
+                    },
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -4116,7 +4200,12 @@ impl Rack {
                         ),
                     if matches!(
                         node.kind.as_str(),
-                        "colored_noise" | "random_values" | "sh_asr" | "midi_cc" | "midi_gate"
+                        "colored_noise"
+                            | "random_values"
+                            | "sh_asr"
+                            | "midi_cc"
+                            | "midi_gate"
+                            | "stock_lfo"
                     ) {
                         12.0
                     } else {
@@ -8517,7 +8606,9 @@ fn parameter_target_matches(edit: &ParameterEdit, patch: &Patch, catalog: &Value
 }
 
 fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
-    if matches!(edit.kind.as_str(), "wavetable_lfo" | "random") && edit.parameter == "rate" {
+    if matches!(edit.kind.as_str(), "wavetable_lfo" | "random" | "stock_lfo")
+        && edit.parameter == "rate"
+    {
         (parsed / edit.display_scale).log2()
     } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
         stock_vcf_frequency_raw(parsed)
@@ -8624,6 +8715,9 @@ fn parameter_editor_contents_with_navigation(
     }
     if edit.display_scale == 0.5 {
         ui.label("Enter a clock multiplier (1 = same rate as clock).\nFree-runs until two rising edges arrive.");
+    }
+    if edit.kind == "stock_lfo" && edit.parameter == "rate" {
+        ui.label("Rate stores log2 Hz. A measured 2 Hz reference uses Hz; another measured clock uses a multiplier. Clock telemetry unavailable: enter reference Hz (2^rate). Runtime rate also follows the measured clock and FM.");
     }
     if edit.kind == "wavetable_lfo" && edit.parameter == "rate" && edit.display_scale != 0.5 {
         ui.label("Enter the free-running rate in Hz. Connecting a clock changes this control to a clock multiplier.");
@@ -9101,6 +9195,19 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if edit.kind == "stock_lfo" {
+        let suffix = if edit.parameter == "rate" {
+            edit.display_unit.as_str()
+        } else {
+            "%"
+        };
+        if text
+            .get(text.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+        {
+            text = text[..text.len() - suffix.len()].trim_end();
+        }
+    }
     if is_wavetable(&edit.kind) {
         let suffix = match edit.parameter.as_str() {
             "position" | "fm_amount" | "position_cv_amount" => "%",
@@ -9297,6 +9404,12 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "stock_lfo" => {
+            return pos2(
+                width * (index + 1) as f32 / 5.0,
+                if input { 334.0 } else { 376.0 },
+            )
+        }
         "random" => {
             return pos2(
                 if input {
@@ -10469,7 +10582,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
         "stock_vcf" => HP * 18.0,
-        "stock_delay" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
+        "stock_delay" | "stock_lfo" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
         "stock_vca" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
         "analog_vca" | "gate" => HP * 10.0,
@@ -10537,6 +10650,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "wavetable_lfo" => "WAVETABLE LFO",
         "stock_delay" => "DELAY",
         "stock_vca" => "VCA",
+        "stock_lfo" => "STOCK LFO",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -10832,6 +10946,14 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "pwm_amount",
             "linear_fm",
             "soft_sync",
+        ],
+        "stock_lfo" => &[
+            "rate",
+            "pulse_width",
+            "fm_amount",
+            "pwm_amount",
+            "offset",
+            "invert",
         ],
         "multi_lfo" => &[
             "frequency",
@@ -12637,7 +12759,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            69,
+            70,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -12756,6 +12878,7 @@ mod tests {
             "macro_voice",
             "mix6",
             "multi_lfo",
+            "stock_lfo",
             "wavetable_vco",
             "wavetable_lfo",
             "poly_viz",
@@ -12804,13 +12927,17 @@ mod tests {
                     for (name, _) in ordered_parameters(&preview.patch.nodes[0], Some(module)) {
                         if matches!(
                             (kind, name),
-                            ("mix6", "average" | "invert") | ("multi_lfo", "unipolar" | "invert")
+                            ("mix6", "average" | "invert")
+                                | ("multi_lfo", "unipolar" | "invert")
+                                | ("stock_lfo", "offset" | "invert")
                         ) {
                             continue;
                         }
                         assert!(
                             texts.iter().any(|(text, _)| text
-                                == if is_wavetable(kind) {
+                                == if kind == "stock_lfo" {
+                                    stock_lfo_parameter_label(name, false)
+                                } else if is_wavetable(kind) {
                                     wavetable_parameter_label(name)
                                 } else {
                                     parameter_label(name)
@@ -19303,6 +19430,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_lfo_ui_tests {
+        include!("stock_lfo_ui_tests.rs");
     }
     mod split_ui_tests {
         include!("split_ui_tests.rs");

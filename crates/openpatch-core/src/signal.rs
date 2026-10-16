@@ -18,6 +18,9 @@ pub struct ModuleLightState {
     /// with their published lights); no signal lamps are implied by a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
+    /// STOCK LFO's actual shared positive clock frequency, before its rate knob.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_frequency: Option<f32>,
     /// MERGE's emitted channel count, 0..=16; initially zero, updated each frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_channels: Option<u8>,
@@ -519,6 +522,7 @@ impl Signal {
             input_channels: None,
             output_channels: None,
             automatic_channels: None,
+            clock_frequency: None,
             waveform_position: None,
             count: self.light_count,
             brightness: self.lights.map(|row| row.map(|v| v as f32)),

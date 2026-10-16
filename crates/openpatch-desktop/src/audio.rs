@@ -5752,6 +5752,7 @@ mod tests {
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");
+    include!("stock_lfo_audio_tests.rs");
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
 }

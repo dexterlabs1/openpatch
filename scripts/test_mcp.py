@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 69)
+        self.assertEqual(len(catalog["modules"]), 70)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 69)
+        self.assertEqual(len(catalog["modules"]), 70)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 69)
+        self.assertEqual(len(catalog["modules"]), 70)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,72 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_lfo"]
+        self.assertEqual(descriptor["inputs"], ["fm", "pwm", "reset", "clock"])
+        self.assertEqual(descriptor["outputs"], ["sine", "triangle", "saw", "square"])
+        self.assertEqual(descriptor["params"]["offset"]["default"], 1)
+        self.assertEqual([descriptor["params"]["rate"][k] for k in ("min", "max", "default")], [-8, 10, 1])
+        for name in ["fm_amount", "pwm_amount"]:
+            self.assertEqual(descriptor["params"][name]["randomization"], "disabled")
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "lfo", "kind": "stock_lfo"}], "output": "lfo", "output_port": "sine"}})
+        original = self.patch_snapshot()
+        for port in ["sine", "triangle", "saw", "square"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "lfo", "port": port, "seconds": .001, "points": 64,
+                "expected_revision": original["revision"],
+            }))
+            values = [point["mean"] for point in trace["bins"]]
+            self.assertEqual(trace["summary"]["active_frames"], 48)
+            if port == "square":
+                self.assertEqual(values, [10] * 48)
+            else:
+                self.assertTrue(all(0 <= value < .05 for value in values), f"{port} must begin near unipolar zero")
+                self.assertTrue(all(a <= b for a, b in zip(values, values[1:])))
+        self.assertEqual(self.patch_snapshot(), original, "offline inspection is observational")
+        self.require_tool_success("set_parameter", {"id": "lfo", "parameter": "invert", "value": 1})
+        trace = self.payload(self.require_tool_success("capture_signal", {"id": "lfo", "port": "square", "seconds": .001}))
+        self.assertTrue(all(point["mean"] == 0 for point in trace["bins"]))
+        measured = self.payload(self.require_tool_success("inspect_performance"))
+        self.assertFalse(measured["supported"])
+        self.assertIsNone(measured["performance"], "headless MCP must not fabricate live clock or lamp readings")
+
+    def test_stock_lfo_presets_duplicate_persistence_and_invalid_atomic_edits(self) -> None:
+        parameters = {"rate": -2.5, "pulse_width": .25, "fm_amount": -.5,
+                      "pwm_amount": .75, "offset": 0, "invert": 1}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2,
+            "nodes": [{"id": "lfo", "kind": "stock_lfo", "params": parameters}],
+            "output": "lfo", "output_port": "triangle"}})
+        original = self.patch_snapshot()
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "lfo"}))["preset"]
+        self.assertEqual(preset["params"], parameters)
+        self.assertNotIn("clock_frequency", json.dumps(preset))
+        self.require_tool_success("save_patch", {"filename": "stock-lfo.json"})
+        duplicate = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "lfo", "new_id": "copy"}], "cable_mode": "inputs",
+            "expected_revision": original["revision"],
+        }))
+        self.assertEqual(next(n for n in duplicate["patch"]["nodes"] if n["id"] == "copy")["params"], parameters)
+        self.assertEqual(duplicate["history"]["undo_steps"], original["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], duplicate["patch"])
+        before = self.patch_snapshot()
+        for name, value in [("rate", 11), ("rate", -9), ("pulse_width", 0), ("offset", .5), ("invert", .5)]:
+            self.require_tool_error("apply_edits", {"expected_revision": before["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "lfo", "parameter": "rate", "value": 3}},
+                {"tool": "set_parameter", "arguments": {"id": "copy", "parameter": name, "value": value}},
+            ]})
+            self.assertEqual(self.patch_snapshot(), before)
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-lfo.json"}))
+        self.assertEqual(loaded["patch"], original["patch"])
+        self.require_tool_success("initialize_modules", {"ids": ["lfo"]})
+        current = self.patch_snapshot()
+        self.assertEqual(next(n for n in current["patch"]["nodes"] if n["id"] == "lfo")["params"], {
+            "rate": 1, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "offset": 1, "invert": 0})
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
     def test_split_named_outputs_silent_occupancy_and_stateless_mcp_roundtrips(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

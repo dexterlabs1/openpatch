@@ -498,3 +498,80 @@ fn aged_cable_and_module_receipts_never_reveal_late_or_restart_on_redraw() {
     assert_eq!(rack.construction_effect_counts_at(now).0, 0);
     assert_eq!(rack.construction_animation.focus.len(), 1);
 }
+
+#[test]
+fn accepted_stock_lfo_construction_edits_anchor_all_six_controls_and_manual_toggles_take_over() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    let before = patch("stock_lfo", "rate", 1.0);
+    session.replace_patch(before.clone(), None).unwrap();
+    let previous = session.revision();
+    let shared = session.into_shared();
+    let changes = [("rate", 2.0), ("pulse_width", 0.75), ("fm_amount", 0.3), ("pwm_amount", -0.4), ("offset", 0.0), ("invert", 1.0)];
+    let edits = changes.iter().map(|(name, value)| json!({"tool":"set_parameter","arguments":{"id":"target","parameter":name,"value":value}})).collect::<Vec<_>>();
+    openpatch::control::execute_shared(&shared, "start_construction", json!({"expected_revision":previous,"title":"Shape Stock LFO","interval_ms":100,"steps":[{"label":"Set all six controls","edits":edits}]})).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (after, revision, receipt) = loop {
+        let session = shared.lock().unwrap();
+        let receipt = session.construction_snapshot();
+        if receipt["completed_steps"] == 1 { break (session.patch().clone(), session.revision(), receipt); }
+        assert!(Instant::now() < deadline, "Construction did not commit: {receipt}");
+        drop(session);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(receipt["last_commit"]["parameter_changes"].as_array().unwrap().len(), 6);
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let mut rack = Rack::default();
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, previous);
+    let now = Instant::now();
+    rack.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
+    let (action, output) = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, revision);
+    assert!(action.is_none());
+    assert_eq!(rack.construction_anchors.len(), 6);
+    fn label_rect(shape: &egui::Shape, label: &str) -> Option<Rect> {
+        match shape {
+            egui::Shape::Text(t) if t.galley.text() == label => Some(Rect::from_min_size(t.pos, t.galley.size())),
+            egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| label_rect(shape, label)),
+            _ => None,
+        }
+    }
+    for (name, value) in changes {
+        let anchor = &rack.construction_anchors[&("target".into(), name.into())];
+        let label = match name { "offset" => "±5 V".into(), "invert" => "Invert".into(), _ => stock_lfo_parameter_value(name, value, None) };
+        let actual_text = output.shapes.iter().find_map(|shape| label_rect(&shape.shape, &label)).expect("Actual corresponding control text");
+        assert!(anchor.rect.contains_rect(actual_text), "{name}: cue must surround its actual control");
+        if matches!(name, "offset" | "invert") {
+            assert!(anchor.marker.is_none());
+            assert!((anchor.rect.height() - 26.0).abs() < 0.01);
+            assert_eq!((anchor.old_text.as_str(), anchor.new_text.as_str()), if name == "offset" { ("0–10 V", "±5 V") } else { ("Invert Off", "Invert On") });
+        } else {
+            assert!(matches!(anchor.marker, Some(Marker::VerticalSlider { .. })));
+        }
+    }
+    // The same accepted receipt cannot add interactive cue targets to a preview.
+    let catalog = openpatch_core::catalog();
+    let module = catalog["modules"].as_array().unwrap().iter().find(|module| module["kind"] == "stock_lfo").unwrap();
+    let mut preview = ModulePreview::new(module);
+    preview.patch = after.clone();
+    preview.renderer.positions.clear();
+    preview.renderer.positions.insert("target".into(), Pos2::ZERO);
+    preview.renderer.observe_construction_transition_at(&before, &after, previous, revision, &receipt, MotionMode::Full, now);
+    let preview_ctx = egui::Context::default();
+    let output = preview_ctx.run(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))), ..Default::default() }, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| preview.show(ui, Rect::from_min_size(pos2(24.0, 12.0), preview.size()), &catalog));
+    });
+    assert!(preview.renderer.construction_anchors.is_empty());
+    assert!(!text(&output).iter().any(|label| label.contains('→')));
+    // A real press on each mode button cancels that cue immediately; release
+    // retains the original parameter command and revision guard.
+    for (index, name) in ["offset", "invert"].into_iter().enumerate() {
+        let at = rack.construction_anchors[&("target".into(), name.into())].rect.center();
+        frame_revision_state(&ctx, &mut rack, &after, 0.2 + index as f64 * 0.2, vec![egui::Event::PointerMoved(at), button(at, true)], true, true, revision);
+        assert!(rack.construction_animation.parameter("target", "stock_lfo", name).is_none());
+        let action = frame_revision_state(&ctx, &mut rack, &after, 0.3 + index as f64 * 0.2, vec![button(at, false)], true, true, revision).0;
+        assert!(matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["expected_revision"] == revision));
+    }
+    assert_eq!(serde_json::to_value(shared.lock().unwrap().patch()).unwrap(), serde_json::to_value(&after).unwrap(), "Presentation and manual actions await host publication");
+}

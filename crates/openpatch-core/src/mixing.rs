@@ -223,6 +223,7 @@ impl Mixing {
                 input_channels: None,
                 output_channels: None,
                 automatic_channels: None,
+                clock_frequency: None,
                 waveform_position: None,
                 count: 4,
                 brightness: std::array::from_fn(|i| {

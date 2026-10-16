@@ -53,6 +53,7 @@ enum ModuleKind {
     MidiGate,
     StockVca,
     StockDelay,
+    StockLfo,
     WavetableVco,
     WavetableLfo,
 }
@@ -82,6 +83,7 @@ impl ModuleKind {
             "midi_gate" => Some(Self::MidiGate),
             "stock_vca" => Some(Self::StockVca),
             "stock_delay" => Some(Self::StockDelay),
+            "stock_lfo" => Some(Self::StockLfo),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
             _ => None,
@@ -112,6 +114,7 @@ impl ModuleKind {
             Self::MidiGate => "midi_gate",
             Self::StockVca => "stock_vca",
             Self::StockDelay => "stock_delay",
+            Self::StockLfo => "stock_lfo",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
         }
@@ -271,6 +274,7 @@ struct Meter {
     output_channels: AtomicU32,
     automatic_channels: AtomicU32,
     waveform_position: AtomicU32,
+    clock_frequency: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -295,6 +299,7 @@ impl Meter {
             output_channels: AtomicU32::new(u32::MAX),
             automatic_channels: AtomicU32::new(u32::MAX),
             waveform_position: AtomicU32::new(f32::NAN.to_bits()),
+            clock_frequency: AtomicU32::new(f32::NAN.to_bits()),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -374,6 +379,12 @@ impl Meter {
             .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
         self.waveform_position
             .store(position.unwrap_or(f32::NAN).to_bits(), Ordering::SeqCst);
+        let clock = snapshot
+            .lights
+            .and_then(|lights| lights.clock_frequency)
+            .filter(|value| value.is_finite() && *value > 0.0);
+        self.clock_frequency
+            .store(clock.unwrap_or(f32::NAN).to_bits(), Ordering::SeqCst);
         // Counts are independent optional fields in the same serial boundary.
         // Clear absent and invalid values on every packet, including no lights.
         for (slot, count) in [
@@ -448,6 +459,7 @@ impl Meter {
             let output_channels = self.output_channels.load(Ordering::SeqCst);
             let automatic_channels = self.automatic_channels.load(Ordering::SeqCst);
             let waveform_position = f32::from_bits(self.waveform_position.load(Ordering::SeqCst));
+            let clock_frequency = f32::from_bits(self.clock_frequency.load(Ordering::SeqCst));
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -489,6 +501,10 @@ impl Meter {
                         automatic_channels: (entry.kind == ModuleKind::Merge
                             && automatic_channels <= 16)
                             .then_some(automatic_channels as u8),
+                        clock_frequency: (entry.kind == ModuleKind::StockLfo
+                            && clock_frequency.is_finite()
+                            && clock_frequency > 0.0)
+                            .then_some(clock_frequency),
                         waveform_position: (waveform_position.is_finite()
                             && (0.0..=1.0).contains(&waveform_position))
                         .then_some(waveform_position),
@@ -1659,6 +1675,9 @@ impl EventReader {
                                 .and_then(|kind| engine.midi_learning(binding.handle, kind)),
                             lights: if !binding.kind.sequential() {
                                 engine.module_lights(binding.handle).map(|mut lights| {
+                                    if binding.kind != ModuleKind::StockLfo {
+                                        lights.clock_frequency = None;
+                                    }
                                     if binding.kind != ModuleKind::Merge {
                                         lights.output_channels = None;
                                         lights.automatic_channels = None;
@@ -1686,6 +1705,7 @@ mod tests {
     use super::*;
 
     include!("split_performance_tests.rs");
+    include!("stock_lfo_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
@@ -1953,6 +1973,7 @@ mod tests {
                         controls: None,
                         midi_learning: None,
                         lights: (frame % 3 != 0).then_some(ModuleLightState {
+                            clock_frequency: None,
                             count: 5,
                             manual: false,
                             brightness,

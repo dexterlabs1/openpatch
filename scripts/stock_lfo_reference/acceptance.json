@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "declared_before_first_comparison": "2026-10-15",
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "reference_source_sha256": "b25498dd4d49d2fce4673a8eaf3de97fa7ef1975e4d9bd732a308c1a1b38a9dd",
+  "rack_engine_commit": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+  "sdk_version_required": "2.6.6",
+  "sample_rates": [44100, 48000, 96000],
+  "input_protocol": {
+    "format": "76 whitespace-separated fields per processed frame; float fields round-trip f32; no frame decimation",
+    "events": {"0": "apply receiving parameters, preserve runtime, then process", "1": "fresh instance with receiving parameters, then process", "2": "apply receiving parameters, runtime Initialize without changing parameters, then process"},
+    "parameter_order": ["rate", "fm_amount", "pulse_width", "pwm_amount", "offset", "invert"],
+    "input_order": ["fm", "pwm", "reset", "clock"],
+    "port_fields": "channel count followed by all sixteen raw values; inactive slots are positive zero in every reference frame",
+    "last_field": "consumer_mask: bit0 sine, bit1 triangle, bit2 saw, bit3 square",
+    "parameter_changes": "SDK assigns actual params in place; production probe rebuilds with receiving params and adopts previous runtime. No comparison adapter may duplicate oscillator arithmetic.",
+    "consumer_adapter": "On each output connection transition only, SDK adapter assigns channels=1 when connecting and channels=0 when disconnecting. The actual LFO then controls connected output widths via setChannels; it does not process disconnected waveform writes. Production reports zero channels for disconnected outputs."
+  },
+  "output_protocol": {
+    "fields": 109,
+    "order": ["four output channel counts", "four output-major arrays of sixteen voltages", "sixteen phases", "sixteen reset-high booleans", "scalar clock-trigger state: LOW=0 HIGH=1 UNINITIALIZED=2", "clock_frequency", "clock_timer", "light_divider", "five lights: phase R,G,B,invert,offset"],
+    "initial_snapshot": "Before the first process of every fresh case independently assert phases=0, reset-high=true, scalar clock-trigger=UNINITIALIZED, clock_frequency=1, clock_timer=0, divider=0 and five lights=0. Initial connected output counts depend on the adapter, so are not an oscillator initial-state assertion."
+  },
+  "numeric_gate": {
+    "sine_absolute_tolerance_volts": 0.000003,
+    "sine_relative_tolerance": 0,
+    "sine_rationale": "Predeclared engineering error budget for SDK SSE Cephes sine versus production f32 sine. Identical phase state and f32 angle construction are required. Phase keeps the sine argument within [-pi/2,2*pi); argument reduction is small. The 3 microvolt budget allows several f32 rounding units across the unit sine and 5 V scale/offset arithmetic. This is a qualification threshold, not a proved libm/SDK error guarantee; a failure must be reported, never fitted away.",
+    "exact": "Every frame: all four output counts; every connected active triangle, saw and square sample in exact f32 bits including signed zero; all sixteen phases, all sixteen reset states, scalar clock state, clock frequency, timer, divider and five light values in exact bits/integer equality. Sine samples must be finite and within the predeclared absolute budget with no alignment or warmup exclusion.",
+    "independent_checks": "Each implementation independently: output count is max(1,FM width) when connected and zero when disconnected; phases finite in [0,1); output values finite, within [-5,5] bipolar or [0,10] unipolar plus sine tolerance; explicit per-case anchors; divider follows frame index modulo16 despite Initialize; lights unchanged between divider updates; on divider updates invert/offset equal current params, poly phase RGB equals [0,0,1], mono R=G and B=0. Fresh snapshot assertions precede processing.",
+    "excluded_storage": "Only disconnected output voltages and inactive output voltage slots are outside numeric comparison; their channel counts and all internal phases/triggers/lights remain compared. No active sample, frame, reset/clock state, light update or difficult corner is excluded. SDK SIMD writes inactive quartet storage whereas host output frames zero-pad it.",
+    "required_flags": "No fast-math or floating-point contraction; retain actual compiler flags, target/FPU environment, SDK headers/library and probe binaries. Do not set sample_time independently of 1.f/sample_rate."
+  },
+  "reference_domain": {
+    "definition": "Every processed SIMD lane has finite effective pitch p=f32(rate+f32(FM*fm_amount)); b=f32(p+127) is in [0,256). This includes biased integer exponents 0..255 in the actual SIMD exp2Floor: zero and positive infinity are intentional endpoint cases. Raw inactive input slots are positive zero, including rounded-up SIMD lanes.",
+    "pitch_endpoints": [-127.0, 128.99998474121094],
+    "zero_exponent": "For b in [0,1), exp2Floor yields zero, not mathematical subnormal exp2. This defined source corner is included, including p=-127 exactly.",
+    "high_corner": "Biased exponent255 produces positive infinity, including effective pitch128, and finite exp2 can overflow when multiplied by accepted clock_frequency/2. Positive infinity is defined intermediate behavior and fmin(delta,0.5) caps phase advancement. Include both cases; do not exclude them.",
+    "safety_boundary": "Negative biased exponents, wrapped exponent bits, out-of-range float-to-integer conversions, and nonfinite inputs are outside the frozen numerical domain. LFO uses SIMD intrinsic conversion/shift, not the scalar specialization's C++ signed shift; outside-domain behavior is not categorically called C++ undefined behavior. It can yield zero, negative or nonfinite approximations. Separate Rust-only safety rows require finite bounded output and state; they never execute the SDK oracle and never count as reference passes."
+  },
+  "clock_reachability": {
+    "timer_type": "Rack dsp::Timer is TTimer<float>, adding f32 sample_time only while clock width is nonzero",
+    "fixed_points_seconds": {"44100": 512, "48000": 512, "96000": 256},
+    "proof": "At the listed power-of-two timer value, half an f32 ULP exceeds f32(1/rate), so round-to-nearest addition returns the same value. Monotonic nonnegative additions from zero cannot pass that fixed point. Thus any nonzero measured reciprocal is at least 1/512 or 1/256, strictly above .001 Hz. The slow-rejection branch is unreachable from fresh/Initialize state at these rates without private timer injection or a different time step.",
+    "covered": "High-at-start arming, low/high exact and adjacent thresholds, rejected >1000Hz intervals that still reset timer, accepted boundary-adjacent intervals, tempo changes, poly clock channel-zero-only behavior, missing pulses, disconnect timer/detector retention, reconnect, and runtime Initialize retaining trigger states and divider/lights.",
+    "not_claimed": "No injected timer state and no claim to have executed the unreachable <.001Hz rejection branch. A 65536-frame missing-pulse segment tests ordinary accumulated timer state at every frame."
+  },
+  "fixture_plan": {
+    "rate_values": [-8, -2.75, 0, 1, 3.25, 7, 10],
+    "widths": [0, 1, 3, 4, 5, 16],
+    "waveform_frames": 129,
+    "long_missing_clock_frames": 65536,
+    "maximum_reference_frames_per_rate": 200000,
+    "safety_gate": "Rust only: all returned output counts follow consumer/width contract; every phase, timer, clock frequency, light and connected active output is finite; phases in [0,1), lights in [0,1], clock_frequency in [.001,1000] or source initial/default values; waveforms obey mode bounds. Safety behavior is not a numerical reference result.",
+    "lifecycle_boundary": "Direct exact production StockLfoProbe and actual class, same persistent instance per case. Parameter changes preserve runtime. Runtime Initialize is the actual module reset callback, not host UI reset-to-default parameters. Host graph adoption, bypass, telemetry transport, audio device behavior and rendering require separate tests."
+  }
+}

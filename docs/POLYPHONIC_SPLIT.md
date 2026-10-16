@@ -75,4 +75,4 @@ sixteen output values match the actual pinned SDK class exactly; raw diagnostic
 slots have no exclusions. Independent checks verified 786 retained artifacts,
 73 production source files, and 668 SDK headers. This records the specified
 compiler/SDK/platform and fixture domain; it is not hardware qualification or
-an unrestricted host-compatibility claim. Native capture qualification is pending.
+an unrestricted host-compatibility claim. All 115 native PNG files passed integrity checks; the new normal/dark/browser views and changed prior views were reviewed, and all three platform CI jobs passed in [PR10](https://github.com/dexterlabs1/openpatch/pull/10).
