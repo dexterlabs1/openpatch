@@ -17,6 +17,12 @@ pub struct ModuleLightState {
     /// Input channel count for SUM and VIZ, latched with their published lights.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
+    /// MERGE's emitted channel count, 0..=16; initially zero, updated each frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_channels: Option<u8>,
+    /// MERGE's highest occupied input slot, 0..=16, independent of its override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub automatic_channels: Option<u8>,
     /// Actual CV-influenced normalized wavetable position, for shared panels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform_position: Option<f32>,
@@ -510,6 +516,8 @@ impl Signal {
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
             input_channels: None,
+            output_channels: None,
+            automatic_channels: None,
             waveform_position: None,
             count: self.light_count,
             brightness: self.lights.map(|row| row.map(|v| v as f32)),

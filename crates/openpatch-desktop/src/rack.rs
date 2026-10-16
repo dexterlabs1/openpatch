@@ -3102,33 +3102,9 @@ impl Rack {
                     continue;
                 }
                 if node.kind == "poly_merge" && *name == "channels" {
-                    painter.text(
-                        point(20.0, 330.0),
-                        Align2::LEFT_CENTER,
-                        "CHANNELS",
-                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
-                        INK,
-                    );
-                    if let Some(edit) = self.compact_parameter(
-                        ui,
-                        node,
-                        name,
-                        spec,
-                        Rect::from_min_size(
-                            point(width - 100.0, 318.0),
-                            vec2(75.0, 24.0) * self.zoom,
-                        ),
-                        "",
-                    ) {
+                    if let Some(edit) = self.merge_panel(ui, node, rect) {
                         action = Some(edit);
                     }
-                    painter.text(
-                        point(width * 0.5, 305.0),
-                        Align2::CENTER_CENTER,
-                        "0 = auto from connected inputs",
-                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
-                        MUTED,
-                    );
                     continue;
                 }
                 if node.kind == "multi_vco" && matches!(*name, "linear_fm" | "soft_sync") {
@@ -7094,6 +7070,148 @@ impl Rack {
         action
     }
 
+    /// MERGE uses the same panel in the rack and library; channel counts are
+    /// runtime measurements and are never inferred from saved cable topology.
+    fn merge_panel(&mut self, ui: &mut egui::Ui, node: &Node, rect: Rect) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let painter = ui.painter().clone();
+        let measured = self.module_lights.get(&node.id);
+        let output = measured
+            .and_then(|state| state.output_channels)
+            .filter(|count| *count <= 16);
+        let automatic = measured
+            .and_then(|state| state.automatic_channels)
+            .filter(|count| *count <= 16);
+        // The output socket/label occupy the center of this lower row. Its
+        // left and right gutters keep the measured readout clear of all sixteen
+        // inputs and the fixed Channels control, including full font line boxes.
+        painter.text(
+            point(20.0, 356.0),
+            Align2::LEFT_CENTER,
+            "OUTPUT CHANNELS",
+            crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
+            INK,
+        );
+        let screen = Rect::from_min_size(point(200.0, 345.0), vec2(75.0, 22.0) * zoom);
+        let screen_start = crate::lighting::next(&painter);
+        painter.rect_filled(screen, 2.0 * zoom, Color32::from_rgb(20, 31, 31));
+        painter.text(
+            screen.center(),
+            Align2::CENTER_CENTER,
+            output.map_or_else(|| "—".to_owned(), |count| count.to_string()),
+            crate::panel_skin::print_font(ui.ctx(), 14.0 * zoom),
+            if output.is_some() {
+                Color32::from_rgb(155, 220, 197)
+            } else {
+                Color32::from_rgb(135, 145, 138)
+            },
+        );
+        if output.is_some() {
+            self.lighting.preserve(&painter, screen_start);
+        }
+        ui.interact(screen, ui.id().with((&node.id, "merge-output-count")), Sense::hover())
+            .on_hover_text(if output.is_some() {
+                "Measured output channels. Zero means the running engine publishes a zero-channel output."
+            } else {
+                "Output channel telemetry unavailable. The saved patch does not determine the live count."
+            });
+        painter.text(
+            point(20.0, 330.0),
+            Align2::LEFT_CENTER,
+            "CHANNELS",
+            crate::panel_skin::print_font(ui.ctx(), 12.0 * zoom),
+            INK,
+        );
+        let control = Rect::from_min_size(point(200.0, 318.0), vec2(75.0, 24.0) * zoom);
+        let old = node.params.get("channels").copied().unwrap_or(0.0);
+        let mut value = old;
+        let label = merge_channels_label(old);
+        let response = ui
+            .scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(control)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .id_salt((&node.id, "merge-channels")),
+                |ui| {
+                    *ui.visuals_mut() = egui::Visuals::light();
+                    crate::panel_skin::control_style(ui, zoom);
+                    ui.style_mut().override_font_id =
+                        Some(crate::panel_skin::print_font(ui.ctx(), 12.0 * zoom));
+                    let spacing = ui.spacing_mut();
+                    spacing.button_padding = vec2(6.0, 3.0) * zoom;
+                    spacing.icon_width = 14.0 * zoom;
+                    spacing.icon_width_inner = 8.0 * zoom;
+                    spacing.icon_spacing = 4.0 * zoom;
+                    spacing.interact_size = vec2(40.0, 18.0) * zoom;
+                    spacing.item_spacing = vec2(8.0, 3.0) * zoom;
+                    egui::ComboBox::from_id_salt("choice")
+                        .width(control.width())
+                        .height(420.0 * zoom)
+                        .wrap_mode(egui::TextWrapMode::Truncate)
+                        .selected_text(&label)
+                        .show_ui(ui, |ui| {
+                            ui.set_min_width(130.0 * zoom);
+                            let auto = automatic.map_or_else(
+                                || "Auto".to_owned(),
+                                |count| format!("Auto · {count} channels"),
+                            );
+                            ui.selectable_value(&mut value, 0.0, auto);
+                            ui.selectable_value(&mut value, -1.0, "0");
+                            for count in 1..=16 {
+                                ui.selectable_value(&mut value, count as f32, count.to_string());
+                            }
+                        })
+                        .response
+                },
+            )
+            .inner;
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::ComboBox,
+                ui.is_enabled(),
+                format!("{} channels, {}", node.id, label),
+            )
+        });
+        let revision_id = response.id.with("opening-revision");
+        if response.clicked() {
+            let revision = self.observed_revision;
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(revision_id, revision));
+        }
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, "channels")
+        {
+            self.register_construction_anchor(
+                ui,
+                node,
+                "channels",
+                crate::construction_motion::Anchor {
+                    rect: control,
+                    old_text: merge_channels_label(cue.old),
+                    new_text: merge_channels_label(cue.new),
+                    marker: None,
+                },
+                &[response.id],
+            );
+        }
+        if value == old {
+            return None;
+        }
+        let revision = ui
+            .ctx()
+            .data(|data| data.get_temp::<u64>(revision_id))
+            .unwrap_or(self.observed_revision);
+        self.select_primary(node.id.clone());
+        Some(RackAction::Command(
+            "set_parameter",
+            json!({
+                "id":node.id, "parameter":"channels", "value":value, "expected_revision":revision,
+            }),
+        ))
+    }
+
     fn choice_parameter(
         &mut self,
         ui: &mut egui::Ui,
@@ -9997,6 +10115,16 @@ fn cable_color(source: &str, port: &str) -> Color32 {
             (hash ^ byte as u32).wrapping_mul(16777619)
         });
     CABLES[hash as usize % CABLES.len()]
+}
+
+fn merge_channels_label(value: f32) -> String {
+    if value == 0.0 {
+        "Auto".to_owned()
+    } else if value == -1.0 {
+        "0".to_owned()
+    } else {
+        format!("{value:.0}")
+    }
 }
 
 /// Only explicit bus sources have a known static channel count. Propagated or
@@ -19136,6 +19264,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod merge_ui_tests {
+        include!("merge_ui_tests.rs");
     }
     mod stock_vca_ui_tests {
         include!("stock_vca_ui_tests.rs");

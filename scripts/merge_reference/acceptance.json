@@ -1,0 +1,20 @@
+{
+  "declared_before_first_comparison": "2026-10-15",
+  "reference_commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+  "reference_source_sha256": "99173e5bc081a423e6a6e61f96bb54e4f68815c7ee87419cf85bcd7aaabdf932",
+  "sample_rates": [44100, 48000, 96000],
+  "wire_configurations": [0, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+  "single_slot_cases": 272,
+  "seeded_mixed_cases": 32,
+  "mixed_seed": 1779033703,
+  "maximum_absolute_active_volts": 16,
+  "rows_per_rate": 5472,
+  "total_rows": 16416,
+  "fields_per_input_row": 273,
+  "fields_per_output_row": 18,
+  "gate": "Every output count and automaticChannels exact against both implementations and independent fixture-derived counts; every active voltage exact f32 bits; all Rust inactive output values zero; every row finite; no tolerances, exclusions, alignment or fitted acceptance",
+  "rust_frames_per_fresh_graph": 2,
+  "lifecycle": "Each row is a fresh graph/class; two Rust frames settle one cable. Adoption, bypass, initialization and callback lifecycle are qualified separately by core tests.",
+  "inactive_sdk_output": "Raw SDK inactive slots are retained in traces but excluded from voltage parity: Merge writes all sixteen SDK output lanes even with a forced shorter count. Rust inactive slots must be zero.",
+  "inactive_input_protocol": "Poisoned protocol padding is ignored by both adapters: SDK inactive lanes and Rust inactive poly_constant parameters are zeroed. The public Engine probe does not directly inject poisoned PortFrame padding."
+}

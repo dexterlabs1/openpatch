@@ -54,6 +54,59 @@ fn process_block_allocates_nothing_even_on_first_callback() {
 }
 
 #[test]
+fn merge_first_callback_adoption_initialization_and_telemetry_allocate_nothing() {
+    use openpatch_core::{Patch, PortFrame};
+    let patch: Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"source","kind":"poly_constant","params":{"channels":16,"v1":5}},
+                 {"id":"merge","kind":"poly_merge"}],
+        "cables":[{"from":"source","to":"merge","input":"in16"}],"output":"merge"
+    }))
+    .unwrap();
+    let mut zero_patch = patch.clone();
+    zero_patch.nodes[1].params.insert("channels".into(), -1.0);
+    let mut bypass_patch = zero_patch.clone();
+    bypass_patch.nodes[1].bypassed = true;
+    let mut old = patch.compile().unwrap();
+    let mut receiving = zero_patch.compile().unwrap();
+    let mut bypassed = bypass_patch.compile().unwrap();
+    let handle = receiving.resolve_module_lights("merge").unwrap();
+    let bypass_handle = bypassed.resolve_module_lights("merge").unwrap();
+    let mut frames = [PortFrame::default(); 1025];
+    ALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for length in [0, 1, 3, 64, 127, 128, 129, 1025] {
+        old.process_poly_block(&mut frames[..length]);
+        receiving.adopt_state_from(&old);
+        receiving.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(receiving.module_lights(handle));
+        bypassed.adopt_state_from(&receiving);
+        bypassed.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(bypassed.module_lights(bypass_handle));
+    }
+    let initialized = receiving.initialize_module_state(handle);
+    receiving.process_poly_block(&mut frames);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert!(initialized);
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(
+        receiving.module_lights(handle).unwrap().output_channels,
+        Some(16)
+    );
+    assert_eq!(
+        receiving.module_lights(handle).unwrap().automatic_channels,
+        Some(16)
+    );
+    assert_eq!(
+        bypassed
+            .module_lights(bypass_handle)
+            .unwrap()
+            .output_channels,
+        Some(0)
+    );
+}
+
+#[test]
 fn sum_meter_and_channel_telemetry_allocate_nothing() {
     use openpatch_core::{Patch, PortFrame};
     let patch: Patch = serde_json::from_value(serde_json::json!({

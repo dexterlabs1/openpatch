@@ -221,6 +221,8 @@ impl Mixing {
         match self {
             Self::Vca(v) => Some(ModuleLightState {
                 input_channels: None,
+                output_channels: None,
+                automatic_channels: None,
                 waveform_position: None,
                 count: 4,
                 brightness: std::array::from_fn(|i| {

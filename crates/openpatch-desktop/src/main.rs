@@ -117,6 +117,9 @@ fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     let options = eframe::NativeOptions {
+        // Capture runs render every requested scene without waiting for a
+        // display refresh. Interactive windows keep the default vsync behavior.
+        vsync: smoke_test.is_none(),
         viewport: eframe::egui::ViewportBuilder::default()
             .with_icon(
                 eframe::icon_data::from_png_bytes(include_bytes!("../assets/openpatch.png"))

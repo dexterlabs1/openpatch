@@ -44,6 +44,8 @@ impl Viz {
         ModuleLightState {
             count: 16,
             input_channels: Some(self.channels),
+            output_channels: None,
+            automatic_channels: None,
             waveform_position: None,
             brightness: self.brightness,
             manual: false,

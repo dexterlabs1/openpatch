@@ -71,6 +71,8 @@ impl Sum {
         ModuleLightState {
             count: 6,
             input_channels: Some(self.channels),
+            output_channels: None,
+            automatic_channels: None,
             waveform_position: None,
             brightness: std::array::from_fn(|i| {
                 [self.brightness.get(i).copied().unwrap_or(0.0), 0.0]

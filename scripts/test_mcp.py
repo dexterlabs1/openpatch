@@ -949,6 +949,70 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(restored["patch"]["version"], 1)
         self.assertEqual(len(restored["patch"]["nodes"]), 1)
 
+    def test_merge_forced_zero_preserves_legacy_auto_and_atomic_history(self) -> None:
+        module = next(m for m in self.payload(self.require_tool_success("catalog"))["modules"]
+                      if m["kind"] == "poly_merge")
+        self.assertEqual(module["params"]["channels"]["values"], [0, -1, *range(1, 17)])
+        self.assertEqual(module["params"]["channels"]["labels"], ["Auto", *map(str, range(17))])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 3, "v1": 5, "v2": -13}},
+            {"id": "merge", "kind": "poly_merge"}], "cables": [
+                {"from": "source", "to": "merge", "input": "in16"}], "output": "merge"}})
+        auto = self.patch_snapshot()
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "merge", "seconds": 0.001}))
+        self.assertEqual(measured["max_channels"], 16)
+        self.assertEqual(measured["channels"][15]["peak"], 5)
+        self.require_tool_success("set_parameter", {"id": "merge", "parameter": "channels", "value": -1,
+                                                    "expected_revision": auto["revision"]})
+        zero = self.patch_snapshot()
+        self.assertEqual(zero["history"]["undo_steps"], auto["history"]["undo_steps"] + 1)
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "merge", "seconds": 0.001}))
+        self.assertEqual(measured["max_channels"], 0)
+        self.assertEqual(measured["channels"], [])
+        for value in [-2, -0.5, 0.5, 17]:
+            self.require_tool_error("set_parameter", {"id": "merge", "parameter": "channels", "value": value})
+            self.assertEqual(self.patch_snapshot(), zero)
+        self.require_tool_error("set_parameter", {"id": "merge", "parameter": "channels", "value": 16,
+                                                 "expected_revision": auto["revision"]})
+        self.assertEqual(self.patch_snapshot(), zero)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], auto["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], zero["patch"])
+        # Older clients can still select Auto through the existing zero value.
+        self.require_tool_success("set_parameter", {"id": "merge", "parameter": "channels", "value": 0})
+        measured = self.payload(self.require_tool_success("analyze_signal", {"id": "merge", "seconds": 0.001}))
+        self.assertEqual(measured["max_channels"], 16)
+
+    def test_merge_selection_survives_presets_duplication_files_and_initialize(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "merge", "kind": "poly_merge", "params": {"channels": -1}},
+            {"id": "target", "kind": "poly_merge", "params": {"channels": 7}}]}})
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "merge"}))["preset"]
+        self.assertEqual(preset["params"]["channels"], -1)
+        self.require_tool_success("save_module_preset", {"filename": "zero.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "zero.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.require_tool_success("apply_module_preset", {"id": "target", "preset": reviewed})
+        self.require_tool_success("duplicate_modules", {"modules": [{"id": "merge", "new_id": "copy"}],
+                                                       "cable_mode": "none"})
+        saved_patch = self.patch_snapshot()["patch"]
+        self.assertTrue(all(n["params"]["channels"] == -1 for n in saved_patch["nodes"]))
+        self.require_tool_success("save_patch", {"filename": "merge.json"})
+        self.require_tool_success("randomize_modules", {"ids": ["merge", "target", "copy"], "seed": 719})
+        self.assertEqual(self.patch_snapshot()["patch"], saved_patch)
+        self.require_tool_success("initialize_modules", {"ids": ["merge"]})
+        initialized = self.patch_snapshot()
+        nodes = {n["id"]: n for n in initialized["patch"]["nodes"]}
+        self.assertEqual(nodes["merge"]["params"]["channels"], 0)
+        self.assertEqual(nodes["target"]["params"]["channels"], -1)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], saved_patch)
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], initialized["patch"])
+        self.require_tool_success("load_patch", {"filename": "merge.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], saved_patch)
+
     def test_poly_sum_level_contract_edits_and_persistence(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog", {}))
         module = next(m for m in catalog["modules"] if m["kind"] == "poly_sum")

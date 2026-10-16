@@ -53,6 +53,7 @@ pub use midi_cc::{initial_midi_cc_state, MidiCcLearnCompletion};
 pub use midi_gate::initial_midi_gate_state;
 pub use midi_learn::{MidiLearnCompletion, MidiLearnKind};
 mod macro_voice;
+mod merge;
 mod mixing;
 mod modal_resonator;
 mod multi_lfo;

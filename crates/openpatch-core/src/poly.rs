@@ -291,7 +291,7 @@ pub(crate) fn catalog() -> [Value; 9] {
         json!({"kind":"audio_stereo","title":"STEREO AUDIO","model":"functional","description":"Unity-sum polyphony independently on left/right, divide voltages by 10, multiply gain. Right normalizes to left only when disconnected or zero-channel. Selecting out explicitly renders stereo.","inputs":["left","right"],"params":{"gain":{"default":1.0,"min":0.0,"max":2.0},"dc_block":{"default":0.0,"min":0.0,"max":1.0,"step":1.0,"values":[0,1],"labels":["Off","On"],"description":"Optional bilinear 10 Hz DC blocker; defaults off for older patches"}}}),
         constants,
         json!({"kind":"poly_split","title":"SPLIT","model":"functional","description":"Split channels 1–16 into named mono outputs out1..out16. Missing channels produce mono zero.","inputs":["signal"],"params":{}}),
-        json!({"kind":"poly_merge","title":"MERGE","model":"functional","description":"Take channel zero of in1..in16 into one polyphonic output. channels=0 auto uses the highest nonzero-channel input; holes are preserved as zero. Override 1–16 forces channel count.","inputs":(1..=16).map(|i|format!("in{i}")).collect::<Vec<_>>(),"params":{"channels":{"default":0.0,"min":0.0,"max":16.0,"step":1.0}}}),
+        json!({"kind":"poly_merge","title":"MERGE","model":"functional","description":"Take channel zero of in1..in16 into one polyphonic output. Omitted channels or channels=0 selects Auto: highest input with a nonzero channel count, including zero volts. channels=-1 forces zero output channels; 1–16 forces that count. Holes and inactive output slots are zero.","inputs":(1..=16).map(|i|format!("in{i}")).collect::<Vec<_>>(),"params":{"channels":{"default":0.0,"min":-1.0,"max":16.0,"step":1.0,"values":std::iter::once(0).chain(std::iter::once(-1)).chain(1..=16).collect::<Vec<_>>(),"labels":std::iter::once("Auto".to_owned()).chain((0..=16).map(|i|i.to_string())).collect::<Vec<_>>()}}}),
         json!({"kind":"poly_viz","title":"VIZ","model":"functional","description":"Sixteen paired polarity lights visualize polyphonic signal voltages. Samples and publishes every 16 frames with immediate attack and 30/s Euler release; bypass freezes lights and channel count.","inputs":["signal"],"params":{}}),
         json!({"kind":"poly_sum","title":"SUM","model":"functional","description":"Sum all active signal channels with a master level into one mono output. Empty signal produces mono zero; final arithmetic bound ±1,000,000 V. Six post-level peak meter bands relative to 10 V, with instant attack and 0.1-second Euler release. Meter samples every 16 frames; channel count and lights publish every 512 frames and freeze while bypassed.","inputs":["signal"],"params":{"level":{"default":1.0,"min":0.0,"max":1.0}}}),
     ]
@@ -455,6 +455,18 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         },
     };
     module["polyphony"] = json!({"version_1":"mono", "version_2":policy, "maximum_channels":16,"auxiliary_inputs":"mono broadcasts; missing short-poly channels are zero; zero-channel ports normalize as disconnected","retired_voices":"reset on retirement and activation"});
+    if kind == "poly_merge" {
+        module["polyphony"]["auxiliary_inputs"] = json!("only channel zero of each actual input frame; zero-channel frames are disconnected, short inputs never broadcast between slots");
+        module["polyphony"]["retired_voices"] =
+            json!("stateless voltages; inactive output slots zero every frame");
+        module["functional_reference"] = json!("https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Merge.cpp");
+        module["light_names"] = json!([]);
+        module["light_policy"] = json!({"output_channels":"Some(0..16), initially 0; emitted count updated every processed frame", "automatic_channels":"Some(0..16), initially 0; highest actual nonzero-channel input slot regardless of override", "indicators":"no LED indicators; count=0, brightness all zero", "bypass":"host bypass freezes observations", "state_adoption":"same identity/kind/rate preserves observed counts; receiving configuration wins; fresh incarnation and sample rate changes reset observations"});
+        module["initialization_policy"] = json!(
+            "restore channels=0 (Auto); preserve observed counts until the next processed frame"
+        );
+        module["compatibility"] = json!("original Rust behavioral implementation; OpenPatch saved encoding 0=Auto, -1=forced zero, 1..16=forced count; bounded host channel semantics and one sample per cable; no source binary or hardware parity claim");
+    }
     let primary = match kind.as_str() {
         "poly_constant" | "poly_merge" | "midi_cv" | "midi_cc" | "midi_gate" | "audio_stereo" => {
             Value::Null
@@ -625,7 +637,7 @@ enum Model {
     },
     Constant(PortFrame),
     Split,
-    Merge(u8),
+    Merge(crate::merge::Merge),
     Sum(crate::sum::Sum),
     Viz(crate::viz::Viz),
     Midi(Box<MidiCv>),
@@ -795,7 +807,7 @@ impl Model {
                     Self::Constant(frame)
                 }
                 "poly_split" => Self::Split,
-                "poly_merge" => Self::Merge(integer(node, "channels", 0.0)?),
+                "poly_merge" => Self::Merge(crate::merge::Merge::build(node)?),
                 "poly_viz" => Self::Viz(crate::viz::Viz::new(rate)),
                 "poly_sum" => Self::Sum(crate::sum::Sum::build(node, rate)?),
                 _ => unreachable!(),
@@ -1023,6 +1035,7 @@ impl PolyEngine {
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
+            Some(Model::Merge(m)) => Some(m.lights()),
             Some(Model::Sum(s)) => Some(s.lights()),
             Some(Model::Viz(v)) => Some(v.lights()),
             Some(Model::MidiGate(m)) => Some(m.lights()),
@@ -1341,6 +1354,7 @@ impl PolyEngine {
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
+            Model::Merge(m) => m.initialize_state(),
             Model::ModalResonator(s) => s.reset_state(),
             Model::MacroVoice(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
@@ -2132,22 +2146,14 @@ impl PolyEngine {
                             PortFrame::mono(a.channel(channel));
                     }
                 }
-                Model::Merge(override_count) => {
-                    let mut frame = PortFrame::default();
-                    for input in 0..16 {
-                        if let Some(edge) = node.inputs[input] {
-                            let source = self.input_frames[edge];
-                            if source.channels > 0 {
-                                frame.channels = (input + 1) as u8;
-                                frame.values[input] = source.values[0];
-                            }
+                Model::Merge(merge) => {
+                    let mut inputs = [PortFrame::default(); 16];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
                         }
                     }
-                    if *override_count > 0 {
-                        frame.channels = *override_count;
-                    }
-                    frame.values[frame.channels as usize..].fill(0.0);
-                    self.outputs[node.output_start] = frame;
+                    self.outputs[node.output_start] = merge.process(&inputs);
                 }
                 Model::Viz(v) => v.process(a),
                 Model::Sum(s) => {
@@ -2456,6 +2462,7 @@ impl PolyEngine {
             match (&mut node.model, &previous.model) {
                 (Model::ColoredNoise(s), Model::ColoredNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
+                (Model::Merge(m), Model::Merge(old)) => m.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
                 (Model::Viz(v), Model::Viz(old)) => v.adopt(old),
                 (Model::Scope(s), Model::Scope(old)) => s.adopt(old, scope_routes_unchanged),

@@ -1,0 +1,12 @@
+{
+  "acceptance_sha256": "2d059b31899b0bd56ded86a75fbf573400ba68d633cc93b8eea8a9e26ac05a21",
+  "declaration": "Frozen before first oracle comparison; generator and acceptance are immutable",
+  "generator_sha256": "d51adc7a3414607c0c4b54bfca91eed7788a5ac67494381ee0d9b6976f601e29",
+  "input_sha256": {
+    "44100": "f483218546fca7101d409cc8120598c187a50d496983d671ef000d22c329d820",
+    "48000": "f483218546fca7101d409cc8120598c187a50d496983d671ef000d22c329d820",
+    "96000": "f483218546fca7101d409cc8120598c187a50d496983d671ef000d22c329d820"
+  },
+  "rows_per_rate": 5472,
+  "total_rows": 16416
+}

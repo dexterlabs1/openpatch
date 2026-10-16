@@ -5236,6 +5236,71 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · accepted events, envelope and interpolated Scope traces · no live audio".into();
     }
 
+    fn prepare_merge_fixture(&mut self) -> BTreeMap<String, openpatch_core::ModuleLightState> {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"source","kind":"poly_constant","params":{"channels":3,"v1":4,"v2":-13}},
+                {"id":"silent","kind":"poly_constant","params":{"channels":1,"v1":0}},
+                {"id":"auto","kind":"poly_merge"},
+                {"id":"zero","kind":"poly_merge","params":{"channels":-1}},
+                {"id":"eight","kind":"poly_merge","params":{"channels":8}}],
+            "cables":[
+                {"from":"source","to":"auto","input":"in1"},
+                {"from":"silent","to":"auto","input":"in12"},
+                {"from":"source","to":"zero","input":"in1"},
+                {"from":"silent","to":"zero","input":"in12"},
+                {"from":"source","to":"eight","input":"in1"},
+                {"from":"silent","to":"eight","input":"in12"}],"output":"auto"}))
+        .expect("Merge count fixture");
+        let mut engine = patch.compile().expect("Merge fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let taps =
+            ["auto", "zero", "eight"].map(|id| Some(engine.resolve_tap(id, "out", 0).unwrap()));
+        let mut audio = [[0.0; 2]; 64];
+        let mut observed = [[openpatch_core::TapSample::default(); 3]; 64];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut observed);
+        let mut lights = BTreeMap::new();
+        for (index, (id, expected)) in [("auto", 12), ("zero", 0), ("eight", 8)]
+            .into_iter()
+            .enumerate()
+        {
+            let state = engine
+                .module_lights(engine.resolve_module_lights(id).unwrap())
+                .unwrap();
+            assert_eq!(state.output_channels, Some(expected));
+            assert_eq!(state.automatic_channels, Some(12));
+            assert_eq!(state.count, 0);
+            assert_eq!(observed[63][index].active, expected > 0);
+            assert_eq!(
+                observed[63][index].value,
+                if expected > 0 { 4.0 } else { 0.0 }
+            );
+            lights.insert(id.to_owned(), state);
+        }
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],
+            "positions":{"auto":[0,0],"zero":[330,0],"eight":[660,0],
+                "source":[0,420],"silent":[390,420]}}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights.clone(), BTreeMap::new());
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Merge · Auto, zero, and eight channels".into();
+        self.status = "Actual offline Engine counts: 12 / 0 / 8 · silent occupied input 12 counts in Auto · first input lane only · no live audio".into();
+        lights
+    }
+
     fn prepare_wavetable_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
@@ -6920,6 +6985,24 @@ impl OpenPatch {
             assert!(area.last_became_visible_at.is_some());
             assert_eq!(ctx.style().animation_time, 0.160);
         }
+        if frame == 2430 {
+            egui::Popup::close_all(ctx);
+            self.prepare_merge_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2448 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Merge · lights out · measured 12 / 0 / 8 counts emit; explicit zero is an observed value · no live audio".into();
+        }
+        if frame == 2464 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("poly_merge", &self.catalog));
+            self.title = "Merge · shared library faceplate".into();
+            self.status = "The browser uses the same Merge panel; its unavailable count is distinct from the actual rack snapshots".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7042,6 +7125,9 @@ impl OpenPatch {
                 | 2400
                 | 2406
                 | 2418
+                | 2440
+                | 2456
+                | 2472
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -7168,7 +7254,10 @@ impl OpenPatch {
                 105 => path.with_file_name("rack-weak-scope-manual.png"),
                 106 => path.with_file_name("menu-motion-opening.png"),
                 107 => path.with_file_name("menu-motion-mid.png"),
-                _ => path.with_file_name("menu-motion-settled.png"),
+                108 => path.with_file_name("menu-motion-settled.png"),
+                109 => path.with_file_name("rack-merge.png"),
+                110 => path.with_file_name("rack-merge-lights-out.png"),
+                _ => path.with_file_name("merge-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7179,18 +7268,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/109 at frame {frame}: {}",
+                "Native smoke: capture {}/112 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 109 {
+            if captures == 112 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2460, "Native screenshot timeout");
+        assert!(frame < 2500, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7294,8 +7383,12 @@ impl eframe::App for OpenPatch {
         let menu_motion_capture = self
             .smoke_test
             .as_ref()
-            .is_some_and(|(_, frame, _)| *frame >= 2396);
-        if menu_motion_capture {
+            .is_some_and(|(_, frame, _)| (2396..=2418).contains(frame));
+        if self
+            .smoke_test
+            .as_ref()
+            .is_some_and(|(_, frame, _)| *frame >= 2396)
+        {
             let frame = self.smoke_test.as_ref().unwrap().1;
             ctx.input_mut(|input| {
                 // Only the appended menu scene uses a synthetic clock. Native
@@ -7827,6 +7920,21 @@ mod project_workflow_tests {
         );
         preset_text(&output, "NOMINAL SHAPE");
         preset_text(&output, "ADSR EG");
+    }
+
+    #[test]
+    fn merge_smoke_uses_actual_counts_for_auto_forced_zero_and_truncated_outputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let lights = app.prepare_merge_fixture();
+        for (id, expected) in [("auto", 12), ("zero", 0), ("eight", 8)] {
+            assert_eq!(lights[id].output_channels, Some(expected));
+            assert_eq!(lights[id].automatic_channels, Some(12));
+            assert_eq!(lights[id].count, 0);
+        }
+        assert_eq!(app.patch.nodes.len(), 5);
+        assert_eq!(app.patch.cables.len(), 6);
+        assert!(app.status.contains("offline"));
     }
 
     #[test]

@@ -161,7 +161,7 @@ Validation includes an independent nearest-note search over all 4,095 nonempty m
 |---|---|---|
 | `poly_constant` | 0–16 configured constant-voltage channels, `v1`…`v16`, with explicit zero-channel output; default count 3. | Original source/testing utility; not a claimed stock VCV equivalent. |
 | `poly_split` | `signal` to 16 independently named mono outputs `out1`…`out16`; missing input channels emit mono 0 V. | Native channel-count indicators and direct VCV behavior/UI comparison remain open. |
-| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; 1–16 forces count. Empty automatic input gives zero channels. | The zero setting selects automatic mode, not forced zero; native channel indicators and full VCV configuration parity remain open. |
+| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; −1 forces zero and 1–16 forces that count. Empty automatic input gives zero channels. | Measured automatic/output count display and Auto/0–16 dropdown; pinned-class digital comparison and local host/MCP checks pass, platform/native capture qualification pending; [contract](POLYPHONIC_MERGE.md). |
 | `poly_sum` | Active-channel sum with 0–1 level, mono output, six post-level meter bands and actual input-channel count; empty input gives mono zero. | Native device qualification and Rack import remain open; [SUM contract](POLYPHONIC_SUM.md). |
 
 Independent tests exercise sparse Merge/Split routing, all 16 channels, zero
@@ -261,7 +261,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison and full host workflow acceptance remain open |
 | Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
 | Split | Polyphony | Partial: `poly_split`, 16 named mono outputs and zero padding tested | Native channel indicators and complete VCV behavior/configuration comparison |
-| Merge | Polyphony | Partial: `poly_merge`, sparse ordering, automatic/forced count and empty inputs implemented | Explicit forced-zero mode, native indicators and remaining VCV configuration comparison |
+| Merge | Polyphony | Implemented bounded `poly_merge`: sparse first-lane assembly, backward-compatible Auto/forced 0–16, measured automatic/output counts and shared dropdown panel; 16,416-row actual-class comparison passes | Platform/native capture qualification and Rack state mapping; [contract](POLYPHONIC_MERGE.md). |
 | Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |
 | Viz | Measurement | Implemented signal/display role: `poly_viz`, input-only, 16 paired indicators, channel activity and sampled signed smoothing | Full upstream host comparison, Rack import and native device qualification remain; [contract](POLYPHONIC_VIZ.md) |
 | Mid/Side | Stereo | Implemented documented equations: `mid_side`, encoder/decoder, widths and CV, decoder normaling | Unspecified VCV CV scale/channel details and full host behavior need differential qualification |
