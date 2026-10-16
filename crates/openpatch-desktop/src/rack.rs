@@ -4896,7 +4896,7 @@ impl Rack {
         };
         let painter = ui.painter().clone();
         let mut action = None;
-        for (name, y) in [("RANGE", 88.0), ("SEED", 118.0)] {
+        for (name, y) in [("RANGE", 88.0), ("SEED", 114.0)] {
             painter.text(
                 point(20.0, y),
                 Align2::LEFT_CENTER,
@@ -10741,7 +10741,7 @@ fn random_values_range_rect() -> Rect {
     Rect::from_min_size(pos2(80.0, 78.0), vec2(202.0, 20.0))
 }
 fn random_values_seed_rect() -> Rect {
-    Rect::from_min_size(pos2(80.0, 108.0), vec2(202.0, 20.0))
+    Rect::from_min_size(pos2(80.0, 104.0), vec2(202.0, 20.0))
 }
 fn random_values_push_rect() -> Rect {
     Rect::from_min_size(pos2(91.0, 137.0), vec2(104.0, 27.0))
