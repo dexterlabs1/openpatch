@@ -1,0 +1,19 @@
+{
+  "acceptance_sha256": "b3a4ba1b22f8a2caf4c62969ed4a5ba42108371a3127f895904bc2b026db1db3",
+  "declaration": "Frozen before first oracle comparison; generator and acceptance are immutable",
+  "generator_sha256": "0463657e9e47ce54ce04c27954b391a5ca0d5ddc370bee96fe84d2f912744fc1",
+  "input_sha256": {
+    "44100": "258bcfe1371423ad09ba50fac983e6a48263a008f71a0c95c83632390f12c331",
+    "48000": "258bcfe1371423ad09ba50fac983e6a48263a008f71a0c95c83632390f12c331",
+    "96000": "258bcfe1371423ad09ba50fac983e6a48263a008f71a0c95c83632390f12c331"
+  },
+  "raw_input_sha256": {
+    "44100": "ee6323a2e6067bd5ce9fd8e9073c246831966a9a5261a02eb07caed362746fba",
+    "48000": "ee6323a2e6067bd5ce9fd8e9073c246831966a9a5261a02eb07caed362746fba",
+    "96000": "ee6323a2e6067bd5ce9fd8e9073c246831966a9a5261a02eb07caed362746fba"
+  },
+  "raw_rows_per_rate": 68,
+  "raw_total_rows": 204,
+  "rows_per_rate": 355,
+  "total_rows": 1065
+}

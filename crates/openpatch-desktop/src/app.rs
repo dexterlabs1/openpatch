@@ -5301,6 +5301,89 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_split_fixture(&mut self) -> BTreeMap<String, openpatch_core::ModuleLightState> {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"empty-source","kind":"poly_constant","params":{"channels":0}},
+                {"id":"silent-source","kind":"poly_constant","params":{"channels":1,"v1":0}},
+                {"id":"poly-source","kind":"poly_constant","params":{"channels":16,"v1":4,"v2":-3,"v16":-7}},
+                {"id":"empty","kind":"poly_split"},
+                {"id":"silent","kind":"poly_split"},
+                {"id":"sixteen","kind":"poly_split"}],
+            "cables":[
+                {"from":"empty-source","to":"empty","input":"signal"},
+                {"from":"silent-source","to":"silent","input":"signal"},
+                {"from":"poly-source","to":"sixteen","input":"signal"}],
+            "output":"sixteen","output_port":"out16"}))
+        .expect("Split count fixture");
+        let mut engine = patch.compile().expect("Split fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let ids = ["empty", "silent", "sixteen"];
+        let taps: [_; 48] = std::array::from_fn(|index| {
+            Some(
+                engine
+                    .resolve_tap(ids[index / 16], &format!("out{}", index % 16 + 1), 0)
+                    .unwrap(),
+            )
+        });
+        let mut audio = [[0.0; 2]; 64];
+        let mut observed = [[openpatch_core::TapSample::default(); 48]; 64];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut observed);
+        let mut lights = BTreeMap::new();
+        for (index, (id, expected)) in [("empty", 0), ("silent", 1), ("sixteen", 16)]
+            .into_iter()
+            .enumerate()
+        {
+            let state = engine
+                .module_lights(engine.resolve_module_lights(id).unwrap())
+                .unwrap();
+            assert_eq!(state.input_channels, Some(expected));
+            assert_eq!(state.count, 0);
+            assert!(state.brightness.iter().flatten().all(|v| *v == 0.0));
+            for lane in 0..16 {
+                let sample = observed[63][index * 16 + lane];
+                assert!(
+                    sample.active,
+                    "Split always emits sixteen independent mono outputs"
+                );
+                let expected_voltage = if expected == 16 {
+                    match lane {
+                        0 => 4.0,
+                        1 => -3.0,
+                        15 => -7.0,
+                        _ => lane as f32 + 1.0,
+                    }
+                } else {
+                    0.0
+                };
+                assert_eq!(sample.value, expected_voltage);
+            }
+            lights.insert(id.to_owned(), state);
+        }
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.85,"pan":[24,12],
+            "positions":{"empty":[0,0],"silent":[330,0],"sixteen":[660,0],
+                "empty-source":[0,420],"silent-source":[390,420],"poly-source":[780,420]}}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights.clone(), BTreeMap::new());
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Split · zero, silent mono, and sixteen channels".into();
+        self.status = "Actual offline Engine input counts: 0 / 1 / 16 · silent mono is occupied · sixteen named mono outputs · no live audio".into();
+        lights
+    }
+
     fn prepare_wavetable_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
@@ -7003,6 +7086,25 @@ impl OpenPatch {
             self.title = "Merge · shared library faceplate".into();
             self.status = "The browser uses the same Merge panel; its unavailable count is distinct from the actual rack snapshots".into();
         }
+        if frame == 2480 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_split_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2498 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Split · lights out · measured input counts 0 / 1 / 16 emit; no fabricated module lamps · no live audio".into();
+        }
+        if frame == 2514 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(1.0);
+            self.browse();
+            assert!(self.library.inspect("poly_split", &self.catalog));
+            self.title = "Split · shared library faceplate".into();
+            self.status = "The browser uses the same Split panel; its unavailable count is distinct from actual rack observations".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7128,6 +7230,9 @@ impl OpenPatch {
                 | 2440
                 | 2456
                 | 2472
+                | 2490
+                | 2506
+                | 2522
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -7257,7 +7362,10 @@ impl OpenPatch {
                 108 => path.with_file_name("menu-motion-settled.png"),
                 109 => path.with_file_name("rack-merge.png"),
                 110 => path.with_file_name("rack-merge-lights-out.png"),
-                _ => path.with_file_name("merge-library.png"),
+                111 => path.with_file_name("merge-library.png"),
+                112 => path.with_file_name("rack-split.png"),
+                113 => path.with_file_name("rack-split-lights-out.png"),
+                _ => path.with_file_name("split-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7268,18 +7376,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/112 at frame {frame}: {}",
+                "Native smoke: capture {}/115 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 112 {
+            if captures == 115 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2500, "Native screenshot timeout");
+        assert!(frame < 2550, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7934,6 +8042,20 @@ mod project_workflow_tests {
         }
         assert_eq!(app.patch.nodes.len(), 5);
         assert_eq!(app.patch.cables.len(), 6);
+        assert!(app.status.contains("offline"));
+    }
+
+    #[test]
+    fn split_smoke_observes_zero_silent_mono_and_all_sixteen_named_outputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let lights = app.prepare_split_fixture();
+        for (id, expected) in [("empty", 0), ("silent", 1), ("sixteen", 16)] {
+            assert_eq!(lights[id].input_channels, Some(expected));
+            assert_eq!(lights[id].count, 0);
+        }
+        assert_eq!(app.patch.nodes.len(), 6);
+        assert_eq!(app.patch.cables.len(), 3);
         assert!(app.status.contains("offline"));
     }
 

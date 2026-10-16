@@ -2889,13 +2889,7 @@ impl Rack {
                 );
             }
             if node.kind == "poly_split" {
-                painter.text(
-                    point(width * 0.5, 83.0),
-                    Align2::CENTER_CENTER,
-                    "16 named mono outputs",
-                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
-                    MUTED,
-                );
+                self.split_panel(ui, node, rect);
             }
             if node.kind == "poly_sum" {
                 self.sum_panel(ui, node, rect);
@@ -7068,6 +7062,51 @@ impl Rack {
             }
         }
         action
+    }
+
+    /// A passive measured count, shared verbatim by the rack and library.
+    /// Saved topology and sixteen available sockets never stand in for telemetry.
+    fn split_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
+        let zoom = self.zoom;
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let painter = ui.painter();
+        let channels = self
+            .module_lights
+            .get(&node.id)
+            .and_then(|state| state.input_channels)
+            .filter(|count| *count <= 16);
+        painter.text(
+            point(20.0, 83.0),
+            Align2::LEFT_CENTER,
+            "INPUT CHANNELS",
+            crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
+            INK,
+        );
+        // Below the title and above the signal label/socket; the complete
+        // 14-point Rajdhani line box fits this 22-point display at every zoom.
+        let screen = Rect::from_min_size(point(200.0, 72.0), vec2(75.0, 22.0) * zoom);
+        let screen_start = crate::lighting::next(painter);
+        painter.rect_filled(screen, 2.0 * zoom, Color32::from_rgb(20, 31, 31));
+        painter.text(
+            screen.center(),
+            Align2::CENTER_CENTER,
+            channels.map_or_else(|| "—".to_owned(), |count| count.to_string()),
+            crate::panel_skin::print_font(ui.ctx(), 14.0 * zoom),
+            if channels.is_some() {
+                Color32::from_rgb(155, 220, 197)
+            } else {
+                Color32::from_rgb(135, 145, 138)
+            },
+        );
+        if channels.is_some() {
+            self.lighting.preserve(painter, screen_start);
+        }
+        ui.interact(screen, ui.id().with((&node.id, "split-input-count")), Sense::hover())
+            .on_hover_text(if channels.is_some() {
+                "Measured input channels. Silent active channels count; zero means a valid zero-channel input. All sixteen named outputs remain available."
+            } else {
+                "Input channel telemetry unavailable. Sixteen output sockets do not imply sixteen live input channels."
+            });
     }
 
     /// MERGE uses the same panel in the rack and library; channel counts are
@@ -19264,6 +19303,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod split_ui_tests {
+        include!("split_ui_tests.rs");
     }
     mod merge_ui_tests {
         include!("merge_ui_tests.rs");

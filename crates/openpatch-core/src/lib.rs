@@ -58,6 +58,7 @@ mod mixing;
 mod modal_resonator;
 mod multi_lfo;
 mod multi_vco;
+mod split;
 pub use modal_resonator::{modal_resonator_modes, ModalResonatorMode, MODAL_RESONATOR_MODES};
 mod parameter_actions;
 mod svf_resampler;

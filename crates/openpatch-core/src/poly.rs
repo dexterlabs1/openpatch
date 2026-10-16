@@ -455,6 +455,18 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         },
     };
     module["polyphony"] = json!({"version_1":"mono", "version_2":policy, "maximum_channels":16,"auxiliary_inputs":"mono broadcasts; missing short-poly channels are zero; zero-channel ports normalize as disconnected","retired_voices":"reset on retirement and activation"});
+    if kind == "poly_split" {
+        module["polyphony"]["auxiliary_inputs"] = json!(
+            "independent raw channel reads; no mono broadcast; ordinary missing channels are zero"
+        );
+        module["polyphony"]["retired_voices"] =
+            json!("no per-voice DSP state; processed input count is a passive runtime observation");
+        module["functional_reference"] = json!("https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Split.cpp");
+        module["light_names"] = json!([]);
+        module["arithmetic_policy"] = json!("raw copy of all sixteen processed input storage slots, including inactive diagnostic values; no module arithmetic, clipping or nonfinite sanitization; normal Engine producers zero-pad inactive slots and cable-edge sanitization remains separate");
+        module["light_policy"] = json!({"input_channels":"Some(0..16), initially 0; actual processed input count updated every processed frame", "indicators":"no LED indicators; count=0, brightness all zero", "bypass":"host bypass freezes the observed input count", "state_adoption":"same identity/kind/rate preserves the observed count; fresh incarnation and sample rate changes reset observation"});
+        module["initialization_policy"] = json!("no saved controls or source reset callback; preserve the observed input count until the next processed frame");
+    }
     if kind == "poly_merge" {
         module["polyphony"]["auxiliary_inputs"] = json!("only channel zero of each actual input frame; zero-channel frames are disconnected, short inputs never broadcast between slots");
         module["polyphony"]["retired_voices"] =
@@ -636,7 +648,7 @@ enum Model {
         policy: VoicePolicy,
     },
     Constant(PortFrame),
-    Split,
+    Split(crate::split::Split),
     Merge(crate::merge::Merge),
     Sum(crate::sum::Sum),
     Viz(crate::viz::Viz),
@@ -806,7 +818,7 @@ impl Model {
                     }
                     Self::Constant(frame)
                 }
-                "poly_split" => Self::Split,
+                "poly_split" => Self::Split(crate::split::Split::default()),
                 "poly_merge" => Self::Merge(crate::merge::Merge::build(node)?),
                 "poly_viz" => Self::Viz(crate::viz::Viz::new(rate)),
                 "poly_sum" => Self::Sum(crate::sum::Sum::build(node, rate)?),
@@ -1035,6 +1047,7 @@ impl PolyEngine {
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
+            Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
             Some(Model::Sum(s)) => Some(s.lights()),
             Some(Model::Viz(v)) => Some(v.lights()),
@@ -1358,7 +1371,8 @@ impl PolyEngine {
             Model::ModalResonator(s) => s.reset_state(),
             Model::MacroVoice(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
-            // histories, including VCO phase, switch position, and process
+            // histories, including Split's observed input count (no source reset
+            // callback), VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
             _ => {}
         }
@@ -2140,11 +2154,9 @@ impl PolyEngine {
                     self.outputs[node.output_start] = output.process(a, b);
                 }
                 Model::Constant(frame) => self.outputs[node.output_start] = *frame,
-                Model::Split => {
-                    for channel in 0..16 {
-                        self.outputs[node.output_start + channel] =
-                            PortFrame::mono(a.channel(channel));
-                    }
+                Model::Split(split) => {
+                    self.outputs[node.output_start..node.output_start + MAX_CHANNELS]
+                        .copy_from_slice(&split.process(&a));
                 }
                 Model::Merge(merge) => {
                     let mut inputs = [PortFrame::default(); 16];
@@ -2462,6 +2474,7 @@ impl PolyEngine {
             match (&mut node.model, &previous.model) {
                 (Model::ColoredNoise(s), Model::ColoredNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
+                (Model::Split(s), Model::Split(old)) => s.adopt(old),
                 (Model::Merge(m), Model::Merge(old)) => m.adopt(old),
                 (Model::Sum(s), Model::Sum(old)) => s.adopt(old),
                 (Model::Viz(v), Model::Viz(old)) => v.adopt(old),
@@ -2920,5 +2933,40 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn split_raw_diagnostic_storage_is_sanitized_only_at_the_next_active_cable() {
+        let patch: Patch = serde_json::from_value(json!({"version":2,
+            "nodes":[{"id":"source","kind":"constant"},
+                {"id":"split","kind":"poly_split"},{"id":"receiver","kind":"gain"}],
+            "cables":[{"from":"source","to":"split","input":"signal"},
+                {"from":"split","output":"out2","to":"receiver","input":"signal"}],
+            "output":"receiver"}))
+        .unwrap();
+        let mut engine = PolyEngine::compile(&patch).unwrap();
+        let split_output = engine.resolve_tap("split", "out2").unwrap();
+        // Deliberately violate the ordinary producer padding invariant. This
+        // internal diagnostic is NOT a claim that Rack cables copy dirty lanes.
+        engine.edge_frames[0] = PortFrame::mono(-0.0);
+        engine.edge_frames[0].values[1] = f32::from_bits(0x7fc1_2345);
+        engine.process_sample();
+        assert_eq!(
+            engine.outputs[split_output].values[0].to_bits(),
+            0x7fc1_2345
+        );
+        assert_eq!(engine.outputs[split_output].channels, 1);
+        let receiver = engine.process_sample();
+        assert_eq!(
+            receiver,
+            PortFrame::mono(0.0),
+            "outgoing active NaN is finitized by cable transfer"
+        );
+        assert_eq!(
+            engine
+                .module_lights(engine.resolve_module_lights("split").unwrap())
+                .unwrap()
+                .input_channels,
+            Some(1)
+        );
     }
 }

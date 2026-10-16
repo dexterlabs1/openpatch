@@ -2699,6 +2699,57 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
 
+    def test_split_named_outputs_silent_occupancy_and_stateless_mcp_roundtrips(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        split = modules["poly_split"]
+        self.assertEqual(split["inputs"], ["signal"])
+        self.assertEqual(split["outputs"], [f"out{i}" for i in range(1, 17)])
+        self.assertEqual(split["params"], {})
+        self.assertEqual(split["light_names"], [])
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "source", "kind": "poly_constant", "params": {
+                "channels": 16, "v1": 0, "v2": -3, "v16": 7}},
+                {"id": "split", "kind": "poly_split"}],
+            "cables": [{"from": "source", "to": "split", "input": "signal"}],
+            "output": "split", "output_port": "out16",
+        }})
+        original = self.patch_snapshot()
+        for port, expected in [("out1", 0), ("out2", -3), ("out16", 7)]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "split", "port": port, "seconds": .001, "points": 64,
+                "expected_revision": original["revision"],
+            }))
+            self.assertEqual(trace["summary"]["active_frames"], 48)
+            self.assertEqual([b["mean"] for b in trace["bins"]][1:], [expected] * 47)
+        self.assertEqual(self.patch_snapshot(), original)
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "split"}))["preset"]
+        self.assertEqual(preset["params"], {})
+        self.assertNotIn("input_channels", json.dumps(preset))
+        self.require_tool_success("save_patch", {"filename": "split.json"})
+        self.require_tool_success("set_parameter", {"id": "source", "parameter": "channels", "value": 1})
+        trace = self.payload(self.require_tool_success("capture_signal", {
+            "id": "split", "port": "out16", "seconds": .001, "points": 64,
+        }))
+        self.assertTrue(all(b["mean"] == 0 for b in trace["bins"]))
+        # This stdio process has no callback: topology must not become a fabricated live count.
+        measured = self.payload(self.require_tool_success("inspect_performance"))
+        self.assertFalse(measured["supported"])
+        self.assertIsNone(measured["performance"])
+        changed = self.patch_snapshot()
+        self.require_tool_error("set_parameter", {"id": "split", "parameter": "input_channels", "value": 16})
+        self.assertEqual(self.patch_snapshot(), changed)
+        duplicate = self.payload(self.require_tool_success("duplicate_modules", {
+            "modules": [{"id": "split", "new_id": "copy"}], "cable_mode": "inputs",
+            "expected_revision": changed["revision"],
+        }))
+        copy = next(n for n in duplicate["patch"]["nodes"] if n["id"] == "copy")
+        self.assertEqual(copy.get("params", {}), {})
+        self.assertEqual(duplicate["history"]["undo_steps"], changed["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], changed["patch"])
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "split.json"}))
+        self.assertEqual(loaded["patch"], original["patch"])
+
     def test_random_clock_interpolation_seed_presets_and_atomic_mcp_history(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["random"]
