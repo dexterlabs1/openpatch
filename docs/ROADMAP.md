@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 73 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 74 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 73 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 73 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 74 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 74 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -121,7 +121,8 @@ voice storage. `PortFrame` carries `[f32; 16]` plus a channel count.
 `process_poly_block` returns full frames; the existing mono API returns channel
 0 rather than mixing voices. `poly_sum` supplies explicit unity mixing. All
 version-2 cables read the previous completed frame, including its channel
-count; newly connected edges start empty. Compatible unchanged edges and active
+count; newly connected logical-frame edges start empty. Native retained-port
+models follow the explicit connection lifecycle in [ENGINE_V2.md](ENGINE_V2.md#native-retained-port-path). Compatible unchanged edges and active
 voices retain state across graph replacement. Retired voices reset, and
 ordinary modules execute only their active preallocated states.
 
@@ -183,7 +184,7 @@ Passing the bounded source contract does not establish hardware accuracy,
 complete `.vcv` conversion, native Mac input/audio-device qualification or all
 Rack host workflows. These remain explicit delivery gates.
 
-## Stock Quantizer: source proof passed, host qualification pending
+## Stock Quantizer: bounded source and delivery gates passed
 
 A separate [Stock Quantizer](STOCK_QUANTIZER.md) closes the audible stock
 scale-selection gap while preserving the older `quantizer`. It implements the
@@ -203,12 +204,36 @@ integer-domain, inactive-storage and initial-playing-state boundaries.
 The complete Rust workspace passes 1,923 tests with zero failures and six
 existing ignored tests, including all 17 focused Quantizer desktop tests.
 Strict Clippy, all 94 Python/MCP checks, an optimized ARM workspace build and
-a separately signed Mac bundle pass. The 127 configured native captures and
-platform CI remain pending for this milestone. The direct processor
+a separately signed Mac bundle pass. All 127 native captures were validated
+and reviewed; all eight jobs on both exact-head CI runs passed before
+[PR14](https://github.com/dexterlabs1/openpatch/pull/14) merged. The direct processor
 consumer proof does not replace public graph/tap tests, native interaction or
 complete Rack state/import acceptance. Native Mac/device qualification and
 performance measurement remain separate gates; expanded MIDI/live-performance
 work stays in the final delivery phase.
+
+## Stock Mid/Side and retained host ports: bounded host proof passed
+
+A separate [Stock Mid/Side](STOCK_MID_SIDE.md) adds additive width CV,
+independent raw decoder normaling, rounded-quartet output writes and source
+bypass behavior while preserving `mid_side`. Its final optimized production
+comparison passes all 74 frozen histories and 890 event snapshots; the complete
+trace is byte-identical to genuine Rack 2.6.6 output. A separate zero-DSP port
+lifecycle proof covers 224,988 histories and 15,749,160 exact fields.
+
+Session preserves ordered first/last connection and bypass edges across atomic
+batches, undo/redo and audio preparation retries. Unpublished audio graphs
+compose pending edges forward, including Scope rebuilds; the active callback
+applies them once after state adoption. Native ports retain state before the
+first native consumer is added. Existing DSP keeps its established frame path.
+
+The playable stereo example and shared panel pass headless tests. The final
+Core/Session/Desktop suites pass 1,983 Rust tests, all 96 Python/MCP checks pass,
+and strict Clippy/formatting and an isolated ARM build/separate signed bundle pass.
+Three appended native scenes bring configured captures to 130. The [four-workload performance screen](PERFORMANCE.md#retained-host-port-transport-measured-incremental-cost)
+records an always-on transport cost, especially for routing-heavy legacy patches;
+platform CI and reviewed captures remain pending for this milestone. This proof does not establish full Rack host compatibility,
+hardware accuracy, native Mac/device behavior or a performance advantage.
 
 ## Clocked routing
 

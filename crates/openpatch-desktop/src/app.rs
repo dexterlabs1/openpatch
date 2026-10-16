@@ -448,7 +448,10 @@ impl OpenPatch {
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
         let (patch, wave_banks, revision, state_id, workspace) = {
-            let s = shared.lock().unwrap();
+            let mut s = shared.lock().unwrap();
+            // A fresh engine starts from this exact document, with no old
+            // signal history to which earlier host edges could apply.
+            s.discard_audio_lifecycle_through_current();
             (
                 s.patch().clone(),
                 s.prepared_wave_banks(),
@@ -808,20 +811,31 @@ impl OpenPatch {
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
         self.scope.reset_connection();
-        let (patch, wave_banks) = match self.shared.lock() {
-            Ok(session) => (session.patch().clone(), session.prepared_wave_banks()),
+        let ticket = match self.shared.lock() {
+            Ok(mut session) => match session.audio_snapshot() {
+                Ok(ticket) => ticket,
+                Err(error) => {
+                    self.settings_status = error;
+                    return;
+                }
+            },
             Err(_) => {
                 self.settings_status = "Session lock poisoned".into();
                 return;
             }
         };
         let (audio, label) = Self::open_audio(
-            &patch,
-            wave_banks,
+            &ticket.patch,
+            ticket.banks.clone(),
             selected.as_deref(),
             self.rack.cable_presentation().plug_brightness > 0.0,
         );
         if let Some(mut audio) = audio {
+            // The new engine was compiled from this immutable ticket. Its
+            // predecessor's signal history does not cross a device restart.
+            if let Ok(mut session) = self.shared.lock() {
+                session.acknowledge_audio_snapshot(ticket.id);
+            }
             self.midi = None;
             self.keyboard.release();
             audio.set_volume(self.volume);
@@ -1425,11 +1439,11 @@ impl OpenPatch {
         }
     }
     fn sync(&mut self) {
-        let mut wave_banks = None;
+        let mut audio_ticket = None;
         if self.live_events_attach_pending {
             self.attach_live_events();
         }
-        if let Ok(s) = self.shared.try_lock() {
+        if let Ok(mut s) = self.shared.try_lock() {
             let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
@@ -1483,8 +1497,14 @@ impl OpenPatch {
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
             }
-            // Capture the immutable ticket under the same lock as patch/revision.
-            wave_banks = Some(s.prepared_wave_banks());
+            // Seal patch, banks, revision and ordered host effects together.
+            // Later commits append a separate segment while this one retries.
+            if self.audio.is_some() && self.audio_revision != Some(s.revision()) {
+                match s.audio_snapshot() {
+                    Ok(ticket) => audio_ticket = Some(ticket),
+                    Err(error) => self.status = error,
+                }
+            }
             self.construction.observe(construction);
         }
         if let Some(midi) = &mut self.midi {
@@ -1499,11 +1519,19 @@ impl OpenPatch {
                 self.midi_epoch = audio.midi_epoch();
                 self.keyboard.release();
             }
-            if let Some(wave_banks) =
-                wave_banks.filter(|_| self.audio_revision != Some(self.revision))
-            {
-                match audio.submit_patch_with_wave_banks(&self.patch, self.revision, wave_banks) {
-                    Ok(()) => self.audio_revision = Some(self.revision),
+            if let Some(ticket) = audio_ticket {
+                match audio.submit_patch_with_host_lifecycle(
+                    &ticket.patch,
+                    ticket.revision,
+                    ticket.banks.clone(),
+                    &ticket.delta,
+                ) {
+                    Ok(()) => {
+                        self.audio_revision = Some(ticket.revision);
+                        if let Ok(mut session) = self.shared.lock() {
+                            session.acknowledge_audio_snapshot(ticket.id);
+                        }
+                    }
                     Err(e) => {
                         audio.set_playing(false);
                         failure = Some(e);
@@ -2102,6 +2130,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::random_motion_layout())
                 .expect("bundled Random motion layout");
+        } else if title == "Mid/Side stereo voice" {
+            self.rack
+                .restore_layout(&Self::stock_mid_side_voice_layout())
+                .expect("bundled Mid/Side stereo voice layout");
         } else if title == "Quantized stock voice" {
             self.rack
                 .restore_layout(&Self::stock_quantized_voice_layout())
@@ -2122,6 +2154,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn stock_mid_side_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
+            "left":[0,0],"right":[390,0],"width":[780,0],
+            "motion":[0,420],"scope":[390,420],"out":[1050,420]
+        }})
     }
     fn stock_quantized_voice_layout() -> Value {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
@@ -3161,6 +3199,14 @@ impl OpenPatch {
                 ))
                 .expect("valid MIDI controller voice");
                 self.replace_from_menu(patch, "MIDI controller voice");
+                ui.close();
+            }
+            if ui.button("Mid/Side stereo voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stock-mid-side-voice.json"
+                ))
+                .expect("valid Mid/Side stereo voice");
+                self.replace_from_menu(patch, "Mid/Side stereo voice");
                 ui.close();
             }
             if ui.button("Quantized stock voice").clicked() {
@@ -5599,6 +5645,64 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_stock_mid_side_fixture(&mut self) -> openpatch_core::ScopeSnapshot {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-mid-side-voice.json"))
+                .expect("valid Mid/Side stereo voice");
+        let mut engine = patch.compile().expect("Stock Mid/Side fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let mut audio = vec![[0.0; 2]; 24032];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|sample| sample.is_finite()));
+        for channel in 0..2 {
+            assert!(audio.iter().any(|sample| sample[channel].abs() > 0.001));
+        }
+        assert!(audio
+            .iter()
+            .any(|sample| (sample[0] - sample[1]).abs() > 0.001));
+        let lights: BTreeMap<_, _> = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let handle = engine.resolve_module_lights(&node.id).ok()?;
+                Some((node.id.clone(), engine.module_lights(handle)?))
+            })
+            .collect();
+        assert!(lights.get("width").is_none_or(|state| state.count == 0));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        for lane in [&scope.x[0], &scope.y[0]] {
+            assert!(lane
+                .iter()
+                .any(|point| point.min.is_finite() && point.max.abs() > 0.001));
+        }
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::stock_mid_side_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope.clone()))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock Mid/Side · stereo voice".into();
+        self.status = "Actual offline Engine · Scope X: encoded Mid, Y: encoded Side · slow bipolar width CV · no Mid/Side module lamps · no live audio".into();
+        scope
+    }
+
     fn prepare_stock_quantizer_fixture(&mut self) -> openpatch_core::ModuleLightState {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-quantized-voice.json"))
@@ -7630,6 +7734,25 @@ impl OpenPatch {
             self.title = "Stock Quantizer · shared browser thumbnail".into();
             self.status = "Same Stock Quantizer faceplate in rack and filtered browser · actual played notes only on the observed rack".into();
         }
+        if frame == 2748 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_mid_side_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2782 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock Mid/Side · actual Scope, oscillator lamps and port voltages remain emissive · Mid/Side has no module lamps · no live audio".into();
+        }
+        if frame == 2814 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.7);
+            self.browse();
+            self.library.request_focus();
+            self.title = "Stock Mid/Side · shared browser thumbnail".into();
+            self.status = "Same Stock Mid/Side faceplate in rack and filtered browser · encoder left, decoder right · inactive preview telemetry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7770,6 +7893,9 @@ impl OpenPatch {
                 | 2690
                 | 2708
                 | 2730
+                | 2766
+                | 2798
+                | 2830
         ) {
             let token = if let Some(receipt) = crate::smoke_schedule::request(frame, captures) {
                 assert!(
@@ -7938,7 +8064,11 @@ impl OpenPatch {
                 123 => path.with_file_name("stock-seq3-library.png"),
                 124 => path.with_file_name("rack-stock-quantizer.png"),
                 125 => path.with_file_name("rack-stock-quantizer-lights-out.png"),
-                _ => path.with_file_name("stock-quantizer-library.png"),
+                126 => path.with_file_name("stock-quantizer-library.png"),
+                127 => path.with_file_name("rack-stock-mid-side.png"),
+                128 => path.with_file_name("rack-stock-mid-side-lights-out.png"),
+                129 => path.with_file_name("stock-mid-side-library.png"),
+                _ => unreachable!("Unexpected native smoke capture index"),
             };
             image::save_buffer(
                 &target,
@@ -7952,18 +8082,18 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/127 at frame {frame}: {}",
+                "Native smoke: capture {}/130 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 127 {
+            if captures == 130 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2760, "Native screenshot timeout");
+        assert!(frame < 2860, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7989,6 +8119,11 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
+            if *frame == 2818 {
+                input
+                    .events
+                    .push(egui::Event::Text("stock_mid_side".into()));
+            }
             if *frame == 2720 {
                 input
                     .events
@@ -8303,6 +8438,9 @@ mod project_workflow_tests {
     }
     mod random_factory_tests {
         include!("random_factory_tests.rs");
+    }
+    mod stock_mid_side_factory_tests {
+        include!("stock_mid_side_factory_tests.rs");
     }
     mod wavetable_factory_tests {
         include!("wavetable_factory_tests.rs");

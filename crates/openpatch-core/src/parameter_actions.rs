@@ -47,6 +47,7 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("random_values" | "sh_asr", _) => Disabled,
         ("stock_quantizer", "offset") => Linear,
         ("stock_quantizer", "scale_mask") => InclusiveInteger,
+        ("stock_mid_side", "encode_width" | "decode_width") => Linear,
         ("stock_vco", "frequency" | "pulse_width") => Linear,
         ("stock_vco", "linear_fm" | "soft_sync") => Enum,
         ("stock_vco", _) => Disabled,

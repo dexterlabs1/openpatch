@@ -33,7 +33,11 @@ mod stock_delay;
 mod stock_vco;
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
+mod host_ports;
+mod stock_mid_side;
 mod stock_quantizer;
+#[doc(hidden)]
+pub use host_ports::{HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot};
 pub use stock_quantizer::rotate_stock_quantizer_mask;
 #[doc(hidden)]
 pub use stock_quantizer::{StockQuantizerProbe, StockQuantizerSnapshot};
@@ -99,6 +103,14 @@ pub use wave_assets::{
 };
 pub mod port_lights;
 pub use port_lights::{PortDirection, PortLightState, ResolvedPortLight};
+mod input_lifecycle;
+#[doc(hidden)]
+pub use input_lifecycle::{InputLifecycleCountError, InputLifecycleTransform};
+mod port_lifecycle;
+#[doc(hidden)]
+pub use port_lifecycle::{
+    OutputLifecycleCountError, OutputLifecycleEntry, OutputLifecycleTransform,
+};
 mod pulses;
 mod push;
 mod shift_register;
@@ -349,6 +361,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_quantizer::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_mid_side::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1374,6 +1390,60 @@ impl Engine {
             generation: self.identity,
             node,
         })
+    }
+    /// Passive host storage inspection. This never adds an output consumer or
+    /// transfers a cable. Available for every version-2 graph.
+    #[doc(hidden)]
+    pub fn host_module_snapshot(&self, handle: ModuleHandle) -> Option<HostModuleSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.host_module_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Resolve lifecycle metadata on the control thread against this engine.
+    #[doc(hidden)]
+    pub fn host_port_layout(&self, handle: ModuleHandle) -> Option<(u8, u8, u16, u32, bool)> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.host_port_layout(handle.node),
+            _ => None,
+        }
+    }
+    #[doc(hidden)]
+    pub fn resolve_host_port(
+        &self,
+        handle: ModuleHandle,
+        direction: PortDirection,
+        name: &str,
+    ) -> Option<usize> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.resolve_host_port(handle.node, direction, name),
+            _ => None,
+        }
+    }
+    /// Apply a prepared ordered host delta once, after runtime adoption. All
+    /// storage and endpoint indices have already been resolved off the callback.
+    #[doc(hidden)]
+    pub fn apply_host_port_lifecycle(
+        &mut self,
+        handle: ModuleHandle,
+        delta: &HostPortLifecycle,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.apply_host_port_lifecycle(handle.node, delta),
+            _ => false,
+        }
     }
     /// Resolve runtime action/telemetry targets on the control thread. Handles
     /// belong to this compiled engine and must be re-resolved after replacement.

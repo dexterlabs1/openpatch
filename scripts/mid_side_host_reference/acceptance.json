@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "frozen_before_first_execution": true,
+  "scope": "Genuine Rack 2.6.6 Engine.stepBlock host transition proof; no production parity claim until paired actual Engine traces pass.",
+  "reference_pin": "Fundamental 10dd0160c664770910e5584b7b00498cc48d9ddd / Rack 2.6.6",
+  "case_count": 74,
+  "event_count": 890,
+  "discarded_events": 0,
+  "float_gate": "Every serialized raw voltage and parameter exact IEEE-754 binary32 bits, including inactive private output slots; hand anchors exact binary32. No tolerance, warmup exclusion or fitted exceptions.",
+  "discrete_gate": "Exact keys, identities, event ordering, Engine frame, channel counts, cable counts, bypass, declared source configurations.",
+  "anchor_policy": "Anchors declared by source reading and hand arithmetic, before any SDK/production execution. Failed anchors are failures, not automatically rewritten.",
+  "paired_policy": "Identical cases/order and complete snapshots; optional validator --paired file required to claim host equivalence. SDK-only anchors do not establish OpenPatch parity.",
+  "system_scope": "One thread, cpuMeter false, sample rate 48000, no audio device, GUI or module-process fallback."
+}

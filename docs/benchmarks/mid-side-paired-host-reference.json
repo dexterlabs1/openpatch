@@ -1,0 +1,30 @@
+{
+  "artifact_manifest_sha256": "657ea6d98cf88619ec93516f8611bb112ba7a99f196b3132fe2a2738d3ff8990",
+  "discarded_snapshots": 0,
+  "evidence_directory": "native-test-output/stock-mid-side/paired-host-reference/attempt-002",
+  "limitations": [
+    "Qualifies the frozen 74 host histories, not all possible patches, hardware accuracy, or performance.",
+    "SDK trace is the byte-verified retained first genuine execution; this runner does not re-execute Rack."
+  ],
+  "passed": true,
+  "production_probe_sha256": "7f12f94a928c66e4dcd146c8433186e3cbb2057881218afce99f8ad15898b10f",
+  "production_source_files": 81,
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "scope": "paired production Core and genuine Rack Engine host snapshots",
+  "sdk_artifacts_verified": 690,
+  "sdk_evidence_directory": "/Users/dbrewer/Projects/openpatch-stock-mid-side/native-test-output/stock-mid-side/host-reference/attempt-001",
+  "sdk_evidence_report_sha256": "8b80b0b2e4ba890f94d0514b3aca87d13e6d925e4796039419b9d9a0d0d90429",
+  "stage": "complete",
+  "validation": {
+    "acceptance_sha256": "f00be21fdfed433902bbad3ee7d8a5869a022fdf42501221159f67766acec02c",
+    "cases": 74,
+    "cases_sha256": "d4c7d48e3439a70952e55c912f71efd4bb7b77acae468535ef88ab13d159d81e",
+    "discarded_snapshots": 0,
+    "hand_anchors": 1472,
+    "paired_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+    "passed": true,
+    "scope": "paired genuine host snapshots",
+    "sdk_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+    "snapshots": 890
+  }
+}

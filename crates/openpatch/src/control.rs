@@ -2,6 +2,11 @@
 mod cable_edits;
 mod capture;
 mod construction;
+mod host_lifecycle;
+#[cfg(test)]
+mod host_lifecycle_tests;
+#[doc(hidden)]
+pub use host_lifecycle::{HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta};
 mod layout_history;
 mod midi_cc;
 #[cfg(test)]
@@ -271,6 +276,7 @@ pub struct Session {
     construction: construction::Construction,
     midi_learn_worker: bool,
     midi_learn_committed: BTreeSet<MidiLearnCommitKey>,
+    host_lifecycle: host_lifecycle::Publication,
 }
 
 // A cloned control snapshot never adopts another session's plan or worker.
@@ -291,6 +297,7 @@ impl Clone for Session {
             construction: construction::Construction::default(),
             midi_learn_worker: false,
             midi_learn_committed: self.midi_learn_committed.clone(),
+            host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
         }
     }
 }
@@ -313,6 +320,8 @@ struct HistoryEntry {
     restore_saved: BTreeMap<String, SavedModuleState>,
     return_saved: BTreeMap<String, SavedModuleState>,
     release_controls: Vec<String>,
+    restore_lifecycle: HostLifecycleDelta,
+    return_lifecycle: HostLifecycleDelta,
 }
 
 fn saved_state_coverage_matches(
@@ -476,6 +485,7 @@ impl Session {
             construction: construction::Construction::default(),
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
+            host_lifecycle: host_lifecycle::Publication::default(),
             workspace: workspace.canonicalize().map_err(|e| e.to_string())?,
         })
     }
@@ -629,6 +639,19 @@ impl Session {
             &candidate,
             effects,
         );
+        let (forward_lifecycle, reverse_lifecycle) = if effects.lifecycle_captured {
+            (
+                effects.forward_lifecycle.clone(),
+                effects.reverse_lifecycle.clone(),
+            )
+        } else {
+            let before = host_lifecycle::Topology::capture(&self.patch);
+            let after = host_lifecycle::Topology::capture(&candidate);
+            (
+                before.transition(&after, &effects.retired),
+                after.transition(&before, &effects.retired),
+            )
+        };
         // A gesture may grow or shrink the persistent state it changes. Retain
         // a separate checkpoint whenever its saved-state coverage changes, so
         // neither the original undo snapshot nor the final redo loses fields.
@@ -646,6 +669,10 @@ impl Session {
             self.patch = candidate;
             if let Some(entry) = self.undo.back_mut() {
                 entry.return_saved.extend(effects.after_saved.clone());
+                entry.return_lifecycle.append(&forward_lifecycle);
+                entry.restore_lifecycle = reverse_lifecycle
+                    .clone()
+                    .then(std::mem::take(&mut entry.restore_lifecycle));
             }
         } else {
             if self.undo.len() == HISTORY_LIMIT {
@@ -660,6 +687,8 @@ impl Session {
                 restore_saved: effects.before_saved.clone(),
                 return_saved: effects.after_saved.clone(),
                 release_controls: effects.release_controls.iter().cloned().collect(),
+                restore_lifecycle: reverse_lifecycle,
+                return_lifecycle: forward_lifecycle.clone(),
             });
             self.state_id = revision;
         }
@@ -668,6 +697,8 @@ impl Session {
         self.redo.clear();
         self.prune_history_assets();
         self.revision = revision;
+        self.host_lifecycle.tail.append(&forward_lifecycle);
+        self.host_lifecycle.prune(&self.patch);
         self.construction.last_move = move_receipt;
         self.construction.wake();
         if !effects.retired.is_empty() {
@@ -822,6 +853,8 @@ impl Session {
             restore_saved: entry.return_saved.clone(),
             return_saved: entry.restore_saved.clone(),
             release_controls: entry.release_controls.clone(),
+            restore_lifecycle: entry.return_lifecycle.clone(),
+            return_lifecycle: entry.restore_lifecycle.clone(),
         };
         if redo {
             self.undo.push_back(opposite);
@@ -829,6 +862,8 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        self.host_lifecycle.tail.append(&entry.restore_lifecycle);
+        self.host_lifecycle.prune(&self.patch);
         self.construction.last_move = None;
         self.history_group = None;
         self.construction.wake();
