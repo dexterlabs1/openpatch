@@ -260,3 +260,65 @@ fn settings_owns_rack_pointer_gestures_until_dismissed() {
     drag(&mut app, 3.0);
     assert_ne!(app.rack.layout(), before);
 }
+
+#[test]
+fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
+    fn ordered(ctx: &egui::Context, width: f32, names: &[&str]) {
+        let controls: Vec<_> = names
+            .iter()
+            .map(|name| rect(ctx, &format!("toolbar-{name}-rect")))
+            .collect();
+        for control in &controls {
+            assert!(control.left() >= 0.0 && control.right() <= width,
+                "{width}: {names:?} clipped: {controls:?}");
+        }
+        for pair in controls.windows(2) {
+            assert!(pair[0].right() <= pair[1].left(),
+                "{width}: {names:?} must read left to right: {controls:?}");
+            assert!((pair[0].center().y - pair[1].center().y).abs() < 1.0,
+                "{width}: {names:?} must stay in one row: {controls:?}");
+        }
+    }
+
+    for width in [700.0, 850.0, 1100.0, 1140.0, 1440.0] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.title = "Long project title must leave toolbar action groups intact ".repeat(5);
+        let ctx = egui::Context::default();
+        let size = egui::vec2(width, 800.0);
+        settle(&ctx, &mut app, size, 0.0);
+
+        ordered(&ctx, width, &["minus", "zoom", "plus"]);
+        ordered(&ctx, width, &["library", "scope", "visuals"]);
+        if width >= 850.0 {
+            ordered(&ctx, width, &["undo", "redo", "save"]);
+        }
+        if width >= 1140.0 {
+            ordered(&ctx, width, &["play", "volume"]);
+            assert!((rect(&ctx, "toolbar-library-rect").center().y
+                - gear(&ctx).center().y).abs() < 1.0);
+        } else {
+            assert!(rect(&ctx, "toolbar-library-rect").top() > gear(&ctx).bottom(),
+                "{width}: compact view controls must remain on the second band");
+        }
+        // Bounded child allocations must also preserve separation of groups.
+        let mut visible = vec!["save", "play", "library", "scope", "visuals", "minus", "zoom", "plus"];
+        if width >= 850.0 {
+            visible.extend(["undo", "redo", "volume"]);
+        }
+        for (index, name) in visible.iter().enumerate() {
+            let target = rect(&ctx, &format!("toolbar-{name}-rect"));
+            for other in &visible[index + 1..] {
+                assert!(!target.intersects(rect(&ctx, &format!("toolbar-{other}-rect"))),
+                    "{width}: {name} overlaps {other}");
+            }
+        }
+        if width < 850.0 {
+            let output = frame(&ctx, &mut app, size, 1.0, vec![]);
+            let more = preset_text(&output, "More");
+            click(&ctx, &mut app, size, more, 1.1);
+            settle(&ctx, &mut app, size, 1.3);
+            ordered(&ctx, width, &["undo", "redo"]);
+        }
+    }
+}

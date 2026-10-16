@@ -3300,26 +3300,30 @@ impl OpenPatch {
     }
 
     fn toolbar_undo_redo(&mut self, ui: &mut egui::Ui) {
-        if icon_button(
+        let undo = icon_button(
             ui,
             Icon::Undo,
             "Undo patch edit · Cmd/Ctrl+Z",
             false,
             self.can_undo,
-        )
-        .clicked()
-        {
+        );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-undo-rect"), undo.rect));
+        if undo.clicked() {
             self.history(false);
         }
-        if icon_button(
+        let redo = icon_button(
             ui,
             Icon::Redo,
             "Redo patch edit · Shift+Cmd/Ctrl+Z",
             false,
             self.can_redo,
-        )
-        .clicked()
-        {
+        );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-redo-rect"), redo.rect));
+        if redo.clicked() {
             self.history(true);
         }
     }
@@ -3362,11 +3366,14 @@ impl OpenPatch {
     fn toolbar_volume(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
             ui.spacing_mut().slider_width = 64.0;
-            if ui
+            let response = ui
                 .add(egui::Slider::new(&mut self.volume, 0.0..=1.0).show_value(false))
-                .on_hover_text(format!("Master volume · {:.0}%", self.volume * 100.0))
-                .changed()
-            {
+                .on_hover_text(format!("Master volume · {:.0}%", self.volume * 100.0));
+            #[cfg(test)]
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(egui::Id::new("toolbar-volume-rect"), response.rect)
+            });
+            if response.changed() {
                 if let Some(audio) = &self.audio {
                     audio.set_volume(self.volume);
                 }
@@ -3375,47 +3382,57 @@ impl OpenPatch {
     }
 
     fn toolbar_views(&mut self, ui: &mut egui::Ui) {
-        if icon_button(
+        let library = icon_button(
             ui,
             Icon::Library,
             "Module library · Enter",
             self.browser_open,
             true,
-        )
-        .clicked()
-        {
+        );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-library-rect"), library.rect));
+        if library.clicked() {
             if self.browser_open {
                 self.browser_open = false;
             } else {
                 self.browse();
             }
         }
-        if icon_button(
+        let scope = icon_button(
             ui,
             Icon::Scope,
             "Signal scope",
             self.analysis_tab == Some(AnalysisTab::Scope),
             true,
-        )
-        .clicked()
-        {
+        );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-scope-rect"), scope.rect));
+        if scope.clicked() {
             self.toggle_analysis(AnalysisTab::Scope);
         }
-        if icon_button(
+        let visuals = icon_button(
             ui,
             Icon::Visuals,
             "Visuals",
             self.analysis_tab == Some(AnalysisTab::Visuals),
             true,
-        )
-        .clicked()
-        {
+        );
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-visuals-rect"), visuals.rect));
+        if visuals.clicked() {
             self.toggle_analysis(AnalysisTab::Visuals);
         }
     }
 
     fn toolbar_zoom(&mut self, ui: &mut egui::Ui) {
-        if icon_button(ui, Icon::Minus, "Zoom out", false, true).clicked() {
+        let minus = icon_button(ui, Icon::Minus, "Zoom out", false, true);
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-minus-rect"), minus.rect));
+        if minus.clicked() {
             self.rack.zoom_step(false);
         }
         let mut zoom = self.rack.zoom() * 100.0;
@@ -3428,6 +3445,9 @@ impl OpenPatch {
                     .speed(1.0),
             )
             .on_hover_text("Rack zoom · Cmd/Ctrl −/+ · double-click or Cmd/Ctrl+0 for 100%");
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-zoom-rect"), response.rect));
         if response.double_clicked() {
             self.rack.set_zoom(1.0);
             response.surrender_focus();
@@ -3435,9 +3455,26 @@ impl OpenPatch {
         } else if response.changed() {
             self.rack.set_zoom(zoom / 100.0);
         }
-        if icon_button(ui, Icon::Plus, "Zoom in", false, true).clicked() {
+        let plus = icon_button(ui, Icon::Plus, "Zoom in", false, true);
+        #[cfg(test)]
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-plus-rect"), plus.rect));
+        if plus.clicked() {
             self.rack.zoom_step(true);
         }
+    }
+
+    fn toolbar_group(ui: &mut egui::Ui, widths: &[f32], contents: impl FnOnce(&mut egui::Ui)) {
+        // The parent reserves groups from the right, but each group's controls
+        // read left to right. A bounded allocation avoids claiming the title's
+        // remaining width when changing the child layout direction.
+        let width = widths.iter().sum::<f32>()
+            + ui.spacing().item_spacing.x * widths.len().saturating_sub(1) as f32;
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, 30.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            contents,
+        );
     }
 
     fn toolbar_palette(&mut self, ui: &mut egui::Ui) {
@@ -3548,14 +3585,30 @@ impl OpenPatch {
                             if !compact {
                                 self.toolbar_palette(ui);
                                 ui.add_space(8.0);
-                                ui.horizontal(|ui| self.toolbar_zoom(ui));
+                                Self::toolbar_group(ui, &[30.0, 48.0, 30.0], |ui| {
+                                    self.toolbar_zoom(ui)
+                                });
                                 ui.add_space(8.0);
-                                ui.horizontal(|ui| self.toolbar_views(ui));
+                                Self::toolbar_group(ui, &[30.0, 30.0, 30.0], |ui| {
+                                    self.toolbar_views(ui)
+                                });
                                 ui.add_space(8.0);
                             }
-                            ui.horizontal(|ui| self.toolbar_transport(ui, !compact));
+                            Self::toolbar_group(
+                                ui,
+                                if compact { &[30.0] } else { &[30.0, 64.0] },
+                                |ui| self.toolbar_transport(ui, !compact),
+                            );
                             ui.add_space(8.0);
-                            ui.horizontal(|ui| self.toolbar_history(ui, !overflow));
+                            Self::toolbar_group(
+                                ui,
+                                if overflow {
+                                    &[30.0]
+                                } else {
+                                    &[30.0, 30.0, 30.0]
+                                },
+                                |ui| self.toolbar_history(ui, !overflow),
+                            );
                         });
                         ui.add_space(6.0);
                         self.toolbar_project(ui);
