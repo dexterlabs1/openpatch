@@ -452,13 +452,20 @@ fn poly_processing_and_state_adoption_neither_allocate_nor_deallocate() {
 #[test]
 fn invalid_channels_and_ports_reject_while_duplicate_destinations_stack() {
     for kind in ["poly_constant", "poly_merge"] {
-        for count in [-1.0, 0.5, 17.0, f32::NAN] {
+        for count in [-2.0, -1.0, 0.5, 17.0, f32::NAN] {
             let p = patch(
                 vec![node("unit", kind, &[("channels", count)])],
                 vec![],
                 "unit",
             );
-            assert!(p.compile().is_err(), "{kind}: channels={count}");
+            if kind == "poly_merge" && count == -1.0 {
+                assert!(
+                    p.compile().is_ok(),
+                    "Merge's explicit-zero sentinel is valid"
+                );
+            } else {
+                assert!(p.compile().is_err(), "{kind}: channels={count}");
+            }
         }
     }
     let p = patch(

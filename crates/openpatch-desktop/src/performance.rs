@@ -39,6 +39,7 @@ enum ModuleKind {
     Rescale,
     VcaMix,
     Sum,
+    Merge,
     Viz,
     Pulses,
     Push,
@@ -66,6 +67,7 @@ impl ModuleKind {
             "rescale" => Some(Self::Rescale),
             "vca_mix" => Some(Self::VcaMix),
             "poly_sum" => Some(Self::Sum),
+            "poly_merge" => Some(Self::Merge),
             "poly_viz" => Some(Self::Viz),
             "pulses" => Some(Self::Pulses),
             "push" => Some(Self::Push),
@@ -94,6 +96,7 @@ impl ModuleKind {
             Self::Rescale => "rescale",
             Self::VcaMix => "vca_mix",
             Self::Sum => "poly_sum",
+            Self::Merge => "poly_merge",
             Self::Viz => "poly_viz",
             Self::Pulses => "pulses",
             Self::Push => "push",
@@ -262,6 +265,8 @@ struct Meter {
     cc_learning_serial: AtomicU64,
     cc_learning_cell: AtomicU32,
     input_channels: AtomicU32,
+    output_channels: AtomicU32,
+    automatic_channels: AtomicU32,
     waveform_position: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
@@ -284,6 +289,8 @@ impl Meter {
             cc_learning_serial: AtomicU64::new(0),
             cc_learning_cell: AtomicU32::new(0),
             input_channels: AtomicU32::new(u32::MAX),
+            output_channels: AtomicU32::new(u32::MAX),
+            automatic_channels: AtomicU32::new(u32::MAX),
             waveform_position: AtomicU32::new(f32::NAN.to_bits()),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
@@ -364,6 +371,26 @@ impl Meter {
             .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
         self.waveform_position
             .store(position.unwrap_or(f32::NAN).to_bits(), Ordering::SeqCst);
+        // Counts are independent optional fields in the same serial boundary.
+        // Clear absent and invalid values on every packet, including no lights.
+        for (slot, count) in [
+            (
+                &self.output_channels,
+                snapshot.lights.and_then(|lights| lights.output_channels),
+            ),
+            (
+                &self.automatic_channels,
+                snapshot.lights.and_then(|lights| lights.automatic_channels),
+            ),
+        ] {
+            slot.store(
+                count
+                    .filter(|count| *count <= 16)
+                    .map(u32::from)
+                    .unwrap_or(u32::MAX),
+                Ordering::SeqCst,
+            );
+        }
         if let Some(lights) = snapshot.lights {
             flags |= 4 | (u32::from(lights.manual) << 4) | (u32::from(lights.count) << 8);
             self.input_channels.store(
@@ -415,6 +442,8 @@ impl Meter {
             let cc_serial = self.cc_learning_serial.load(Ordering::SeqCst);
             let cc_cell = self.cc_learning_cell.load(Ordering::SeqCst);
             let input_channels = self.input_channels.load(Ordering::SeqCst);
+            let output_channels = self.output_channels.load(Ordering::SeqCst);
+            let automatic_channels = self.automatic_channels.load(Ordering::SeqCst);
             let waveform_position = f32::from_bits(self.waveform_position.load(Ordering::SeqCst));
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
@@ -452,6 +481,11 @@ impl Meter {
                         brightness,
                         manual: flags & 16 != 0,
                         input_channels: (input_channels <= 16).then_some(input_channels as u8),
+                        output_channels: (entry.kind == ModuleKind::Merge && output_channels <= 16)
+                            .then_some(output_channels as u8),
+                        automatic_channels: (entry.kind == ModuleKind::Merge
+                            && automatic_channels <= 16)
+                            .then_some(automatic_channels as u8),
                         waveform_position: (waveform_position.is_finite()
                             && (0.0..=1.0).contains(&waveform_position))
                         .then_some(waveform_position),
@@ -1621,7 +1655,13 @@ impl EventReader {
                                 .learn_kind()
                                 .and_then(|kind| engine.midi_learning(binding.handle, kind)),
                             lights: if !binding.kind.sequential() {
-                                engine.module_lights(binding.handle)
+                                engine.module_lights(binding.handle).map(|mut lights| {
+                                    if binding.kind != ModuleKind::Merge {
+                                        lights.output_channels = None;
+                                        lights.automatic_channels = None;
+                                    }
+                                    lights
+                                })
                             } else {
                                 None
                             },
@@ -1641,6 +1681,240 @@ mod midi_cc_performance_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
+        assert!(ModuleKind::from_name("poly_merge") == Some(ModuleKind::Merge));
+        assert_eq!(ModuleKind::Merge.name(), "poly_merge");
+        assert!(!ModuleKind::Merge.manual());
+        assert!(!ModuleKind::Merge.sequential());
+        assert!(!ModuleKind::Merge.accepts(ModuleAction::BPress));
+        let meter = Meter::new();
+        let entry = Entry {
+            slot: 0,
+            token: 11,
+            born_revision: 1,
+            kind: ModuleKind::Merge,
+            bypassed: false,
+            action_epoch: 1,
+        };
+        let options = [Some(0), Some(16), None, Some(1), Some(17), Some(u8::MAX)];
+        for output in options {
+            for automatic in options {
+                for present in [true, false] {
+                    meter.write(
+                        entry.token,
+                        ModuleSnapshot {
+                            revision: 7,
+                            frame: 101,
+                            state: None,
+                            saved_state: None,
+                            controls: None,
+                            midi_learning: None,
+                            lights: present.then_some(ModuleLightState {
+                                count: 0,
+                                output_channels: output,
+                                automatic_channels: automatic,
+                                ..ModuleLightState::default()
+                            }),
+                        },
+                    );
+                    let packet = meter.read(entry, 7).unwrap();
+                    assert_eq!(packet.lights.is_some(), present);
+                    let valid = |value: Option<u8>| value.filter(|value| *value <= 16);
+                    assert_eq!(
+                        packet.lights.and_then(|lights| lights.output_channels),
+                        if present { valid(output) } else { None }
+                    );
+                    assert_eq!(
+                        packet.lights.and_then(|lights| lights.automatic_channels),
+                        if present { valid(automatic) } else { None }
+                    );
+                    for (slot, expected) in [
+                        (&meter.output_channels, output),
+                        (&meter.automatic_channels, automatic),
+                    ] {
+                        assert_eq!(
+                            slot.load(Ordering::SeqCst),
+                            if present {
+                                valid(expected).map(u32::from).unwrap_or(u32::MAX)
+                            } else {
+                                u32::MAX
+                            }
+                        );
+                    }
+                    // A reused slot cannot expose Merge-only fields as another kind.
+                    let foreign = meter
+                        .read(
+                            Entry {
+                                kind: ModuleKind::Sum,
+                                ..entry
+                            },
+                            7,
+                        )
+                        .unwrap();
+                    assert!(foreign
+                        .lights
+                        .and_then(|lights| lights.output_channels)
+                        .is_none());
+                    assert!(foreign
+                        .lights
+                        .and_then(|lights| lights.automatic_channels)
+                        .is_none());
+                    assert!(meter.read(entry, 8).is_none());
+                    assert!(meter.read(Entry { token: 12, ..entry }, 7).is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn merge_count_pairs_never_mix_frame_revision_or_instance_generation() {
+        let meter = Arc::new(Meter::new());
+        let entry = Entry {
+            slot: 0,
+            token: 11,
+            born_revision: 1,
+            kind: ModuleKind::Merge,
+            bypassed: false,
+            action_epoch: 1,
+        };
+        let counts = |frame: u64| match frame % 6 {
+            0 => (Some(0), Some(16)),
+            1 => (Some(16), Some(0)),
+            2 => (None, Some(7)),
+            3 => (Some(4), None),
+            4 => (Some(255), Some(0)),
+            _ => (Some(0), Some(17)),
+        };
+        let writer_meter = meter.clone();
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=2_000_u64 {
+                let (output, automatic) = counts(frame);
+                writer_meter.write(
+                    11 + frame % 2,
+                    ModuleSnapshot {
+                        revision: frame + 1,
+                        frame,
+                        state: None,
+                        saved_state: None,
+                        controls: None,
+                        midi_learning: None,
+                        lights: (frame % 7 != 0).then_some(ModuleLightState {
+                            count: 0,
+                            output_channels: output,
+                            automatic_channels: automatic,
+                            ..ModuleLightState::default()
+                        }),
+                    },
+                );
+                std::thread::yield_now();
+            }
+        });
+        let check = |packet: ModuleSnapshot, token: u64| {
+            assert_eq!(packet.revision, packet.frame + 1);
+            assert_eq!(token, 11 + packet.frame % 2);
+            assert_eq!(packet.lights.is_some(), !packet.frame.is_multiple_of(7));
+            if let Some(lights) = packet.lights {
+                let (output, automatic) = counts(packet.frame);
+                assert_eq!(lights.count, 0);
+                assert_eq!(lights.output_channels, output.filter(|count| *count <= 16));
+                assert_eq!(
+                    lights.automatic_channels,
+                    automatic.filter(|count| *count <= 16)
+                );
+            }
+        };
+        for _ in 0..2_000 {
+            for token in [11, 12] {
+                if let Some(packet) = meter.read(Entry { token, ..entry }, 1) {
+                    check(packet, token);
+                }
+            }
+            std::thread::yield_now();
+        }
+        writer.join().unwrap();
+        check(meter.read(entry, 2_001).unwrap(), 11);
+        assert!(meter.read(Entry { token: 12, ..entry }, 1).is_none());
+        assert!(meter.read(entry, 2_002).is_none());
+    }
+
+    #[test]
+    fn merge_host_snapshot_keeps_both_counts_in_the_same_module_batch() {
+        let (performance, _reader, _timing) = Performance::new(48_000);
+        {
+            let mut control = performance.control.lock().unwrap();
+            control.revision = 1;
+            for slot in 0..2 {
+                control.entries.insert(
+                    format!("merge{slot}"),
+                    Entry {
+                        slot,
+                        token: slot as u64 + 11,
+                        born_revision: 1,
+                        kind: ModuleKind::Merge,
+                        bypassed: false,
+                        action_epoch: 1,
+                    },
+                );
+            }
+        }
+        let shared = performance.shared.clone();
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=1_000_u64 {
+                shared.publish_frame(frame, || {
+                    for slot in 0..2 {
+                        shared.meters[slot].write(
+                            slot as u64 + 11,
+                            ModuleSnapshot {
+                                revision: frame + 1,
+                                frame,
+                                state: None,
+                                saved_state: None,
+                                controls: None,
+                                midi_learning: None,
+                                lights: Some(ModuleLightState {
+                                    count: 0,
+                                    output_channels: Some((frame % 17) as u8),
+                                    automatic_channels: Some((16 - frame % 17) as u8),
+                                    ..ModuleLightState::default()
+                                }),
+                            },
+                        );
+                        std::thread::yield_now();
+                    }
+                });
+            }
+        });
+        let check = |snapshot: Value| {
+            if snapshot["coherent"] == false {
+                for id in ["merge0", "merge1"] {
+                    assert_eq!(snapshot["modules"][id]["available"], false);
+                    assert!(snapshot["modules"][id]["lights"].is_null());
+                }
+            } else if snapshot["modules"]["merge0"]["available"] == true {
+                let frame = snapshot["frame"].as_u64().unwrap();
+                for id in ["merge0", "merge1"] {
+                    let module = &snapshot["modules"][id];
+                    assert_eq!(module["available"], true);
+                    assert_eq!(module["frame"], frame);
+                    assert_eq!(module["revision"], frame + 1);
+                    assert!(module["state"].is_null());
+                    assert!(module["controls"].is_null());
+                    assert_eq!(module["lights"]["count"], 0);
+                    assert_eq!(module["lights"]["output_channels"], frame % 17);
+                    assert_eq!(module["lights"]["automatic_channels"], 16 - frame % 17);
+                }
+            }
+        };
+        for _ in 0..1_000 {
+            check(performance.snapshot());
+            std::thread::yield_now();
+        }
+        writer.join().unwrap();
+        check(performance.snapshot());
+        assert_eq!(performance.snapshot()["frame"], 1_000);
+    }
 
     #[test]
     fn wavetable_position_and_lights_share_a_coherent_packet_without_carryover() {
@@ -1678,6 +1952,8 @@ mod tests {
                             manual: false,
                             brightness,
                             input_channels: Some((frame % 17) as u8),
+                            output_channels: None,
+                            automatic_channels: None,
                             waveform_position: (frame % 3 == 1).then_some(position),
                         }),
                     },
