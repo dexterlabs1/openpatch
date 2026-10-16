@@ -24,6 +24,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
             ("in10", "out10"),
         ],
         "octave" | "quantizer" => &[("pitch", "out")],
+        "stock_quantizer" => &[("pitch", "pitch")],
         "gain" | "lowpass" | "ladder_vcf" | "analog_vca" | "attenuverter" | "rescale" => {
             &[("signal", "out")]
         }
@@ -39,6 +40,14 @@ pub(crate) fn annotate(module: &mut Value) {
         "state_policy":if kind=="midi_cv" {"events are consumed and MIDI state/pulses continue processing in fixed scratch storage; published outputs are mono zero"} else {"DSP state freezes while bypassed; bypass transitions preserve DSP and incoming delayed frames but clear output/outgoing delayed frames to mono zero, including self-loops"},
         "module_actions":"bypassed sequencers reject actions; manual presses reject while matching releases remain accepted and clear held/pending controls immediately; transitions discard pending actions and release held manual controls while preserving DSP",
         "compatibility":"explicit OpenPatch host policy; generic utility/filter routes are chosen for existing OpenPatch kinds, not a claim of full Rack bypass parity"});
+    if kind == "stock_quantizer" {
+        module["bypass"]["output_policy"] = json!("actual connected context: raw active pitch slots, no offset/quantization; connected empty input gives mono+0, disconnected output stays0 channels; inactive storage is zero padded");
+        module["bypass"]["state_policy"] =
+            json!("skip quantization; retain last playing-note observation and durable bank");
+        module["bypass"]["module_actions"] = json!(
+            "no performance actions; durable bank edits remain normal revisioned state assignments"
+        );
+    }
     if kind == "midi_gate" {
         module["bypass"]["state_policy"] = json!("ignores MIDI and freezes DSP; transitions clear cell gates/timers and armed Learn, retaining owned completion and velocity");
         module["bypass"]["module_actions"] = json!("midi_panic remains available while bypassed and clears cell gates/timers and armed Learn immediately");

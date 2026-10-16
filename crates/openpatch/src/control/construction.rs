@@ -275,7 +275,8 @@ impl CommitReceipt {
                             .strip_prefix("gate")
                             .and_then(|s| s.parse::<u8>().ok())
                             .is_some_and(|i| (1..=8).contains(&i)));
-                if descriptor["hidden"] == true && !stock_button {
+                let stock_keyboard = node.kind == "stock_quantizer" && parameter == "scale_mask";
+                if descriptor["hidden"] == true && !stock_button && !stock_keyboard {
                     continue;
                 }
                 let Some(default) = descriptor["default"].as_f64().map(|value| value as f32) else {

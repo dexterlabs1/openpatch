@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 72)
+        self.assertEqual(len(catalog["modules"]), 73)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 72)
+        self.assertEqual(len(catalog["modules"]), 73)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 72)
+        self.assertEqual(len(catalog["modules"]), 73)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,58 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_quantizer_table_empty_bank_and_named_pitch_through_mcp(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_quantizer"]
+        self.assertEqual(descriptor["inputs"], ["pitch"])
+        self.assertEqual(descriptor["outputs"], ["pitch"])
+        self.assertEqual([descriptor["params"]["offset"][key] for key in ("min", "max", "default")], [-1, 1, 0])
+        patch = {"version": 2, "sample_rate": 48000, "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 3, "v1": .1, "v2": .125, "v3": -.01}},
+            {"id": "scale", "kind": "stock_quantizer", "params": {"scale_mask": 5}}],
+            "cables": [{"from": "source", "to": "scale", "input": "pitch"}]}
+        self.require_tool_success("replace_patch", {"patch": patch})
+        before = self.patch_snapshot()
+        for channel, expected in enumerate([0, 2 / 12, 0], start=1):
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "scale", "port": "pitch", "channel": channel, "seconds": .002, "points": 96}))
+            self.assertEqual((trace["frames"], trace["points"]), (96, 96))
+            self.assertEqual(trace["summary"]["active_frames"], 96 if channel == 1 else 95)
+            self.assertEqual(trace["bins"][0]["mean"], 0 if channel == 1 else None,
+                             "Initial delayed input is mono C; higher voices are inactive")
+            for point in trace["bins"][1:]:
+                self.assertEqual(point["active_frames"], 1)
+                self.assertTrue(math.isfinite(point["mean"]))
+                self.assertAlmostEqual(point["mean"], expected, places=6)
+            self.assertAlmostEqual(trace["bins"][-1]["mean"], expected, places=6)
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("set_parameter", {"id": "scale", "parameter": "scale_mask", "value": 0})
+        trace = self.payload(self.require_tool_success("capture_signal", {
+            "id": "scale", "port": "pitch", "channel": 1, "seconds": .002, "points": 96}))
+        self.assertAlmostEqual(trace["bins"][-1]["mean"], 1 / 12, places=6, msg="Empty stock bank quantizes chromatically")
+
+    def test_stock_quantizer_rotation_preset_initialize_and_batch_validation(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "scale", "kind": "stock_quantizer", "params": {"scale_mask": 2053, "offset": .25}}]}})
+        before = self.patch_snapshot()
+        self.require_tool_success("rotate_scale", {"id": "scale", "semitones": 1, "expected_revision": before["revision"]})
+        self.assertEqual(self.patch_snapshot()["patch"]["nodes"][0]["params"]["scale_mask"], 11)
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "scale"}))["preset"]
+        self.assertEqual(preset["params"]["scale_mask"], 2053)
+        self.require_tool_success("initialize_modules", {"ids": ["scale"]})
+        initialized = self.patch_snapshot()["patch"]["nodes"][0]["params"]
+        self.assertEqual(initialized["scale_mask"], 4095)
+        self.assertEqual(initialized["offset"], 0)
+        self.require_tool_success("apply_module_preset", {"id": "scale", "preset": preset})
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        stable = self.patch_snapshot()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "set_parameter", "arguments": {"id": "scale", "parameter": "offset", "value": -.5}},
+            {"tool": "rotate_scale", "arguments": {"id": "scale", "semitones": .5}}]})
+        self.assertEqual(self.patch_snapshot(), stable)
 
     def test_stock_seq3_physical_buttons_and_all_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

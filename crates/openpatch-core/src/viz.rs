@@ -47,6 +47,7 @@ impl Viz {
             output_channels: None,
             automatic_channels: None,
             clock_frequency: None,
+            playing_notes: None,
             waveform_position: None,
             brightness: self.brightness,
             manual: false,

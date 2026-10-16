@@ -1793,3 +1793,59 @@ fn stock_seq3_first_callbacks_consumer_taps_initialize_and_adoption_use_no_heap(
         .flatten()
         .all(|s| s.active && s.value.is_finite()));
 }
+
+#[test]
+fn stock_quantizer_first_callbacks_state_bank_load_bypass_and_taps_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node("pitch", "poly_constant", &[("channels", 16.0), ("v1", 0.1)]),
+            node("q", "stock_quantizer", &[]),
+        ],
+        vec![cable("pitch", "out", "q", "pitch")],
+        "q",
+    );
+    p.output_port = "pitch".into();
+    let mut old = p.compile().unwrap();
+    let mut next = p.compile().unwrap();
+    let mut bypass_patch = p.clone();
+    bypass_patch.nodes[1].bypassed = true;
+    let mut bypass = bypass_patch.compile().unwrap();
+    let old_handle = old.resolve_module_state("q").unwrap();
+    let next_handle = next.resolve_module_state("q").unwrap();
+    let bypass_handle = bypass.resolve_module_state("q").unwrap();
+    let taps = [
+        Some(old.resolve_tap("q", "pitch", 0).unwrap()),
+        Some(old.resolve_tap("q", "pitch", 15).unwrap()),
+    ];
+    let mut audio = [[0.0; 2]; 129];
+    let mut tapped = [[openpatch_core::TapSample::default(); 2]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut accepted = true;
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_audio_block_with_taps(&mut audio[..length], &taps, &mut tapped[..length]);
+        next.adopt_state_from(&old);
+        accepted &= next.set_module_saved_state(
+            next_handle,
+            openpatch_core::SavedModuleState::StockQuantizerNotes(5),
+        );
+        accepted &= next.initialize_module_state(next_handle);
+        next.process_poly_block(&mut frames[..length]);
+        bypass.adopt_state_from(&old);
+        bypass.process_poly_block(&mut frames[..length]);
+        let _ = old.module_lights(old_handle);
+        let _ = next.module_lights(next_handle);
+        let _ = bypass.module_lights(bypass_handle);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(accepted);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.values.iter().all(|value| value.is_finite())));
+    assert!(tapped
+        .iter()
+        .flatten()
+        .all(|sample| sample.active && sample.value.is_finite()));
+}

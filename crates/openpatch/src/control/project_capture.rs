@@ -84,6 +84,7 @@ impl Session {
                     holding.insert(node.id.clone(), value);
                 }
                 SavedModuleState::StockSeq3Fields { .. }
+                | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
                 | SavedModuleState::MidiCc { .. }

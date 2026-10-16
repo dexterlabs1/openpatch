@@ -32,6 +32,7 @@ struct Event {
 enum ModuleKind {
     Sequence,
     StockSeq3,
+    StockQuantizer,
     Switch1To4,
     Switch4To1,
     Logic,
@@ -64,6 +65,7 @@ impl ModuleKind {
         match name {
             "seq3" => Some(Self::Sequence),
             "stock_seq3" => Some(Self::StockSeq3),
+            "stock_quantizer" => Some(Self::StockQuantizer),
             "switch_1to4" => Some(Self::Switch1To4),
             "switch_4to1" => Some(Self::Switch4To1),
             "logic" => Some(Self::Logic),
@@ -97,6 +99,7 @@ impl ModuleKind {
         match self {
             Self::Sequence => "seq3",
             Self::StockSeq3 => "stock_seq3",
+            Self::StockQuantizer => "stock_quantizer",
             Self::Switch1To4 => "switch_1to4",
             Self::Switch4To1 => "switch_4to1",
             Self::Logic => "logic",
@@ -304,6 +307,7 @@ struct Meter {
     automatic_channels: AtomicU32,
     waveform_position: AtomicU32,
     clock_frequency: AtomicU32,
+    playing_notes: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -329,6 +333,7 @@ impl Meter {
             automatic_channels: AtomicU32::new(u32::MAX),
             waveform_position: AtomicU32::new(f32::NAN.to_bits()),
             clock_frequency: AtomicU32::new(f32::NAN.to_bits()),
+            playing_notes: AtomicU32::new(u32::MAX),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -370,6 +375,13 @@ impl Meter {
                         | (u32::from(passthrough.unwrap_or(false)) << 7)
                         | (u32::from(gate_mask) << 8)
                         | (u32::from(gates) << 16)
+                }
+                Some(SavedModuleState::StockQuantizerNotes(mask)) => {
+                    if mask <= 4095 {
+                        9 | (u32::from(mask) << 4)
+                    } else {
+                        0
+                    }
                 }
                 Some(SavedModuleState::Seq3Run(value)) => 1 | (u32::from(value) << 4),
                 Some(SavedModuleState::PushHold(value)) => 2 | (u32::from(value) << 4),
@@ -436,6 +448,12 @@ impl Meter {
             .filter(|value| value.is_finite() && *value > 0.0);
         self.clock_frequency
             .store(clock.unwrap_or(f32::NAN).to_bits(), Ordering::SeqCst);
+        let playing = snapshot
+            .lights
+            .and_then(|lights| lights.playing_notes)
+            .filter(|mask| *mask <= 4095);
+        self.playing_notes
+            .store(playing.map(u32::from).unwrap_or(u32::MAX), Ordering::SeqCst);
         // Counts are independent optional fields in the same serial boundary.
         // Clear absent and invalid values on every packet, including no lights.
         for (slot, count) in [
@@ -511,6 +529,7 @@ impl Meter {
             let automatic_channels = self.automatic_channels.load(Ordering::SeqCst);
             let waveform_position = f32::from_bits(self.waveform_position.load(Ordering::SeqCst));
             let clock_frequency = f32::from_bits(self.clock_frequency.load(Ordering::SeqCst));
+            let playing_notes = self.playing_notes.load(Ordering::SeqCst);
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -547,6 +566,9 @@ impl Meter {
                             gate_mask: (saved_state >> 8) as u8,
                             passthrough: (saved_state & 64 != 0).then_some(saved_state & 128 != 0),
                         }),
+                        9 => ((saved_state >> 4) <= 4095).then_some(
+                            SavedModuleState::StockQuantizerNotes((saved_state >> 4) as u16),
+                        ),
                         _ => None,
                     },
                     controls: (flags & 2 != 0).then_some(ModuleControlState {
@@ -554,6 +576,9 @@ impl Meter {
                         pressed_mask: (flags >> 16) as u16,
                     }),
                     lights: (flags & 4 != 0).then_some(ModuleLightState {
+                        playing_notes: (entry.kind == ModuleKind::StockQuantizer
+                            && playing_notes <= 4095)
+                            .then_some(playing_notes as u16),
                         count: (flags >> 8) as u8,
                         brightness,
                         manual: flags & 16 != 0,
@@ -1702,7 +1727,9 @@ impl LiveModuleEvents for Performance {
         let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
                 "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
-                    if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
+                    if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
+                        Some(json!({"scale_mask":mask,"enabled_notes":std::array::from_fn::<_,12,_>(|i|mask & (1<<i)!=0)}))
+                    } else if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
                         Some(json!({"running":running,"gates":std::array::from_fn::<_,8,_>(|i| gates & (1 << i) != 0),
                             "passthrough":passthrough,"step":snapshot.state.map(|s|s.step),"length":snapshot.state.map(|s|s.length)}))
                     } else if let Some(SavedModuleState::PushHold(holding)) = snapshot.saved_state {
@@ -1912,6 +1939,9 @@ impl EventReader {
                                 || binding.kind == ModuleKind::StockSeq3
                             {
                                 engine.module_lights(binding.handle).map(|mut lights| {
+                                    if binding.kind != ModuleKind::StockQuantizer {
+                                        lights.playing_notes = None;
+                                    }
                                     if binding.kind != ModuleKind::StockLfo {
                                         lights.clock_frequency = None;
                                     }
@@ -1945,6 +1975,7 @@ mod tests {
     include!("stock_lfo_performance_tests.rs");
     include!("stock_vco_performance_tests.rs");
     include!("stock_seq3_performance_tests.rs");
+    include!("stock_quantizer_performance_tests.rs");
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
@@ -2213,6 +2244,7 @@ mod tests {
                         midi_learning: None,
                         lights: (frame % 3 != 0).then_some(ModuleLightState {
                             clock_frequency: None,
+                            playing_notes: None,
                             count: 5,
                             manual: false,
                             brightness,

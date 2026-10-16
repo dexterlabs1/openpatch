@@ -33,6 +33,10 @@ mod stock_delay;
 mod stock_vco;
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
+mod stock_quantizer;
+pub use stock_quantizer::rotate_stock_quantizer_mask;
+#[doc(hidden)]
+pub use stock_quantizer::{StockQuantizerProbe, StockQuantizerSnapshot};
 mod stock_seq3;
 pub use stock_seq3::initial_stock_seq3_state;
 #[doc(hidden)]
@@ -341,6 +345,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_seq3::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_quantizer::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

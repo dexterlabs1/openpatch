@@ -104,8 +104,8 @@ regression. Original system-library bytes were not hashed; that provenance limit
 is explicit. See the [original result](benchmarks/stock-seq3-reference.json) and
 [current-build equivalence](benchmarks/stock-seq3-build-equivalence.json).
 Local host/UI checks pass: 1,884 Rust tests (six existing ignored) and all 92
-Python/MCP checks. Platform checks and native captures are reviewed separately
-for the pull request.
+Python/MCP checks. Platform CI and reviewed native captures passed in
+[PR13](https://github.com/dexterlabs1/openpatch/pull/13).
 No complete parity, performance advantage, hardware accuracy, native Mac
 input/audio-device, general `.vcv` import or external plugin claim is made.
 

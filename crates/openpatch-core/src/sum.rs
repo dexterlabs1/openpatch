@@ -74,6 +74,7 @@ impl Sum {
             output_channels: None,
             automatic_channels: None,
             clock_frequency: None,
+            playing_notes: None,
             waveform_position: None,
             brightness: std::array::from_fn(|i| {
                 [self.brightness.get(i).copied().unwrap_or(0.0), 0.0]

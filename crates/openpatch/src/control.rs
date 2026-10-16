@@ -46,6 +46,8 @@ mod sequence_tests;
 #[cfg(test)]
 mod stack_tests;
 #[cfg(test)]
+mod stock_quantizer_tests;
+#[cfg(test)]
 mod stock_seq3_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
@@ -235,6 +237,7 @@ pub trait LiveModuleEvents: Send + Sync {
                 }
                 SavedModuleState::StockSeq3 { .. }
                 | SavedModuleState::StockSeq3Fields { .. }
+                | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
                 | SavedModuleState::MidiCc { .. }
@@ -343,6 +346,7 @@ const EDIT_TOOLS: &[&str] = &[
     "set_module_content",
     "set_bypass",
     "rotate_sequence",
+    "rotate_scale",
     "invert_mutes",
     "initialize_modules",
     "randomize_modules",
@@ -1300,7 +1304,7 @@ impl Session {
             effects.retired_cables = self.cable_ids();
         }
         match name {
-            "rotate_sequence" => {
+            "rotate_sequence" | "rotate_scale" => {
                 self.apply_session_edit(&mut candidate, name, &args, &mut effects)?
             }
             "replace_patch" => {
@@ -1501,6 +1505,31 @@ fn rotate_sequence(patch: &mut Patch, args: &Value) -> Result<(), String> {
             node.params.insert(key, values[(step + offset) % 8]);
         }
     }
+    Ok(())
+}
+
+fn rotate_scale(patch: &mut Patch, args: &Value) -> Result<(), String> {
+    let id = string(args, "id")?;
+    let semitones = args["semitones"]
+        .as_i64()
+        .filter(|value| (-12..=12).contains(value))
+        .ok_or("semitones must be an integer from -12 to 12")? as i32;
+    let node = patch
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == id)
+        .ok_or("module not found")?;
+    if node.kind != "stock_quantizer" {
+        return Err("rotate_scale requires a stock_quantizer module".into());
+    }
+    let Some(SavedModuleState::StockQuantizerNotes(mask)) = SavedModuleState::from_node(node)
+    else {
+        return Err("invalid Stock Quantizer scale".into());
+    };
+    SavedModuleState::StockQuantizerNotes(openpatch_core::rotate_stock_quantizer_mask(
+        mask, semitones,
+    ))
+    .write_params(&mut node.params);
     Ok(())
 }
 
@@ -2218,6 +2247,7 @@ pub fn tools() -> Value {
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 or stock_seq3 columns left or right, including three voltage rows and coherent live gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
+        tool("rotate_scale","Transpose the enabled Stock Quantizer notes by -12..12 semitones, preserving offset, identity and cables. Captures the coherent live scale and commits one revision and undo step. Supports atomic batches and previews.",json!({"id":s,"semitones":{"type":"integer","minimum":-12,"maximum":12},"expected_revision":rev}),&["id","semitones"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits and native module-movement checkpoints; file writes and view pan/zoom are not included.",json!({}),&[],true),
         apply_edits_tool(&edits, &rev, &history_group),
         tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits. History grouping fields are accepted only by committed apply_edits, not previews.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),

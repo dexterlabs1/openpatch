@@ -106,6 +106,32 @@ pub(super) fn live_saved(
                 values,
             }
         }
+        SavedModuleState::StockQuantizerNotes(_) => {
+            if module["kind"].as_str() != Some("stock_quantizer") {
+                return Err(format!(
+                    "live Stock Quantizer kind unavailable for module '{id}'"
+                ));
+            }
+            let mask = module["state"]["scale_mask"]
+                .as_u64()
+                .filter(|mask| *mask <= 4095)
+                .ok_or_else(|| format!("invalid live Stock Quantizer mask for module '{id}'"))?
+                as u16;
+            let notes = module["state"]["enabled_notes"]
+                .as_array()
+                .filter(|notes| notes.len() == 12)
+                .ok_or_else(|| {
+                    format!("live Stock Quantizer notes unavailable for module '{id}'")
+                })?;
+            for (index, note) in notes.iter().enumerate() {
+                if note.as_bool() != Some(mask & (1 << index) != 0) {
+                    return Err(format!(
+                        "incoherent live Stock Quantizer notes for module '{id}'"
+                    ));
+                }
+            }
+            SavedModuleState::StockQuantizerNotes(mask)
+        }
         SavedModuleState::StockSeq3 { .. } => {
             let state = &module["state"];
             let running = state["running"]
@@ -532,7 +558,9 @@ impl Session {
                         })
                 })
                 .collect(),
-            "apply_module_preset" | "remove_module" => vec![string(args, "id")?.to_owned()],
+            "apply_module_preset" | "remove_module" | "rotate_scale" => {
+                vec![string(args, "id")?.to_owned()]
+            }
             "rotate_sequence"
                 if candidate.nodes.iter().any(|node| {
                     node.id == args["id"].as_str().unwrap_or("") && node.kind == "stock_seq3"
@@ -547,7 +575,9 @@ impl Session {
                             || (node.kind == "stock_seq3"
                                 && args["parameter"]
                                     .as_str()
-                                    .is_some_and(stock_seq3_saved_parameter)))
+                                    .is_some_and(stock_seq3_saved_parameter))
+                            || (node.kind == "stock_quantizer"
+                                && args["parameter"] == "scale_mask"))
                 }) || args["parameter"] == "running"
                     || args["parameter"] == "holding"
                     || args["parameter"] == "seed"
@@ -559,12 +589,46 @@ impl Session {
             }
             _ => Vec::new(),
         };
+        // A continuing keyboard paint gesture owns this complete twelve-bit
+        // bank. Its last accepted assignment is already in history even when
+        // the callback has not published that revision. Reuse only that exact
+        // acknowledged bank; new gestures, partial edits and rotations still
+        // require the ordinary coherent live capture.
+        if name == "set_parameter" && args["parameter"] == "scale_mask" {
+            if let Some((group, id, parameter)) = &self.history_group {
+                if parameter == "scale_mask"
+                    && args["id"] == id.as_str()
+                    && args["history_group"] == group.as_str()
+                {
+                    if let Some(state @ SavedModuleState::StockQuantizerNotes(_)) = self
+                        .undo
+                        .back()
+                        .and_then(|entry| entry.return_saved.get(id))
+                        .copied()
+                    {
+                        if candidate
+                            .nodes
+                            .iter()
+                            .find(|node| node.id == *id)
+                            .and_then(SavedModuleState::from_node)
+                            == Some(state)
+                        {
+                            effects.working_saved.entry(id.clone()).or_insert(state);
+                        }
+                    }
+                }
+            }
+        }
         for id in &targets {
             let state = self.state_for_edit(candidate, id, effects, true)?;
             // Project one coherent bank before editing a Stock SEQ3 durable
             // field. Rotation, partial presets and randomization must not use
             // stale gate/Run/passthrough parameters from the original graph.
-            if let Some(state @ SavedModuleState::StockSeq3 { .. }) = state {
+            if let Some(
+                state @ (SavedModuleState::StockSeq3 { .. }
+                | SavedModuleState::StockQuantizerNotes(_)),
+            ) = state
+            {
                 let node = candidate
                     .nodes
                     .iter_mut()
@@ -596,6 +660,8 @@ impl Session {
         }
         if name == "rotate_sequence" {
             rotate_sequence(candidate, args)?;
+        } else if name == "rotate_scale" {
+            rotate_scale(candidate, args)?;
         } else {
             apply_edit(
                 candidate,
@@ -702,7 +768,15 @@ impl Session {
                         }
                         continue;
                     }
-                    let explicit = if current.kind() == "midi_gate" {
+                    let explicit = if current.kind() == "stock_quantizer" {
+                        (matches!(
+                            name,
+                            "rotate_scale" | "randomize_modules" | "initialize_modules"
+                        ) || name == "set_parameter" && args["parameter"] == "scale_mask"
+                            || name == "apply_module_preset"
+                                && args["preset"]["params"].get("scale_mask").is_some())
+                        .then_some(current)
+                    } else if current.kind() == "midi_gate" {
                         if matches!(name, "initialize_modules" | "apply_module_preset") {
                             Some(current)
                         } else {
@@ -891,7 +965,12 @@ impl Session {
                     if let Some(value) = explicit {
                         if matches!(
                             value.kind(),
-                            "random_values" | "sh_asr" | "midi_cc" | "midi_gate" | "stock_seq3"
+                            "random_values"
+                                | "sh_asr"
+                                | "midi_cc"
+                                | "midi_gate"
+                                | "stock_seq3"
+                                | "stock_quantizer"
                         ) {
                             let node = candidate
                                 .nodes
