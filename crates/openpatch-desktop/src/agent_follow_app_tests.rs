@@ -153,7 +153,7 @@ fn idle_view_menu_exposes_agent_motion_and_follow_checkbox() {
         )
     };
     frame(&mut app, vec![]);
-    for label in ["View", "Agent motion"] {
+    for label in ["View", "Motion"] {
         let output = frame(&mut app, vec![]);
         let point = preset_text(&output, label);
         frame(&mut app, vec![egui::Event::PointerMoved(point)]);
