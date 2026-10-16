@@ -94,9 +94,9 @@ modules keep their kind-based category. Tags describe where a module belongs;
 they do not assert Rack or hardware equivalence. [Studio Mixer](STUDIO_MIXER.md)
 documents the console's source-backed meters and signal contract.
 
-## Next rotary rollout
+## Voice and utility rotary rollout
 
-The development branch extends the shared black rotary hardware to ten more
+[PR23](https://github.com/dexterlabs1/openpatch/pull/23) extends the shared black rotary hardware to ten more
 voice and utility panels: analog VCO, ladder VCF, FADE, Compare, legacy Process,
 Rescale, Gate, Attenuverter, White Noise and Oscillator. Their continuous knobs
 use relative adjustment, separate exact-value fields and angular MCP edit cues.
@@ -110,6 +110,33 @@ sizes on the remaining catalog needs a separate clearance pass. Mixer strips,
 envelope stages, sequencer cells and dense effects retain their existing
 controls in this slice. The [local qualification report](benchmarks/module-rotary-rollout-local-qualification.json)
 records 1,028 passing Desktop tests, strict Clippy, formatting, 114 MCP checks,
-an optimized workspace build and a verified signed ARM bundle. Platform CI
-and native render review remain required before this incremental development
-change replaces installed 0.2.2 build 4.
+an optimized workspace build and a verified signed ARM bundle. Both exact-source
+platform CI runs and both 149-image native capture reviews passed before merge.
+The signed 0.2.3 build 5 candidate remains staged; installed 0.2.2 build 4 has
+not been replaced.
+
+
+## Oscillator and voice rotary panels
+
+The next six panels extend the same ivory face and shared black knob hardware:
+
+| Panel | Rotary controls | Preserved dedicated behavior |
+|---|---|---|
+| Multi VCO / Multi LFO | Frequency, pulse width, FM depth, PWM depth | Four actual waveform outputs and existing frequency laws |
+| Wavetable VCO | Tune, position, FM depth, position CV depth | Bank display, actual observed lamps, sync and FM mode choices |
+| Wavetable LFO | Rate, position, FM depth, position CV depth | Bank display, actual observed lamps, offset and invert choices |
+| Stock VCF | Cutoff, resonance, drive and their three signed CV depths | Cutoff in Hz or notes, 100% nominal drive, unchanged processor |
+| Stock VCA | Saved level | Separate measured 16-voice gain columns and EXP/LIN CV response |
+
+Each rotary uses relative pointer movement and supports fine adjustment, keyboard
+control, exact entry and shared undo. MCP edits register an angular cue at the
+actual knob and show old/new values in the control's units. The cue reports the
+parameter edit; it never fabricates signal activity or gain telemetry.
+
+The existing 300/300/360/360/270/180-point panel widths and jack centers are
+preserved so saved neighboring modules do not start overlapping. Wavetable's
+second control row moves up five points; readouts and captions have separate
+space at 25% zoom. The original socket material remains pending the dedicated
+clearance pass. The [local qualification report](benchmarks/oscillator-voice-rotaries-local-qualification.json)
+records the executed checks and their limits. Platform CI and native screenshot
+review remain delivery gates for this 0.2.4 build 6 development candidate.

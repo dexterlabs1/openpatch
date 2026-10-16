@@ -132,7 +132,13 @@ fn panels(output: &egui::FullOutput) -> Vec<(Rect, Rect)> {
         .shapes
         .iter()
         .filter_map(|clipped| match &clipped.shape {
-            egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(139, 140, 133) => {
+            egui::Shape::Rect(rect)
+                if [
+                    Color32::from_rgb(139, 140, 133),
+                    Color32::from_rgb(66, 67, 64),
+                ]
+                .contains(&rect.fill) =>
+            {
                 Some((rect.rect, clipped.clip_rect))
             }
             _ => None,

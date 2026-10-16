@@ -181,7 +181,12 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
                                     let value = ctx.read_response(value_id).unwrap_or_else(|| {
                                         panic!("{}: missing numeric target for {name}", node.kind)
                                     });
-                                    let presentation = if let Some(choices) = ParameterChoices::from_spec(spec) {
+                                    let wave_choices = wavetable_choice_spec(&node.kind, name);
+                                    let choices = wave_choices
+                                        .as_ref()
+                                        .and_then(ParameterChoices::from_spec)
+                                        .or_else(|| ParameterChoices::from_spec(spec));
+                                    let presentation = if let Some(choices) = choices {
                                         Presentation::Choices {
                                             labels: choices.labels.iter().map(|s| s.as_str().unwrap().to_owned()).collect(),
                                             selected: choices.index(node.params[name]),
@@ -255,6 +260,10 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("seq3", 24, 0, &[][..]),
         ("stereo_delay", 10, 0, &[][..]),
         ("analog_vco", 0, 2, &["waveform"][..]),
+        ("multi_vco", 0, 4, &[][..]),
+        ("multi_lfo", 0, 4, &[][..]),
+        ("wavetable_vco", 0, 4, &["sync_mode", "fm_mode"][..]),
+        ("wavetable_lfo", 0, 4, &["offset", "invert"][..]),
         ("ladder_vcf", 0, 3, &[][..]),
         ("fade", 0, 2, &[][..]),
         ("compare", 0, 1, &[][..]),
@@ -272,7 +281,12 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
             .iter()
             .find(|m| m["kind"] == kind)
             .unwrap();
-        for scale in [0.42, 0.85, 1.0, 2.0] {
+        for scale in [0.25, 0.35, 0.5, 0.85, 1.0, 2.0] {
+            if scale == 0.25
+                && !matches!(kind, "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo")
+            {
+                continue;
+            }
             for position in [Position::Minimum, Position::Default, Position::Maximum] {
                 let rack = paint(module, position, scale, false);
                 let browser = paint(module, position, scale, true);
@@ -304,6 +318,11 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                         "{context}: continuous noise level uses the rotary path");
                 }
                 for (name, surface) in [("rack", &rack), ("browser", &browser)] {
+                    if matches!(kind, "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo") {
+                        assert!(surface.fills.iter().any(|(_, color)|
+                            *color == Color32::from_rgb(238, 232, 216)),
+                            "{context}: {name} lost the warm ivory face");
+                    }
                     assert_eq!(
                         surface.thumbs.len(),
                         faders,
@@ -493,6 +512,8 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                                 ("gate", "duty") | ("white_noise", "level") => Some((60.0, 22.9)),
                                 ("analog_vco", "pulse_width") => Some((42.0, 13.9)),
                                 ("rescale", "gain") => Some((46.0, 15.9)),
+                                ("multi_vco" | "multi_lfo", "pulse_width") => Some((58.0, 21.9)),
+                                ("wavetable_vco" | "wavetable_lfo", "position") => Some((44.0, 15.4)),
                                 _ => None,
                             };
                             if let Some((target, face_radius)) = expected_target_and_face {
@@ -582,5 +603,31 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 }
             }
         }
+    }
+}
+
+#[test]
+fn oscillator_rotary_faces_preserve_saved_rack_width_and_jack_centers() {
+    for kind in ["multi_vco", "multi_lfo"] {
+        let width = panel_width(kind);
+        assert_eq!(width, 300.0);
+        assert_eq!(port_material_scale(kind), 1.0);
+        for index in 0..4 {
+            let x = 60.0 + index as f32 * 60.0;
+            assert_eq!(port_position(kind, true, index, 4, width), pos2(x, 332.0));
+            assert_eq!(port_position(kind, false, index, 4, width), pos2(x, 374.0));
+        }
+    }
+    for kind in ["wavetable_vco", "wavetable_lfo"] {
+        let width = panel_width(kind);
+        assert_eq!(width, 360.0);
+        assert_eq!(port_material_scale(kind), 1.0);
+        for index in 0..4 {
+            assert_eq!(
+                port_position(kind, true, index, 4, width),
+                pos2(36.0 + index as f32 * 72.0, 367.0)
+            );
+        }
+        assert_eq!(port_position(kind, false, 0, 1, width), pos2(324.0, 367.0));
     }
 }

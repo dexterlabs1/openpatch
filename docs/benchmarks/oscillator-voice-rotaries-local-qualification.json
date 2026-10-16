@@ -1,0 +1,83 @@
+{
+  "base": "64576d2cbcb387eb05395441ba71cb01d54e8001",
+  "candidate": "0.2.4 build6",
+  "changed_kinds": [
+    "multi_vco",
+    "multi_lfo",
+    "wavetable_vco",
+    "wavetable_lfo",
+    "stock_vcf",
+    "stock_vca"
+  ],
+  "checked_at": "2026-10-16T20:18:38.029834+00:00",
+  "checks": {
+    "MCP": "Accepted angular anchors with displayed old/new units; no fabricated gain telemetry",
+    "additional_focused_tests_passed": 2,
+    "desktop_existing_ignored": 3,
+    "desktop_passed": 1038,
+    "focused_after_test_changes": "quality004 VCA accepted angular cue, quality005 generic fourkind and dedicated VCF/VCA rack/browser at25% all pass",
+    "focused_camera": "Actual pointer focus, normal/fine arrow edits and key release preserve pan/viewport; after focus surrender idle arrows still pan. Existing navigation implementation unchanged.",
+    "format": true,
+    "full_suite": "quality003 before semantics-preserving test lint cleanup and additional25% test coverage",
+    "geometry": "Actual knob targets, text/readouts, min/default/max generic values and rack/browser parity at25% for the four changed generic kinds; dedicated VCF/VCA real-font target/text parity at25/35/50/100%",
+    "input": "Relative drag, fine modifier transitions, keyboard, exact entry, grouped Session undo, graph reorder/focus and revision identity",
+    "strict_workspace_all_targets_clippy": true
+  },
+  "format_version": 1,
+  "installed_app": "0.2.2 build4; preserved",
+  "limitations": [
+    "Larger sockets and remaining catalog conversion are still required",
+    "Small-zoom geometric separation does not prove comfortable raster readability or native input",
+    "Native Mac window/input/audio-device qualification not performed",
+    "Both platformCI and native149capture reviews required before merge/install"
+  ],
+  "local_checks_passed": true,
+  "platform_and_native_render_delivery_gates_passed": false,
+  "release": {
+    "ARM_bundle_signature_verified": true,
+    "MCP_tests_passed": 114,
+    "all_four_fonts_embedded": true,
+    "catalog_kinds": 80,
+    "ferrofluid_shader_embedded": true,
+    "file_backed_sections_and_UUIDs_preserved_by_signing": true,
+    "installed": false,
+    "launched": false,
+    "notices_and_icon_verified": true,
+    "optimized_workspace_build": true,
+    "production_inputs_unchanged_after_added_test_only_regressions": true,
+    "release_binaries": {
+      "openpatch": {
+        "bytes": 4377056,
+        "sha256": "dcd8fe25418e58881c786cd9cbf4a04c77c340432b4cb4e5f5c8cda054b1bfba"
+      },
+      "openpatch-desktop": {
+        "bytes": 33177616,
+        "sha256": "a8fce773be987c2f41c770f77036c22ccbb935cc5e4f649e451da7373c3d5bc3"
+      }
+    },
+    "signed_binaries": {
+      "openpatch": "1d2826d036af0f9073d2adc9f6e4efed05a8e56ebc73257634cb221e4a724232",
+      "openpatch-desktop": "b0a1fad2bd14d4c32f00460161c8547f222ac3cdbafc0ea616ae7c139a35b9ad"
+    }
+  },
+  "retained_attempts": {
+    "quality001": "1036pass2fail: actual multi-caption overlap and library face-material collector",
+    "quality002": "1037pass1fail: actual wavetable-caption overlap at25%",
+    "quality003": "1038pass; Clippy flagged get/is_none test idiom, fixed without changing condition"
+  },
+  "scope": "Shared rack/browser ivory faces and rotaries, actual units/telemetry, relative input and angular MCP cues; original widths and jack centers retained; no Core/DSP change",
+  "source_sha256": {
+    "Cargo.lock": "3a32b72d3baade4a81204638e1de5e1ff2d10e0cbc3d87119155146615846347",
+    "crates/openpatch-desktop/Cargo.toml": "ded57d3bcabb2398a7c915cfae59c096d24ae05c61f0d4ba59901585ed3406cb",
+    "crates/openpatch-desktop/src/generic_fader_geometry_tests.rs": "721bdd57e594803f2c3ae7e483fdda5fcbfc86a2641e4afe952fc928e8f7926a",
+    "crates/openpatch-desktop/src/generic_fader_ui_tests.rs": "ace3e22fecc6044e3d47d2ebe45e55b8cc4aa3f2a09f833851bfd1ed0a8338f8",
+    "crates/openpatch-desktop/src/library_zoom_tests.rs": "f154e84be9df57748e33743765f5ad9263205f8782c8e4a56eff16c9d8df7c76",
+    "crates/openpatch-desktop/src/rack.rs": "f1e5d3136498bd58e210eeb79824394eba871059d7efe3140c5968c9db5b7306",
+    "crates/openpatch-desktop/src/stock_vca_panel.rs": "ae690bee423417ca6bdcaecb3355c8b66f16d86afbd1708dc41c644b5b487a60",
+    "crates/openpatch-desktop/src/stock_vca_ui_tests.rs": "210ab7b97c1b94f0aed3d04d27d16d8f63b3c3011720026b9ee390bfe3ec9e81",
+    "crates/openpatch-desktop/src/stock_vcf_panel.rs": "86485349a75078775b74e26cf5cc1c441efbfdbc6575efcf66dfe7b591cb017b",
+    "crates/openpatch-desktop/src/stock_vcf_ui_tests.rs": "cf9511b4aa4b1b054cd1fa5156fa8a7e86440b364e8f790e3084d2a25929f2a0",
+    "crates/openpatch-desktop/src/wavetable_ui_tests.rs": "de49d22b4a9a2a74bc806bdcf3bcad3aee4353079866b20a02f883067ccb9c28",
+    "scripts/package_macos.py": "7a58e8af92e3b3e96c94de58a16ea39ea7a7c432a27a756d71318a19771215ee"
+  }
+}
