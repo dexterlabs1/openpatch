@@ -914,93 +914,178 @@ impl OpenPatch {
         if !self.settings_open {
             return;
         }
-        let mut open = true;
-        egui::Window::new("Audio & MIDI")
-            .default_pos(ctx.content_rect().center() - Vec2::new(220.0, 190.0))
-            .open(&mut open)
-            .resizable(false)
-            .default_width(430.0)
-            .show(ctx, |ui| {
-                ui.heading("Audio output");
-                let mut selected = self.output_device.clone();
-                egui::ComboBox::from_id_salt("audio-device")
-                    .width(390.0)
-                    .selected_text(selected.as_deref().unwrap_or("System default"))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut selected, None, "System default");
-                        for device in &self.output_devices {
-                            ui.selectable_value(&mut selected, Some(device.clone()), device);
-                        }
-                    });
-                if selected != self.output_device {
-                    self.reopen_audio(selected);
-                }
-                ui.label(&self.device);
-                if self
-                    .audio
-                    .as_ref()
-                    .is_some_and(|audio| audio.device_channels == 1)
-                {
-                    ui.label("Mono device: stereo patches are mixed to (L + R) / 2.");
-                }
-                ui.label("Changing the output pauses playback. Sample rate follows the device.");
-                ui.separator();
-                ui.heading("Global MIDI input");
-                let mut midi = self.midi_device.clone();
-                let midi_label = midi
-                    .as_ref()
-                    .map(|id| {
-                        self.midi_ports
-                            .iter()
-                            .find(|port| &port.id == id)
-                            .map_or("Unavailable device", |port| port.name.as_str())
-                    })
-                    .unwrap_or("None — use the on-screen keyboard");
-                egui::ComboBox::from_id_salt("midi-device")
-                    .width(390.0)
-                    .selected_text(midi_label)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut midi, None, "None — use the on-screen keyboard");
-                        for port in &self.midi_ports {
-                            ui.selectable_value(&mut midi, Some(port.id.clone()), &port.name);
-                        }
-                    });
-                if midi != self.midi_device {
-                    self.midi_device = midi;
-                    self.connect_selected_midi();
-                    self.save_host_settings();
-                }
-                let connected = self
-                    .midi
-                    .as_ref()
-                    .and_then(MidiInputManager::connected_id)
-                    .is_some();
-                ui.label(if connected {
-                    "MIDI connected"
-                } else {
-                    "No hardware MIDI input connected"
-                });
-                ui.label("Add MIDI → CV and connect pitch, gate and retrigger to a voice.");
-                ui.label("Pause, reconnect, and voice allocation changes release held notes.");
-                ui.horizontal(|ui| {
-                    if ui.button("Refresh devices").clicked() {
-                        self.refresh_devices();
-                    }
-                    if ui.button("Reconnect MIDI").clicked() {
-                        self.connect_selected_midi();
-                    }
-                    if ui.button("All notes off").clicked() {
-                        self.panic_notes();
-                    }
-                });
-                ui.checkbox(&mut self.keyboard_open, "Show performance keyboard");
-                if let Some(audio) = &self.audio {
-                    if audio.midi_overflows() > 0 {
-                        ui.label(format!("MIDI queue resets: {}", audio.midi_overflows()));
-                    }
-                }
-                ui.label(&self.settings_status);
+        let (anchor, layer) = ctx
+            .data(|data| {
+                data.get_temp::<(egui::Rect, egui::LayerId)>(egui::Id::new("audio-settings-anchor"))
+            })
+            .unwrap_or_else(|| {
+                let right = ctx.content_rect().right() - 12.0;
+                (
+                    egui::Rect::from_min_size(
+                        egui::pos2(right - 30.0, 7.0),
+                        egui::vec2(30.0, 30.0),
+                    ),
+                    egui::LayerId::background(),
+                )
             });
+        let id = egui::Id::new("audio-settings-dropdown");
+        // ComboBox popups use their own foreground layer. A selection in that
+        // child belongs to settings even when its list extends past this frame.
+        let child_under_pointer = egui::Popup::is_any_open(ctx)
+            && ctx
+                .pointer_interact_pos()
+                .and_then(|pos| ctx.layer_id_at(pos))
+                .is_some_and(|layer| layer.order == egui::Order::Foreground && layer.id != id);
+        let width = 430.0_f32.min(ctx.content_rect().width() - 24.0).max(240.0);
+        let max_height = (ctx.content_rect().bottom() - anchor.bottom() - 24.0).max(40.0);
+        let mut open = true;
+        let response = egui::Popup::new(id, ctx.clone(), anchor, layer)
+            .kind(egui::PopupKind::Menu)
+            .open_bool(&mut open)
+            .align(egui::emath::RectAlign::BOTTOM_END)
+            .align_alternatives(&[])
+            .gap(6.0)
+            .width(width)
+            .close_behavior(if child_under_pointer {
+                egui::PopupCloseBehavior::IgnoreClicks
+            } else {
+                egui::PopupCloseBehavior::CloseOnClickOutside
+            })
+            .show(|ui| {
+                ui.set_width(width);
+                egui::ScrollArea::vertical()
+                    .id_salt("audio-settings-scroll")
+                    .max_height(max_height)
+                    .show(ui, |ui| {
+                        ui.heading("Audio & MIDI");
+                        ui.add_space(4.0);
+                        ui.heading("Audio output");
+                        let mut selected = self.output_device.clone();
+                        let audio_device = egui::ComboBox::from_id_salt("audio-device")
+                            .width(ui.available_width())
+                            .selected_text(selected.as_deref().unwrap_or("System default"))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut selected, None, "System default");
+                                for device in &self.output_devices {
+                                    ui.selectable_value(
+                                        &mut selected,
+                                        Some(device.clone()),
+                                        device,
+                                    );
+                                }
+                            });
+                        ui.ctx().data_mut(|data| {
+                            data.insert_temp(
+                                egui::Id::new("settings-audio-device-rect"),
+                                audio_device.response.rect,
+                            );
+                            data.insert_temp(
+                                egui::Id::new("settings-audio-device-id"),
+                                audio_device.response.id,
+                            );
+                        });
+                        if selected != self.output_device {
+                            self.reopen_audio(selected);
+                        }
+                        ui.label(&self.device);
+                        if self
+                            .audio
+                            .as_ref()
+                            .is_some_and(|audio| audio.device_channels == 1)
+                        {
+                            ui.label("Mono device: stereo patches are mixed to (L + R) / 2.");
+                        }
+                        ui.label(
+                            "Changing the output pauses playback. Sample rate follows the device.",
+                        );
+                        ui.separator();
+                        ui.heading("Global MIDI input");
+                        let mut midi = self.midi_device.clone();
+                        let midi_label = midi
+                            .as_ref()
+                            .map(|id| {
+                                self.midi_ports
+                                    .iter()
+                                    .find(|port| &port.id == id)
+                                    .map_or("Unavailable device", |port| port.name.as_str())
+                            })
+                            .unwrap_or("None — use the on-screen keyboard");
+                        egui::ComboBox::from_id_salt("midi-device")
+                            .width(ui.available_width())
+                            .selected_text(midi_label)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut midi,
+                                    None,
+                                    "None — use the on-screen keyboard",
+                                );
+                                for port in &self.midi_ports {
+                                    ui.selectable_value(
+                                        &mut midi,
+                                        Some(port.id.clone()),
+                                        &port.name,
+                                    );
+                                }
+                            });
+                        if midi != self.midi_device {
+                            self.midi_device = midi;
+                            self.connect_selected_midi();
+                            self.save_host_settings();
+                        }
+                        let connected = self
+                            .midi
+                            .as_ref()
+                            .and_then(MidiInputManager::connected_id)
+                            .is_some();
+                        ui.label(if connected {
+                            "MIDI connected"
+                        } else {
+                            "No hardware MIDI input connected"
+                        });
+                        ui.label("Add MIDI → CV and connect pitch, gate and retrigger to a voice.");
+                        ui.label(
+                            "Pause, reconnect, and voice allocation changes release held notes.",
+                        );
+                        ui.horizontal(|ui| {
+                            if ui.button("Refresh devices").clicked() {
+                                self.refresh_devices();
+                            }
+                            if ui.button("Reconnect MIDI").clicked() {
+                                self.connect_selected_midi();
+                            }
+                            if ui.button("All notes off").clicked() {
+                                self.panic_notes();
+                            }
+                        });
+                        ui.checkbox(&mut self.keyboard_open, "Show performance keyboard");
+                        if let Some(audio) = &self.audio {
+                            if audio.midi_overflows() > 0 {
+                                ui.label(format!("MIDI queue resets: {}", audio.midi_overflows()));
+                            }
+                        }
+                        ui.label(&self.settings_status);
+                    });
+            });
+        if let Some(response) = response {
+            // Native outside-click dismissal excludes drags. An outside
+            // release also ends this dropdown's ownership, after the rack has
+            // already ignored the entire gesture for this frame.
+            let released_outside = !child_under_pointer
+                && ctx.input(|input| input.pointer.any_released())
+                && ctx.pointer_interact_pos().is_some_and(|position| {
+                    !response.response.rect.contains(position) && !anchor.contains(position)
+                });
+            open &= !released_outside;
+            ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("audio-settings-dropdown-rect"),
+                    response.response.rect,
+                )
+            });
+        }
+        if !open {
+            egui::Popup::close_all(ctx);
+        }
         self.settings_open = open;
     }
 
@@ -2830,7 +2915,603 @@ impl OpenPatch {
         }
     }
 
+    fn toolbar_menus(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        ui.menu_button("File", |ui| {
+            if ui.button("New patch     ⌘N").clicked() {
+                self.request_action(PendingAction::NewTemplate);
+                ui.close();
+            }
+            if ui.button("Save template…").clicked() {
+                self.begin_save_template();
+                ui.close();
+            }
+            if ui.button("Open…     ⌘O").clicked() {
+                self.file_dialog(FileMode::Open);
+                ui.close();
+            }
+            if ui.button("Save     ⌘S").clicked() {
+                self.save_current();
+                ui.close();
+            }
+            if ui.button("Save as…     ⇧⌘S").clicked() {
+                self.after_save = None;
+                self.file_dialog(FileMode::Save);
+                ui.close();
+            }
+            if ui
+                .add_enabled(
+                    self.active_file.is_some(),
+                    egui::Button::new("Revert to saved"),
+                )
+                .clicked()
+            {
+                if let Some(name) = self.active_file.clone() {
+                    self.request_action(PendingAction::Load(name));
+                }
+                ui.close();
+            }
+            if ui
+                .add_enabled(
+                    !self.recovery_names.is_empty(),
+                    egui::Button::new("Recover unsaved work…"),
+                )
+                .clicked()
+            {
+                self.recovery_open = true;
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Reference analog voice").clicked() {
+                let mut patch = openpatch_core::analog_demo_patch();
+                patch.version = 2;
+                self.replace_from_menu(patch, "Reference analog voice");
+                ui.close();
+            }
+            if ui.button("Clocked random voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/clocked-random-voice.json"
+                ))
+                .expect("valid bundled random voice");
+                self.replace_from_menu(patch, "Clocked random voice");
+                ui.close();
+            }
+            if ui.button("Synced waveform voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/synced-waveform-voice.json"
+                ))
+                .expect("valid bundled waveform voice");
+                self.replace_from_menu(patch, "Synced waveform voice");
+                ui.close();
+            }
+            if ui.button("Stacked pitch voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stacked-pitch-voice.json"
+                ))
+                .expect("valid bundled stacked pitch voice");
+                self.replace_from_menu(patch, "Stacked pitch voice");
+                ui.close();
+            }
+            if ui.button("Layered stereo morph").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/layered-stereo-morph.json"
+                ))
+                .expect("valid bundled layered stereo morph");
+                self.replace_from_menu(patch, "Layered stereo morph");
+                ui.close();
+            }
+            if ui.button("Delayed gate voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/delayed-gate-voice.json"))
+                        .unwrap();
+                ui.close();
+                self.replace_from_menu(patch, "Delayed gate voice");
+            }
+            if ui.button("Manual push voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/manual-push-voice.json"))
+                        .unwrap();
+                ui.close();
+                self.replace_from_menu(patch, "Manual push voice");
+            }
+            if ui.button("Shift register canon").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/shift-register-canon.json"
+                ))
+                .expect("valid bundled shift register canon");
+                ui.close();
+                self.replace_from_menu(patch, "Shift register canon");
+            }
+            if ui.button("Random values voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/random-values-voice.json"
+                ))
+                .expect("valid bundled random values voice");
+                ui.close();
+                self.replace_from_menu(patch, "Random values voice");
+            }
+            if ui.button("Noise colors").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/noise-colors.json"))
+                        .expect("valid bundled noise colors");
+                ui.close();
+                self.replace_from_menu(patch, "Noise colors");
+                self.rack.set_zoom(0.85);
+            }
+            if ui.button("Struck resonator").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/struck-resonator.json"))
+                        .expect("valid bundled physical resonator");
+                ui.close();
+                self.replace_from_menu(patch, "Struck resonator");
+                self.rack.set_zoom(0.75);
+            }
+            if ui.button("Manual pulses voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/manual-pulses-voice.json"
+                ))
+                .unwrap();
+                ui.close();
+                self.replace_from_menu(patch, "Manual pulses voice");
+            }
+            if ui.button("Gate shaping voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/gate-shaping-voice.json"))
+                        .expect("valid bundled gate shaping voice");
+                self.replace_from_menu(patch, "Gate shaping voice");
+                ui.close();
+            }
+            if ui.button("Annotated drum rack").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/annotated-drum-rack.json"
+                ))
+                .expect("valid annotated drum rack");
+                self.replace_from_menu(patch, "Annotated drum rack");
+                ui.close();
+            }
+            if ui.button("MIDI drum pads").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/midi-gate-drums.json"))
+                        .expect("valid MIDI drum pads");
+                self.replace_from_menu(patch, "MIDI drum pads");
+                ui.close();
+            }
+            if ui.button("MIDI controller voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/midi-controller-voice.json"
+                ))
+                .expect("valid MIDI controller voice");
+                self.replace_from_menu(patch, "MIDI controller voice");
+                ui.close();
+            }
+            if ui.button("Stock VCA voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-vca-voice.json"))
+                        .expect("valid stock VCA voice");
+                self.replace_from_menu(patch, "Stock VCA voice");
+                ui.close();
+            }
+            if ui.button("Random motion voice").clicked() {
+                let patch: Patch = serde_json::from_str(include_str!(
+                    "../../../examples/random-motion-voice.json"
+                ))
+                .expect("bundled Random motion voice");
+                self.replace_from_menu(patch, "Random motion voice");
+                ui.close();
+            }
+            if ui.button("Wavetable voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/wavetable-voice.json"))
+                        .expect("valid wavetable voice");
+                self.replace_from_menu(patch, "Wavetable voice");
+                ui.close();
+            }
+            if ui.button("Stock VCF voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-vcf-voice.json"))
+                        .expect("valid stock VCF voice");
+                self.replace_from_menu(patch, "Stock VCF voice");
+                ui.close();
+            }
+            if ui.button("Clocked delay voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-delay-voice.json"))
+                        .expect("valid clocked delay voice");
+                self.replace_from_menu(patch, "Clocked delay voice");
+                ui.close();
+            }
+            if ui.button("Polyphonic ADSR voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/polyphonic-adsr-voice.json"
+                ))
+                .expect("valid polyphonic ADSR voice");
+                self.replace_from_menu(patch, "Polyphonic ADSR voice");
+                ui.close();
+            }
+            if ui.button("Voltage utilities").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/voltage-utilities.json"))
+                        .expect("valid bundled voltage utilities");
+                self.replace_from_menu(patch, "Voltage utilities");
+                ui.close();
+            }
+            if ui.button("Switched stereo voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/switched-stereo-voice.json"
+                ))
+                .expect("valid bundled switching voice");
+                self.replace_from_menu(patch, "Switched stereo voice");
+                ui.close();
+            }
+            if ui.button("Sequenced analog voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/sequenced-analog-voice.json"
+                ))
+                .expect("valid bundled sequence");
+                self.replace_from_menu(patch, "Sequenced analog voice");
+                ui.close();
+            }
+            if ui.button("Clocked modulation").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/clocked-modulation.json"))
+                        .expect("valid bundled modulation voice");
+                self.replace_from_menu(patch, "Clocked modulation");
+                self.rack.set_zoom(0.75);
+                ui.close();
+            }
+            if ui.button("Stereo width study").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stereo-width-study.json"))
+                        .expect("valid bundled stereo study");
+                self.replace_from_menu(patch, "Stereo width study");
+                ui.close();
+            }
+            if ui.button("MIDI keyboard voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/midi-keyboard-voice.json"
+                ))
+                .expect("valid bundled MIDI voice");
+                self.replace_from_menu(patch, "MIDI keyboard voice");
+                self.keyboard_open = true;
+                ui.close();
+            }
+            if ui.button("Polyphonic voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/polyphonic-voice.json"))
+                        .expect("valid bundled polyphonic voice");
+                self.replace_from_menu(patch, "Polyphonic voice");
+                ui.close();
+            }
+            if self.patch.version == 1 && ui.button("Enable polyphony and feedback…").clicked() {
+                self.confirm_engine_upgrade = true;
+                ui.close();
+            }
+            if ui.button("Tremolo study").clicked() {
+                self.replace_from_menu(openpatch_core::demo_patch(), "Tremolo study");
+                ui.close();
+            }
+        });
+        ui.menu_button("Edit", |ui| {
+            if ui
+                .add_enabled(self.can_undo, egui::Button::new("Undo patch edit   ⌘Z"))
+                .clicked()
+            {
+                self.history(false);
+                ui.close();
+            }
+            if ui
+                .add_enabled(self.can_redo, egui::Button::new("Redo patch edit   ⇧⌘Z"))
+                .clicked()
+            {
+                self.history(true);
+                ui.close();
+            }
+            ui.separator();
+            if ui
+                .add_enabled(
+                    !self.patch.cables.is_empty(),
+                    egui::Button::new("Clear cables"),
+                )
+                .clicked()
+            {
+                self.command("clear_cables", json!({"expected_revision":self.revision}));
+                ui.close();
+            }
+            if ui.button("Add module…   Enter").clicked() {
+                self.browse();
+                ui.close();
+            }
+        });
+        let (view, _) = egui::containers::menu::MenuButton::new("View")
+            .config(egui::containers::menu::MenuConfig::new()
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside))
+            .ui(ui, |ui| {
+            let max_height = (ui.ctx().content_rect().bottom() - ui.cursor().min.y - 18.0).max(80.0);
+            egui::ScrollArea::vertical().id_salt("view-menu-scroll")
+                .max_height(max_height).show(ui, |ui| {
+            for (tab, label) in [
+                (AnalysisTab::Visuals, "Visualizers"),
+                (AnalysisTab::Scope, "Signal scope"),
+            ] {
+                let mut selected = self.analysis_tab == Some(tab);
+                if ui.checkbox(&mut selected, label).changed() {
+                    self.select_analysis(selected.then_some(tab));
+                }
+            }
+            ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
+            if ui.button("Audio performance…").clicked() {
+                self.audio_performance_open = true;
+                ui.close();
+            }
+            ui.separator();
+            ui.label("Room brightness");
+            let mut percent = self.rack.room_brightness() * 100.0;
+            let illumination = ui.add(egui::Slider::new(&mut percent, 0.0..=100.0)
+                .suffix("%")
+                .text("Room")
+                .step_by(0.1))
+                .on_hover_text("Dims the rack's reflective surfaces. Live module lights and Scope displays keep emitting light.");
+            if illumination.changed() {
+                self.rack.set_room_brightness(percent / 100.0);
+            }
+            // Show every drag frame live, but publish the host
+            // preference once at release. Keys/direct entry save
+            // immediately because they have no drag lifecycle.
+            if illumination.drag_stopped()
+                || (illumination.changed() && !illumination.dragged()) {
+                self.save_host_settings();
+            }
+            ui.horizontal(|ui| {
+                for (label, amount) in [("Darkroom", 0.1), ("Lights on", 1.0)] {
+                    if ui.button(label).clicked() {
+                        self.rack.set_room_brightness(amount);
+                        self.save_host_settings();
+                    }
+                }
+            });
+            ui.separator();
+            self.cable_presentation_controls(ui);
+            ui.separator();
+            ui.menu_button("Motion", |ui| self.agent_motion_controls(ui));
+            ui.separator();
+            let mut locked = self.rack.positions_locked();
+            if ui.checkbox(&mut locked, "Lock module positions").changed() {
+                self.rack.set_positions_locked(locked);
+                self.save_host_settings();
+            }
+            if ui.button("Reset rack view").clicked() {
+                self.rack.reset_view();
+                ui.close();
+            }
+            if ui.button("Shader editor").clicked() {
+                self.shader_open = true;
+                ui.close();
+            }
+            });
+        });
+        if self.smoke_test.is_some() {
+            ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("smoke-view-menu-popup"),
+                    egui::Popup::default_response_id(&view),
+                )
+            });
+        }
+    }
+
+    fn toolbar_undo_redo(&mut self, ui: &mut egui::Ui) {
+        if icon_button(
+            ui,
+            Icon::Undo,
+            "Undo patch edit · Cmd/Ctrl+Z",
+            false,
+            self.can_undo,
+        )
+        .clicked()
+        {
+            self.history(false);
+        }
+        if icon_button(
+            ui,
+            Icon::Redo,
+            "Redo patch edit · Shift+Cmd/Ctrl+Z",
+            false,
+            self.can_redo,
+        )
+        .clicked()
+        {
+            self.history(true);
+        }
+    }
+
+    fn toolbar_history(&mut self, ui: &mut egui::Ui, history: bool) {
+        if history {
+            self.toolbar_undo_redo(ui);
+        }
+        let save = icon_button(ui, Icon::Save, "Save patch · Cmd/Ctrl+S", false, true);
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-save-rect"), save.rect));
+        if save.clicked() {
+            self.save_current();
+        }
+    }
+
+    fn toolbar_transport(&mut self, ui: &mut egui::Ui, volume: bool) {
+        let playing = self.audio.as_ref().is_some_and(Audio::is_playing);
+        let play = icon_button(
+            ui,
+            if playing { Icon::Pause } else { Icon::Play },
+            if playing {
+                "Pause audio · Space"
+            } else {
+                "Play audio · Space"
+            },
+            playing,
+            self.audio.is_some(),
+        );
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(egui::Id::new("toolbar-play-rect"), play.rect));
+        if play.clicked() {
+            self.toggle_play();
+        }
+        if volume {
+            self.toolbar_volume(ui);
+        }
+    }
+
+    fn toolbar_volume(&mut self, ui: &mut egui::Ui) {
+        ui.scope(|ui| {
+            ui.spacing_mut().slider_width = 64.0;
+            if ui
+                .add(egui::Slider::new(&mut self.volume, 0.0..=1.0).show_value(false))
+                .on_hover_text(format!("Master volume · {:.0}%", self.volume * 100.0))
+                .changed()
+            {
+                if let Some(audio) = &self.audio {
+                    audio.set_volume(self.volume);
+                }
+            }
+        });
+    }
+
+    fn toolbar_views(&mut self, ui: &mut egui::Ui) {
+        if icon_button(
+            ui,
+            Icon::Library,
+            "Module library · Enter",
+            self.browser_open,
+            true,
+        )
+        .clicked()
+        {
+            if self.browser_open {
+                self.browser_open = false;
+            } else {
+                self.browse();
+            }
+        }
+        if icon_button(
+            ui,
+            Icon::Scope,
+            "Signal scope",
+            self.analysis_tab == Some(AnalysisTab::Scope),
+            true,
+        )
+        .clicked()
+        {
+            self.toggle_analysis(AnalysisTab::Scope);
+        }
+        if icon_button(
+            ui,
+            Icon::Visuals,
+            "Visuals",
+            self.analysis_tab == Some(AnalysisTab::Visuals),
+            true,
+        )
+        .clicked()
+        {
+            self.toggle_analysis(AnalysisTab::Visuals);
+        }
+    }
+
+    fn toolbar_zoom(&mut self, ui: &mut egui::Ui) {
+        if icon_button(ui, Icon::Minus, "Zoom out", false, true).clicked() {
+            self.rack.zoom_step(false);
+        }
+        let mut zoom = self.rack.zoom() * 100.0;
+        let response = ui
+            .add_sized(
+                [48.0, 30.0],
+                egui::DragValue::new(&mut zoom)
+                    .range(25.0..=400.0)
+                    .suffix("%")
+                    .speed(1.0),
+            )
+            .on_hover_text("Rack zoom · Cmd/Ctrl −/+ · double-click or Cmd/Ctrl+0 for 100%");
+        if response.double_clicked() {
+            self.rack.set_zoom(1.0);
+            response.surrender_focus();
+            ui.data_mut(|data| data.remove::<String>(response.id));
+        } else if response.changed() {
+            self.rack.set_zoom(zoom / 100.0);
+        }
+        if icon_button(ui, Icon::Plus, "Zoom in", false, true).clicked() {
+            self.rack.zoom_step(true);
+        }
+    }
+
+    fn toolbar_palette(&mut self, ui: &mut egui::Ui) {
+        let enabled = self.library_enabled();
+        if self
+            .cable_palette_ui
+            .toolbar(ui, &mut self.cable_palette, enabled)
+        {
+            self.save_host_settings();
+        }
+    }
+
+    fn toolbar_settings_button(&mut self, ui: &mut egui::Ui) {
+        let response = icon_button(
+            ui,
+            Icon::Settings,
+            "Audio / MIDI settings",
+            self.settings_open,
+            true,
+        );
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(
+                egui::Id::new("audio-settings-anchor"),
+                (response.rect, response.layer_id),
+            );
+        });
+        if response.clicked() {
+            self.settings_open = !self.settings_open;
+            if !self.settings_open {
+                egui::Popup::close_all(ui.ctx());
+            }
+            if self.settings_open {
+                // Unit hosts exercise the real pointer route without touching hardware.
+                #[cfg(not(test))]
+                self.refresh_devices();
+            }
+        }
+    }
+
+    fn toolbar_project(&self, ui: &mut egui::Ui) {
+        let dirty = self.dirty();
+        let title = format!("{}{}", self.title, if dirty { " •" } else { "" });
+        let state = if dirty {
+            "Unsaved"
+        } else if self.active_file.is_some() {
+            "Saved"
+        } else {
+            "New patch"
+        };
+        ui.label(
+            RichText::new(state)
+                .size(10.0)
+                .color(if dirty { ACCENT } else { MUTED }),
+        );
+        ui.add(egui::Label::new(RichText::new(title).size(13.0).color(TEXT)).truncate())
+            .on_hover_text(format!(
+                "{}\n{}",
+                self.title,
+                if dirty {
+                    "Unsaved changes"
+                } else if self.active_file.is_some() {
+                    "All changes saved"
+                } else {
+                    "New patch · save to keep this project"
+                }
+            ));
+    }
+
     fn toolbar(&mut self, ctx: &egui::Context) {
+        let compact = ctx.content_rect().width() < 1140.0;
+        let overflow = ctx.content_rect().width() < 850.0;
+        let enabled = self.library_enabled();
+        // The settings trigger remains available while its dropdown blocks rack edits.
+        let chrome_enabled = enabled || self.settings_open;
         egui::TopBottomPanel::top("menu")
             .frame(
                 egui::Frame::new()
@@ -2838,552 +3519,79 @@ impl OpenPatch {
                     .inner_margin(egui::Margin::symmetric(12, 7)),
             )
             .show(ctx, |ui| {
-                ui.add_enabled_ui(self.library_enabled(), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.spacing_mut().button_padding = Vec2::new(7.0, 6.0);
-                        ui.set_min_height(30.0);
-                        ui.label(RichText::new("OpenPatch").strong().size(14.0));
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 5.0);
+                ui.spacing_mut().button_padding = Vec2::new(7.0, 6.0);
+                ui.horizontal(|ui| {
+                    ui.set_min_height(30.0);
+                    ui.label(RichText::new("OpenPatch").strong().size(16.0).color(TEXT));
+                    ui.add_space(8.0);
+                    ui.add_enabled_ui(enabled, |ui| self.toolbar_menus(ui));
+                    ui.add_space(10.0);
+                    // Reserve each action group before the project gets the remaining width.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_enabled_ui(chrome_enabled, |ui| self.toolbar_settings_button(ui));
+                        ui.add_enabled_ui(enabled, |ui| {
+                            let response = ui.scope(|ui| {
+                                self.mcp_session.toolbar(
+                                    ui,
+                                    &self.shared,
+                                    Path::new(&self.workspace),
+                                )
+                            });
+                            ui.ctx().data_mut(|data| {
+                                data.insert_temp(
+                                    egui::Id::new("toolbar-mcp-rect"),
+                                    response.response.rect,
+                                )
+                            });
+                            ui.add_space(8.0);
+                            if !compact {
+                                self.toolbar_palette(ui);
+                                ui.add_space(8.0);
+                                ui.horizontal(|ui| self.toolbar_zoom(ui));
+                                ui.add_space(8.0);
+                                ui.horizontal(|ui| self.toolbar_views(ui));
+                                ui.add_space(8.0);
+                            }
+                            ui.horizontal(|ui| self.toolbar_transport(ui, !compact));
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| self.toolbar_history(ui, !overflow));
+                        });
                         ui.add_space(6.0);
-                        ui.menu_button("File", |ui| {
-                            if ui.button("New patch     ⌘N").clicked() {
-                                self.request_action(PendingAction::NewTemplate);
-                                ui.close();
-                            }
-                            if ui.button("Save template…").clicked() {
-                                self.begin_save_template();
-                                ui.close();
-                            }
-                            if ui.button("Open…     ⌘O").clicked() {
-                                self.file_dialog(FileMode::Open);
-                                ui.close();
-                            }
-                            if ui.button("Save     ⌘S").clicked() {
-                                self.save_current();
-                                ui.close();
-                            }
-                            if ui.button("Save as…     ⇧⌘S").clicked() {
-                                self.after_save = None;
-                                self.file_dialog(FileMode::Save);
-                                ui.close();
-                            }
-                            if ui
-                                .add_enabled(
-                                    self.active_file.is_some(),
-                                    egui::Button::new("Revert to saved"),
-                                )
-                                .clicked()
-                            {
-                                if let Some(name) = self.active_file.clone() {
-                                    self.request_action(PendingAction::Load(name));
-                                }
-                                ui.close();
-                            }
-                            if ui
-                                .add_enabled(
-                                    !self.recovery_names.is_empty(),
-                                    egui::Button::new("Recover unsaved work…"),
-                                )
-                                .clicked()
-                            {
-                                self.recovery_open = true;
-                                ui.close();
-                            }
-                            ui.separator();
-                            if ui.button("Reference analog voice").clicked() {
-                                let mut patch = openpatch_core::analog_demo_patch();
-                                patch.version = 2;
-                                self.replace_from_menu(patch, "Reference analog voice");
-                                ui.close();
-                            }
-                            if ui.button("Clocked random voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/clocked-random-voice.json"
-                                ))
-                                .expect("valid bundled random voice");
-                                self.replace_from_menu(patch, "Clocked random voice");
-                                ui.close();
-                            }
-                            if ui.button("Synced waveform voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/synced-waveform-voice.json"
-                                ))
-                                .expect("valid bundled waveform voice");
-                                self.replace_from_menu(patch, "Synced waveform voice");
-                                ui.close();
-                            }
-                            if ui.button("Stacked pitch voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/stacked-pitch-voice.json"
-                                ))
-                                .expect("valid bundled stacked pitch voice");
-                                self.replace_from_menu(patch, "Stacked pitch voice");
-                                ui.close();
-                            }
-                            if ui.button("Layered stereo morph").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/layered-stereo-morph.json"
-                                ))
-                                .expect("valid bundled layered stereo morph");
-                                self.replace_from_menu(patch, "Layered stereo morph");
-                                ui.close();
-                            }
-                            if ui.button("Delayed gate voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/delayed-gate-voice.json"
-                                ))
-                                .unwrap();
-                                ui.close();
-                                self.replace_from_menu(patch, "Delayed gate voice");
-                            }
-                            if ui.button("Manual push voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/manual-push-voice.json"
-                                ))
-                                .unwrap();
-                                ui.close();
-                                self.replace_from_menu(patch, "Manual push voice");
-                            }
-                            if ui.button("Shift register canon").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/shift-register-canon.json"
-                                ))
-                                .expect("valid bundled shift register canon");
-                                ui.close();
-                                self.replace_from_menu(patch, "Shift register canon");
-                            }
-                            if ui.button("Random values voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/random-values-voice.json"
-                                ))
-                                .expect("valid bundled random values voice");
-                                ui.close();
-                                self.replace_from_menu(patch, "Random values voice");
-                            }
-                            if ui.button("Noise colors").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/noise-colors.json"
-                                ))
-                                .expect("valid bundled noise colors");
-                                ui.close();
-                                self.replace_from_menu(patch, "Noise colors");
-                                self.rack.set_zoom(0.85);
-                            }
-                            if ui.button("Struck resonator").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/struck-resonator.json"
-                                ))
-                                .expect("valid bundled physical resonator");
-                                ui.close();
-                                self.replace_from_menu(patch, "Struck resonator");
-                                self.rack.set_zoom(0.75);
-                            }
-                            if ui.button("Manual pulses voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/manual-pulses-voice.json"
-                                ))
-                                .unwrap();
-                                ui.close();
-                                self.replace_from_menu(patch, "Manual pulses voice");
-                            }
-                            if ui.button("Gate shaping voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/gate-shaping-voice.json"
-                                ))
-                                .expect("valid bundled gate shaping voice");
-                                self.replace_from_menu(patch, "Gate shaping voice");
-                                ui.close();
-                            }
-                            if ui.button("Annotated drum rack").clicked() {
-                                let patch=serde_json::from_str(include_str!("../../../examples/annotated-drum-rack.json")).expect("valid annotated drum rack");
-                                self.replace_from_menu(patch,"Annotated drum rack"); ui.close();
-                            }
-                            if ui.button("MIDI drum pads").clicked() {
-                                let patch=serde_json::from_str(include_str!("../../../examples/midi-gate-drums.json")).expect("valid MIDI drum pads");
-                                self.replace_from_menu(patch,"MIDI drum pads");
-                                ui.close();
-                            }
-                            if ui.button("MIDI controller voice").clicked() {
-                                let patch=serde_json::from_str(include_str!("../../../examples/midi-controller-voice.json")).expect("valid MIDI controller voice");
-                                self.replace_from_menu(patch,"MIDI controller voice");
-                                ui.close();
-                            }
-                            if ui.button("Stock VCA voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/stock-vca-voice.json"
-                                )).expect("valid stock VCA voice");
-                                self.replace_from_menu(patch, "Stock VCA voice");
-                                ui.close();
-                            }
-                            if ui.button("Random motion voice").clicked() {
-                                let patch: Patch = serde_json::from_str(include_str!(
-                                    "../../../examples/random-motion-voice.json"
-                                )).expect("bundled Random motion voice");
-                                self.replace_from_menu(patch, "Random motion voice");
-                                ui.close();
-                            }
-                            if ui.button("Wavetable voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/wavetable-voice.json"
-                                )).expect("valid wavetable voice");
-                                self.replace_from_menu(patch, "Wavetable voice");
-                                ui.close();
-                            }
-                            if ui.button("Stock VCF voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/stock-vcf-voice.json"
-                                )).expect("valid stock VCF voice");
-                                self.replace_from_menu(patch, "Stock VCF voice");
-                                ui.close();
-                            }
-                            if ui.button("Clocked delay voice").clicked() {
-                                let patch = serde_json::from_str(include_str!("../../../examples/stock-delay-voice.json"))
-                                    .expect("valid clocked delay voice");
-                                self.replace_from_menu(patch, "Clocked delay voice");
-                                ui.close();
-                            }
-                            if ui.button("Polyphonic ADSR voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/polyphonic-adsr-voice.json"
-                                )).expect("valid polyphonic ADSR voice");
-                                self.replace_from_menu(patch, "Polyphonic ADSR voice");
-                                ui.close();
-                            }
-                            if ui.button("Voltage utilities").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/voltage-utilities.json"
-                                ))
-                                .expect("valid bundled voltage utilities");
-                                self.replace_from_menu(patch, "Voltage utilities");
-                                ui.close();
-                            }
-                            if ui.button("Switched stereo voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/switched-stereo-voice.json"
-                                ))
-                                .expect("valid bundled switching voice");
-                                self.replace_from_menu(patch, "Switched stereo voice");
-                                ui.close();
-                            }
-                            if ui.button("Sequenced analog voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/sequenced-analog-voice.json"
-                                ))
-                                .expect("valid bundled sequence");
-                                self.replace_from_menu(patch, "Sequenced analog voice");
-                                ui.close();
-                            }
-                            if ui.button("Clocked modulation").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/clocked-modulation.json"
-                                ))
-                                .expect("valid bundled modulation voice");
-                                self.replace_from_menu(patch, "Clocked modulation");
-                                self.rack.set_zoom(0.75);
-                                ui.close();
-                            }
-                            if ui.button("Stereo width study").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/stereo-width-study.json"
-                                ))
-                                .expect("valid bundled stereo study");
-                                self.replace_from_menu(patch, "Stereo width study");
-                                ui.close();
-                            }
-                            if ui.button("MIDI keyboard voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/midi-keyboard-voice.json"
-                                ))
-                                .expect("valid bundled MIDI voice");
-                                self.replace_from_menu(patch, "MIDI keyboard voice");
-                                self.keyboard_open = true;
-                                ui.close();
-                            }
-                            if ui.button("Polyphonic voice").clicked() {
-                                let patch = serde_json::from_str(include_str!(
-                                    "../../../examples/polyphonic-voice.json"
-                                ))
-                                .expect("valid bundled polyphonic voice");
-                                self.replace_from_menu(patch, "Polyphonic voice");
-                                ui.close();
-                            }
-                            if self.patch.version == 1
-                                && ui.button("Enable polyphony and feedback…").clicked()
-                            {
-                                self.confirm_engine_upgrade = true;
-                                ui.close();
-                            }
-                            if ui.button("Tremolo study").clicked() {
-                                self.replace_from_menu(
-                                    openpatch_core::demo_patch(),
-                                    "Tremolo study",
-                                );
-                                ui.close();
-                            }
-                        });
-                        ui.menu_button("Edit", |ui| {
-                            if ui
-                                .add_enabled(
-                                    self.can_undo,
-                                    egui::Button::new("Undo patch edit   ⌘Z"),
-                                )
-                                .clicked()
-                            {
-                                self.history(false);
-                                ui.close();
-                            }
-                            if ui
-                                .add_enabled(
-                                    self.can_redo,
-                                    egui::Button::new("Redo patch edit   ⇧⌘Z"),
-                                )
-                                .clicked()
-                            {
-                                self.history(true);
-                                ui.close();
-                            }
-                            ui.separator();
-                            if ui
-                                .add_enabled(!self.patch.cables.is_empty(), egui::Button::new("Clear cables"))
-                                .clicked()
-                            {
-                                self.command("clear_cables", json!({"expected_revision":self.revision}));
-                                ui.close();
-                            }
-                            if ui.button("Add module…   Enter").clicked() {
-                                self.browse();
-                                ui.close();
-                            }
-                        });
-                        let (view, _) = egui::containers::menu::MenuButton::new("View")
-                            .config(egui::containers::menu::MenuConfig::new()
-                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside))
-                            .ui(ui, |ui| {
-                            let max_height = (ui.ctx().content_rect().bottom() - ui.cursor().min.y - 18.0).max(80.0);
-                            egui::ScrollArea::vertical().id_salt("view-menu-scroll")
-                                .max_height(max_height).show(ui, |ui| {
-                            for (tab, label) in [
-                                (AnalysisTab::Visuals, "Visualizers"),
-                                (AnalysisTab::Scope, "Signal scope"),
-                            ] {
-                                let mut selected = self.analysis_tab == Some(tab);
-                                if ui.checkbox(&mut selected, label).changed() {
-                                    self.select_analysis(selected.then_some(tab));
-                                }
-                            }
-                            ui.checkbox(&mut self.keyboard_open, "Performance keyboard");
-                            if ui.button("Audio performance…").clicked() {
-                                self.audio_performance_open = true;
-                                ui.close();
-                            }
-                            ui.separator();
-                            ui.label("Room brightness");
-                            let mut percent = self.rack.room_brightness() * 100.0;
-                            let illumination = ui.add(egui::Slider::new(&mut percent, 0.0..=100.0)
-                                .suffix("%")
-                                .text("Room")
-                                .step_by(0.1))
-                                .on_hover_text("Dims the rack's reflective surfaces. Live module lights and Scope displays keep emitting light.");
-                            if illumination.changed() {
-                                self.rack.set_room_brightness(percent / 100.0);
-                            }
-                            // Show every drag frame live, but publish the host
-                            // preference once at release. Keys/direct entry save
-                            // immediately because they have no drag lifecycle.
-                            if illumination.drag_stopped()
-                                || (illumination.changed() && !illumination.dragged()) {
-                                self.save_host_settings();
-                            }
-                            ui.horizontal(|ui| {
-                                for (label, amount) in [("Darkroom", 0.1), ("Lights on", 1.0)] {
-                                    if ui.button(label).clicked() {
-                                        self.rack.set_room_brightness(amount);
-                                        self.save_host_settings();
-                                    }
-                                }
-                            });
-                            ui.separator();
-                            self.cable_presentation_controls(ui);
-                            ui.separator();
-                            ui.menu_button("Agent motion", |ui| self.agent_motion_controls(ui));
-                            ui.separator();
-                            let mut locked = self.rack.positions_locked();
-                            if ui.checkbox(&mut locked, "Lock module positions").changed() {
-                                self.rack.set_positions_locked(locked);
-                                self.save_host_settings();
-                            }
-                            if ui.button("Reset rack view").clicked() {
-                                self.rack.reset_view();
-                                ui.close();
-                            }
-                            if ui.button("Shader editor").clicked() {
-                                self.shader_open = true;
-                                ui.close();
-                            }
-                            });
-                        });
-                        if self.smoke_test.is_some() {
-                            ctx.data_mut(|data| data.insert_temp(
-                                egui::Id::new("smoke-view-menu-popup"), egui::Popup::default_response_id(&view),
-                            ));
-                        }
-                        ui.separator();
-                        // Allocate fixed controls from the right, then give the title
-                        // the remaining width. Long project names cannot hide transport.
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            self.mcp_session.toolbar(ui, &self.shared, Path::new(&self.workspace));
-                            let palette_enabled = self.library_enabled();
-                            if self.cable_palette_ui.toolbar(ui, &mut self.cable_palette, palette_enabled) {
-                                self.save_host_settings();
-                            }
-                            if icon_button(
-                                ui,
-                                Icon::Settings,
-                                "Audio / MIDI settings",
-                                self.settings_open,
-                                true,
-                            )
-                            .clicked()
-                            {
-                                self.settings_open = !self.settings_open;
-                                if self.settings_open {
-                                    self.refresh_devices();
-                                }
-                            }
-                            if icon_button(ui, Icon::Plus, "Zoom in", false, true).clicked() {
-                                self.rack.zoom_step(true);
-                            }
-                            let mut zoom = self.rack.zoom() * 100.0;
-                            let zoom_response = ui
-                                .add_sized(
-                                    [48.0, 30.0],
-                                    egui::DragValue::new(&mut zoom)
-                                        .range(25.0..=400.0)
-                                        .suffix("%")
-                                        .speed(1.0),
-                                )
-                                .on_hover_text("Rack zoom · Cmd/Ctrl −/+ · double-click or Cmd/Ctrl+0 for 100%");
-                            if zoom_response.double_clicked() {
-                                self.rack.set_zoom(1.0);
-                                zoom_response.surrender_focus();
-                                ui.data_mut(|data| data.remove::<String>(zoom_response.id));
-                            } else if zoom_response.changed() {
-                                self.rack.set_zoom(zoom / 100.0);
-                            }
-                            if icon_button(ui, Icon::Minus, "Zoom out", false, true).clicked() {
-                                self.rack.zoom_step(false);
-                            }
-                            ui.separator();
-                            if icon_button(
-                                ui,
-                                Icon::Visuals,
-                                "Visuals",
-                                self.analysis_tab == Some(AnalysisTab::Visuals),
-                                true,
-                            )
-                            .clicked()
-                            {
-                                self.toggle_analysis(AnalysisTab::Visuals);
-                            }
-                            if icon_button(
-                                ui,
-                                Icon::Scope,
-                                "Signal scope",
-                                self.analysis_tab == Some(AnalysisTab::Scope),
-                                true,
-                            )
-                            .clicked()
-                            {
-                                self.toggle_analysis(AnalysisTab::Scope);
-                            }
-                            if icon_button(
-                                ui,
-                                Icon::Library,
-                                "Module library · Enter",
-                                self.browser_open,
-                                true,
-                            )
-                            .clicked()
-                            {
-                                if self.browser_open {
-                                    self.browser_open = false;
-                                } else {
-                                    self.browse();
-                                }
-                            }
-                            ui.separator();
-                            ui.scope(|ui| {
-                                ui.spacing_mut().slider_width = 64.0;
-                                if ui
-                                    .add(
-                                        egui::Slider::new(&mut self.volume, 0.0..=1.0)
-                                            .show_value(false),
-                                    )
-                                    .on_hover_text(format!(
-                                        "Master volume · {:.0}%",
-                                        self.volume * 100.0
-                                    ))
-                                    .changed()
-                                {
-                                    if let Some(audio) = &self.audio {
-                                        audio.set_volume(self.volume);
-                                    }
-                                }
-                            });
-                            let playing = self.audio.as_ref().is_some_and(Audio::is_playing);
-                            if icon_button(
-                                ui,
-                                if playing { Icon::Pause } else { Icon::Play },
-                                if playing {
-                                    "Pause audio · Space"
-                                } else {
-                                    "Play audio · Space"
-                                },
-                                playing,
-                                self.audio.is_some(),
-                            )
-                            .clicked()
-                            {
-                                self.toggle_play();
-                            }
-                            ui.separator();
-                            if icon_button(ui, Icon::Save, "Save patch · Cmd/Ctrl+S", false, true)
-                                .clicked()
-                            {
-                                self.save_current();
-                            }
-                            if icon_button(
-                                ui,
-                                Icon::Redo,
-                                "Redo patch edit · Shift+Cmd/Ctrl+Z",
-                                false,
-                                self.can_redo,
-                            )
-                            .clicked()
-                            {
-                                self.history(true);
-                            }
-                            if icon_button(
-                                ui,
-                                Icon::Undo,
-                                "Undo patch edit · Cmd/Ctrl+Z",
-                                false,
-                                self.can_undo,
-                            )
-                            .clicked()
-                            {
-                                self.history(false);
-                            }
-                            let title =
-                                format!("{}{}", self.title, if self.dirty() { " *" } else { "" });
-                            ui.add(
-                                egui::Label::new(RichText::new(&title).size(13.0).color(TEXT))
-                                    .truncate(),
-                            )
-                            .on_hover_text(title);
-                        });
+                        self.toolbar_project(ui);
                     });
                 });
+                if compact {
+                    ui.add_enabled_ui(enabled, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("RACK").size(10.0).color(MUTED));
+                            self.toolbar_views(ui);
+                            ui.add_space(14.0);
+                            self.toolbar_zoom(ui);
+                            ui.add_space(14.0);
+                            if overflow {
+                                egui::containers::menu::MenuButton::new("More")
+                                    .config(
+                                        egui::containers::menu::MenuConfig::new().close_behavior(
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                        ),
+                                    )
+                                    .ui(ui, |ui| {
+                                        ui.horizontal(|ui| self.toolbar_undo_redo(ui));
+                                        ui.separator();
+                                        ui.label("Master volume");
+                                        self.toolbar_volume(ui);
+                                        ui.separator();
+                                        self.toolbar_palette(ui);
+                                    });
+                            } else {
+                                self.toolbar_palette(ui);
+                                ui.add_space(14.0);
+                                self.toolbar_volume(ui);
+                            }
+                        });
+                    });
+                }
             });
     }
     fn footer(&mut self, ctx: &egui::Context) {
@@ -3515,6 +3723,7 @@ impl OpenPatch {
             && ui.ctx().input(|input| input.focused)
             && !egui::DragAndDrop::has_payload_of_type::<LibraryDrag>(ui.ctx());
         ui.add_enabled_ui(allowed, |ui| {
+            ui.label("Menu & agent animations");
             ui.horizontal(|ui| {
                 for mode in [MotionMode::Full, MotionMode::Reduced, MotionMode::Off] {
                     if ui.selectable_label(self.construction.motion_mode() == mode, mode.label()).clicked() {
@@ -3581,6 +3790,7 @@ impl OpenPatch {
                     .as_ref()
                     .map_or(self.patch.sample_rate, |a| a.sample_rate);
                 let interactive = self.file_mode.is_none()
+                    && !self.settings_open
                     && self.confirm_discard.is_none()
                     && !self.recovery_open
                     && !self.confirm_engine_upgrade
@@ -6627,6 +6837,36 @@ impl OpenPatch {
                 .set_scope_states(BTreeMap::from([("scope".into(), original)]));
             self.rack.set_room_brightness(1.0);
         }
+        if frame == 2396 {
+            // Exercise the same native View popup used by mouse/keyboard input.
+            // The final, bounded scene alone advances egui time deterministically
+            // so software-rendered captures show distinct real opening phases.
+            egui::Popup::close_all(ctx);
+            self.browser_open = false;
+            self.settings_open = false;
+            self.audio_performance_open = false;
+            self.select_analysis(None);
+            self.rack.set_room_brightness(1.0);
+            let menu = ctx
+                .data(|data| data.get_temp::<egui::Id>(egui::Id::new("smoke-view-menu-popup")))
+                .expect("Rendered View menu button");
+            egui::Popup::open_id(ctx, menu);
+            self.title = "Native menu motion".into();
+            self.status = "View menu · actual quadratic-out opening fade · Full motion · unchanged input regions".into();
+        }
+        if matches!(frame, 2400 | 2406 | 2418) {
+            let menu = ctx
+                .data(|data| data.get_temp::<egui::Id>(egui::Id::new("smoke-view-menu-popup")))
+                .expect("Rendered View menu button");
+            assert!(
+                egui::Popup::is_id_open(ctx, menu),
+                "Actual View menu must remain open"
+            );
+            let area = egui::AreaState::load(ctx, menu).expect("Actual native View menu Area");
+            assert!(area.rect().is_positive() && area.interactable);
+            assert!(area.last_became_visible_at.is_some());
+            assert_eq!(ctx.style().animation_time, 0.160);
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -6746,6 +6986,9 @@ impl OpenPatch {
                 | 2352
                 | 2368
                 | 2384
+                | 2400
+                | 2406
+                | 2418
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -6869,7 +7112,10 @@ impl OpenPatch {
                 102 => path.with_file_name("random-library.png"),
                 103 => path.with_file_name("rack-weak-scope.png"),
                 104 => path.with_file_name("rack-weak-scope-lights-out.png"),
-                _ => path.with_file_name("rack-weak-scope-manual.png"),
+                105 => path.with_file_name("rack-weak-scope-manual.png"),
+                106 => path.with_file_name("menu-motion-opening.png"),
+                107 => path.with_file_name("menu-motion-mid.png"),
+                _ => path.with_file_name("menu-motion-settled.png"),
             };
             image::save_buffer(
                 &target,
@@ -6880,18 +7126,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/106 at frame {frame}: {}",
+                "Native smoke: capture {}/109 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 106 {
+            if captures == 109 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2420, "Native screenshot timeout");
+        assert!(frame < 2460, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -6992,12 +7238,36 @@ impl eframe::App for OpenPatch {
         if self.wavetable_import.is_some() {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
+        let menu_motion_capture = self
+            .smoke_test
+            .as_ref()
+            .is_some_and(|(_, frame, _)| *frame >= 2396);
+        if menu_motion_capture {
+            let frame = self.smoke_test.as_ref().unwrap().1;
+            ctx.input_mut(|input| {
+                // Only the appended menu scene uses a synthetic clock. Native
+                // Area opacity still comes entirely from egui's own fade.
+                input.time = 1_000_000.0 + (frame - 2396) as f64 * 0.01;
+                input.predicted_dt = 1.0 / 60.0;
+            });
+        }
+        crate::menu_motion::configure(
+            ctx,
+            if menu_motion_capture {
+                crate::construction_motion::MotionMode::Full
+            } else {
+                self.construction.motion_mode()
+            },
+            self.smoke_test.is_some() && !menu_motion_capture,
+        );
         if self.smoke_test.is_some() {
             ctx.style_mut(|style| {
                 style.interaction.tooltip_delay = f32::INFINITY;
-                // These captures qualify settled UI states. Their frame-driven
-                // fixtures must not depend on a shared runner's wall-clock pace.
-                style.animation_time = 0.0;
+                // Earlier captures qualify settled UI states; only the appended
+                // menu scene enables motion with a deterministic native clock.
+                if !menu_motion_capture {
+                    style.animation_time = 0.0;
+                }
             });
         }
         self.service_agent_follow(ctx);
@@ -7164,6 +7434,9 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod toolbar_settings_tests {
+        include!("toolbar_settings_tests.rs");
+    }
     mod random_factory_tests {
         include!("random_factory_tests.rs");
     }

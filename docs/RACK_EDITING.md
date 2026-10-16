@@ -1,5 +1,34 @@
 # Building and editing a rack
 
+## Toolbar, settings and menu motion
+
+The toolbar keeps project actions, transport and rack-view controls in separate
+groups. Wide windows use one band; narrower windows place view controls on a
+second band. Save, Play, MCP and Settings remain directly available, and long
+project names truncate with the full name in a tooltip. In compact windows,
+More holds the volume, cable palette and Undo/Redo; history commands remain in
+Edit and keep their keyboard shortcuts. Double-clicking the zoom percentage
+restores 100%; a single click retains precise percentage entry.
+
+Settings opens below its gear as an anchored dropdown. Its existing audio and
+MIDI controls scroll within a short window. A nested device dropdown can be
+selected without dismissing Settings; clicking outside or pressing Escape
+dismisses the dropdown. Rack gestures and performance shortcuts are blocked
+while settings owns input, so a dismissing click cannot also move a module.
+File operations, destructive-action confirmations and full editors retain their
+dedicated document/dialog workflows.
+
+**View → Motion** controls menu and agent animations. Native menus, submenus,
+ComboBoxes and context menus use a 160 ms quadratic-out opening fade in Full,
+80 ms in Reduced, and no fade in Off. Items remain immediately interactive;
+the animation does not move their hit regions, delay commands, or change the
+audio graph. Captures of settled scenes disable menu motion for determinism;
+the dedicated opening/midpoint/settled menu scenes exercise the actual fade
+with a controlled UI clock. Native Mac window/device qualification remains
+separate from the headless interaction tests and Linux captures.
+
+## Rack selection and duplication
+
 Use **Shift-click on module headers** to build a selection. A plain click on
 an unselected module selects that module; dragging a selected header moves the
 group while retaining its relative placement. **Cmd-A** selects the rack's

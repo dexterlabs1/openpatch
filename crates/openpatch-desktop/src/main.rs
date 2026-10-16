@@ -16,6 +16,7 @@ mod keyboard_acceptance_tests;
 mod library;
 mod lighting;
 mod mcp_session_ui;
+mod menu_motion;
 mod midi;
 mod panel_skin;
 mod port_light_transport;
