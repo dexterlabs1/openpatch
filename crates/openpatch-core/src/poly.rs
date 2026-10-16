@@ -35,6 +35,7 @@ use crate::stock_octave::{self, StockOctave, StockOctaveSnapshot};
 use crate::stock_quantizer::{self, StockQuantizer};
 use crate::stock_seq3::{self, StockSeq3};
 use crate::stock_vca::{self, StockVca};
+use crate::stock_vca_mix::{self, StockVcaMix, StockVcaMixSnapshot};
 use crate::stock_vcf::{self, StockVcf};
 use crate::stock_vco::{self, StockVco};
 use crate::studio_fx::{self, StudioFx};
@@ -105,6 +106,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_mid_side"
                 | "stock_mix"
                 | "stock_octave"
+                | "stock_vca_mix"
                 | "poly_split"
                 | "poly_merge"
                 | "poly_sum"
@@ -176,6 +178,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_mid_side" => stock_mid_side::INPUTS.iter().position(|port| *port == name),
         "stock_mix" => stock_mix::INPUTS.iter().position(|port| *port == name),
         "stock_octave" => stock_octave::INPUTS.iter().position(|port| *port == name),
+        "stock_vca_mix" => stock_vca_mix::INPUTS.iter().position(|port| *port == name),
         "stock_quantizer" => stock_quantizer::INPUTS
             .iter()
             .position(|port| *port == name),
@@ -277,6 +280,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         stock_mix::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_octave" {
         stock_octave::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_vca_mix" {
+        stock_vca_mix::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_mid_side" {
         stock_mid_side::OUTPUTS
             .iter()
@@ -459,6 +464,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "stock_octave" {
         stock_octave::OUTPUTS
+            .iter()
+            .map(|port| (*port).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_vca_mix" {
+        stock_vca_mix::OUTPUTS
             .iter()
             .map(|port| (*port).to_owned())
             .collect::<Vec<_>>()
@@ -713,6 +723,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_octave" {
         stock_octave::annotate(module);
     }
+    if kind == "stock_vca_mix" {
+        stock_vca_mix::annotate(module);
+    }
     if kind == "adsr_eg" {
         adsr_eg::annotate(module);
     }
@@ -765,6 +778,7 @@ enum Model {
     StockMidSide(StockMidSide),
     StockMix(StockMix),
     StockOctave(StockOctave),
+    StockVcaMix(Box<StockVcaMix>),
     MultiVco(Box<MultiVco>),
     Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
@@ -875,6 +889,9 @@ impl Model {
         if node.kind == "stock_octave" {
             return StockOctave::build(node).map(Self::StockOctave);
         }
+        if node.kind == "stock_vca_mix" {
+            return Ok(Self::StockVcaMix(Box::new(StockVcaMix::build(node, rate)?)));
+        }
         if node.kind == "stock_mid_side" {
             return StockMidSide::build(node).map(Self::StockMidSide);
         }
@@ -968,7 +985,7 @@ impl Model {
     fn native_host(&self) -> bool {
         matches!(
             self,
-            Self::StockMidSide(_) | Self::StockMix(_) | Self::StockOctave(_)
+            Self::StockMidSide(_) | Self::StockMix(_) | Self::StockOctave(_) | Self::StockVcaMix(_)
         )
     }
     fn template(&self) -> Option<&Dsp> {
@@ -1079,6 +1096,36 @@ impl PolyEngine {
         match &self.nodes.get(index)?.model {
             Model::StockOctave(model) => Some(model.snapshot()),
             _ => None,
+        }
+    }
+    pub(crate) fn stock_vca_mix_snapshot(&self, index: usize) -> Option<StockVcaMixSnapshot> {
+        match &self.nodes.get(index)?.model {
+            Model::StockVcaMix(model) => Some(model.snapshot()),
+            _ => None,
+        }
+    }
+    pub(crate) fn stock_vca_mix_preserves_initialize_history(&self, index: usize) -> bool {
+        matches!(
+            self.nodes.get(index).map(|node| &node.model),
+            Some(Model::StockVcaMix(_))
+        )
+    }
+    pub(crate) fn host_reference_timing(&self) -> (u32, f32) {
+        (self.rate, 1.0_f32 / self.rate as f32)
+    }
+    pub(crate) fn stock_vca_mix_legacy_data(&self, index: usize) -> Option<Value> {
+        match &self.nodes.get(index)?.model {
+            Model::StockVcaMix(model) => Some(model.legacy_data()),
+            _ => None,
+        }
+    }
+    pub(crate) fn load_stock_vca_mix_legacy_data(&mut self, index: usize, value: &Value) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::StockVcaMix(model)) => {
+                model.load_legacy_data(value);
+                true
+            }
+            _ => false,
         }
     }
     pub(crate) fn stock_octave_legacy_data(&self, index: usize) -> Option<Value> {
@@ -1464,6 +1511,7 @@ impl PolyEngine {
                 octave_shift: Some(o.last_octave()),
                 ..ModuleLightState::default()
             }),
+            Some(Model::StockVcaMix(m)) => Some(m.lights()),
             Some(Model::StockSeq3(seq)) => Some(seq.lights()),
             Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
@@ -1807,6 +1855,10 @@ impl PolyEngine {
             Model::StockVca(p) => p.initialize_state(),
             Model::StockDelay(p) => p.initialize_state(),
             Model::StockOctave(o) => o.reset(),
+            // The receiving Patch already contains authoritative parameter and
+            // flag defaults/edits. VCMixer has no runtime-only reset: its
+            // meters, divider, lamps and ports continue across Initialize.
+            Model::StockVcaMix(_) => {}
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
@@ -1987,6 +2039,7 @@ impl PolyEngine {
                     "stock_mid_side" => stock_mid_side::OUTPUTS.len(),
                     "stock_mix" => stock_mix::OUTPUTS.len(),
                     "stock_octave" => stock_octave::OUTPUTS.len(),
+                    "stock_vca_mix" => stock_vca_mix::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     "stock_seq3" => stock_seq3::OUTPUTS.len(),
@@ -2264,6 +2317,11 @@ impl PolyEngine {
                         Model::StockOctave(model) => {
                             model.process(&host.inputs[node_index], outputs)
                         }
+                        Model::StockVcaMix(model) => model.process(
+                            &host.inputs[node_index],
+                            host.contexts[node_index].input_presence,
+                            outputs,
+                        ),
                         _ => unreachable!("native predicate validated model"),
                     }
                 } else if let Model::StockOctave(model) = &node.model {
@@ -2322,7 +2380,10 @@ impl PolyEngine {
                 .unwrap_or_default();
             match &mut node.model {
                 Model::Annotation => {}
-                Model::StockMidSide(_) | Model::StockMix(_) | Model::StockOctave(_) => {
+                Model::StockMidSide(_)
+                | Model::StockMix(_)
+                | Model::StockOctave(_)
+                | Model::StockVcaMix(_) => {
                     unreachable!("native model processed above")
                 }
                 Model::Score(_)
@@ -3124,6 +3185,7 @@ impl PolyEngine {
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),
                 (Model::StockOctave(o), Model::StockOctave(old)) => o.adopt(old),
+                (Model::StockVcaMix(m), Model::StockVcaMix(old)) => m.adopt(old),
                 (Model::StockSeq3(seq), Model::StockSeq3(old)) => {
                     seq.adopt(old);
                     if bypass_changed {

@@ -96,6 +96,7 @@ impl Category {
             | "stock_mix"
             | "cv_mix"
             | "vca_mix"
+            | "stock_vca_mix"
             | "fade"
             | "crossfade"
             | "stock_delay"

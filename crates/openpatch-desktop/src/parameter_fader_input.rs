@@ -7,6 +7,13 @@ struct FaderInput {
     reset: bool,
     history_group: Option<String>,
 }
+
+#[derive(Clone, Copy)]
+enum ParameterPointer {
+    Fader(Rect),
+    Knob { travel: f32 },
+}
+
 impl Rack {
     fn parameter_fader_input(
         &mut self,
@@ -16,7 +23,39 @@ impl Rack {
         normalized: f32,
         enabled: bool,
     ) -> FaderInput {
+        self.parameter_pointer_input(ui, response, ParameterPointer::Fader(track), normalized, enabled)
+    }
+
+    fn parameter_knob_input(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        normalized: f32,
+        enabled: bool,
+    ) -> FaderInput {
+        self.parameter_pointer_input(
+            ui,
+            response,
+            ParameterPointer::Knob { travel: 150.0 * self.zoom },
+            normalized,
+            enabled,
+        )
+    }
+
+    fn parameter_pointer_input(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        pointer_mode: ParameterPointer,
+        normalized: f32,
+        enabled: bool,
+    ) -> FaderInput {
         let mut result = FaderInput::default();
+        let rotary = matches!(pointer_mode, ParameterPointer::Knob { .. });
+        let travel = match pointer_mode {
+            ParameterPointer::Fader(track) => track.height(),
+            ParameterPointer::Knob { travel } => travel,
+        };
         let id = response.id;
         let relative_id = id.with("relative-after-fine");
         let interrupted =
@@ -45,7 +84,7 @@ impl Rack {
         let modifiers = ui.input(|i| i.modifiers);
         if response.dragged_by(PointerButton::Primary)
             || response.drag_stopped_by(PointerButton::Primary)
-            || response.clicked_by(PointerButton::Primary)
+            || (!rotary && response.clicked_by(PointerButton::Primary))
         {
             if let Some(pointer) = response
                 .interact_pointer_pos()
@@ -57,7 +96,7 @@ impl Rack {
                 // retain it until release. Returning to full speed must not
                 // snap the value back to the absolute cursor position.
                 let relative =
-                    fine || ui.data(|d| d.get_temp::<bool>(relative_id).unwrap_or(false));
+                    rotary || fine || ui.data(|d| d.get_temp::<bool>(relative_id).unwrap_or(false));
                 let next = if relative {
                     let prior = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(normalized);
                     let speed = if fine {
@@ -69,8 +108,9 @@ impl Rack {
                     } else {
                         1.0
                     };
-                    prior - response.drag_motion().y / track.height() * speed
+                    prior - response.drag_motion().y / travel * speed
                 } else {
+                    let ParameterPointer::Fader(track) = pointer_mode else { unreachable!() };
                     (track.bottom() - pointer.y) / track.height()
                 }
                 .clamp(0.0, 1.0);

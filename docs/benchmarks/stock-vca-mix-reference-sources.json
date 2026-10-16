@@ -1,0 +1,30 @@
+{
+  "VCMixer.cpp": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/VCMixer.cpp",
+    "sha256": "ca4d75289d517d18ec1f758e9bcb9407cd188dc4079616dc1f3f793f546a94c4"
+  },
+  "LICENSE-GPLv3.txt": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/LICENSE-GPLv3.txt",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  "plugin.json": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/plugin.json",
+    "sha256": "c72d34d042c203bd7dfd614f98d312e304f9a71128e145702237a9f887916f9d"
+  },
+  "Engine.cpp": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Rack/v2.6.6/src/engine/Engine.cpp",
+    "sha256": "d404fd4521c90bc5c52b77f6e38d2e132812879734589cdb223c721099c04fcf"
+  },
+  "Module.cpp": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Rack/v2.6.6/src/engine/Module.cpp",
+    "sha256": "48b7427b781072b61d6c1ed0742965ded3480087e4a528ab017dd5eba641c6aa"
+  },
+  "system.cpp": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Rack/v2.6.6/src/system.cpp",
+    "sha256": "8855ab60e5891205bd8eff32b7f4cb4d63079f141a0bebd0ac759dd8254c4853"
+  },
+  "Rack-LICENSE.md": {
+    "url": "https://raw.githubusercontent.com/VCVRack/Rack/v2.6.6/LICENSE.md",
+    "sha256": "24f503f4922b25de9ab22345386f9154919cd0922db7309c72182b0b146d5f31"
+  }
+}

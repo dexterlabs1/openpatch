@@ -38,9 +38,11 @@ mod native_float;
 mod stock_mid_side;
 mod stock_mix;
 mod stock_octave;
+mod stock_vca_mix;
 #[doc(hidden)]
 pub use stock_mix::StockMixSnapshot;
 pub use stock_octave::StockOctaveSnapshot;
+pub use stock_vca_mix::{StockVcaMixMeterSnapshot, StockVcaMixSnapshot};
 mod stock_quantizer;
 #[doc(hidden)]
 pub use host_ports::{HostCableSnapshot, HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot};
@@ -379,6 +381,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_octave::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_vca_mix::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1472,6 +1478,47 @@ impl Engine {
             _ => None,
         }
     }
+    /// Inspect actual native controls, four meters, divider and module lamps.
+    #[doc(hidden)]
+    pub fn stock_vca_mix_snapshot(&self, handle: ModuleHandle) -> Option<StockVcaMixSnapshot> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_vca_mix_snapshot(handle.node),
+            _ => None,
+        }
+    }
+    /// Read the compiled version-2 Engine rate and sample time without stepping.
+    #[doc(hidden)]
+    pub fn host_reference_timing(&self) -> Option<(u32, f32)> {
+        match &self.inner {
+            EngineKind::Poly(engine) => Some(engine.host_reference_timing()),
+            _ => None,
+        }
+    }
+    /// Apply VCMixer's source-style chExp/mixExp JSON to actual runtime flags.
+    #[doc(hidden)]
+    pub fn load_stock_vca_mix_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.load_stock_vca_mix_legacy_data(handle.node, value),
+            _ => false,
+        }
+    }
+    /// Serialize actual native VCMixer Boolean data, without changing state.
+    #[doc(hidden)]
+    pub fn stock_vca_mix_legacy_data(&self, handle: ModuleHandle) -> Option<Value> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_vca_mix_legacy_data(handle.node),
+            _ => None,
+        }
+    }
     /// Set a desired poly_constant producer frame for native reference gating.
     /// Actual canonical host-port storage is affected only by normal processing.
     #[doc(hidden)]
@@ -1719,8 +1766,10 @@ impl Engine {
                 true
             }
             EngineKind::Poly(engine) => {
+                let preserve_history =
+                    engine.stock_vca_mix_preserves_initialize_history(handle.node);
                 let initialized = engine.initialize_module_state(handle.node);
-                if initialized {
+                if initialized && !preserve_history {
                     engine.port_lights.clear_node(handle.node);
                 }
                 initialized

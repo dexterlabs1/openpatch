@@ -21,6 +21,7 @@ include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
 include!("stock_quantizer_panel.rs");
+include!("stock_vca_mix_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -32,6 +33,9 @@ mod panel_toggle_scale_tests;
 
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
+// Give Signal Atlas sockets a larger face and target while preserving their
+// shared native positions and cable endpoints in rack and browser previews.
+const STOCK_VCA_MIX_PORT_SCALE: f32 = 1.07;
 pub(crate) const PANEL_HEIGHT: f32 = 396.0;
 const MAX_PAN: f32 = 1_000_000.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
@@ -2995,6 +2999,13 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_vca_mix" {
+                if let Some(edit) =
+                    self.stock_vca_mix_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "random" {
                 if self.editing.as_ref().is_some_and(|edit| {
                     edit.id == node.id
@@ -3104,6 +3115,7 @@ impl Rack {
                     || node.kind == "stock_delay"
                     || node.kind == "stock_vca"
                     || node.kind == "stock_octave"
+                    || node.kind == "stock_vca_mix"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -4194,7 +4206,9 @@ impl Rack {
                     paint_jack(
                         &painter,
                         location,
-                        if node.kind == "stock_octave" {
+                        if node.kind == "stock_vca_mix" {
+                            stock_vca_mix_port_label(port)
+                        } else if node.kind == "stock_octave" {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
@@ -4217,6 +4231,11 @@ impl Rack {
                                 node.kind.as_str(),
                                 "sh_asr" | "stock_seq3" | "stock_quantizer"
                             ),
+                        if node.kind == "stock_vca_mix" {
+                            STOCK_VCA_MIX_PORT_SCALE
+                        } else {
+                            1.0
+                        },
                     );
                     continue;
                 }
@@ -4225,7 +4244,9 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_octave" {
+                    if node.kind == "stock_vca_mix" {
+                        stock_vca_mix_port_label(port)
+                    } else if node.kind == "stock_octave" {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
@@ -4252,6 +4273,11 @@ impl Rack {
                         12.0
                     } else {
                         18.0
+                    },
+                    if node.kind == "stock_vca_mix" {
+                        STOCK_VCA_MIX_PORT_SCALE
+                    } else {
+                        1.0
                     },
                 );
                 if drag_interactive {
@@ -4345,6 +4371,8 @@ impl Rack {
                         output_point,
                         if node.kind == "adsr_eg" {
                             "ENV"
+                        } else if node.kind == "stock_vca_mix" {
+                            stock_vca_mix_port_label(port)
                         } else if node.kind == "stock_octave" {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
@@ -4375,6 +4403,11 @@ impl Rack {
                                     | "midi_cc"
                                     | "midi_gate"
                             ),
+                        if node.kind == "stock_vca_mix" {
+                            STOCK_VCA_MIX_PORT_SCALE
+                        } else {
+                            1.0
+                        },
                     );
                     self.paint_output_signal_light(&painter, node, port_index, output_point);
                     continue;
@@ -4386,6 +4419,8 @@ impl Rack {
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "adsr_eg" {
                         "ENV"
+                    } else if node.kind == "stock_vca_mix" {
+                        stock_vca_mix_port_label(port)
                     } else if node.kind == "stock_octave" {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
@@ -4429,6 +4464,11 @@ impl Rack {
                         12.0
                     } else {
                         18.0
+                    },
+                    if node.kind == "stock_vca_mix" {
+                        STOCK_VCA_MIX_PORT_SCALE
+                    } else {
+                        1.0
                     },
                 );
                 if drag_interactive {
@@ -9668,6 +9708,21 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
         "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
+        "stock_vca_mix" if input => {
+            return match index {
+                0 => pos2(stock_vca_mix_column(4), 336.0),
+                1..=4 => pos2(stock_vca_mix_column(index - 1), 292.0),
+                5..=8 => pos2(stock_vca_mix_column(index - 5), 336.0),
+                _ => pos2(width * 0.5, 292.0),
+            }
+        }
+        "stock_vca_mix" => {
+            return if index == 0 {
+                pos2(stock_vca_mix_column(4), 380.0)
+            } else {
+                pos2(stock_vca_mix_column(index - 1), 380.0)
+            }
+        }
         "stock_octave" => {
             return pos2(
                 if input {
@@ -10863,6 +10918,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "stereo_reverb" | "drum_voice" => HP * 24.0,
         "svf_filter" => HP * 18.0,
         "vca_mix" => HP * 26.0,
+        "stock_vca_mix" => HP * 18.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
         "attenuverter8" | "mutes10" | "cv_mix" | "pulses" | "gates" => HP * 16.0,
@@ -10927,6 +10983,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_mid_side" => "STOCK MID/SIDE",
         "mix6" => "MIX 6",
         "stock_mix" => "STOCK MIX",
+        "stock_vca_mix" => "STOCK VCA MIX",
         "octave" => "OCTAVE",
         "mult" => "MULT",
         "poly_split" => "SPLIT",
@@ -11153,6 +11210,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "channel_exp",
             "mix_exp",
         ],
+        "stock_vca_mix" => &STOCK_VCA_MIX_ALL_PARAMS,
         "fade" => &["position", "cv_amount", "law"],
         "rescale" => &[
             "gain",
@@ -11932,8 +11990,12 @@ fn paint_panel(
     zoom: f32,
     lighting: &crate::lighting::RoomLighting,
 ) {
-    crate::panel_skin::metal(painter, rect, zoom);
-    crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
+    if node.kind == "stock_vca_mix" {
+        crate::panel_skin::signal_atlas_face(painter, rect, zoom);
+    } else {
+        crate::panel_skin::metal(painter, rect, zoom);
+        crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
+    }
     // Reflective mounting hardware belongs to the panel paint, including
     // browser thumbnails, and dims with the room like the rails behind it.
     for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
@@ -11990,7 +12052,11 @@ fn paint_panel(
     let width = rect.width() / zoom;
     let inset = if width < 90.0 { 8.0 } else { 14.0 };
     let label = panel_heading(&node.kind, width);
-    let header_ink = crate::panel_skin::HEADER_INK;
+    let header_ink = if node.kind == "stock_vca_mix" {
+        crate::panel_skin::INK
+    } else {
+        crate::panel_skin::HEADER_INK
+    };
     let mut font = crate::panel_skin::heading_font(
         painter.ctx(),
         if width < 140.0 { 24.0 } else { 28.0 } * zoom,
@@ -12088,9 +12154,13 @@ fn jack_with_minimum_target(
     zoom: f32,
     compact: bool,
     minimum_target: f32,
+    port_scale: f32,
 ) -> egui::Response {
     let response = ui.interact(
-        Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(minimum_target))),
+        Rect::from_center_size(
+            center,
+            Vec2::splat((29.0 * zoom * port_scale).max(minimum_target)),
+        ),
         id,
         Sense::click_and_drag(),
     );
@@ -12106,11 +12176,13 @@ fn jack_with_minimum_target(
             ),
         )
     });
-    paint_jack(painter, center, label, connected, output, zoom, compact);
+    paint_jack(
+        painter, center, label, connected, output, zoom, compact, port_scale,
+    );
     if response.hovered() {
         painter.circle_stroke(
             center,
-            11.0 * zoom,
+            13.0 * zoom * port_scale,
             Stroke::new(1.8 * zoom, Color32::from_rgb(221, 157, 64)),
         );
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -12122,6 +12194,8 @@ fn jack_with_minimum_target(
     })
 }
 
+// Material scale is separate from logical cable endpoints and zoom.
+#[allow(clippy::too_many_arguments)]
 fn paint_jack(
     painter: &egui::Painter,
     center: Pos2,
@@ -12130,25 +12204,26 @@ fn paint_jack(
     output: bool,
     zoom: f32,
     compact: bool,
+    port_scale: f32,
 ) {
     if output {
-        painter.circle_filled(center, 13.0 * zoom, crate::panel_skin::INK);
+        painter.circle_filled(center, 13.0 * zoom * port_scale, crate::panel_skin::INK);
         painter.circle_stroke(
             center,
-            13.0 * zoom,
+            13.0 * zoom * port_scale,
             Stroke::new(0.6 * zoom, Color32::from_rgb(106, 109, 106)),
         );
     }
     if !compact {
         crate::panel_skin::port_label(
             painter,
-            center - vec2(0.0, 19.0) * zoom,
+            center - vec2(0.0, if port_scale > 1.0 { 21.5 } else { 19.0 }) * zoom,
             &port_label(label).to_uppercase(),
             output,
             zoom,
         );
     }
-    crate::panel_skin::socket(painter, center, connected, zoom);
+    crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -13080,7 +13155,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            76,
+            77,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -13199,6 +13274,7 @@ mod tests {
             "macro_voice",
             "mix6",
             "stock_mix",
+            "stock_vca_mix",
             "multi_lfo",
             "stock_lfo",
             "stock_vco",
@@ -13270,7 +13346,16 @@ mod tests {
                                 }
                                 || (kind == "sh_asr"
                                     && name == "random"
-                                    && text.starts_with("RND "))),
+                                    && text.starts_with("RND "))
+                                || (kind == "stock_vca_mix"
+                                    && match name {
+                                        "level1" | "level2" | "level3" | "level4" =>
+                                            text == "LEVEL",
+                                        "mix_level" => text == "MIX LEVEL",
+                                        "channel_exp" => text.starts_with("CHANNEL CV  "),
+                                        "mix_exp" => text.starts_with("MIX CV  "),
+                                        _ => false,
+                                    })),
                             "{kind}: missing parameter label {name}"
                         );
                     }
@@ -19786,6 +19871,9 @@ mod tests {
     }
     mod stock_vca_ui_tests {
         include!("stock_vca_ui_tests.rs");
+    }
+    mod stock_vca_mix_ui_tests {
+        include!("stock_vca_mix_ui_tests.rs");
     }
     mod cable_autopan_tests {
         include!("cable_autopan_tests.rs");

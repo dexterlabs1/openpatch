@@ -78,10 +78,16 @@ pub fn validate(preset: &Value) -> Result<(), String> {
             .ok_or_else(|| format!("preset parameter '{name}' must be a finite number"))?;
         // Validate in the same f32 domain as Node/core parameter parsing.
         let value = value as f32;
-        // Octave's selector range and integer step describe interactive editing.
-        // Fundamental's raw parameter storage can retain any finite f32,
-        // including legacy-loaded values outside the nine selector positions.
-        if kind == "stock_octave" && name == "octaves" {
+        // These native models distinguish interactive ranges from finite raw
+        // storage. Retain loaded values without narrowing the gain/shift state;
+        // the Boolean response aliases still use their ordinary enum checks.
+        if (kind == "stock_octave" && name == "octaves")
+            || (kind == "stock_vca_mix"
+                && matches!(
+                    name.as_str(),
+                    "mix_level" | "level1" | "level2" | "level3" | "level4"
+                ))
+        {
             continue;
         }
         if value < spec["min"].as_f64().unwrap() as f32

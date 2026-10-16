@@ -53,6 +53,11 @@ pub(crate) fn annotate(module: &mut Value) {
         module["bypass"]["state_policy"] = json!("skip Octave process and freeze channel-zero lastOctave; canonical host output transition lifecycle still applies");
         module["bypass"]["compatibility"] = json!("Fundamental configBypass pitch-to-output route with Rack Module::processBypass raw port copy semantics");
     }
+    if kind == "stock_vca_mix" {
+        module["bypass"]["output_policy"] = json!("No configured bypass routes or output writes; connected outputs follow actual common Rack-style bypass-transition lifecycle, disconnected raw storage is retained");
+        module["bypass"]["state_policy"] = json!("skip VCMixer processing; four meters, ClockDivider and four module lamps freeze while bypassed");
+        module["bypass"]["compatibility"] = json!("Fundamental VCMixer has no configBypass route; common native host lifecycle handles physical output transitions");
+    }
     if kind == "midi_gate" {
         module["bypass"]["state_policy"] = json!("ignores MIDI and freezes DSP; transitions clear cell gates/timers and armed Learn, retaining owned completion and velocity");
         module["bypass"]["module_actions"] = json!("midi_panic remains available while bypassed and clears cell gates/timers and armed Learn immediately");

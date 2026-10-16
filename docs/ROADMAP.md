@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 76 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof and merged platform/capture evidence; its remaining gates are tracked below. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 77 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix and Stock Octave have bounded digital reference proof and merged platform/capture evidence; the new Stock VCA Mix is undergoing application qualification. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -30,7 +30,7 @@ Keep familiar rack patching and a single shared
 module/browser renderer, while improving controls for a computer: ordinary
 click and keyboard value entry, direct sliders or other appropriate editors,
 clear signal flow, readable typography and fewer decorative hardware cues.
-Shared generic controls now use direct vertical faders with numeric entry,
+The existing shared generic controls use direct vertical faders with numeric entry,
 plus catalog-defined labeled choices for waveform, law, DC filtering, Score run
 state and drum type.
 Signal-driven top-plug lights now observe actual input summation and mono/poly
@@ -41,6 +41,12 @@ brightness, including observation disabled at zero; [behavior and validation](CA
 Specialized panels keep their dedicated editors. Held cable drags pan at visible
 rack edges. The broader module layout and material review remains open.
 Any changes must preserve cable targets, explicit values, undo and MCP edits.
+The newly selected **Signal Atlas** direction restores larger rotary knobs and
+ports, removes colored header bands and uses strong black graphics on warm
+ivory. Every diagram must correspond to actual signal flow, a control dependency
+or a labeled scale; decorative pseudo-circuit markings are excluded. Stock VCA
+Mix is the first conversion; the rest of the catalog remains an incremental
+design/qualification task. See [module design rules](MODULE_DESIGN.md).
 The latest shared rack/browser header pass removes brand/description headers
 and makes module names prominent and left-aligned. Local layout checks and the
 Mac ARM candidate build pass; capture review and native window/input
@@ -57,7 +63,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 76 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 75 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 77 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -286,6 +292,25 @@ ranges cross parity. No speed advantage is claimed. Optimized packaging,
 platform CI and native capture review remain before delivery. No release or
 hardware claim is made by the DSP result alone. Native Mac/device qualification
 and general Rack import remain open. MIDI/live-performance priorities remain last.
+
+## Stock VCA Mix: initial paired proof passed; application and design work active
+
+A separate [Stock VCA Mix](STOCK_VCA_MIX.md) preserves existing `vca_mix`
+behavior while implementing the pinned native raw-lane arithmetic, independent
+strip outputs, master CV, meter/divider history and durable response flags.
+The independent frozen first SDK/Core comparison passes 39,021 cases and
+130,743 complete snapshots at three rates, including all raw inactive slots and
+module lamps. This establishes the declared digital reference scope, not a
+hardware or plugin-binary claim.
+
+Independent review identified deferred Initialize/control authority, callback
+meter registration and input/annotation issues; fixes and meaningful callback
+and pointer regressions pass. The final-source paired gate, 2,065 Rust tests,
+109 Python checks and the offline factory pass locally. The selected Signal
+Atlas panel shares rack/browser geometry and clear socket/label spacing.
+Regression/performance audit, native capture review and platform CI remain before
+release. The 76-kind
+PR18 app remains installed until a qualified replacement is ready.
 
 ## Clocked routing
 

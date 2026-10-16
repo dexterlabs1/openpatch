@@ -50,6 +50,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_mid_side", "encode_width" | "decode_width") => Linear,
         ("stock_mix", "level") => Linear,
         ("stock_mix", "invert" | "average") => Disabled,
+        ("stock_vca_mix", "mix_level" | "level1" | "level2" | "level3" | "level4") => Linear,
+        ("stock_vca_mix", "channel_exp" | "mix_exp") => Disabled,
         ("stock_vco", "frequency" | "pulse_width") => Linear,
         ("stock_vco", "linear_fm" | "soft_sync") => Enum,
         ("stock_vco", _) => Disabled,
