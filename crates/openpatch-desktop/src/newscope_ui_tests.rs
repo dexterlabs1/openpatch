@@ -64,7 +64,7 @@ fn scope_numeric_drag_emits_parameter_with_gesture_history() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let patch: Patch =
-        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope"}]}))
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope","params":{"auto_range":0}}]}))
             .unwrap();
     frame(&ctx, &mut rack, &patch, 0.0, vec![]);
     let target = pos2(24.0, 12.0) + scope_control_rect(4).center().to_vec2();
@@ -315,7 +315,7 @@ fn scope_range_choices_show_exact_volts_and_emit_native_selection() {
             let mut rack = Rack::default();
             let old = if index == 0 { 8 } else { 0 };
             let patch: Patch = serde_json::from_value(
-                json!({"version":2,"nodes":[{"id":"scope","kind":"scope","params":{axis:old}}]}),
+                json!({"version":2,"nodes":[{"id":"scope","kind":"scope","params":{axis:old,"auto_range":0}}]}),
             )
             .unwrap();
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
@@ -415,7 +415,7 @@ fn scope_trigger_guide_uses_actual_normalled_x_and_current_plot_scale() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let patch: Patch =
-        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope"}]}))
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"scope","kind":"scope","params":{"auto_range":0}}]}))
             .unwrap();
     for (enabled, xy, external, threshold, expected) in [
         (true, false, 0, 2.0, true),

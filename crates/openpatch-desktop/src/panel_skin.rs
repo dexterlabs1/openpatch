@@ -3,6 +3,8 @@
 use eframe::egui::{self, pos2, vec2, Color32, FontId, Pos2, Rect, Stroke};
 
 pub(crate) const INK: Color32 = Color32::from_rgb(32, 34, 35);
+const PANEL_FONT_NAME: &str = "rajdhani-panel";
+const PANEL_FONT_DATA: &[u8] = include_bytes!("../assets/fonts/Rajdhani-SemiBold.ttf");
 
 const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
     (
@@ -19,51 +21,72 @@ const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
     ),
 ];
 
-/// Restrained silkscreen accents identify signal families on the same metal.
+/// Family colors remain visible as large header blocks at rack overview scales.
+/// Every stock kind is assigned explicitly; unknown modules use neutral metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
-        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
-            Color32::from_rgb(151, 93, 57)
+        "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
+        | "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
+            Color32::from_rgb(158, 92, 52)
         }
-        "modal_resonator" | "colored_noise" | "macro_voice" | "wavetable_vco" => {
-            Color32::from_rgb(151, 93, 57)
+        "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(32, 120, 132),
+        "adsr" | "adsr_eg" => Color32::from_rgb(145, 85, 160),
+        "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "random" | "random_values" | "sh_asr"
+        | "sample_hold" | "pulses" | "push" | "gates" => Color32::from_rgb(108, 99, 168),
+        "seq3" | "score_sequencer" => Color32::from_rgb(143, 104, 28),
+        "gain" | "analog_vca" | "stock_vca" | "mixer" | "mix6" | "poly_sum" | "cv_mix"
+        | "vca_mix" | "fade" | "crossfade" | "attenuverter" | "attenuverter8" | "mutes10" => {
+            Color32::from_rgb(65, 121, 77)
         }
-        "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
-        "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "wavetable_lfo" | "gate" | "seq3"
-        | "score_sequencer" | "random" | "random_values" | "sh_asr" => {
-            Color32::from_rgb(116, 96, 136)
+        "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
+            Color32::from_rgb(59, 119, 108)
         }
-        "gain"
-        | "analog_vca"
-        | "stock_vca"
-        | "mixer"
-        | "mix6"
-        | "poly_sum"
-        | "cv_mix"
-        | "vca_mix"
-        | "fade"
-        | "crossfade"
-        | "stock_delay"
-        | "stereo_delay"
-        | "stereo_reverb"
-        | "sidechain_compressor" => Color32::from_rgb(78, 116, 96),
+        "mult" | "mid_side" | "octave" | "poly_split" | "poly_merge" | "switch_1to4"
+        | "switch_4to1" | "quantizer" => Color32::from_rgb(79, 116, 141),
+        "scope" | "poly_viz" => Color32::from_rgb(48, 105, 166),
         "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" | "midi_gate" => {
-            Color32::from_rgb(66, 104, 133)
+            Color32::from_rgb(65, 84, 119)
         }
+        "logic" | "compare" | "process" | "rescale" | "constant" | "poly_constant" => {
+            Color32::from_rgb(95, 113, 107)
+        }
+        "notes" | "blank" => Color32::from_rgb(118, 109, 92),
         _ => Color32::from_rgb(112, 112, 105),
     }
+}
+
+pub(crate) const HEADER_INK: Color32 = Color32::from_rgb(249, 246, 236);
+
+/// Reflective colored enamel: the caller's room lighting dims these shapes and
+/// the title together. Keep the controls on the existing warm, readable metal.
+pub(crate) fn identity_header(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32) {
+    let accent = family_accent(kind);
+    let inner = rect.shrink(1.0 * zoom);
+    let header_bottom = rect.top() + 65.0 * zoom;
+    painter.rect_filled(
+        Rect::from_min_max(inner.min, pos2(inner.right(), header_bottom)),
+        0.0,
+        accent.gamma_multiply(0.72),
+    );
+    // A continuous edge carries family identity below a partly obscured header,
+    // while staying clear of every control and connection target.
+    painter.rect_filled(
+        Rect::from_min_max(
+            pos2(inner.left(), header_bottom),
+            pos2(inner.left() + 4.0 * zoom, inner.bottom()),
+        ),
+        0.0,
+        accent,
+    );
 }
 
 pub(crate) fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "barlow-panel".into(),
-        egui::FontData::from_static(include_bytes!(
-            "../assets/fonts/BarlowSemiCondensed-SemiBold.ttf"
-        ))
-        .into(),
+        PANEL_FONT_NAME.into(),
+        egui::FontData::from_static(PANEL_FONT_DATA).into(),
     );
-    let mut panel_fonts = vec!["barlow-panel".into()];
+    let mut panel_fonts = vec![PANEL_FONT_NAME.into()];
     panel_fonts.extend(
         fonts.families[&egui::FontFamily::Proportional]
             .iter()
@@ -72,11 +95,7 @@ pub(crate) fn install_fonts(ctx: &egui::Context) {
     fonts
         .families
         .insert(egui::FontFamily::Name("Panel Print".into()), panel_fonts);
-    fonts.font_data.insert(
-        "barlow-heading".into(),
-        egui::FontData::from_static(include_bytes!("../assets/fonts/Barlow-SemiBold.ttf")).into(),
-    );
-    let mut heading_fonts = vec!["barlow-heading".into()];
+    let mut heading_fonts = vec![PANEL_FONT_NAME.into()];
     heading_fonts.extend(
         fonts.families[&egui::FontFamily::Proportional]
             .iter()
@@ -109,8 +128,8 @@ pub(crate) fn print_font(ctx: &egui::Context, size: f32) -> FontId {
     }
 }
 
-/// Broader hardware lettering for the model and primary controls; fine print
-/// keeps the condensed family so dense utility panels remain legible.
+/// Keep the established heading family name while sharing the selected panel
+/// face with control labels and numeric readouts.
 pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
     let family = egui::FontFamily::Name("Panel Heading".into());
     if ctx.fonts(|fonts| fonts.definitions().families.contains_key(&family)) {
@@ -170,6 +189,14 @@ pub(crate) fn parameter_fader(
     zoom: f32,
 ) {
     let thumb = parameter_fader_thumb(track, normalized, zoom);
+    let housing = track.expand2(vec2(13.0, 3.0) * zoom);
+    painter.rect_filled(housing, 2.0 * zoom, Color32::from_rgb(199, 199, 186));
+    painter.rect_stroke(
+        housing,
+        2.0 * zoom,
+        Stroke::new(0.7 * zoom, Color32::from_rgb(150, 153, 138)),
+        egui::StrokeKind::Inside,
+    );
     for step in 0..=4 {
         let y = egui::lerp(track.bottom()..=track.top(), step as f32 / 4.0);
         let outer = if step % 2 == 0 { 11.0 } else { 8.0 } * zoom;
@@ -179,7 +206,7 @@ pub(crate) fn parameter_fader(
                     pos2(track.center().x + side * 5.0 * zoom, y),
                     pos2(track.center().x + side * outer, y),
                 ],
-                Stroke::new(0.8 * zoom, Color32::from_rgb(114, 113, 104)),
+                Stroke::new(1.0 * zoom, Color32::from_rgb(89, 95, 83)),
             );
         }
     }
@@ -253,25 +280,34 @@ pub(crate) fn readout(
 ) {
     // A bounded numeric entry field, with a small pencil mark that distinguishes
     // an editable setting from the surrounding silkscreen labels.
-    let available = (max_width - 25.0 * zoom).max(1.0);
-    let mut galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(11.0 * zoom), INK);
+    let readout_ink = Color32::from_rgb(247, 244, 231);
+    let available = (max_width - 22.0 * zoom).max(1.0);
+    let mut galley = painter.layout_no_wrap(
+        text.to_owned(),
+        print_font(painter.ctx(), 12.5 * zoom),
+        readout_ink,
+    );
     if galley.size().x > available {
-        let size = 11.0 * zoom * available / galley.size().x;
-        galley = painter.layout_no_wrap(text.to_owned(), FontId::monospace(size), INK);
+        let size = 12.5 * zoom * available / galley.size().x;
+        galley = painter.layout_no_wrap(
+            text.to_owned(),
+            print_font(painter.ctx(), size),
+            readout_ink,
+        );
     }
-    let width = (galley.size().x + 25.0 * zoom)
-        .max(48.0 * zoom)
+    let width = (galley.size().x + 22.0 * zoom)
+        .max(64.0 * zoom)
         .min(max_width);
     let rect = Rect::from_center_size(center, vec2(width, 17.0 * zoom));
-    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(237, 233, 222));
+    painter.rect_filled(rect, 2.0 * zoom, Color32::from_rgb(47, 55, 48));
     painter.rect_stroke(
         rect,
         2.0 * zoom,
-        Stroke::new(0.8 * zoom, Color32::from_rgb(143, 148, 135)),
+        Stroke::new(0.8 * zoom, Color32::from_rgb(111, 121, 103)),
         egui::StrokeKind::Inside,
     );
     let icon_center = pos2(rect.right() - 7.0 * zoom, center.y);
-    let icon = Color32::from_rgb(90, 101, 89);
+    let icon = Color32::from_rgb(176, 187, 163);
     painter.line_segment(
         [
             icon_center + vec2(-2.5, 2.0) * zoom,
@@ -298,8 +334,32 @@ pub(crate) fn readout(
                 center.y - galley.size().y * 0.5,
             ),
             galley,
+            readout_ink,
+        );
+}
+
+/// Keep parameter lettering inside its control cell at every rack zoom.
+pub(crate) fn control_label(
+    painter: &egui::Painter,
+    bottom_center: Pos2,
+    text: &str,
+    max_width: f32,
+    zoom: f32,
+) {
+    let mut galley =
+        painter.layout_no_wrap(text.to_owned(), print_font(painter.ctx(), 12.0 * zoom), INK);
+    if galley.size().x > max_width {
+        galley = painter.layout_no_wrap(
+            text.to_owned(),
+            print_font(painter.ctx(), 12.0 * zoom * max_width / galley.size().x),
             INK,
         );
+    }
+    painter.galley(
+        bottom_center - vec2(galley.size().x * 0.5, galley.size().y),
+        galley,
+        INK,
+    );
 }
 
 pub(crate) fn port_label(
@@ -353,6 +413,12 @@ pub(crate) fn toggle_button(
 /// Material for native ComboBox/DragValue controls embedded in a panel.
 /// Geometry, font sizes, and selection/active colors remain owned by the caller.
 pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
+    let size = ui
+        .style()
+        .override_font_id
+        .as_ref()
+        .map_or(12.0 * zoom, |font| font.size);
+    ui.style_mut().override_font_id = Some(print_font(ui.ctx(), size));
     let visuals = ui.visuals_mut();
     visuals.override_text_color = Some(INK);
     visuals.widgets.inactive.bg_fill = Color32::from_rgb(204, 205, 196);
@@ -379,6 +445,61 @@ pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_panel_face_is_static_semibold_and_covers_panel_glyphs() {
+        let bytes = PANEL_FONT_DATA;
+        let count = usize::from(u16::from_be_bytes(bytes[4..6].try_into().unwrap()));
+        let tables = bytes[12..12 + count * 16].as_chunks::<16>().0;
+        assert!(
+            !tables.iter().any(|table| &table[..4] == b"fvar"),
+            "panel face must be static so egui renders the selected weight"
+        );
+        let os2 = tables.iter().find(|table| &table[..4] == b"OS/2").unwrap();
+        let offset = u32::from_be_bytes(os2[8..12].try_into().unwrap()) as usize;
+        assert_eq!(
+            u16::from_be_bytes(bytes[offset + 4..offset + 6].try_into().unwrap()),
+            600,
+            "Rajdhani panel face weight"
+        );
+        // Test the selected face alone: fallback glyphs must not disguise a
+        // missing numeral, unit or standard control label in the actual asset.
+        let mut definitions = egui::FontDefinitions::empty();
+        definitions.font_data.insert(
+            PANEL_FONT_NAME.into(),
+            egui::FontData::from_static(PANEL_FONT_DATA).into(),
+        );
+        let family = egui::FontFamily::Name("Panel asset under test".into());
+        definitions
+            .families
+            .insert(family.clone(), vec![PANEL_FONT_NAME.into()]);
+        let ctx = egui::Context::default();
+        ctx.set_fonts(definitions);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let font = FontId::new(16.0, family.clone());
+            for character in
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.%+-/±−×°".chars()
+            {
+                assert!(
+                    ctx.fonts_mut(|fonts| fonts.has_glyph(&font, character)),
+                    "Rajdhani lacks panel character {character}"
+                );
+            }
+            let galley = ctx.fonts_mut(|fonts| {
+                fonts.layout_no_wrap("261.63 Hz 50% ±5 V".into(), font, Color32::WHITE)
+            });
+            for glyph in galley.rows.iter().flat_map(|row| &row.glyphs) {
+                if !glyph.chr.is_whitespace() {
+                    assert!(
+                        glyph.uv_rect.max[0] > glyph.uv_rect.min[0]
+                            && glyph.uv_rect.max[1] > glyph.uv_rect.min[1],
+                        "Rajdhani has no rasterized outline for {}",
+                        glyph.chr
+                    );
+                }
+            }
+        });
+    }
 
     #[test]
     fn installed_fonts_resolve_notes_unicode_without_replacement_glyphs() {
@@ -476,8 +597,8 @@ mod tests {
                     assert!(definitions.families[family].starts_with(original_faces));
                 }
                 for (family, first) in [
-                    ("Panel Print", "barlow-panel"),
-                    ("Panel Heading", "barlow-heading"),
+                    ("Panel Print", PANEL_FONT_NAME),
+                    ("Panel Heading", PANEL_FONT_NAME),
                 ] {
                     let faces = &definitions.families[&egui::FontFamily::Name(family.into())];
                     assert_eq!(faces[0], first);

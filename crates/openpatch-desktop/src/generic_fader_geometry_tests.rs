@@ -55,18 +55,24 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
             if rect.fill == Color32::from_rgb(235, 231, 216) {
                 surface.thumbs.push(rect.rect);
             }
-            if rect.fill == Color32::from_rgb(237, 233, 222) {
-                // Choice backgrounds share the numeric well material. Their
-                // actual painted heights distinguish them, rather than treating
-                // every rectangle of that color as a numeric input.
+            if rect.fill == Color32::from_rgb(47, 55, 48) {
+                // Numeric wells now use the dark entry material. Keep checking
+                // their painted height rather than counting arbitrary dark fills.
                 let height = rect.rect.height() / surface.scale;
-                if (height - 17.0).abs() < 0.001 {
-                    surface.readouts.push(rect.rect);
-                } else if (height - 24.0).abs() < 0.001 {
-                    surface.choices.push(rect.rect);
-                } else {
-                    panic!("unclassified shared entry material at height {height}");
-                }
+                assert!(
+                    (height - 17.0).abs() < 0.001,
+                    "numeric entry material at unexpected height {height}"
+                );
+                surface.readouts.push(rect.rect);
+            } else if rect.fill == Color32::from_rgb(237, 233, 222) {
+                // Categorical controls retain the light entry material and their
+                // own height; they must remain separate from numeric wells.
+                let height = rect.rect.height() / surface.scale;
+                assert!(
+                    (height - 24.0).abs() < 0.001,
+                    "categorical entry material at unexpected height {height}"
+                );
+                surface.choices.push(rect.rect);
             }
         }
         egui::Shape::Text(text) if !text.galley.text().is_empty() => {
@@ -233,6 +239,11 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
     // Exact continuous/choice counts prevent missing paint, accidental fallback
     // to a thumb, or missing actual response registration from passing.
     for (kind, faders, choices) in [
+        ("gate", 2, &[][..]),
+        ("attenuverter", 2, &[][..]),
+        ("white_noise", 2, &[][..]),
+        ("oscillator", 2, &[][..]),
+        ("lfo", 3, &[][..]),
         ("seq3", 24, &[][..]),
         ("stereo_delay", 10, &[][..]),
         ("analog_vco", 2, &["waveform"][..]),
@@ -307,6 +318,24 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                     );
                 }
                 for (surface_name, surface) in [("rack", &rack), ("browser", &browser)] {
+                    // Generic stacks need room for the installed font between
+                    // the preceding numeric well and the next fader. Check real
+                    // text bounds with two logical pixels of clear space.
+                    if matches!(kind, "gate" | "attenuverter" | "white_noise" | "oscillator" | "lfo") {
+                        for text in surface.texts.iter().filter(|text| {
+                            text.color == INK
+                                && rack.controls.iter().any(|control| {
+                                    text.text == parameter_label(&control.name)
+                                })
+                        }) {
+                            for well in &surface.readouts {
+                                assert!(
+                                    !well.expand2(vec2(0.0, 2.0 * surface.scale)).intersects(text.bounds),
+                                    "{context} {surface_name}: parameter label {text:?} touches numeric well {well:?}"
+                                );
+                            }
+                        }
+                    }
                     for (index, thumb) in surface.thumbs.iter().enumerate() {
                         assert!(
                             surface.bounds.contains_rect(*thumb),

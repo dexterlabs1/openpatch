@@ -681,7 +681,18 @@ impl OpenPatch {
     }
     // Rack replacement is a document operation; appearance and follow opt-in
     // belong to the window, including when examples replace the entire rack.
-    fn replace_rack(&mut self, mut rack: Rack) {
+    fn replace_rack(&mut self, rack: Rack) {
+        // Smoke scenes may replace Session directly before the next sync.
+        // Production document operations pass their accepted revision below.
+        let revision = self
+            .shared
+            .lock()
+            .map(|live| live.revision())
+            .unwrap_or(self.revision);
+        self.replace_rack_for_document(rack, revision);
+    }
+    fn replace_rack_for_document(&mut self, mut rack: Rack, document_revision: u64) {
+        self.construction.begin_document(document_revision);
         rack.set_cable_presentation(self.rack.cable_presentation());
         rack.set_agent_follow(self.rack.agent_follow_enabled());
         self.rack = rack;
@@ -1132,6 +1143,11 @@ impl OpenPatch {
         }
         match execute_shared(&self.shared, name, args) {
             Ok(receipt) => {
+                if name == "replace_patch" {
+                    if let Some(revision) = receipt["revision"].as_u64() {
+                        self.construction.begin_document(revision);
+                    }
+                }
                 // The hand has already moved this cable. Consume only this
                 // accepted local revision before sync, including a busy retry;
                 // a following MCP revision still gets its own motion cue.
@@ -1757,7 +1773,7 @@ impl OpenPatch {
                 let locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
                 self.patch = applied.patch;
-                self.replace_rack(applied.rack);
+                self.replace_rack_for_document(applied.rack, applied.revision);
                 self.rack.set_positions_locked(locked);
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
@@ -1877,15 +1893,18 @@ impl OpenPatch {
                 }
                 live.replace_patch(patch.clone(), Some(self.revision))
             });
-        if let Err(error) = result {
-            self.status = error;
-            if require_saved {
-                self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+        let document_revision = match result {
+            Ok(revision) => revision,
+            Err(error) => {
+                self.status = error;
+                if require_saved {
+                    self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+                }
+                self.sync();
+                self.observe_document();
+                return;
             }
-            self.sync();
-            self.observe_document();
-            return;
-        }
+        };
         self.sync();
         self.panic_notes();
         self.clear_recovery();
@@ -1894,7 +1913,7 @@ impl OpenPatch {
         self.active_token = None;
         let positions_locked = self.rack.positions_locked();
         let room_brightness = self.rack.room_brightness();
-        self.replace_rack(Rack::default());
+        self.replace_rack_for_document(Rack::default(), document_revision);
         self.rack.set_positions_locked(positions_locked);
         self.rack.set_room_brightness(room_brightness);
         if title == "Sequenced analog voice" {
@@ -2231,7 +2250,7 @@ impl OpenPatch {
                 self.patch = applied.patch;
                 let positions_locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
-                self.replace_rack(applied.rack);
+                self.replace_rack_for_document(applied.rack, applied.revision);
                 self.rack.set_positions_locked(positions_locked);
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
@@ -4778,6 +4797,116 @@ impl OpenPatch {
         self.status = "Actual DSP snapshot · proof lanes 0 / 6.25 / 50 / 100 / 100% · fifth input silent, full gain · no live audio".into();
     }
 
+    fn prepare_weak_scope_fixture(
+        &mut self,
+        automatic: bool,
+    ) -> Arc<openpatch_core::ScopeSnapshot> {
+        let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"wave","kind":"multi_vco","params":{"frequency":50}},
+                {"id":"x_micro","kind":"attenuverter","params":{"gain":0.00002}},
+                {"id":"y_micro","kind":"attenuverter","params":{"gain":0.00002}},
+                {"id":"scope","kind":"scope","params":{"time":0.04,"auto_range":if automatic {1}else{0}}}
+            ],
+            "cables":[
+                {"from":"wave","output":"sine","to":"x_micro","input":"signal"},
+                {"from":"wave","output":"triangle","to":"y_micro","input":"signal"},
+                {"from":"x_micro","to":"scope","input":"x"},
+                {"from":"y_micro","to":"scope","input":"y"}
+            ]
+        })).expect("Weak Scope fixture patch");
+        let mut engine = patch.compile().expect("Weak Scope offline engine");
+        engine.set_port_lights_enabled(true);
+        let taps = [
+            ("x_micro", "out"),
+            ("y_micro", "out"),
+            ("scope", "x"),
+            ("scope", "y"),
+        ]
+        .map(|(id, port)| Some(engine.resolve_tap(id, port, 0).unwrap()));
+        let mut audio = vec![[0.0; 2]; 8192];
+        let mut raw = vec![[openpatch_core::TapSample::default(); 4]; audio.len()];
+        engine.process_audio_block_with_taps(&mut audio, &taps, &mut raw);
+        assert!(
+            audio.iter().flatten().all(|value| *value == 0.0),
+            "CV-only fixture has no audio output"
+        );
+        for axis in 0..2 {
+            let peak = raw
+                .iter()
+                // Before the delayed source acquires its channel, the
+                // attenuverter correctly normals its input to 10 V. Verify
+                // the settled 5 V oscillator signal after that startup.
+                .skip(4)
+                .map(|frame| frame[axis].value.abs())
+                .fold(0.0_f32, f32::max);
+            assert!(
+                (0.00009..0.00011).contains(&peak),
+                "Real attenuated signal is approximately 100 µV peak: axis={axis}, peak={peak}"
+            );
+            for frame in 4..raw.len() {
+                assert!(raw[frame][axis].active && raw[frame][axis + 2].active);
+                assert_eq!(
+                    raw[frame][axis + 2].value,
+                    raw[frame - 1][axis].value,
+                    "Scope passes unchanged delayed raw volts"
+                );
+            }
+        }
+        let scope = Arc::new(
+            engine
+                .module_scope(engine.resolve_module_scope("scope").unwrap())
+                .unwrap()
+                .clone(),
+        );
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        let measurements = scope.measurements();
+        for extrema in [measurements.x.unwrap(), measurements.y.unwrap()] {
+            assert_eq!(extrema.observations, 256);
+            assert!(extrema.min < -0.00009 && extrema.max > 0.00009);
+            assert!((0.00018..0.00022).contains(&extrema.peak_to_peak));
+        }
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.preset_dialog = None;
+        self.file_mode = None;
+        self.select_analysis(None);
+        self.mcp_session = crate::mcp_session_ui::Panel::new(false);
+        self.library = ModuleLibrary::default();
+        self.browser_open = false;
+        assert!(
+            self.audio.is_none(),
+            "Weak Scope captures use no live audio device"
+        );
+        assert!(self.command("replace_patch", json!({"patch":patch})));
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&json!({"version":1,"zoom":0.84,"pan":[24,12],"positions":{
+                "scope":[0,0],"wave":[0,420],"x_micro":[300,420],"y_micro":[480,420]
+            }}))
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), scope.clone())]));
+        self.title = if automatic {
+            "100 µV peak · automatic Scope"
+        } else {
+            "100 µV peak · manual Scope"
+        }
+        .into();
+        self.status = if automatic {
+            "Actual offline Engine · raw 100 µV sine/triangle · calibrated AUTO display · no live audio stream"
+        } else {
+            "Same actual offline 100 µV capture · manual 20 V/screen · unchanged raw measurements · no live audio stream"
+        }.into();
+        scope
+    }
+
     fn prepare_random_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/random-motion-voice.json"))
@@ -6469,6 +6598,35 @@ impl OpenPatch {
             assert!(self.library.inspect("random", &self.catalog));
             self.title = "Random · shared library faceplate".into();
         }
+        if frame == 2340 {
+            egui::Popup::close_all(ctx);
+            let capture = self.prepare_weak_scope_fixture(true);
+            ctx.data_mut(|data| data.insert_temp(egui::Id::new("smoke-weak-scope"), capture));
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2356 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Actual offline 100 µV capture · lights out · calibrated AUTO trace emits, controls and mounts remain reflective · no live audio".into();
+        }
+        if frame == 2372 {
+            let original = ctx
+                .data(|data| {
+                    data.get_temp::<Arc<openpatch_core::ScopeSnapshot>>(egui::Id::new(
+                        "smoke-weak-scope",
+                    ))
+                })
+                .expect("Original weak Scope capture");
+            let manual = self.prepare_weak_scope_fixture(false);
+            assert_eq!(
+                manual.x, original.x,
+                "Manual mode must show the same real raw capture"
+            );
+            assert_eq!(manual.y, original.y);
+            assert_eq!(manual.measurements(), original.measurements());
+            self.rack
+                .set_scope_states(BTreeMap::from([("scope".into(), original)]));
+            self.rack.set_room_brightness(1.0);
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -6585,6 +6743,9 @@ impl OpenPatch {
                 | 2292
                 | 2308
                 | 2328
+                | 2352
+                | 2368
+                | 2384
         ) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
         }
@@ -6705,7 +6866,10 @@ impl OpenPatch {
                 99 => path.with_file_name("wavetable-library.png"),
                 100 => path.with_file_name("rack-random.png"),
                 101 => path.with_file_name("rack-random-lights-out.png"),
-                _ => path.with_file_name("random-library.png"),
+                102 => path.with_file_name("random-library.png"),
+                103 => path.with_file_name("rack-weak-scope.png"),
+                104 => path.with_file_name("rack-weak-scope-lights-out.png"),
+                _ => path.with_file_name("rack-weak-scope-manual.png"),
             };
             image::save_buffer(
                 &target,
@@ -6716,18 +6880,18 @@ impl OpenPatch {
             )
             .expect("Save screenshot");
             eprintln!(
-                "Native smoke: capture {}/100 at frame {frame}: {}",
+                "Native smoke: capture {}/106 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 103 {
+            if captures == 106 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2350, "Native screenshot timeout");
+        assert!(frame < 2420, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7011,6 +7175,12 @@ mod project_workflow_tests {
     }
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
+    }
+    mod construction_document_tests {
+        include!("construction_document_tests.rs");
+    }
+    mod module_identity_app_tests {
+        include!("module_identity_app_tests.rs");
     }
     mod annotation_app_tests {
         include!("annotation_app_tests.rs");

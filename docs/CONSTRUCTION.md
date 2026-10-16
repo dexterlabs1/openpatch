@@ -90,6 +90,15 @@ cancel it while the desktop or another owner retains that session. Closing the
 session stops future steps. Plans are not saved in projects or restored after
 reopening. Offline renders and cloned sessions do not inherit construction.
 
+After an accepted native New, Open, import, recovery or template replacement,
+the progress strip hides plans started before that document boundary. The
+shared session still retains their summary and receipts for inspection. A new
+plan started at the accepted revision remains visible, even if it commits
+before the next GUI sync. Failed or dismissed replacements do not hide the
+current plan. A remote MCP `replace_patch` does not yet publish an explicit
+document-boundary event to the GUI; this presentation rule is currently scoped
+to native document operations and desktop-issued replacements.
+
 Progress reports **committed graph edits**, not confirmation that the audio
 callback has applied them. The control worker advances independently of GUI
 repaints. A stalled or hidden window can miss intermediate frames; this is not

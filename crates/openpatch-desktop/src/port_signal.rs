@@ -87,8 +87,12 @@ fn port_signal_color(state: openpatch_core::PortLightState) -> Option<Color32> {
     let palette = [[1.0, 0.22, 0.18], [0.23, 1.0, 0.40], [0.26, 0.49, 1.0]];
     let mut inverse = [1.0; 3];
     for (rgb, level) in palette.iter().zip(state.raw_rgb) {
+        // A perceptual display curve reveals small real voltages. Apply it
+        // before the user's linear brightness setting, keeping zero dark and
+        // retaining the measured positive/negative/poly color assignment.
+        let visible = level.clamp(0.0, 1.0).sqrt();
         for (result, component) in inverse.iter_mut().zip(rgb) {
-            *result *= 1.0 - component * level.clamp(0.0, 1.0);
+            *result *= 1.0 - component * visible;
         }
     }
     let rgb = inverse.map(|value| ((1.0 - value) * 255.0).round() as u8);

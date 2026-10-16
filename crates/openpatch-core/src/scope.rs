@@ -63,6 +63,7 @@ pub(crate) const INPUTS: [&str; 3] = ["x", "y", "trigger"];
 pub(crate) const OUTPUTS: [&str; 2] = ["x", "y"];
 pub(crate) fn catalog() -> Value {
     json!({"kind":"scope","title":"SCOPE","model":"functional","inputs":INPUTS,"params":{
+        "auto_range":{"default":1,"min":0,"max":1,"step":1,"values":[0,1],"labels":["Manual","Auto"],"display_only":true,"description":"Native display-only automatic voltage range; does not change acquisition, raw measurements or passthrough. Manual range/offset gestures turn it off."},
         "x_scale":{"default":0,"min":0,"max":8,"step":1,"unit":"octaves","description":"20 V/screen divided by 2^scale"},
         "y_scale":{"default":0,"min":0,"max":8,"step":1,"unit":"octaves","description":"20 V/screen divided by 2^scale"},
         "x_offset":{"default":0,"min":-10,"max":10,"unit":"V"},"y_offset":{"default":0,"min":-10,"max":10,"unit":"V"},
@@ -77,6 +78,7 @@ pub(crate) fn annotate(module: &mut Value) {
         json!("no mono broadcasting in acquisition; absent lanes contribute no samples");
     module["acquisition_policy"] = json!({"bins":256,"channels_per_axis":16,"trigger":"per-lane Schmitt, low <= threshold, high >= threshold + 0.001 V; first high only arms; any lane rising starts capture including that sample; detectors reset after capture","buffer":"in-place progressive update, buffer_index identifies next bin to complete; partial accumulation is private, previous complete bins remain until overwritten","state_adoption":"same identity/kind/rate and acquisition parameters and incoming routes preserve state without allocation; display scale/offset edits preserve capture; time, trigger, threshold, XY, route edits reset; initialization clears acquisition","bypass":"raw independent passthrough including zero-channel frames; acquisition/display freezes","time":"literal seconds differs from Rack exponential TIME parameter; ceil(time * rate / 256) samples per bin"});
     module["functional_reference"]=json!("https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Scope.cpp");
+    module["display_policy"] = json!({"auto_range":"native display-only extension, enabled by default; finite min/max from every active voice and zero determine independent X/Y 1/2/5 voltage spans with headroom and display hysteresis","calibration":"AUTO or MANUAL span and offset are shown in V, mV or µV; measurements and outputs always remain raw volts","manual":"turning auto_range off restores saved x/y_scale and offset values; a manual range/offset gesture atomically turns automatic ranging off","state":"display edits preserve capture and detector state; automatic fit is presentation state, not saved samples or audio gain"});
 }
 #[derive(Debug)]
 pub(crate) struct Scope {
@@ -88,6 +90,7 @@ impl Scope {
     pub fn build(node: &Node, rate: u32) -> Result<Self, String> {
         for name in node.params.keys() {
             if ![
+                "auto_range",
                 "x_scale",
                 "y_scale",
                 "x_offset",
@@ -113,6 +116,7 @@ impl Scope {
             Ok(v)
         };
         let time = parameter(node, "time", 0.5, 0.005, 50.0)?;
+        integer("auto_range", 1.0, 0.0, 1.0)?;
         Ok(Self {
             snapshot: Box::new(ScopeSnapshot {
                 x: [[ScopePoint::default(); 256]; 16],

@@ -65,7 +65,7 @@ fn run() -> Result<(), String> {
             "--font-license" => {
                 println!(
                     "{}\n{}\n{}\n{}\n{}",
-                    include_str!("../assets/fonts/OFL-Barlow.txt"),
+                    include_str!("../assets/fonts/OFL-Rajdhani.txt"),
                     include_str!("../assets/licenses/NOTO-FONTS.txt"),
                     include_str!("../assets/licenses/OFL-NotoSansCJK.txt"),
                     include_str!("../assets/licenses/OFL-NotoSansSymbols2.txt"),

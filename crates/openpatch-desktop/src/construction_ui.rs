@@ -9,6 +9,7 @@ mod tests;
 pub struct Panel {
     snapshot: Value,
     dismissed: Option<u64>,
+    document_revision: u64,
     motion_mode: crate::construction_motion::MotionMode,
 }
 
@@ -17,6 +18,7 @@ impl Default for Panel {
         Self {
             snapshot: Value::Null,
             dismissed: None,
+            document_revision: 0,
             motion_mode: crate::construction_motion::MotionMode::Full,
         }
     }
@@ -39,8 +41,19 @@ impl Panel {
         self.snapshot = snapshot;
     }
 
+    /// Scope presentation to the accepted document replacement. Session keeps
+    /// its retained plan and receipts available to inspect_construction; they
+    /// are not progress for the newly installed document. Revisions remain
+    /// monotonic across New, so plans started at this boundary stay visible.
+    pub(crate) fn begin_document(&mut self, revision: u64) {
+        self.document_revision = revision;
+    }
+
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
         let plan_id = self.snapshot["plan_id"].as_u64()?;
+        if self.snapshot["base_revision"].as_u64().unwrap_or(0) < self.document_revision {
+            return None;
+        }
         if self.dismissed == Some(plan_id) {
             return None;
         }

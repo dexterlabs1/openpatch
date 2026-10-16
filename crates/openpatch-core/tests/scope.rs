@@ -41,12 +41,19 @@ fn catalog_contract_and_validation() {
     assert_eq!(s["min_patch_version"], 2);
     assert_eq!(s["outputs"], json!(["x", "y"]));
     assert_eq!(s["inputs"], json!(["x", "y", "trigger"]));
+    assert_eq!(s["params"]["auto_range"]["default"], 1);
+    assert_eq!(s["params"]["auto_range"]["display_only"], true);
     for (name, value) in [
         ("wat", 0.0),
         ("x_scale", 0.5),
         ("xy", 0.5),
         ("time", 0.0),
         ("threshold", 11.0),
+        ("auto_range", -1.0),
+        ("auto_range", 0.5),
+        ("auto_range", 2.0),
+        ("auto_range", f32::NAN),
+        ("auto_range", f32::INFINITY),
     ] {
         let mut p = patch(false, 1);
         p.nodes[1].params.insert(name.into(), value);
@@ -55,6 +62,44 @@ fn catalog_contract_and_validation() {
     let mut p = patch(false, 1);
     p.version = 1;
     assert!(p.compile().is_err());
+}
+#[test]
+fn display_auto_range_preserves_raw_weak_passthrough_capture_and_adoption() {
+    let mut p = patch(false, 16);
+    p.nodes[0].params.insert("v1".into(), 0.0001);
+    p.nodes[0].params.insert("v16".into(), -0.0002);
+    let mut automatic = p.compile().unwrap();
+    p.nodes[1].params.insert("auto_range".into(), 0.0);
+    let mut manual = p.compile().unwrap();
+    tick(&mut automatic);
+    tick(&mut manual);
+    for _ in 0..300 {
+        let a = tick(&mut automatic);
+        let b = tick(&mut manual);
+        assert_eq!(a, b);
+        assert_eq!(a.channels, 16);
+        assert_eq!(a.values[0], 0.0001);
+        assert_eq!(a.values[15], -0.0002);
+    }
+    let a = automatic
+        .module_scope(automatic.resolve_module_scope("s").unwrap())
+        .unwrap();
+    let b = manual
+        .module_scope(manual.resolve_module_scope("s").unwrap())
+        .unwrap();
+    assert_eq!(a.x, b.x);
+    assert_eq!(a.y, b.y);
+    assert_eq!(a.measurements(), b.measurements());
+    let before = a.clone();
+    let mut changed = p.compile().unwrap();
+    changed.adopt_state_from(&automatic);
+    let after = changed
+        .module_scope(changed.resolve_module_scope("s").unwrap())
+        .unwrap();
+    assert_eq!(after.x, before.x);
+    assert_eq!(after.buffer_index, before.buffer_index);
+    assert_eq!(after.sample_index, before.sample_index);
+    assert_eq!(after.waiting, before.waiting);
 }
 #[test]
 fn processing_partition_preserves_capture() {
