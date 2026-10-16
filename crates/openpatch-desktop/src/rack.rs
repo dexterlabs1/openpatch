@@ -53,6 +53,61 @@ fn port_material_scale(kind: &str) -> f32 {
         _ => 1.0,
     }
 }
+
+// The catalog fallback stays a fader until its cell has been checked for a
+// rotary, its labels, and its separate exact-value target at reduced zoom.
+fn signal_atlas_generic_rotary_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "analog_vco"
+            | "ladder_vcf"
+            | "fade"
+            | "compare"
+            | "process"
+            | "rescale"
+            | "gate"
+            | "attenuverter"
+            | "white_noise"
+            | "oscillator"
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GenericParameterHardware {
+    Choice,
+    Rotary { body_radius: f32, target_half: f32 },
+    Fader,
+}
+
+fn generic_parameter_hardware(
+    kind: &str,
+    parameter: &str,
+    layout_radius: f32,
+    has_choices: bool,
+) -> GenericParameterHardware {
+    if has_choices {
+        GenericParameterHardware::Choice
+    } else if kind == "white_noise" && parameter == "seed" {
+        // This 24-bit integer restarts the noise sequence; it is not a
+        // continuous setting and retains its existing exact-entry path.
+        GenericParameterHardware::Fader
+    } else if matches!(kind, "stock_lfo" | "stock_vco") {
+        // Preserve the stock oscillators' original 27-point body and 68-point
+        // target while other panels adopt a bounded size from their own cells.
+        GenericParameterHardware::Rotary {
+            body_radius: 27.0,
+            target_half: 34.0,
+        }
+    } else if signal_atlas_generic_rotary_kind(kind) {
+        GenericParameterHardware::Rotary {
+            body_radius: (layout_radius - 5.0).min(30.0),
+            target_half: layout_radius - 2.0,
+        }
+    } else {
+        GenericParameterHardware::Fader
+    }
+}
+
 pub(crate) const PANEL_HEIGHT: f32 = 396.0;
 const MAX_PAN: f32 = 1_000_000.0;
 const PAPER: Color32 = Color32::from_rgb(220, 216, 205);
@@ -4063,20 +4118,22 @@ impl Rack {
                 };
                 let fader_track =
                     crate::panel_skin::parameter_fader_track(center, radius, self.zoom);
-                // Keep the fader target inside its own cell and above the value well.
-                let stock_rotary = matches!(node.kind.as_str(), "stock_lfo" | "stock_vco");
-                let knob_rect = if choices.is_some() {
-                    Rect::from_center_size(center, vec2(readout_width, 24.0) * self.zoom)
-                } else if stock_rotary {
-                    Rect::from_center_size(center, vec2(68.0, 68.0) * self.zoom)
-                } else {
-                    Rect::from_center_size(
+                let hardware =
+                    generic_parameter_hardware(&node.kind, name, radius, choices.is_some());
+                let knob_rect = match hardware {
+                    GenericParameterHardware::Choice => {
+                        Rect::from_center_size(center, vec2(readout_width, 24.0) * self.zoom)
+                    }
+                    GenericParameterHardware::Rotary { target_half, .. } => {
+                        Rect::from_center_size(center, Vec2::splat(2.0 * target_half * self.zoom))
+                    }
+                    GenericParameterHardware::Fader => Rect::from_center_size(
                         center,
                         vec2(
                             (radius * 1.4).clamp(32.0, 50.0) * self.zoom,
                             fader_track.height() + 7.0 * self.zoom,
                         ),
-                    )
+                    ),
                 };
                 let mut knob_highlighted = false;
                 if mode.is_interactive() {
@@ -4189,7 +4246,7 @@ impl Rack {
                     });
                     let input = if choices.is_some() {
                         FaderInput::default()
-                    } else if stock_rotary {
+                    } else if matches!(hardware, GenericParameterHardware::Rotary { .. }) {
                         self.parameter_knob_input(ui, &knob, normalized, enabled)
                     } else {
                         self.parameter_fader_input(ui, &knob, fader_track, normalized, enabled)
@@ -4266,7 +4323,7 @@ impl Rack {
                         "{}: {}\n{}\nClick and drag the {} to change its saved position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
                         name, display_value,
                         if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description },
-                        if stock_rotary { "rotary" } else { "fader" }
+                        if matches!(hardware, GenericParameterHardware::Rotary { .. }) { "rotary" } else { "fader" }
                     ));
                     }
                 }
@@ -4280,12 +4337,13 @@ impl Rack {
                         crate::panel_skin::family_accent(&node.kind),
                         self.zoom,
                     );
-                } else if stock_rotary {
-                    stock_oscillator_rotary(
+                } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
+                    crate::panel_skin::signal_atlas_rotary(
                         &painter,
                         center,
                         normalized,
                         knob_highlighted,
+                        body_radius,
                         self.zoom,
                     );
                 } else {
@@ -4402,20 +4460,27 @@ impl Rack {
                                 rect: knob_rect.union(value_response.rect),
                                 old_text,
                                 new_text: display_value.clone(),
-                                marker: step.is_none().then_some(if stock_rotary {
-                                    crate::construction_motion::Marker::Rotary {
-                                        center,
-                                        radius: 31.0 * self.zoom,
-                                        old: old_normalized,
-                                        new: normalized,
-                                    }
-                                } else {
-                                    crate::construction_motion::Marker::VerticalSlider {
-                                        rect: fader_track,
-                                        old: old_normalized,
-                                        new: normalized,
-                                    }
-                                }),
+                                marker: step.is_none().then_some(
+                                    if let GenericParameterHardware::Rotary {
+                                        body_radius,
+                                        target_half,
+                                    } = hardware
+                                    {
+                                        crate::construction_motion::Marker::Rotary {
+                                            center,
+                                            radius: (body_radius + 4.0).min(target_half)
+                                                * self.zoom,
+                                            old: old_normalized,
+                                            new: normalized,
+                                        }
+                                    } else {
+                                        crate::construction_motion::Marker::VerticalSlider {
+                                            rect: fader_track,
+                                            old: old_normalized,
+                                            new: normalized,
+                                        }
+                                    },
+                                ),
                             },
                             &[value_response.id, ui.id().with(("knob", &node.id, name))],
                         );
@@ -12368,7 +12433,7 @@ fn paint_panel(
 ) {
     if matches!(node.kind.as_str(), "stock_vca_mix" | "stock_process") {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
-    } else if node.kind == "stock_noise" {
+    } else if node.kind == "stock_noise" || signal_atlas_generic_rotary_kind(&node.kind) {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
         crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
     } else {

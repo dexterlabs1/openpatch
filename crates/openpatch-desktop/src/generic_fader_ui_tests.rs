@@ -93,6 +93,25 @@ impl FaderFixture {
         // Constant's single control has a 42-point radius and a 15-point value gap.
         track.center() + vec2(0.0, 57.0 * self.rack.zoom)
     }
+    fn gate_duty_rotary(&self) -> (Pos2, Pos2) {
+        let node = self
+            .session
+            .patch()
+            .nodes
+            .iter()
+            .find(|node| node.id == "target")
+            .unwrap();
+        assert_eq!(node.kind, "gate");
+        let (local, radius) = parameter_position(2, 1, module_width(node));
+        assert!(matches!(
+            generic_parameter_hardware("gate", "duty", radius, false),
+            GenericParameterHardware::Rotary { .. }
+        ));
+        let center = self.rack.viewport.unwrap().min
+            + self.rack.pan
+            + (self.rack.positions["target"].to_vec2() + local.to_vec2()) * self.rack.zoom;
+        (center, center + vec2(0.0, (radius + 15.0) * self.rack.zoom))
+    }
     fn press(&mut self, at: Pos2, modifiers: egui::Modifiers) -> Option<Value> {
         self.draw(
             vec![egui::Event::PointerMoved(at), pointer(at, true, modifiers)],
@@ -112,6 +131,101 @@ impl FaderFixture {
         self.press(at, egui::Modifiers::NONE);
         self.release(at, egui::Modifiers::NONE);
     }
+}
+
+#[test]
+fn converted_gate_rotary_click_stays_put_then_relative_drag_has_one_undo() {
+    for zoom in [0.5, 1.0, 2.0] {
+        let mut f = FaderFixture::new("gate", "duty", 0.5, zoom);
+        let (center, _) = f.gate_duty_rotary();
+        let baseline = f.undo_steps();
+        let revision = f.session.revision();
+        f.time = 1.0;
+        assert!(f.press(center, egui::Modifiers::NONE).is_none());
+        assert!(f.release(center, egui::Modifiers::NONE).is_none());
+        assert_eq!(f.value("target", "duty"), 0.5);
+        assert_eq!(f.session.revision(), revision);
+        assert_eq!(f.undo_steps(), baseline);
+
+        f.time = 2.0;
+        assert!(f.press(center, egui::Modifiers::NONE).is_none());
+        let end = center - vec2(0.0, 15.0 * zoom);
+        let edit = f.move_to(end, egui::Modifiers::NONE).expect("relative rotary drag");
+        assert_eq!(edit["parameter"], "duty");
+        assert_eq!(edit["expected_revision"], revision);
+        assert!(edit["history_group"].as_str().is_some());
+        near(f.value("target", "duty"), 0.598);
+        let after_drag = f.session.revision();
+        assert!(f.release(end, egui::Modifiers::NONE).is_none());
+        assert_eq!(f.session.revision(), after_drag);
+        assert_eq!(f.undo_steps(), baseline + 1);
+        assert_eq!(f.value("other", "value"), 9.0);
+        f.session.execute("undo", json!({})).unwrap();
+        assert_eq!(f.value("target", "duty"), 0.5);
+        f.session.execute("redo", json!({})).unwrap();
+        near(f.value("target", "duty"), 0.598);
+    }
+}
+
+#[test]
+fn converted_rotary_fine_keyboard_and_exact_entry_share_session_authority() {
+    let mut f = FaderFixture::new("gate", "duty", 0.5, 1.0);
+    let (center, readout) = f.gate_duty_rotary();
+    let baseline = f.undo_steps();
+    f.time = 1.0;
+    f.press(center, ctrl());
+    let fine_end = center - vec2(0.0, 75.0);
+    f.move_to(fine_end, ctrl()).expect("Ctrl rotary drag");
+    near(f.value("target", "duty"), 0.549);
+    let revision = f.session.revision();
+    assert!(f.move_to(fine_end, egui::Modifiers::NONE).is_none());
+    assert_eq!(f.session.revision(), revision);
+    near(f.value("target", "duty"), 0.549);
+    let end = fine_end - vec2(0.0, 15.0);
+    f.move_to(end, egui::Modifiers::NONE)
+        .expect("normal drag continues from fine value");
+    near(f.value("target", "duty"), 0.647);
+    f.release(end, egui::Modifiers::NONE);
+    assert_eq!(f.undo_steps(), baseline + 1);
+
+    let pan_before_keys = f.rack.pan;
+    for (key, expected) in [
+        (egui::Key::ArrowUp, 0.6568),
+        (egui::Key::Home, 0.01),
+        (egui::Key::End, 0.99),
+    ] {
+        let action = f
+            .draw(vec![key_event(key, true, false, egui::Modifiers::NONE)], true)
+            .expect("focused rotary keyboard edit");
+        assert_eq!(action["parameter"], "duty");
+        near(f.value("target", "duty"), expected);
+        f.draw(vec![key_event(key, false, false, egui::Modifiers::NONE)], true);
+    }
+    let revision = f.session.revision();
+    for key in [egui::Key::Space, egui::Key::Enter] {
+        assert!(f
+            .draw(vec![key_event(key, true, false, egui::Modifiers::NONE)], true)
+            .is_none());
+        assert_eq!(f.session.revision(), revision);
+        f.draw(vec![key_event(key, false, false, egui::Modifiers::NONE)], true);
+    }
+
+    assert_eq!(f.rack.pan, pan_before_keys, "focused rotary keys must not pan the rack");
+    assert_eq!(readout, f.gate_duty_rotary().1);
+    f.time = 3.0;
+    // Move from the focused knob to the value field before pressing, as a
+    // separate pointer frame; this settles egui's prior keyboard ownership.
+    assert!(f.draw(vec![egui::Event::PointerMoved(readout)], true).is_none());
+    f.click(readout);
+    let edit = f.rack.editing.as_mut().expect("rotary exact value editor");
+    assert_eq!((&*edit.id, &*edit.parameter), ("target", "duty"));
+    edit.text = "0.375".into();
+    f.draw(
+        vec![key_event(egui::Key::Enter, true, false, egui::Modifiers::NONE)],
+        true,
+    )
+    .expect("exact value commits through Session");
+    assert_eq!(f.value("target", "duty"), 0.375);
 }
 fn pointer(at: Pos2, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
     egui::Event::PointerButton {

@@ -10,11 +10,11 @@ OpenPatch uses Rust DSP, including explicitly attributed licensed algorithm adap
 
 Six additional native reconstruction tools—SCORE, DRUM, SVF, stereo delay, reverb and sidechain compression—extend the catalog; they are original algorithms, not new claims of completed Rack plugin equivalence. See [score and studio contract](SCORE_AND_STUDIO.md).
 
-The development catalog now contains **80 kinds**. Its separate `stock_noise`
+The installed 0.2.2 build 4 catalog contains **80 kinds**. Its separate `stock_noise`
 kind adds seven mono source outputs without parameters, inputs or lamps; this
 count does not promote any of the 49 Core/Free targets to complete parity.
 The separate [Stock Process](STOCK_PROCESS.md) is the 80th kind; its frozen
-source/host and local application gates pass; platform/native render delivery checks remain required.
+source/host, local application, platform CI and native render gates passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged.
 
 [Studio Mixer](STUDIO_MIXER.md) is the 79th catalog kind and a separate original
 custom module ported from the user's stable snapshot. It provides 1–16 strips
@@ -328,7 +328,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Logic | Gate processing | Implemented signal role: `logic`, eight Boolean outputs, 1 V threshold, manual B and mono/poly indicators | Direct reference traces, native qualification; no hysteresis in this reference role; [contract](SIGNAL_PROCESSING.md) |
 | Compare | Voltage processing | Implemented signal role: `compare`, eight outputs, B offset, raw mono zero-padding and strict comparisons | Direct reference traces and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Gates | Gate processing | Implemented signal role: `gates`, six polyphonic edge/flip-flop/timed/delayed outputs, bounded transition history, native RESET and MCP events | Direct reference traces, native qualification, explicit numerical/connection policies; [contract](GATES.md) |
-| Process | Voltage processing | Separate `stock_process`: six outputs, source-ordered slew/glide timing, sixteen retained voice histories and runtime manual gate. Legacy `process` remains independent. | Frozen genuine SDK/actual Core comparison passes 3,444 cases / 13,599 whole snapshots at three rates. Safety and realtime checks pass; local application qualification passes; platform/native render delivery checks remain required. Rack import, official binary and hardware claims remain open. [Stock contract](STOCK_PROCESS.md), [legacy contract](SIGNAL_PROCESSING.md). |
+| Process | Voltage processing | Separate `stock_process`: six outputs, source-ordered slew/glide timing, sixteen retained voice histories and runtime manual gate. Legacy `process` remains independent. | Frozen genuine SDK/actual Core comparison passes 3,444 cases / 13,599 whole snapshots at three rates. Safety, realtime and local application checks pass. Both exact-source CI runs passed all eight jobs; both 149-capture native sets were validated and reviewed before PR22 merged. The signed ARM app is installed. Rack import, official binary and hardware claims remain open. [Stock contract](STOCK_PROCESS.md), [legacy contract](SIGNAL_PROCESSING.md). |
 | Mult | Routing | Implemented signal distribution: `mult`, eight exact frame copies | Full VCV host behavior and boundary comparison remain open |
 | Rescale | Voltage processing | Implemented signal role: `rescale`, affine gain, multiplier, limits/reflection and pre-limit indicators | Direct reference traces, arbitrary legacy multiplier migration and native qualification; [contract](SIGNAL_PROCESSING.md) |
 | Random Values | Source | `random_values`: seven outputs × sixteen held voices, per-voice TRIG and manual PUSH, six ranges, coherent saved voltages and generator state; [contract](RANDOM_VALUES.md) | Original seeded generator and explicit edge ordering; VCV random-sequence equivalence, Rack import and native device qualification remain open. |

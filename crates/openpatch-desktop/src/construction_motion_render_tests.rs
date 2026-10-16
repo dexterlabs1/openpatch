@@ -1047,6 +1047,8 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
         ("stock_vco", "frequency", -12.0, 24.0),
         ("stock_lfo", "rate", 0.0, 2.0),
         ("stock_vca_mix", "level1", 0.25, 1.0),
+        ("gate", "duty", 0.2, 0.8),
+        ("analog_vco", "pulse_width", 0.2, 0.8),
     ] {
         let ctx = egui::Context::default();
         crate::panel_skin::install_fonts(&ctx);
@@ -1129,4 +1131,68 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
             egui::Shape::Circle(circle) if (circle.radius - 1.7 * reduced.zoom).abs() < 0.001
             && circle.fill.a() > 0 && (circle.center.distance(*center) - *radius).abs() < 0.01)));
     }
+}
+
+#[test]
+fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let mut rack = Rack::default();
+    let now = Instant::now();
+    let before = patch("gate", "duty", 0.2);
+    let after = patch("gate", "duty", 0.8);
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &snapshot(9, 10, "gate", "duty", 0.2, 0.8),
+        MotionMode::Full,
+        now,
+    );
+    rack.set_construction_clock_override(Some(now + Duration::from_millis(140)));
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+    assert!(action.is_none());
+    assert!(text(&output).iter().any(|label| label == "80.0%"));
+    assert_eq!(after.nodes[0].params["duty"], 0.8);
+    let anchor = rack.construction_anchors[&("target".into(), "duty".into())].clone();
+    let Some(Marker::Rotary { center, radius, old, new }) = anchor.marker else {
+        panic!("converted gate must emit a rotary marker");
+    };
+    assert!((radius - 30.0 * rack.zoom).abs() < 0.001);
+    assert!((old - (0.2 - 0.01) / 0.98).abs() < 0.001);
+    assert!((new - (0.8 - 0.01) / 0.98).abs() < 0.001);
+
+    rack.pan += vec2(80.0, 50.0);
+    rack.set_zoom(0.85);
+    frame_revision_state(&ctx, &mut rack, &after, 0.2, vec![], true, true, 10);
+    let shifted = rack.construction_anchors[&("target".into(), "duty".into())].clone();
+    let Some(Marker::Rotary { center: moved_center, radius: moved_radius, .. }) = shifted.marker
+    else {
+        panic!("pan/zoom preserves angular cue");
+    };
+    assert_ne!(center, moved_center);
+    assert!((moved_radius - 30.0 * rack.zoom).abs() < 0.001);
+    assert_ne!(anchor.rect, shifted.rect);
+
+    // The readout remains a separate exact-entry target after the view change.
+    let (local, layout_radius) = parameter_position(2, 1, module_width(&after.nodes[0]));
+    let readout = moved_center + vec2(0.0, (layout_radius + 15.0) * rack.zoom);
+    assert!((moved_center.distance(rack.viewport.unwrap().min + rack.pan
+        + (rack.positions["target"].to_vec2() + local.to_vec2()) * rack.zoom)) < 0.001);
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &after,
+        0.3,
+        vec![egui::Event::PointerMoved(readout), button(readout, true)],
+        true,
+        true,
+        10,
+    );
+    assert!(rack.construction_animation.parameters.is_empty());
+    frame_revision_state(&ctx, &mut rack, &after, 0.4, vec![button(readout, false)], true, true, 10);
+    assert!(rack.editing.as_ref().is_some_and(|edit| edit.id == "target" && edit.parameter == "duty"));
 }

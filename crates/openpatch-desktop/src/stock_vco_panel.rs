@@ -35,52 +35,7 @@ fn stock_oscillator_rotary(
     active: bool,
     zoom: f32,
 ) {
-    let value = if normalized.is_finite() {
-        normalized.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let radius = 27.0 * zoom;
-    let shell = Color32::from_rgb(40, 42, 41);
-    let face = Color32::from_rgb(56, 59, 57);
-    painter.circle_filled(
-        center + vec2(0.8, 1.4) * zoom,
-        radius + 1.0 * zoom,
-        Color32::from_black_alpha(48),
-    );
-    painter.circle_filled(center, radius + 1.0 * zoom, Color32::from_rgb(28, 30, 29));
-    painter.circle_filled(center, radius - 1.2 * zoom, shell);
-    painter.circle_filled(center, radius - 4.1 * zoom, face);
-    // Eleven evenly spaced scale marks give the bounded knob travel a clear
-    // reference without implying physical units shared by unlike controls.
-    for index in 0..=10 {
-        let t = index as f32 / 10.0;
-        let angle = std::f32::consts::PI * (0.75 + 1.5 * t);
-        let outer = center + vec2(angle.cos(), angle.sin()) * (radius - 2.7 * zoom);
-        let inset = if index % 5 == 0 { 7.0 } else { 5.5 };
-        let inner = center + vec2(angle.cos(), angle.sin()) * (radius - inset * zoom);
-        painter.line_segment(
-            [inner, outer],
-            egui::Stroke::new(
-                if index % 5 == 0 { 1.25 } else { 0.8 } * zoom,
-                Color32::from_rgb(222, 216, 201),
-            ),
-        );
-    }
-    let angle = std::f32::consts::PI * (0.75 + 1.5 * value);
-    let tip = center + vec2(angle.cos(), angle.sin()) * (radius - 9.0 * zoom);
-    painter.line_segment(
-        [center, tip],
-        egui::Stroke::new(
-            2.4 * zoom,
-            if active {
-                Color32::from_rgb(244, 235, 211)
-            } else {
-                Color32::from_rgb(222, 216, 201)
-            },
-        ),
-    );
-    painter.circle_filled(center, 2.2 * zoom, Color32::from_rgb(220, 214, 199));
+    crate::panel_skin::signal_atlas_rotary(painter, center, normalized, active, 27.0, zoom);
 }
 
 impl Rack {
