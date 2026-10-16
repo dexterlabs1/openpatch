@@ -680,6 +680,23 @@ impl Audio {
     }
 
     /// Actual durable flags from one coherent callback publication, not saved defaults.
+    pub fn stock_quantizer_states(&self) -> std::collections::BTreeMap<String, u16> {
+        self.performance.snapshot()["modules"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(_, module)| {
+                module["kind"] == "stock_quantizer" && module["available"] == true
+            })
+            .filter_map(|(id, module)| {
+                module["state"]["scale_mask"]
+                    .as_u64()
+                    .filter(|mask| *mask <= 4095)
+                    .map(|mask| (id.clone(), mask as u16))
+            })
+            .collect()
+    }
+
     pub fn stock_seq3_states(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
         self.performance.snapshot()["modules"]
             .as_object()
@@ -5807,6 +5824,7 @@ mod tests {
     include!("stock_lfo_audio_tests.rs");
     include!("stock_vco_audio_tests.rs");
     include!("stock_seq3_audio_tests.rs");
+    include!("stock_quantizer_audio_tests.rs");
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
 }

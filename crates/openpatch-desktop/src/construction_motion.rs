@@ -88,6 +88,7 @@ fn effective(patch: &Patch, id: &str, kind: &str, param: &str, catalog: &Value) 
         .find(|m| m["kind"] == kind)?["params"]
         .get(param)?;
     if spec["hidden"] == true
+        && !(kind == "stock_quantizer" && param == "scale_mask")
         && !(kind == "stock_seq3"
             && matches!(
                 param,

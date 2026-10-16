@@ -20,6 +20,7 @@ include!("parameter_choice.rs");
 include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
+include!("stock_quantizer_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -76,6 +77,10 @@ pub(crate) enum RackAction {
     PaletteConnect {
         arguments: Value,
         selection: crate::cable_palette::Selection,
+    },
+    ScalePaint {
+        arguments: Value,
+        gesture: u64,
     },
     ParameterEditAndNavigate {
         arguments: Value,
@@ -410,6 +415,8 @@ pub struct Rack {
     scope_states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     stock_seq3_states: BTreeMap<String, Value>,
+    stock_quantizer_states: BTreeMap<String, u16>,
+    scale_paint: Option<ScalePaint>,
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
     port_lights: Option<Arc<crate::audio::PortLightFrame>>,
@@ -467,6 +474,8 @@ impl Default for Rack {
             scope_states: BTreeMap::new(),
             sequence_states: BTreeMap::new(),
             stock_seq3_states: BTreeMap::new(),
+            stock_quantizer_states: BTreeMap::new(),
+            scale_paint: None,
             performance_available: false,
             module_lights: BTreeMap::new(),
             port_lights: None,
@@ -1040,6 +1049,12 @@ impl Rack {
         self.performance_available = available;
     }
 
+    pub fn set_stock_quantizer_states(&mut self, states: BTreeMap<String, u16>) {
+        self.stock_quantizer_states = states
+            .into_iter()
+            .filter(|(_, mask)| *mask <= 4095)
+            .collect();
+    }
     pub fn set_stock_seq3_states(&mut self, states: BTreeMap<String, Value>) {
         self.stock_seq3_states = states;
     }
@@ -1418,6 +1433,7 @@ impl Rack {
             && ui.input(|i| i.focused)
             && !egui::Popup::is_any_open(ui.ctx())
             && !ui.input(|i| i.key_pressed(egui::Key::Escape));
+        self.validate_scale_paint(ui, patch, revision, drag_interactive);
         if self.positions_locked {
             self.cancel_module_drag();
         }
@@ -2756,6 +2772,13 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "stock_quantizer" {
+                if let Some(edit) =
+                    self.stock_quantizer_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "stock_seq3" {
                 if let Some(edit) = self.stock_seq3_panel(
                     ui,
@@ -3501,6 +3524,8 @@ impl Rack {
                         ),
                         25.0,
                     )
+                } else if node.kind == "stock_quantizer" {
+                    (pos2(width * 0.5, 303.0), 23.0)
                 } else if node.kind == "quantizer" {
                     (pos2(width * 0.5, 260.0), 23.0)
                 } else if node.kind == "random" {
@@ -3582,7 +3607,9 @@ impl Rack {
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
-                let display_scale = if clock_ratio {
+                let display_scale = if node.kind == "stock_quantizer" {
+                    12.0
+                } else if clock_ratio {
                     0.5
                 } else if scaled_gain {
                     if multiplier == 1.0 {
@@ -3595,7 +3622,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if stock_tempo {
+                let display_value = if node.kind == "stock_quantizer" {
+                    stock_quantizer_offset_value(value)
+                } else if stock_tempo {
                     stock_seq3_tempo_value(value)
                 } else if node.kind == "stock_vco" {
                     stock_vco_parameter_value(name, value)
@@ -3679,7 +3708,9 @@ impl Rack {
                     },
                     step: step.map(|step| step * display_scale),
                     display_scale,
-                    display_unit: if stock_tempo {
+                    display_unit: if node.kind == "stock_quantizer" {
+                        "st"
+                    } else if stock_tempo {
                         "BPM"
                     } else if stock_pitch {
                         "Hz"
@@ -3804,7 +3835,9 @@ impl Rack {
                         } else {
                             egui::WidgetInfo::slider(
                                 true,
-                                if stock_pitch {
+                                if node.kind == "stock_quantizer" {
+                                    f64::from(value * 12.0)
+                                } else if stock_pitch {
                                     f64::from(stock_vco_frequency_hz(value))
                                 } else if hz_rate {
                                     f64::from(value.exp2() * display_scale)
@@ -3993,6 +4026,8 @@ impl Rack {
                         ""
                     } else if node.kind == "stock_seq3" {
                         stock_seq3_parameter_label(name)
+                    } else if node.kind == "stock_quantizer" {
+                        "OFFSET (SEMITONES)"
                     } else if node.kind == "stock_vco" {
                         stock_vco_parameter_label(name)
                     } else if node.kind == "stock_lfo" {
@@ -4044,7 +4079,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if stock_tempo {
+                        let old_text = if node.kind == "stock_quantizer" {
+                            stock_quantizer_offset_value(old)
+                        } else if stock_tempo {
                             stock_seq3_tempo_value(old)
                         } else if node.kind == "stock_vco" {
                             stock_vco_parameter_value(name, old)
@@ -4150,7 +4187,10 @@ impl Rack {
                         false,
                         self.zoom,
                         is_voltage_utility(&node.kind)
-                            || matches!(node.kind.as_str(), "sh_asr" | "stock_seq3"),
+                            || matches!(
+                                node.kind.as_str(),
+                                "sh_asr" | "stock_seq3" | "stock_quantizer"
+                            ),
                     );
                     continue;
                 }
@@ -4176,7 +4216,10 @@ impl Rack {
                     false,
                     self.zoom,
                     is_voltage_utility(&node.kind)
-                        || matches!(node.kind.as_str(), "sh_asr" | "stock_seq3"),
+                        || matches!(
+                            node.kind.as_str(),
+                            "sh_asr" | "stock_seq3" | "stock_quantizer"
+                        ),
                     if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
                         12.0
                     } else {
@@ -4295,6 +4338,7 @@ impl Rack {
                                 node.kind.as_str(),
                                 "pulses"
                                     | "stock_seq3"
+                                    | "stock_quantizer"
                                     | "colored_noise"
                                     | "random_values"
                                     | "sh_asr"
@@ -4333,6 +4377,7 @@ impl Rack {
                             node.kind.as_str(),
                             "pulses"
                                 | "stock_seq3"
+                                | "stock_quantizer"
                                 | "colored_noise"
                                 | "random_values"
                                 | "sh_asr"
@@ -9341,6 +9386,17 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
+    if edit.kind == "stock_quantizer" {
+        for suffix in ["semitones", "semitone", "st"] {
+            if text
+                .get(text.len().saturating_sub(suffix.len())..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+            {
+                text = text[..text.len() - suffix.len()].trim_end();
+                break;
+            }
+        }
+    }
     if edit.kind == "stock_seq3" {
         let suffix = if edit.parameter == "tempo" {
             "BPM"
@@ -9578,6 +9634,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
         "stock_seq3" => {
             return if input {
                 pos2(28.0 + index as f32 * 37.5, 382.0)
@@ -10772,6 +10829,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "poly_split" | "poly_merge" => HP * 20.0,
         "poly_sum" => HP * 10.0,
         "poly_viz" => HP * 12.0,
+        "stock_quantizer" => HP * 20.0,
         "quantizer" => HP * 16.0,
         "white_noise" | "attenuverter" | "crossfade" => HP * 12.0,
         "sample_hold" => HP * 10.0,
@@ -10849,6 +10907,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_lfo" => "STOCK LFO",
         "stock_vco" => "STOCK VCO",
         "stock_seq3" => "STOCK SEQ3",
+        "stock_quantizer" => "STOCK QUANTIZER",
         "analog_vca" => "OTA VCA",
         "adsr" => "ADSR",
         "adsr_eg" => "ADSR EG",
@@ -12969,7 +13028,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            72,
+            73,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19644,6 +19703,9 @@ mod tests {
     }
     mod midi_cc_ui_tests {
         include!("midi_cc_ui_tests.rs");
+    }
+    mod stock_quantizer_ui_tests {
+        include!("stock_quantizer_ui_tests.rs");
     }
     mod stock_seq3_ui_tests {
         include!("stock_seq3_ui_tests.rs");

@@ -146,12 +146,26 @@ error is 0.954 µV against the frozen 3 µV gate. Another 1,572 Rust-only safety
 frames pass separately. The shared rack/browser panel uses actual clock and RGB
 phase observations and has visible MCP cues for all six controls. Native
 interaction/device and complete host/import parity remain separate gates.
-[Stock VCO](STOCK_VCO.md) brings the catalog to **71 kinds**. Its separate
+[Stock VCO](STOCK_VCO.md) brings the catalog to **71 kinds at that milestone**. Its separate
 processor targets the newer pinned VCO without changing the older oscillator.
 Source, shared panel, factory voice and tests are implemented. The 552,428-frame
 actual-class comparison passes under its explicit float32 endpoint erratum,
 with zero measured voltage/filter/tail error; platform and native-capture gates passed in PR12; native Mac input/device qualification remains open. This count does not represent 71 completed
 VCV equivalents.
+
+[Stock SEQ3](STOCK_SEQ3.md) brings the catalog to **72 kinds at that milestone**.
+Its 3,421,221 reference frames, local host/UI tests, platform CI and reviewed
+native captures passed in [PR13](https://github.com/dexterlabs1/openpatch/pull/13).
+The older sequencer remains available under its existing contract.
+[Stock Quantizer](STOCK_QUANTIZER.md) brings the current catalog to **73 kinds**.
+Its separate source-style lookup preserves the original quantizer while adding
+stock empty-scale/tie behavior, actual played-note telemetry and durable scale
+editing. All 267,483 actual-class frames pass with 11,745,768 exact meaningful
+fields, plus 315 separate Rust-only safety frames. The complete Rust workspace
+passes 1,923 tests (six existing ignored), including all 17 focused desktop
+Quantizer tests. Strict Clippy, all 94 Python/MCP checks, an optimized ARM build
+and a separately signed bundle pass. The 127 configured native captures and
+platform CI remain pending; native Mac/device and complete Rack host/import qualification remain open.
 
 ## Implemented functional utility contracts
 
@@ -176,8 +190,8 @@ Validation includes an independent nearest-note search over all 4,095 nonempty m
 | Kind | Implemented behavior | Remaining scope |
 |---|---|---|
 | `poly_constant` | 0–16 configured constant-voltage channels, `v1`…`v16`, with explicit zero-channel output; default count 3. | Original source/testing utility; not a claimed stock VCV equivalent. |
-| `poly_split` | `signal` to 16 independently named mono outputs `out1`…`out16`; missing input channels emit mono 0 V. | Native channel-count indicators and direct VCV behavior/UI comparison remain open. |
-| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; −1 forces zero and 1–16 forces that count. Empty automatic input gives zero channels. | Measured automatic/output count display and Auto/0–16 dropdown; pinned-class digital comparison and local host/MCP checks pass, platform/native capture qualification pending; [contract](POLYPHONIC_MERGE.md). |
+| `poly_split` | `signal` raw slots to 16 independently named mono outputs `out1`…`out16`; ordinary public input padding makes missing channels zero. Actual input-channel count is displayed. | Actual-class normal/raw-storage comparisons, 115 native captures and three-platform CI passed in [PR10](https://github.com/dexterlabs1/openpatch/pull/10); native devices and Rack import remain open. [Contract](POLYPHONIC_SPLIT.md). |
+| `poly_merge` | `in1`…`in16` to `out`; uses channel 0 of each input, keeps holes zero. `channels=0` automatically uses the highest nonzero-channel input; −1 forces zero and 1–16 forces that count. Empty automatic input gives zero channels. | Measured automatic/output count display and Auto/0–16 dropdown; pinned-class digital comparison, local host/MCP checks, all 112 native captures and macOS/Windows/Linux CI passed in [PR9](https://github.com/dexterlabs1/openpatch/pull/9). Native devices and Rack import remain open; [contract](POLYPHONIC_MERGE.md). |
 | `poly_sum` | Active-channel sum with 0–1 level, mono output, six post-level meter bands and actual input-channel count; empty input gives mono zero. | Native device qualification and Rack import remain open; [SUM contract](POLYPHONIC_SUM.md). |
 
 Independent tests exercise sparse Merge/Split routing, all 16 channels, zero
@@ -271,11 +285,11 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | Mutes | Routing | Implemented signal role: `mutes10`, ten flags, atomic invert, pinned mono inheritance and direct bypass | Direct reference traces, legacy state polarity migration and native qualification; [contract](VOLTAGE_UTILITIES.md) |
 | Pulses | Gate utility | Implemented signal role: `pulses`, ten independent 1 ms triggers and held gates, native buttons and indexed MCP actions | Explicit integer timing/event policies; direct VCV comparison and native qualification remain open; [contract](PULSES.md) |
 | Scope | Measurement | Partial: rack instances with independent 16-lane X/Y min/max bins, external trigger, raw passthrough, saved parameters, calibrated range controls, extrema/trigger readouts and live MCP inspection; separate calibrated two-source dock | Full display/measurement parity, persisted captures and hardware qualification; [rack contract and bounded reference](RACK_SCOPE.md), [dock contract](SCOPE.md) |
-| SEQ 3 | Sequencing | Separate `stock_seq3`: source-ordered float32 timing, 24 CV cells, five inputs/sixteen outputs, physical held controls, persistent Run/gates/passthrough, atomic rotation and 27 actual lamp components; older `seq3` preserved | All 3,421,221 reference frames pass with exact float32 fields; 5,970 safety frames pass separately. Local host/UI tests pass; platform/native captures are checked per pull request. Native Mac/device and import gates remain. [Stock contract](STOCK_SEQ3.md), [legacy contract](SEQUENCER.md). |
+| SEQ 3 | Sequencing | Separate `stock_seq3`: source-ordered float32 timing, 24 CV cells, five inputs/sixteen outputs, physical held controls, persistent Run/gates/passthrough, atomic rotation and 27 actual lamp components; older `seq3` preserved | All 3,421,221 reference frames pass with exact float32 fields; 5,970 safety frames pass separately. Local host/UI, platform CI and reviewed native captures passed in [PR13](https://github.com/dexterlabs1/openpatch/pull/13). Native Mac/device and import gates remain. [Stock contract](STOCK_SEQ3.md), [legacy contract](SEQUENCER.md). |
 | Sequential Switch 1 to 4 | Routing | Implemented documented signal role: `switch_1to4`, 2–4 routes, clock/reset, de-click and live indicators | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Sequential Switch 4 to 1 | Routing | Implemented documented signal role: `switch_4to1`, polyphonic selection, mode-specific mono behavior and de-click | Differential reference traces, legacy state mapping and native-device qualification; [contract](SWITCHING.md) |
 | Octave | Pitch utility | Implemented documented signal role: `octave`, −4…+4 knob and rounded CV | VCV boundary comparison and full host workflow acceptance remain open |
-| Quantizer | Pitch utility | Partial: `quantizer`, 12-note mask, pre-offset and v2 pitch-driven voices | Factory-scale presets, broader per-voice boundary cases and direct VCV comparison |
+| Quantizer | Pitch utility | Separate `stock_quantizer`: stock half-semitone lookup, lower integer-distance ties, chromatic empty bank, durable scale, raw bypass and actual played-note union; older `quantizer` preserved | All 267,483 actual-class frames pass with exact meaningful fields; 315 safety frames pass separately. Complete Rust workspace passes (1,923 tests; six existing ignored). Strict Clippy, all 94 MCP checks and the separate ARM bundle pass; native captures and platform CI pending; broader graph/tap, native Mac/device and import qualification remain separate. [Stock contract](STOCK_QUANTIZER.md). |
 | Split | Polyphony | Implemented `poly_split`: 16 named mono outputs, exact raw-slot copy, measured input count and shared rack/browser display; no saved controls or invented lamps | 1,065 normal and 204 raw diagnostic cases match the actual class; 115 native PNGs validated, new views reviewed and macOS/Windows/Linux CI passed in [PR10](https://github.com/dexterlabs1/openpatch/pull/10). Native devices and Rack import remain separate gates. [Contract](POLYPHONIC_SPLIT.md). |
 | Merge | Polyphony | Implemented bounded `poly_merge`: sparse first-lane assembly, backward-compatible Auto/forced 0–16, measured automatic/output counts and shared dropdown panel; 16,416-row actual-class comparison passes | Rack state mapping and native-device qualification; 112 captures validated and macOS/Windows/Linux CI passed in PR9. [Contract](POLYPHONIC_MERGE.md). |
 | Sum | Polyphony | Implemented signal interface: `poly_sum`, output attenuation, six meter bands and live channel count | Native device qualification, Rack import and unrestricted headroom differences remain; [contract](POLYPHONIC_SUM.md) |

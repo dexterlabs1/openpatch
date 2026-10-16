@@ -15,6 +15,7 @@ pub enum SavedModuleState {
     MidiCcMappings([i16; 16]),
     MidiGateMappings([i16; 16]),
     Seq3Run(bool),
+    StockQuantizerNotes(u16),
     StockSeq3 {
         running: bool,
         gates: u8,
@@ -44,6 +45,11 @@ impl SavedModuleState {
             "midi_gate" => crate::initial_midi_gate_state(node).ok(),
             "midi_cc" => crate::initial_midi_cc_state(node).ok(),
             "stock_seq3" => crate::initial_stock_seq3_state(node).ok(),
+            "stock_quantizer" => {
+                let mask = node.params.get("scale_mask").copied().unwrap_or(4095.0);
+                (mask.is_finite() && mask.fract() == 0.0 && (0.0..=4095.0).contains(&mask))
+                    .then_some(Self::StockQuantizerNotes(mask as u16))
+            }
             "seq3" => Some(Self::Seq3Run(
                 node.params.get("running").copied().unwrap_or(1.0) != 0.0,
             )),
@@ -60,6 +66,7 @@ impl SavedModuleState {
             Self::MidiCc { .. } | Self::MidiCcMappings(_) => "midi_cc",
             Self::MidiGateMappings(_) => "midi_gate",
             Self::Seq3Run(_) => "seq3",
+            Self::StockQuantizerNotes(_) => "stock_quantizer",
             Self::StockSeq3 { .. } | Self::StockSeq3Fields { .. } => "stock_seq3",
             Self::PushHold(_) => "push",
             Self::ShiftRegister { .. } => "sh_asr",
@@ -76,6 +83,7 @@ impl SavedModuleState {
             Self::PushHold(value) => Some(("holding", value)),
             Self::StockSeq3 { .. }
             | Self::StockSeq3Fields { .. }
+            | Self::StockQuantizerNotes(_)
             | Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
             | Self::MidiGateMappings(_)
@@ -92,6 +100,7 @@ impl SavedModuleState {
             Self::PushHold(_) => Self::PushHold(value),
             Self::StockSeq3 { .. }
             | Self::StockSeq3Fields { .. }
+            | Self::StockQuantizerNotes(_)
             | Self::MidiCc { .. }
             | Self::MidiCcMappings(_)
             | Self::MidiGateMappings(_)
@@ -102,6 +111,9 @@ impl SavedModuleState {
     /// Overlay all persistent state on a graph or preset without changing controls.
     pub fn write_params(self, params: &mut BTreeMap<String, f32>) {
         match self {
+            Self::StockQuantizerNotes(mask) => {
+                params.insert("scale_mask".into(), f32::from(mask));
+            }
             Self::StockSeq3Fields {
                 running,
                 gates,

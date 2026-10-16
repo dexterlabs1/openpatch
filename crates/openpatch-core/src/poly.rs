@@ -25,6 +25,7 @@ use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
 use crate::stereo_output::StereoOutput;
 use crate::stock_delay::{self, StockDelay};
 use crate::stock_lfo::{self, StockLfo};
+use crate::stock_quantizer::{self, StockQuantizer};
 use crate::stock_seq3::{self, StockSeq3};
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
@@ -112,6 +113,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_vcf"
                 | "stock_vca"
                 | "stock_delay"
+                | "stock_quantizer"
                 | "stock_vco"
                 | "stock_lfo"
                 | "random_values"
@@ -161,6 +163,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         return ports.iter().position(|port| *port == name);
     }
     match kind {
+        "stock_quantizer" => stock_quantizer::INPUTS
+            .iter()
+            .position(|port| *port == name),
         "stock_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
@@ -255,6 +260,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         stock_seq3::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "seq3" {
         sequence::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_quantizer" {
+        stock_quantizer::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "stock_vco" {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
@@ -419,6 +428,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "seq3" {
         sequence::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_quantizer" {
+        stock_quantizer::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -612,6 +626,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
+    if kind == "stock_quantizer" {
+        stock_quantizer::annotate(module);
+    }
     if kind == "stock_vco" {
         stock_vco::annotate(module);
     }
@@ -699,6 +716,7 @@ enum Model {
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
     StockVco(Box<StockVco>),
+    StockQuantizer(Box<StockQuantizer>),
     MultiVco(Box<MultiVco>),
     Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
@@ -802,6 +820,11 @@ impl Model {
         }
         if node.kind == "seq3" {
             return Ok(Self::Seq3(Box::new(Seq3::build(node, rate)?)));
+        }
+        if node.kind == "stock_quantizer" {
+            return Ok(Self::StockQuantizer(Box::new(StockQuantizer::build(
+                node, rate,
+            )?)));
         }
         if node.kind == "stock_vco" {
             return Ok(Self::StockVco(Box::new(StockVco::build(node, rate)?)));
@@ -1010,7 +1033,11 @@ impl PolyEngine {
             for tap in taps.iter().flatten() {
                 if matches!(
                     node.model,
-                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
+                    Model::MidiCc(_)
+                        | Model::StockVcf(_)
+                        | Model::StockLfo(_)
+                        | Model::StockVco(_)
+                        | Model::StockQuantizer(_)
                 ) && (node.output_start..node.output_start + node.output_count).contains(tap)
                 {
                     node.connected_mask |= 1 << (tap - node.output_start);
@@ -1103,6 +1130,7 @@ impl PolyEngine {
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
+            Some(Model::StockQuantizer(q)) => Some(q.lights()),
             Some(Model::StockSeq3(seq)) => Some(seq.lights()),
             Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
@@ -1435,6 +1463,7 @@ impl PolyEngine {
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
+            Model::StockQuantizer(q) => q.initialize_state(),
             Model::Wavetable(oscillator) => oscillator.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
             Model::StockSeq3(seq) => seq.initialize_state(),
@@ -1478,6 +1507,7 @@ impl PolyEngine {
         match self.nodes.get(index).map(|node| &node.model) {
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
             Some(Model::StockSeq3(seq)) => Some(seq.saved_state()),
+            Some(Model::StockQuantizer(q)) => Some(q.saved_state()),
             Some(Model::Push(push)) => Some(SavedModuleState::PushHold(push.holding())),
             Some(Model::ShiftRegister(p)) => Some(p.saved_state()),
             Some(Model::RandomValues(p)) => Some(p.saved_state()),
@@ -1493,6 +1523,7 @@ impl PolyEngine {
                 true
             }
             (Some(Model::StockSeq3(seq)), state) => seq.set_saved_state(state),
+            (Some(Model::StockQuantizer(q)), state) => q.set_saved_state(state),
             (Some(Model::Push(push)), SavedModuleState::PushHold(holding)) => {
                 push.set_holding(holding);
                 true
@@ -1603,6 +1634,7 @@ impl PolyEngine {
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
+                    "stock_quantizer" => stock_quantizer::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
                     "stock_seq3" => stock_seq3::OUTPUTS.len(),
@@ -1716,7 +1748,11 @@ impl PolyEngine {
             let node = &mut nodes[edge.source_node];
             if matches!(
                 node.model,
-                Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
+                Model::MidiCc(_)
+                    | Model::StockVcf(_)
+                    | Model::StockLfo(_)
+                    | Model::StockVco(_)
+                    | Model::StockQuantizer(_)
             ) {
                 node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
             }
@@ -1725,7 +1761,11 @@ impl PolyEngine {
             for node in &mut nodes {
                 if matches!(
                     node.model,
-                    Model::MidiCc(_) | Model::StockVcf(_) | Model::StockLfo(_) | Model::StockVco(_)
+                    Model::MidiCc(_)
+                        | Model::StockVcf(_)
+                        | Model::StockLfo(_)
+                        | Model::StockVco(_)
+                        | Model::StockQuantizer(_)
                 ) && (node.output_start..node.output_start + node.output_count).contains(&output)
                 {
                     node.base_connected_mask |= 1 << (output - node.output_start);
@@ -1831,6 +1871,14 @@ impl PolyEngine {
             self.input_frames[index] = sum;
         }
         for node in &mut self.nodes {
+            if let Model::StockQuantizer(q) = &mut node.model {
+                let input = node.inputs[0]
+                    .map(|edge| self.input_frames[edge])
+                    .unwrap_or_default();
+                self.outputs[node.output_start] =
+                    q.process(&input, node.connected_mask & 1 != 0, node.bypassed);
+                continue;
+            }
             if node.bypassed {
                 if let Model::Midi(midi) = &mut node.model {
                     let mut scratch = [PortFrame::default(); MIDI_OUTPUTS.len()];
@@ -2200,6 +2248,9 @@ impl PolyEngine {
                             [node.output_start..node.output_start + colored_noise::OUTPUTS.len()],
                     );
                 }
+                Model::StockQuantizer(_) => unreachable!(
+                    "stock quantizer processes consumer/bypass context before generic dispatch"
+                ),
                 Model::StockVco(vco) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2612,6 +2663,7 @@ impl PolyEngine {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
+                (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),
                 (Model::StockSeq3(seq), Model::StockSeq3(old)) => {
                     seq.adopt(old);
                     if bypass_changed {

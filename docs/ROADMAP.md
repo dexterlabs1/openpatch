@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 72 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 73 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 72 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 72 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 73 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 73 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -159,7 +159,7 @@ The next gates are:
    allocation belong to the final delivery phase. Every new module still needs its own complete port,
    parameter, voice-policy and state contract.
 
-## Three-row sequencer: Stock SEQ3 qualification in progress
+## Three-row sequencer: Stock SEQ3 bounded qualification passed
 
 A separate [Stock SEQ3](STOCK_SEQ3.md) implements the pinned clock/reset order,
 float32 phase and pulse timers, physical held buttons, complete persistent
@@ -172,8 +172,8 @@ policies in [SEQUENCER.md](SEQUENCER.md).
 An independent precomparison matrix freezes 3,421,221 reference frames and 5,970
 Rust-only safety frames at three sample rates, with exact float32 checks of all
 90 output/state fields. All reference and safety frames pass, with all
-307,909,890 compared fields exact. Local host/UI tests pass; platform checks
-and native captures are reviewed separately for the pull request.
+307,909,890 compared fields exact. Local host/UI tests, platform CI and reviewed
+native captures passed in [PR13](https://github.com/dexterlabs1/openpatch/pull/13).
 Partial flag assignments preserve unrelated newer callback edges; short native
 clicks await actual callback acknowledgment before release. Those mechanisms
 require callback tests, alongside coherent saves/presets/history/duplication,
@@ -182,6 +182,33 @@ chaining, Initialize, slot retirement and zero callback heap activity.
 Passing the bounded source contract does not establish hardware accuracy,
 complete `.vcv` conversion, native Mac input/audio-device qualification or all
 Rack host workflows. These remain explicit delivery gates.
+
+## Stock Quantizer: source proof passed, host qualification pending
+
+A separate [Stock Quantizer](STOCK_QUANTIZER.md) closes the audible stock
+scale-selection gap while preserving the older `quantizer`. It implements the
+24-range float32 lookup, lower integer-distance ties, chromatic empty-bank
+fallback, durable scale, raw pitch bypass and actual twelve-note played union.
+The shared rack/browser panel provides scale painting, semitone rotation,
+pre-offset and scale presets. **File → Quantized stock voice** connects the
+sequencer, quantizer and stock voice with raw/quantized pitch scope views.
+
+The independently frozen actual-class comparison passes all 267,483 reference
+frames at three rates with 11,745,768 meaningful fields exact; 315 Rust-only
+safety frames pass separately. Every scale mask and half-semitone range is
+covered, with adjacent-float boundaries, offsets, negative octaves, width and
+consumer changes, loading and lifecycle cases. The declaration retains explicit
+integer-domain, inactive-storage and initial-playing-state boundaries.
+
+The complete Rust workspace passes 1,923 tests with zero failures and six
+existing ignored tests, including all 17 focused Quantizer desktop tests.
+Strict Clippy, all 94 Python/MCP checks, an optimized ARM workspace build and
+a separately signed Mac bundle pass. The 127 configured native captures and
+platform CI remain pending for this milestone. The direct processor
+consumer proof does not replace public graph/tap tests, native interaction or
+complete Rack state/import acceptance. Native Mac/device qualification and
+performance measurement remain separate gates; expanded MIDI/live-performance
+work stays in the final delivery phase.
 
 ## Clocked routing
 

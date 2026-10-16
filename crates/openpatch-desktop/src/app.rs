@@ -1300,6 +1300,22 @@ impl OpenPatch {
         self.rack.complete_parameter_navigation(result, forward);
         self.sync();
     }
+    fn paint_scale(&mut self, arguments: Value, gesture: u64) {
+        let result = self
+            .shared
+            .lock()
+            .map_err(|_| "Session lock poisoned".to_owned())
+            .and_then(|mut session| {
+                session.execute("set_parameter", arguments)?;
+                Ok(session.revision())
+            });
+        self.status = match &result {
+            Ok(_) => "Scale painted".into(),
+            Err(error) => error.clone(),
+        };
+        self.rack.complete_scale_paint(gesture, result);
+        self.sync();
+    }
     fn manual_click(&mut self, id: &str, press: &str, release: &str) -> bool {
         // A fast pointer click can arrive entirely within one GUI frame.
         // Keep both actions on the same module incarnation while enqueueing;
@@ -2086,6 +2102,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::random_motion_layout())
                 .expect("bundled Random motion layout");
+        } else if title == "Quantized stock voice" {
+            self.rack
+                .restore_layout(&Self::stock_quantized_voice_layout())
+                .expect("bundled Quantized stock voice layout");
         } else if title == "Stock sequenced voice" {
             self.rack
                 .restore_layout(&Self::stock_sequenced_voice_layout())
@@ -2102,6 +2122,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn stock_quantized_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "scale":[0,0],"scope":[300,0],"guide":[900,0],"voice":[1140,0],"filter":[1530,0],
+            "sequence":[0,420],"amplifier":[780,420],"envelope":[990,420],"out":[1380,420]
+        }})
     }
     fn stock_sequenced_voice_layout() -> Value {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
@@ -3137,6 +3163,14 @@ impl OpenPatch {
                 self.replace_from_menu(patch, "MIDI controller voice");
                 ui.close();
             }
+            if ui.button("Quantized stock voice").clicked() {
+                let patch = serde_json::from_str(include_str!(
+                    "../../../examples/stock-quantized-voice.json"
+                ))
+                .expect("valid Quantized stock voice");
+                self.replace_from_menu(patch, "Quantized stock voice");
+                ui.close();
+            }
             if ui.button("Stock sequenced voice").clicked() {
                 let patch = serde_json::from_str(include_str!(
                     "../../../examples/stock-sequenced-voice.json"
@@ -3994,6 +4028,9 @@ impl OpenPatch {
                 selection,
             }) => {
                 self.connect_from_palette(arguments, selection);
+            }
+            Some(RackAction::ScalePaint { arguments, gesture }) => {
+                self.paint_scale(arguments, gesture)
             }
             Some(RackAction::ParameterEditAndNavigate { arguments, forward }) => {
                 self.edit_parameter_and_navigate(arguments, forward);
@@ -5562,6 +5599,71 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_stock_quantizer_fixture(&mut self) -> openpatch_core::ModuleLightState {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-quantized-voice.json"))
+                .expect("valid Quantized stock voice");
+        let mut engine = patch.compile().expect("Stock Quantizer fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let mut audio = vec![[0.0; 2]; 24032];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|sample| sample.is_finite()));
+        assert!(audio.iter().flatten().any(|sample| sample.abs() > 0.001));
+        let lights: BTreeMap<_, _> = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let handle = engine.resolve_module_lights(&node.id).ok()?;
+                Some((node.id.clone(), engine.module_lights(handle)?))
+            })
+            .collect();
+        let observed = lights["scale"];
+        assert_eq!(observed.count, 0);
+        assert_eq!(observed.playing_notes.unwrap().count_ones(), 1);
+        let saved = engine
+            .module_saved_state(engine.resolve_module_state("scale").unwrap())
+            .unwrap();
+        let openpatch_core::SavedModuleState::StockQuantizerNotes(mask) = saved else {
+            unreachable!()
+        };
+        assert_eq!(mask, 2741);
+        assert_ne!(observed.playing_notes.unwrap() & mask, 0);
+        let telemetry = engine
+            .module_telemetry(engine.resolve_module_telemetry("sequence").unwrap())
+            .unwrap();
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::stock_quantized_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack
+            .set_sequence_states(BTreeMap::from([("sequence".into(), telemetry)]), false);
+        self.rack
+            .set_stock_quantizer_states(BTreeMap::from([("scale".into(), mask)]));
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock Quantizer · raw pitch to C major".into();
+        self.status = "Actual offline Engine · enabled scale and played-note union · Scope compares raw and quantized pitch · no live audio".into();
+        observed
+    }
+
     fn prepare_stock_seq3_fixture(&mut self) -> openpatch_core::ModuleTelemetry {
         let mut patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-sequenced-voice.json"))
@@ -6068,7 +6170,9 @@ impl OpenPatch {
         // use even logical frames. Skip the idle odd frames so software GL
         // keeps ample room inside CI's fixed native-window time budget.
         // Production repaint and construction clocks are unchanged.
-        *frame = if *frame == 0 { 1 } else { (*frame / 2 + 1) * 2 };
+        let receipt_id = egui::Id::new("native-smoke-static-receipt");
+        let pending = ctx.data(|d| d.get_temp::<crate::smoke_schedule::Receipt>(receipt_id));
+        *frame = crate::smoke_schedule::next_frame(*frame, pending);
         let (path, frame, captures) = (path.clone(), *frame, *captures);
         if frame == 1 {
             let v = self
@@ -7507,6 +7611,25 @@ impl OpenPatch {
             self.title = "Stock SEQ3 · shared library faceplate".into();
             self.status = "Same Stock SEQ3 panel in rack and browser · configured settings, inactive preview lamps".into();
         }
+        if frame == 2680 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_quantizer_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2698 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock Quantizer · actual played-note display remains emissive · no invented module lamps · no live audio".into();
+        }
+        if frame == 2716 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.7);
+            self.browse();
+            self.library.request_focus();
+            self.title = "Stock Quantizer · shared browser thumbnail".into();
+            self.status = "Same Stock Quantizer faceplate in rack and filtered browser · actual played notes only on the observed rack".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7644,12 +7767,39 @@ impl OpenPatch {
                 | 2640
                 | 2656
                 | 2672
+                | 2690
+                | 2708
+                | 2730
         ) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            let token = if let Some(receipt) = crate::smoke_schedule::request(frame, captures) {
+                assert!(
+                    pending.is_none(),
+                    "Previous static screenshot is still pending"
+                );
+                ctx.data_mut(|d| d.insert_temp(receipt_id, receipt));
+                egui::UserData::new(receipt)
+            } else {
+                egui::UserData::default()
+            };
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(token));
         }
+        let pending = ctx.data(|d| d.get_temp::<crate::smoke_schedule::Receipt>(receipt_id));
         if let Some(image) = ctx.input(|i| {
             i.events.iter().find_map(|e| {
-                if let egui::Event::Screenshot { image, .. } = e {
+                if let egui::Event::Screenshot {
+                    image, user_data, ..
+                } = e
+                {
+                    if let Some(expected) = pending {
+                        let token = user_data
+                            .data
+                            .as_ref()
+                            .and_then(|d| d.downcast_ref::<crate::smoke_schedule::Receipt>())
+                            .copied();
+                        if !expected.accepts(token, captures) {
+                            return None;
+                        }
+                    }
                     Some(image.clone())
                 } else {
                     None
@@ -7785,7 +7935,10 @@ impl OpenPatch {
                 120 => path.with_file_name("stock-vco-library.png"),
                 121 => path.with_file_name("rack-stock-seq3.png"),
                 122 => path.with_file_name("rack-stock-seq3-lights-out.png"),
-                _ => path.with_file_name("stock-seq3-library.png"),
+                123 => path.with_file_name("stock-seq3-library.png"),
+                124 => path.with_file_name("rack-stock-quantizer.png"),
+                125 => path.with_file_name("rack-stock-quantizer-lights-out.png"),
+                _ => path.with_file_name("stock-quantizer-library.png"),
             };
             image::save_buffer(
                 &target,
@@ -7795,19 +7948,22 @@ impl OpenPatch {
                 image::ColorType::Rgba8,
             )
             .expect("Save screenshot");
+            if pending.is_some() {
+                ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
+            }
             eprintln!(
-                "Native smoke: capture {}/124 at frame {frame}: {}",
+                "Native smoke: capture {}/127 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 124 {
+            if captures == 127 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2710, "Native screenshot timeout");
+        assert!(frame < 2760, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -7833,6 +7989,11 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
+            if *frame == 2720 {
+                input
+                    .events
+                    .push(egui::Event::Text("stock_quantizer".into()));
+            }
             if *frame == 2268 {
                 input.events.push(egui::Event::Text("Wavetable".into()));
             }
@@ -8006,6 +8167,18 @@ impl eframe::App for OpenPatch {
                 })
                 .collect();
             self.rack.set_sequence_states(states, self.audio.is_some());
+            self.rack.set_stock_quantizer_states(
+                self.audio
+                    .as_ref()
+                    .filter(|_| {
+                        self.patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.kind == "stock_quantizer")
+                    })
+                    .map(|audio| audio.stock_quantizer_states())
+                    .unwrap_or_default(),
+            );
             self.rack.set_stock_seq3_states(
                 self.audio
                     .as_ref()
@@ -8596,6 +8769,40 @@ mod project_workflow_tests {
         assert_eq!(app.patch.nodes.len(), 6);
         assert_eq!(app.patch.cables.len(), 4);
         assert!(app.status.contains("offline"));
+    }
+
+    #[test]
+    fn stock_quantizer_factory_voice_observes_actual_notes_audio_and_discard_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let observed = app.prepare_stock_quantizer_fixture();
+        assert_eq!(observed.count, 0);
+        assert_eq!(observed.playing_notes.unwrap().count_ones(), 1);
+        assert_eq!(app.patch.nodes.len(), 9);
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "sequence" && c.to == "scale" && c.input == "pitch"));
+        assert!(app
+            .patch
+            .cables
+            .iter()
+            .any(|c| c.from == "scale" && c.output == "pitch" && c.to == "voice"));
+        assert!(app.status.contains("offline"));
+        let playable: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-quantized-voice.json"))
+                .unwrap();
+        let revision = app.revision;
+        app.replace_from_menu(playable, "Quantized stock voice");
+        assert_eq!(app.revision, revision);
+        let action = app
+            .confirm_discard
+            .take()
+            .expect("modified patch requires discard choice");
+        app.perform_action(action);
+        assert_eq!(app.title, "Quantized stock voice");
+        assert_eq!(app.rack.layout()["positions"]["scale"], json!([0.0, 0.0]));
     }
 
     #[test]

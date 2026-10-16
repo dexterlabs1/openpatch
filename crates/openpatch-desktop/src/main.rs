@@ -26,6 +26,7 @@ mod project_acceptance_tests;
 mod rack;
 mod scope;
 mod scope_transport;
+mod smoke_schedule;
 mod startup;
 mod visuals;
 

@@ -14,6 +14,9 @@ pub struct ModuleControlState {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct ModuleLightState {
+    /// STOCK QUANTIZER display data, C..B bits; no actual Light objects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playing_notes: Option<u16>,
     /// Processed input count for SPLIT (each frame), SUM and VIZ (latched
     /// with their published lights); no signal lamps are implied by a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -523,6 +526,7 @@ impl Signal {
             output_channels: None,
             automatic_channels: None,
             clock_frequency: None,
+            playing_notes: None,
             waveform_position: None,
             count: self.light_count,
             brightness: self.lights.map(|row| row.map(|v| v as f32)),

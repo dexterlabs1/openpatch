@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "module": "stock_quantizer",
+  "declared_before_first_comparison": true,
+  "sample_rates": [44100, 48000, 96000],
+  "source": {
+    "repository": "https://github.com/VCVRack/Fundamental",
+    "commit": "10dd0160c664770910e5584b7b00498cc48d9ddd",
+    "path": "src/Quantizer.cpp",
+    "sha256": "811ba0af2e76f920b9748d87dcfd30144764c10cd319a5f101c9e6696e1c02ca",
+    "sdk_version": "2.6.6",
+    "rack_port_and_bypass_pin": "8ea470f343058ade6f75f16d503a1eb330e1700c",
+    "source_lines": {"configuration_and_constructor": [21, 34], "reset": [37, 42], "randomize": [44, 49], "process": [51, 69], "ranges": [72, 107], "rotate": [109, 113], "save_load": [115, 140], "actual_playing_keyboard": [158, 178]},
+    "method": "Actual pinned Quantizer class with genuine SDK headers/library versus actual production StockQuantizer probe. No reimplemented quantizer in fixtures, validator, or SDK adapter. Record complete source/header/compiler/executable closure before execution."
+  },
+  "input_protocol": {
+    "fields": 24,
+    "format": "One whitespace-separated row per processed or bypassed frame; f32 decimals round-trip; integer fields decimal. Normal raw inactive input lanes must be positive zero.",
+    "indices": {"event": 0, "offset_volts": 1, "input_count": 2, "input_raw_lanes": [3, 18], "legacy_array_length": 19, "enabled_note_bits": 20, "rotate_semitones": 21, "output_connected": 22, "bypassed": 23},
+    "events": {
+      "0": "Ordinary process; ignore loader fields.",
+      "1": "Fresh actual constructor, all 12 notes enabled (4095); ignore loader fields. Apply row offset, then process/bypass.",
+      "2": "Actual runtime onReset sets enabled notes to all true and refreshes ranges. Does not reset offset or playing state. UI Initialize parameter reset is separate host testing.",
+      "3": "Same-rate rebuild/adopt with receiving mask equal to prior actual saved mask; receiving offset wins. SDK same instance retains processing state.",
+      "4": "Actual dataFromJson enabledNotes array: -1 missing key, 0 empty, 1..14 actual boolean entries. First 12 entries come from mask bits; extra entries false. Missing tail entries retain prior values. Must call real production loader, not emulate partial loading in adapter.",
+      "5": "Actual rotateNotes(delta); delta limited to [-12,12]. Positive one raises enabled pitch classes. Offset remains row value.",
+      "6": "Same-rate rebuild/adopt with explicit receiving mask from field20. SDK actual full 12-boolean dataFromJson assignment. Receiving saved configuration and offset win; prior playing state retained."
+    },
+    "order": "Row offset is supplied before event; fresh/rebuilt receiving node uses it. Event applied before process/bypass. Configuration events still apply during bypass.",
+    "limits": {"offset_volts": [-1, 1], "input_count": [0, 16], "legacy_array_length": [-1, 14], "enabled_note_bits": [0, 4095], "rotation": [-12, 12]}
+  },
+  "output_protocol": {
+    "fields": 45,
+    "indices": {"count": 0, "raw_output_lanes": [1, 16], "enabled_note_bits": 17, "ranges": [18, 41], "playing_valid": 42, "playing_note_bits": 43, "offset_volts": 44},
+    "playing_valid": "Derived lifetime bookkeeping, not a source DSP member: false on fresh constructor until first non-bypassed process, then true. Source playingNotes is uninitialized before first process: do not read it. Wire playing mask must be zero sentinel when invalid; this is not a claim that source bool storage is zero. Configuration events and bypass retain playing state/validity; rebuilt/adopted model retains it.",
+    "counts": "All counts compared exactly. Connected output count=max(input_count,1), including bypass; disconnected count=0. Normal processing still computes actual playingNotes when output disconnected. Production processor owns actual consumer context; adapter may not overwrite counts to fake equivalence.",
+    "bypass": "Actual source Module::processBypass routing: raw active pitch passthrough with no offset/quantization; width zero produces connected mono zero. Playing state freezes. Rust production bypass handles consumer context. Separate public Engine/tap tests prove connection-context delivery; direct class proof alone does not establish graph behavior.",
+    "padding": "SDK inactive/disconnected raw output slots are excluded from numeric comparison, not sanitized in the oracle. Rust all inactive/disconnected slots must be positive zero. Normal input raw inactive slots are positive zero, so this declaration does not qualify poisoned inactive SDK input storage.",
+    "lights": "NUM_LIGHTS=0. The keyboard uses the 12 actual playingNotes booleans, transported as optional playing mask. No fabricated light array or outputs-derived substitute."
+  },
+  "normal_domain": {
+    "input": "Finite f32 raw CV, finite offset within [-1,1]. q=floor(f32(f32(input+offset)*24)) must be finite and -2147483640<=q<=2147483647 for each processed voice; normal bypass inputs obey the same conservative declared domain.",
+    "reason": "Beyond the finite int conversion domain the C++ float-to-int conversion is undefined. Additionally q=-2147483648..-2147483641 makes eucDiv(q,24)*24 less than INT_MIN and overflows signed int. Lower safe mathematical q is ceil(INT_MIN/24)*24=-2147483640. Reachable f32 q endpoints exercised are +/-2147483520, from CV +/-89478480. At this bounded domain octave*12 plus ranges is safely in int32. Rotation excludes INT_MIN, whose negation in source would overflow.",
+    "rounding": "IEEE-754 binary32 round-to-nearest-even, no fast-math reassociation; raw parameter is volts (display multiplies by 12). Negative Euclidean division and floor are source semantics, not truncation."
+  },
+  "gates": {
+    "reference": "Every frame, no settling/discard/decimation: exact f32 bits for active output volts and offset; exact integers for count, mask, every cached range and all meaningful playing booleans. Zero absolute tolerance. Also apply independent counts, padding, lifecycle, range-membership, finite-state and hand-anchored outputs checks to both traces.",
+    "safety": "Rust only, explicitly no source numerical parity: non-bypassed nonfinite input becomes zero; finite out-of-domain floor uses defined saturating Rust i32 conversion with i64 Euclidean arithmetic, no arbitrary CV clamp. Non-bypassed active outputs/state must be finite. Bypass deliberately rawcopies active NaN/Inf/extreme values, with NaN-class equivalence and otherwise exact bits; padding remains positive zero. Recovery/reset anchors must pass.",
+    "threshold_changes": "All five declaration files frozen before first comparison. No fitted gates, removed cases, skipped frames, or post-hoc mirror expectations. Preserve failed reports/artifacts. Any discovered declaration error requires a separately versioned transparent erratum retaining original files/report."
+  },
+  "coverage": [
+    "Every one of 4096 masks loaded via actual 12-boolean JSON after a fresh all-enabled constructor; 24 half-semitone ranges at octave zero and minus one, each with interior, nominal boundary +/- adjacent f32, and actual f32 input-product transition pair, packed 16 voices per frame.",
+    "Selected singleton/complement/sparse/alternating/empty/full masks across seven raw f32 offsets and four additional octaves; domain extremes; all widths 0..16 and actual disconnected/reconnected consumers.",
+    "Hand C/D delayed scale-gap thresholds, octave-negative boundaries, singleton C ties and binary offset anchors; no generic expected-output quantizer implementation.",
+    "Playing union replacement/duplicate notes/shrink-regrow, missing/empty/short/full/long boolean JSON arrays, both rotation directions/composition, runtime reset, same-mask and receiving-mask adoption, fresh and established bypass, events while bypassed and recovery.",
+    "Same independent matrix at 44100/48000/96000 Hz; stateless quantization requires no artificial settling loops. All generated frames observed."
+  ],
+  "scope_limits": [
+    "Not a full Rack engine, audio device, native visual, hardware, or all-host parity claim; public graph consumers/taps, serialization/session undo, Initialize parameter reset and shared UI panels require separate host tests.",
+    "Randomize has source independent Bernoulli note selection. All resulting masks are numerically covered, but SDK RNG sequence equivalence is not claimed. Host randomize updates saved mask/cache and undo separately.",
+    "Only source boolean-array JSON load shapes are qualified; malformed nonboolean JSON values are outside this frozen matrix and may need separate import tests.",
+    "Raw inactive poisoned input and uninitialized source playing storage are not source-qualified; public host padding and optional telemetry are explicit contracts. Existing legacy quantizer behavior is outside this new-kind proof."
+  ]
+}

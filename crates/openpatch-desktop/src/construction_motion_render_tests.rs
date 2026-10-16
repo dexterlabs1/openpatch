@@ -691,3 +691,5 @@ fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_
         }
     }
 }
+
+include!("stock_quantizer_construction_tests.rs");
