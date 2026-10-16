@@ -148,7 +148,11 @@ impl Rack {
         // Keep the printed port row clear of both socket surrounds, including
         // raster-rounded glyph heights in small shared browser previews.
         for (x, output) in [(85.0, false), (215.0, true)] {
-            crate::panel_skin::port_label(&painter, point(x, 352.0), "V/OCT", output, zoom);
+            paint_enlarged_port_label(
+                &painter,
+                point(if output { x + 36.0 } else { x }, if output { 376.0 } else { 355.0 }),
+                "V/OCT", output, zoom,
+            );
         }
         let allowed = interactive
             && ui.is_enabled()

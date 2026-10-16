@@ -1,11 +1,12 @@
 use super::*;
 
-const KINDS: [&str; 28] = [
+const KINDS: [&str; 37] = [
     "analog_vco", "ladder_vcf", "fade", "compare", "process", "rescale", "gate",
     "attenuverter", "white_noise", "oscillator", "multi_vco", "multi_lfo",
     "wavetable_vco", "wavetable_lfo", "stock_vcf", "stock_vca",
     "lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter",
     "stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay",
+    "crossfade", "quantizer", "stock_quantizer", "poly_sum", "mid_side", "stock_mid_side", "mix6", "stock_mix", "modal_resonator",
 ];
 
 #[derive(Clone, Copy)]
@@ -41,6 +42,20 @@ impl SocketSpec {
 fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
     use SocketSpec as S;
     match kind {
+        "crossfade" => (180.0, vec![S::input("a", "A", 60.0, 332.0), S::input("b", "B", 120.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
+        "quantizer" => (240.0, vec![S::input("pitch", "V/OCT", 80.0, 332.0), S::input("offset_cv", "OFFSET", 160.0, 332.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "stock_quantizer" => (300.0, vec![S::input("pitch", "V/OCT", 85.0, 376.0), S::output("pitch", "V/OCT", 215.0, 376.0)]),
+        "poly_sum" => (150.0, vec![S::input("signal", "IN", 45.0, 367.0), S::output("out", "OUT", 105.0, 367.0)]),
+        "mix6" | "stock_mix" => (240.0, vec![S::input("in1", "IN1", 60.0, 270.0), S::input("in2", "IN2", 120.0, 270.0), S::input("in3", "IN3", 180.0, 270.0), S::input("in4", "IN4", 60.0, 322.0), S::input("in5", "IN5", 120.0, 322.0), S::input("in6", "IN6", 180.0, 322.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "mid_side" | "stock_mid_side" => {
+            let inputs = if kind == "stock_mid_side" {
+                vec![S::input("encode_cv", "WIDTH CV", 75.0, 305.0), S::input("left", "LEFT", 45.0, 245.0), S::input("right", "RIGHT", 105.0, 245.0), S::input("decode_cv", "WIDTH CV", 225.0, 305.0), S::input("mid", "MID", 195.0, 245.0), S::input("side", "SIDE", 255.0, 245.0)]
+            } else {
+                vec![S::input("left", "LEFT", 45.0, 245.0), S::input("right", "RIGHT", 105.0, 245.0), S::input("mid", "MID", 195.0, 245.0), S::input("side", "SIDE", 255.0, 245.0), S::input("encode_cv", "WIDTH CV", 75.0, 305.0), S::input("decode_cv", "WIDTH CV", 225.0, 305.0)]
+            };
+            (300.0, inputs.into_iter().chain([S::output("mid", "MID", 45.0, 374.0), S::output("side", "SIDE", 105.0, 374.0), S::output("left", "LEFT", 195.0, 374.0), S::output("right", "RIGHT", 255.0, 374.0)]).collect())
+        },
+        "modal_resonator" => (480.0, vec![S::input("pitch", "V/OCT", 60.0, 363.0), S::input("strike", "STRIKE", 155.0, 363.0), S::input("excite", "EXCITE", 250.0, 363.0), S::output("out", "OUT", 410.0, 363.0)]),
         "stock_delay" => (360.0, vec![S::input("time_cv", "TIME CV", 46.0, 344.0), S::input("feedback_cv", "FDBK CV", 132.0, 344.0), S::input("tone_cv", "TONE CV", 218.0, 344.0), S::input("mix_cv", "MIX CV", 304.0, 344.0), S::input("signal", "IN", 46.0, 380.0), S::input("clock", "CLK", 132.0, 380.0), S::output("mix", "MIX", 218.0, 380.0), S::output("wet", "WET", 304.0, 380.0)]),
         "macro_voice" => (300.0, vec![S::input("pitch", "V/OCT", 37.5, 337.0), S::input("trigger", "TRIG", 75.0, 337.0), S::input("harmonics", "HARM", 112.5, 337.0), S::input("timbre", "TIMBRE", 150.0, 337.0), S::input("morph", "MORPH", 187.5, 337.0), S::input("fm", "FM", 225.0, 337.0), S::input("level", "LEVEL", 262.5, 337.0), S::output("out", "OUT", 100.0, 378.0), S::output("aux", "AUX", 200.0, 378.0)]),
         "stereo_delay" => (420.0, vec![S::input("left", "LEFT", 140.0, 342.0), S::input("right", "RIGHT", 280.0, 342.0), S::output("left", "LEFT", 140.0, 374.0), S::output("right", "RIGHT", 280.0, 374.0)]),
@@ -300,7 +315,7 @@ fn assert_large_socket_kind(kind: &str) {
                 } else {
                     input_names.iter().position(|name| *name == socket.name).unwrap()
                 }, if socket.output { output_names.len() } else { input_names.len() }, width);
-            assert_eq!(actual, pos2(socket.x, socket.y), "{kind}.{} endpoint", socket.name);
+            assert!(actual.distance(pos2(socket.x, socket.y)) < 0.001, "{kind}.{} endpoint {actual:?}", socket.name);
         }
         for zoom in [0.25, 0.35, 0.5, 1.0] {
             let bounds = Rect::from_min_size(pos2(24.0, 12.0), vec2(width, PANEL_HEIGHT) * zoom);
@@ -1071,6 +1086,13 @@ fn signal_atlas_voice_socket_captions_and_controls_clear_enlarged_rims() {
 #[test]
 fn signal_atlas_effect_socket_captions_and_controls_clear_enlarged_rims() {
     for kind in ["stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay"] {
+        assert_large_socket_kind(kind);
+    }
+}
+
+#[test]
+fn signal_atlas_utility_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["crossfade", "quantizer", "stock_quantizer", "poly_sum", "mid_side", "stock_mid_side", "mix6", "stock_mix", "modal_resonator"] {
         assert_large_socket_kind(kind);
     }
 }

@@ -37,6 +37,14 @@ Effect output sockets move from y382 to y374 to fit the larger rims inside the b
 
 The full reference also calls for more tactile hardware detail and functional panel graphics. The current material/control rollout is an intermediate step; remaining work must address those details with source-backed markings rather than arbitrary diagrams.
 
+### Resonator, utilities and shared hardware
+
+The physical resonator now uses eight rotary controls alongside its configured modal/decay plot and strike/pickup guide. It retains geometric frequency/RT60 adjustment, exact entry, fine/keyboard adjustment, grouped undo and construction cues. Its printed frequency range reflects the effective sample-rate limit; the configured plot is explicitly separate from live signal telemetry.
+
+Crossfade, both quantizers, Sum, both mid/side processors and both six-input mixers now use rotary parameter controls with larger sockets. Quantizer keyboards, mixer flags, mid/side routing and measured lights/meters keep their original behavior. Knob grip flutes and socket hex-nut/bevel details stay within existing bounds; subpixel grip detail is omitted in small thumbnails. The same renderer supplies rack and browser views.
+
+Focused checks cover real Session edits/undo, new jack caption clearance, matching control geometry, quantizer/mixer/mid-side workflows, the resonator's physical units/rate-limited range and static configured plot. Full-size and thumbnail CPU renders are reviewed without opening a native window or audio device. Remaining sequencer and legacy control layouts still need their design pass before the milestone candidate; installed 0.2.5 remains unchanged.
+
 ## Checkpointed: Stock Scope integration
 
 Stock Scope implementation is checkpointed while the design milestone proceeds. Its branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
