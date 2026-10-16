@@ -263,7 +263,10 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("adsr", 0, 4, &[][..]),
         ("svf_filter", 0, 4, &[][..]),
         ("seq3", 24, 0, &[][..]),
-        ("stereo_delay", 10, 0, &[][..]),
+        ("stereo_delay", 0, 10, &[][..]),
+        ("stereo_reverb", 0, 6, &[][..]),
+        ("macro_voice", 0, 6, &[][..]),
+        ("sidechain_compressor", 0, 7, &[][..]),
         ("analog_vco", 0, 2, &["waveform"][..]),
         ("multi_vco", 0, 4, &[][..]),
         ("multi_lfo", 0, 4, &[][..]),
@@ -278,7 +281,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("crossfade", 1, 0, &["law"][..]),
         ("audio_stereo", 1, 0, &["dc_block"][..]),
         ("score_sequencer", 2, 0, &["running"][..]),
-        ("drum_voice", 5, 0, &["mode"][..]),
+        ("drum_voice", 0, 5, &["mode"][..]),
     ] {
         let module = catalog["modules"]
             .as_array()
@@ -375,7 +378,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                     // Generic stacks need room for the installed font between
                     // the preceding numeric well and the next fader. Check real
                     // text bounds with two logical pixels of clear space.
-                    if matches!(kind, "gate" | "attenuverter" | "white_noise" | "oscillator" | "lfo") {
+                    if matches!(kind, "gate" | "attenuverter" | "white_noise" | "oscillator" | "lfo" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice") {
                         for text in surface.texts.iter().filter(|text| {
                             text.color == INK
                                 && rack.controls.iter().any(|control| {

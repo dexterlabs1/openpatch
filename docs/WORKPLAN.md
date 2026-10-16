@@ -14,7 +14,7 @@ Now use one milestone branch, focused local checks, one PR CI run and one approp
 
 ## Active product milestone: finish the approved module design
 
-The user wants the new module design soon. Extend the approved **01 Signal Atlas** direction across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
+The user wants the new module design soon. Extend the approved [**01 Signal Atlas reference**](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png) across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
 
 - Warm ivory panels, black rotary knobs and larger ports; prominent top-left titles in the selected Rajdhani SemiBold font. No OpenPatch module branding, descriptions or colored header bands.
 - Markings describe actual ranges, units, routing and control behavior. Preserve meaningful differences between modules without decorative pseudo-circuitry or invented signal displays.
@@ -28,6 +28,14 @@ The user wants the new module design soon. Extend the approved **01 Signal Atlas
 Branch `work/signal-atlas-catalog` extends rotary controls and larger sockets to Sine LFO, Low-pass, Gain, OTA VCA, analog ADSR and State Variable Filter. ADSR EG receives four main rotaries and four smaller bipolar CV-depth rotaries. Its range legends describe real time constants, sustain voltage and modulation depth; stage lamps remain engine-driven. All catalog faces now share the approved warm ivory material through the rack/browser renderer.
 
 Focused checks cover successive real-Session drag edits with one undo, enlarged jack identity/caption clearance, envelope precision entry/lights, and identical rack/browser control geometry. An opt-in CPU panel preview renders actual egui meshes without opening a window or audio device. This batch is development source, not an installed release. Remaining dense effect, sequencer, mixer and utility layouts still need individual control/spacing passes; the shared faceplate change alone does not complete their redesign.
+
+### Effects and macro voice batch
+
+Stock Delay, Stereo Delay, Space, Duck, Drum and Macro Voice now have rotary control layouts. Dense effects use compact three-row layouts; the reverb/drum use two larger rows. Macro Voice has separate numeric wells for all six continuous controls. Stock Delay keeps its time, signed tone and CV-depth units, precision entry, real clock lamp and construction-motion cues.
+
+Effect output sockets move from y382 to y374 to fit the larger rims inside the bottom rail; all cable port identities and panel widths remain stable. Stock Delay retains its original y380 anchors with a bounded 20% socket enlargement; other new sockets use 30%. Captions clear neighboring sockets and controls at reduced zoom. The actual shared renderer supplies both rack and thumbnail views.
+
+The full reference also calls for more tactile hardware detail and functional panel graphics. The current material/control rollout is an intermediate step; remaining work must address those details with source-backed markings rather than arbitrary diagrams.
 
 ## Checkpointed: Stock Scope integration
 

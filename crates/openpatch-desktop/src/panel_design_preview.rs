@@ -7,14 +7,9 @@ use super::*;
 fn export_panel_design_preview() {
     let path = std::env::var("OPENPATCH_PANEL_PREVIEW").expect("set PNG output path");
     let catalog = openpatch_core::catalog();
-    let kinds = [
-        "adsr_eg",
-        "adsr",
-        "lfo",
-        "analog_vca",
-        "lowpass",
-        "svf_filter",
-    ];
+    let defaults = "adsr_eg,adsr,lfo,analog_vca,lowpass,svf_filter";
+    let selection = std::env::var("OPENPATCH_PANEL_KINDS").unwrap_or_else(|_| defaults.into());
+    let kinds: Vec<_> = selection.split(',').collect();
     let mut previews: Vec<_> = kinds
         .iter()
         .map(|kind| {
@@ -30,7 +25,10 @@ fn export_panel_design_preview() {
         .collect();
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);
-    let size = vec2(1500.0, 650.0);
+    let size = vec2(
+        previews.iter().map(|p| p.size().x + 12.0).sum::<f32>() + 28.0,
+        650.0,
+    );
     let mut texture = None;
     let mut output = None;
     for frame in 0..2 {
@@ -82,8 +80,10 @@ fn export_panel_design_preview() {
     let output = output.unwrap();
     for clipped in &output.shapes {
         if let egui::Shape::Text(text) = &clipped.shape {
-            assert!(!text.galley.text().contains("use of widget ID"),
-                "simultaneous panel previews reused a widget identity");
+            assert!(
+                !text.galley.text().contains("use of widget ID"),
+                "simultaneous panel previews reused a widget identity"
+            );
         }
     }
     let atlas = texture.unwrap();

@@ -1,10 +1,11 @@
 use super::*;
 
-const KINDS: [&str; 22] = [
+const KINDS: [&str; 28] = [
     "analog_vco", "ladder_vcf", "fade", "compare", "process", "rescale", "gate",
     "attenuverter", "white_noise", "oscillator", "multi_vco", "multi_lfo",
     "wavetable_vco", "wavetable_lfo", "stock_vcf", "stock_vca",
     "lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter",
+    "stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay",
 ];
 
 #[derive(Clone, Copy)]
@@ -35,10 +36,17 @@ impl SocketSpec {
 }
 
 // Independent saved-panel port contracts. The new presentation may move a
-// caption, but must never move a cable endpoint, rename a port, or widen a face.
+// caption, but must preserve port identity and panel width. Effect outputs move
+// up from y382 to y374 so their larger rims fit inside the bottom rack rail.
 fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
     use SocketSpec as S;
     match kind {
+        "stock_delay" => (360.0, vec![S::input("time_cv", "TIME CV", 46.0, 344.0), S::input("feedback_cv", "FDBK CV", 132.0, 344.0), S::input("tone_cv", "TONE CV", 218.0, 344.0), S::input("mix_cv", "MIX CV", 304.0, 344.0), S::input("signal", "IN", 46.0, 380.0), S::input("clock", "CLK", 132.0, 380.0), S::output("mix", "MIX", 218.0, 380.0), S::output("wet", "WET", 304.0, 380.0)]),
+        "macro_voice" => (300.0, vec![S::input("pitch", "V/OCT", 37.5, 337.0), S::input("trigger", "TRIG", 75.0, 337.0), S::input("harmonics", "HARM", 112.5, 337.0), S::input("timbre", "TIMBRE", 150.0, 337.0), S::input("morph", "MORPH", 187.5, 337.0), S::input("fm", "FM", 225.0, 337.0), S::input("level", "LEVEL", 262.5, 337.0), S::output("out", "OUT", 100.0, 378.0), S::output("aux", "AUX", 200.0, 378.0)]),
+        "stereo_delay" => (420.0, vec![S::input("left", "LEFT", 140.0, 342.0), S::input("right", "RIGHT", 280.0, 342.0), S::output("left", "LEFT", 140.0, 374.0), S::output("right", "RIGHT", 280.0, 374.0)]),
+        "stereo_reverb" => (360.0, vec![S::input("left", "LEFT", 120.0, 342.0), S::input("right", "RIGHT", 240.0, 342.0), S::output("left", "LEFT", 120.0, 374.0), S::output("right", "RIGHT", 240.0, 374.0)]),
+        "sidechain_compressor" => (420.0, vec![S::input("left", "LEFT", 105.0, 342.0), S::input("right", "RIGHT", 210.0, 342.0), S::input("sidechain", "SIDECHAIN", 315.0, 342.0), S::output("left", "LEFT", 105.0, 374.0), S::output("right", "RIGHT", 210.0, 374.0), S::output("gain", "GAIN", 315.0, 374.0)]),
+        "drum_voice" => (360.0, vec![S::input("trigger", "TRIG", 120.0, 342.0), S::input("accent", "ACCENT", 240.0, 342.0), S::output("out", "OUT", 180.0, 374.0)]),
         "lfo" => (180.0, vec![S::input("fm", "FM", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
         "lowpass" => (180.0, vec![S::input("signal", "IN", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
         "gain" | "analog_vca" => (150.0, vec![S::input("signal", "IN", 50.0, 332.0), S::input("cv", "CV", 100.0, 332.0), S::output("out", "OUT", 75.0, 374.0)]),
@@ -184,7 +192,7 @@ fn rendered(kind: &str, value_case: &str, zoom: f32, browser: bool) -> Painted {
         .find(|module| module["kind"] == kind).unwrap();
     let (width, sockets) = contract(kind);
     assert_eq!(panel_width(kind), width, "{kind}: saved face width");
-    assert_eq!(port_material_scale(kind), 1.30, "{kind}: material scale");
+    assert_eq!(port_material_scale(kind), if kind == "stock_delay" { 1.20 } else { 1.30 }, "{kind}: material scale");
     let mut preview = ModulePreview::new(module);
     preview.patch.nodes[0].id = "subject".into();
     preview.renderer.positions.clear();
@@ -275,6 +283,7 @@ fn separated_from_ring(rect: Rect, center: Pos2, radius: f32, margin: f32) -> bo
 
 fn assert_large_socket_kind(kind: &str) {
     let catalog = openpatch_core::catalog();
+    let material_scale = if kind == "stock_delay" { 1.20 } else { 1.30 };
         let (width, sockets) = contract(kind);
         let module = catalog["modules"].as_array().unwrap().iter()
             .find(|module| module["kind"] == kind).unwrap();
@@ -303,8 +312,8 @@ fn assert_large_socket_kind(kind: &str) {
                 for (socket, target) in &rack.targets {
                     let center = socket_center(bounds, zoom, *socket);
                     assert!(target.contains(center), "{context}.{}: target misses anchor", socket.name);
-                    let expected_width = (29.0 * 1.30 * zoom).max(18.0);
-                    let expected_height = (if kind == "stock_vcf" { 36.0 } else { 29.0 * 1.30 }
+                    let expected_width = (29.0 * material_scale * zoom).max(18.0);
+                    let expected_height = (if kind == "stock_vcf" { 36.0 } else { 29.0 * material_scale }
                         * zoom).max(18.0);
                     assert!((target.width() - expected_width).abs() < 0.01
                         && (target.height() - expected_height).abs() < 0.01,
@@ -314,7 +323,7 @@ fn assert_large_socket_kind(kind: &str) {
                         assert!(!control.contains(center),
                             "{context}.{}: control owns exact jack center", socket.name);
                     }
-                    let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                    let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
@@ -350,7 +359,7 @@ fn assert_large_socket_kind(kind: &str) {
                             "{context}.{}: output caption plate leaves face", socket.name);
                         for other in &sockets {
                             let other_center = socket_center(bounds, zoom, *other);
-                            let other_rim = if other.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                            let other_rim = if other.output { 13.0 } else { 10.3 } * material_scale * zoom;
                             assert!(separated_from_ring(*plate, other_center, other_rim, 0.0),
                                 "{context}.{}: plate crosses {} surround", socket.name, other.name);
                         }
@@ -359,7 +368,7 @@ fn assert_large_socket_kind(kind: &str) {
                 for well in &rack.wells {
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                        let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*well, center, rim, 0.0),
                             "{context}: numeric well crosses {} enlarged surround", socket.name);
                     }
@@ -369,7 +378,7 @@ fn assert_large_socket_kind(kind: &str) {
                         "{context}: print {text:?} leaves original face: {rect:?}");
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                        let rim = if socket.output { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*rect, center, rim, 0.0),
                             "{context}: print {text:?} crosses {} enlarged surround", socket.name);
                     }
@@ -1055,6 +1064,13 @@ fn narrow_vca_adjacent_target_overlap_preserves_first_input_and_occupied_menu() 
 #[test]
 fn signal_atlas_voice_socket_captions_and_controls_clear_enlarged_rims() {
     for kind in ["lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter"] {
+        assert_large_socket_kind(kind);
+    }
+}
+
+#[test]
+fn signal_atlas_effect_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay"] {
         assert_large_socket_kind(kind);
     }
 }

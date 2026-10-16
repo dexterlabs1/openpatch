@@ -51,10 +51,35 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
         "stock_noise" => STOCK_NOISE_PORT_SCALE,
         "stock_process" => STOCK_PROCESS_PORT_SCALE,
-        "analog_vco" | "ladder_vcf" | "fade" | "compare" | "process" | "rescale" | "gate"
-        | "attenuverter" | "white_noise" | "oscillator" | "multi_vco" | "multi_lfo"
-        | "wavetable_vco" | "wavetable_lfo" | "stock_vcf" | "stock_vca" | "lfo" | "lowpass"
-        | "gain" | "analog_vca" | "adsr" | "adsr_eg" | "svf_filter" => REDESIGNED_PORT_SCALE,
+        "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
+        "analog_vco"
+        | "ladder_vcf"
+        | "fade"
+        | "compare"
+        | "process"
+        | "rescale"
+        | "gate"
+        | "attenuverter"
+        | "white_noise"
+        | "oscillator"
+        | "multi_vco"
+        | "multi_lfo"
+        | "wavetable_vco"
+        | "wavetable_lfo"
+        | "stock_vcf"
+        | "stock_vca"
+        | "lfo"
+        | "lowpass"
+        | "gain"
+        | "analog_vca"
+        | "adsr"
+        | "adsr_eg"
+        | "svf_filter"
+        | "stereo_delay"
+        | "stereo_reverb"
+        | "sidechain_compressor"
+        | "drum_voice"
+        | "macro_voice" => REDESIGNED_PORT_SCALE,
         _ => 1.0,
     }
 }
@@ -80,6 +105,17 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("macro_voice", _, false) => Above(21.0),
+        ("macro_voice", _, true) => Right(32.0),
+        ("stock_delay", "signal" | "clock", false) => Right(30.0),
+        ("stock_delay", _, false) => Above(21.0),
+        ("stock_delay", _, true) => Right(32.0),
+        ("stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice", _, false) => {
+            Above(21.0)
+        }
+        ("stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice", _, true) => {
+            Right(32.0)
+        }
         ("svf_filter", _, true) => Above(24.0),
         ("adsr_eg", "attack_cv" | "decay_cv" | "sustain_cv" | "release_cv", false) => Right(30.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca" | "adsr", _, true) => Right(36.0),
@@ -124,6 +160,11 @@ fn signal_atlas_generic_rotary_kind(kind: &str) -> bool {
             | "analog_vca"
             | "adsr"
             | "svf_filter"
+            | "stereo_delay"
+            | "stereo_reverb"
+            | "sidechain_compressor"
+            | "drum_voice"
+            | "macro_voice"
     )
 }
 
@@ -190,6 +231,15 @@ fn generic_parameter_hardware(
         GenericParameterHardware::Rotary {
             body_radius: 19.5,
             target_half: 22.0,
+        }
+    } else if matches!(
+        kind,
+        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+    ) {
+        // Dense rows keep their numeric-entry targets separate from the knob.
+        GenericParameterHardware::Rotary {
+            body_radius: layout_radius - 5.0,
+            target_half: layout_radius - 4.0,
         }
     } else if signal_atlas_generic_rotary_kind(kind) {
         GenericParameterHardware::Rotary {
@@ -3994,6 +4044,9 @@ impl Rack {
                     // above the first row. Seven points keep each caption
                     // clear of its rotary target and the prior row's readout.
                     "wavetable_vco" | "wavetable_lfo" => 7.0,
+                    "stereo_delay" | "sidechain_compressor" => -2.0,
+                    "stereo_reverb" | "drum_voice" => 8.0,
+                    "macro_voice" => 8.0,
                     _ => 13.0,
                 };
                 let (knob_position, radius) = if let Some((row, column)) = sequence_cell(name)
@@ -4024,26 +4077,35 @@ impl Rack {
                             width * ((index - 1) % 3) as f32 / 3.0 + width / 6.0,
                             154.0 + ((index - 1) / 3) as f32 * 102.0,
                         ),
-                        22.0,
+                        27.0,
                     )
                 } else if node.kind == "stereo_delay" {
                     (
                         pos2(
                             width * ((index % 4) as f32 + 0.5) / 4.0,
-                            110.0 + (index / 4) as f32 * 80.0,
+                            107.0 + (index / 4) as f32 * 83.0,
                         ),
-                        17.0,
+                        25.0,
                     )
-                } else if matches!(
-                    node.kind.as_str(),
-                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
-                ) {
+                } else if node.kind == "sidechain_compressor" {
+                    (
+                        pos2(
+                            if *name == "makeup_db" {
+                                width * 0.5
+                            } else {
+                                width * ((index % 3) as f32 + 0.5) / 3.0
+                            },
+                            107.0 + (index / 3) as f32 * 83.0,
+                        ),
+                        25.0,
+                    )
+                } else if matches!(node.kind.as_str(), "stereo_reverb" | "drum_voice") {
                     (
                         pos2(
                             width * ((index % 3) as f32 + 0.5) / 3.0,
-                            110.0 + (index / 3) as f32 * 80.0,
+                            118.0 + (index / 3) as f32 * 118.0,
                         ),
-                        17.0,
+                        32.0,
                     )
                 } else if node.kind == "vca_mix" {
                     (
@@ -4306,6 +4368,10 @@ impl Rack {
                     11.0
                 } else if node.kind == "fade" {
                     10.0
+                } else if matches!(node.kind.as_str(), "stereo_delay" | "sidechain_compressor") {
+                    6.0
+                } else if matches!(node.kind.as_str(), "stereo_reverb" | "drum_voice") {
+                    7.0
                 } else if count >= 3 {
                     9.0
                 } else {
@@ -4322,6 +4388,8 @@ impl Rack {
                     104.0
                 } else if node.kind == "score_sequencer" {
                     96.0
+                } else if node.kind == "macro_voice" {
+                    width / 3.0 - 12.0
                 } else if node.kind == "stereo_delay" {
                     width / 4.0 - 12.0
                 } else if matches!(
@@ -10673,7 +10741,9 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
         "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
-                if input { 342.0 } else { 382.0 },
+                // Keep the enlarged output surround inside the face and its
+                // lower mounting rail. Cable identities remain unchanged.
+                if input { 342.0 } else { 374.0 },
             );
         }
         "score_sequencer" if input => return pos2(60.0 + index as f32 * 80.0, 373.0),

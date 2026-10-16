@@ -748,6 +748,12 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
 #[test]
 fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
     for (kind, parameter, initial, local) in [
+        ("stereo_delay", "time_left", 0.234375, pos2(52.5, 107.0)),
+        ("stereo_delay", "wet", 0.4, pos2(157.5, 273.0)),
+        ("stereo_reverb", "size", 0.6, pos2(180.0, 118.0)),
+        ("sidechain_compressor", "makeup_db", 0.0, pos2(210.0, 273.0)),
+        ("drum_voice", "pitch", 48.0, pos2(180.0, 118.0)),
+        ("macro_voice", "frequency", 261.62558, pos2(50.0, 154.0)),
         ("lowpass", "cutoff", 1000.0, pos2(90.0, 183.0)),
         ("gain", "gain", 1.0, pos2(75.0, 183.0)),
         ("analog_vca", "gain", 1.0, pos2(75.0, 183.0)),
