@@ -58,7 +58,7 @@ The panel follows the selected [Signal Atlas design rules](MODULE_DESIGN.md).
 Its topology must show real strip taps, sum and master-only processing rather
 than decorative connections. Rack and browser share its actual renderer.
 
-## Qualification in progress
+## Qualification
 
 The independent seven-file declaration, complete inputs and source/SDK hashes
 were reviewed and frozen before the first compiler or DSP execution. Across
@@ -89,7 +89,20 @@ audio offline. Shared panel tests cover rack/browser equality, text separation
 from 25% zoom and clearance around enlarged socket rings.
 
 The source uses the selected Signal Atlas visual direction: no colored top band,
-large relative rotary controls and a real strip-sum/master schematic. Final
-native capture review, regression/performance audit and platform CI remain before
-release. Native Mac window/input/audio-device checks remain unqualified. No CPU
-advantage is claimed by this reference result.
+large relative rotary controls and a real strip-sum/master schematic. Both native
+Linux CI runs produced all 139 expected captures, including the unchanged 136
+existing scenes. The reviewed new scenes show the same rack/browser geometry
+and measured strip lights in dark-room mode. See the
+[native browser preview](../design/concepts/module-panels-20261016-v1/native/stock-vca-mix-library.png).
+
+The unchanged Stock Mix, Stock Octave, rounding, Mid/Side and output-lifecycle
+reference gates all pass with the final Core. Four existing offline workloads
+also retain exact analysis statistics and all measured checksums against the
+previous build. Five paired rounds produce median timing changes from about
+−0.03% to +1.31%; this is not evidence of a speedup. The
+[qualification record](benchmarks/stock-vca-mix-release-qualification.json)
+retains complete compressed regression and benchmark reports, source/binary
+hashes, capture manifests and static ARM bundle checks.
+
+Native Mac window/input/audio-device checks remain unqualified. No CPU
+advantage, full catalog redesign or complete VCV module parity is claimed.

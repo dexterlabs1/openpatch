@@ -1,0 +1,2414 @@
+{
+  "created_at": "2026-10-16T15:52:12.823098+00:00",
+  "source_head": "ceb73db04e0ce76d75eca29e8b6b464763d6c889",
+  "scope": "Final code-source qualification; following commit adds documentation and retained evidence only",
+  "files": {
+    "stock-vca-mix-regressions-complete.json.gz": {
+      "compressed_sha256": "20814c8f03b022417680fbaeaa683ba98e7c52acf59a9bc2fe2282c30e4918f5",
+      "uncompressed_sha256": "0fdb279e7744c7310894712af3f26dbe08b9e849d5018a88e200a0a1bddcc6c5",
+      "uncompressed_bytes": 129019
+    },
+    "stock-vca-mix-performance-complete.json.gz": {
+      "compressed_sha256": "5b52e52da004dd81615dae62d2715c9f2c2aa51311fea3f8ea5ca7286b14c0da",
+      "uncompressed_sha256": "275b1b17d7913ac8b9de904d1e9046e72aecaae14aef0ffe055a0193e794c48b",
+      "uncompressed_bytes": 3429742
+    }
+  },
+  "regressions": {
+    "stock_mix": {
+      "passed": true,
+      "validation": {
+        "cases": 28383,
+        "discarded_snapshots": 0,
+        "hand_anchors": 708,
+        "inputs_sha256": "e43c44867ddb7850bf2805e0d5b1b7edd3784d1a04d314f4a0cf9191b1b75f83",
+        "paired_trace_sha256": "59e6df1c9c29b3cae2b8247ea8dacf28d4f09645bf95df6df9d5132b81dbc934",
+        "passed": true,
+        "rates": {
+          "44100": {
+            "explicit": 21,
+            "fresh": 9440
+          },
+          "48000": {
+            "explicit": 21,
+            "fresh": 9440
+          },
+          "96000": {
+            "explicit": 21,
+            "fresh": 9440
+          }
+        },
+        "scope": "complete paired host snapshots",
+        "sdk_trace_sha256": "59e6df1c9c29b3cae2b8247ea8dacf28d4f09645bf95df6df9d5132b81dbc934",
+        "snapshots": 86355
+      },
+      "discarded_snapshots": 0
+    },
+    "stock_octave": {
+      "passed": true,
+      "validation": {
+        "cases": 30120,
+        "conversion_domain_checks_before_execution": 225207,
+        "discarded_snapshots": 0,
+        "events": 61359,
+        "families": {
+          "44100": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          },
+          "48000": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          },
+          "96000": {
+            "conversion": 3792,
+            "explicit": 23,
+            "finite-pitch": 1530,
+            "tie": 360,
+            "width": 4335
+          }
+        },
+        "hand_anchors": 3885,
+        "inputs_sha256": "e4b552579532851c674f1416ce5603d0f2daad05818f42f7679c0b69b8f2ba4a",
+        "invariants_checked": 1189227,
+        "paired_trace_sha256": "d25afd221a2790b55b109d5572790adfe86962ffd9dc15a3ac9e0b9401bfddc2",
+        "passed": true,
+        "safety_inputs_sha256": "a2c4256f8895eca4e24aeaa110adc28fc5f2bff6f06c043f818e653eb6b9e9b6",
+        "scope": "complete paired host snapshots",
+        "sdk_trace_sha256": "d25afd221a2790b55b109d5572790adfe86962ffd9dc15a3ac9e0b9401bfddc2",
+        "snapshots": 91479
+      },
+      "discarded_snapshots": 0
+    },
+    "rounding": {
+      "passed": true,
+      "validation": null,
+      "discarded_snapshots": 0
+    },
+    "mid_side": {
+      "passed": true,
+      "validation": {
+        "acceptance_sha256": "f00be21fdfed433902bbad3ee7d8a5869a022fdf42501221159f67766acec02c",
+        "cases": 74,
+        "cases_sha256": "d4c7d48e3439a70952e55c912f71efd4bb7b77acae468535ef88ab13d159d81e",
+        "discarded_snapshots": 0,
+        "hand_anchors": 1472,
+        "paired_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+        "passed": true,
+        "scope": "paired genuine host snapshots",
+        "sdk_trace_sha256": "d36f332d091f5cec1c3815ea400148dcfee1e3f950ab601be3cb202ca6ec0241",
+        "snapshots": 890
+      },
+      "discarded_snapshots": 0
+    },
+    "output_lifecycle": {
+      "passed": true,
+      "validation": {
+        "cases": 224988,
+        "compared_field_counts": {
+          "bypassed": 224988,
+          "consumer_mask": 224988,
+          "counts": 899952,
+          "raw_voltages": 14399232
+        },
+        "compared_fields": 15749160,
+        "engine_frame_observation_source": "Separate actual SDK adapter assertion required; not encoded in70-field trace",
+        "expected_engine_dsp_frames": 0,
+        "failed_cases": 0,
+        "first_failures": [],
+        "independent_anchors_checked": 3920,
+        "independent_invariants_checked": 59581964,
+        "input_sha256": "74991d5447a2ba002b122c61260cf9cc4bbc8db91ac4f258344ea9841e40e088",
+        "max_absolute_error": 0.0,
+        "mismatched_fields": 0,
+        "passed": true,
+        "protocol_failures": 0,
+        "qualification_basis": "Bounded producer-output lifecycle; exact full raw storage, no DSP/host/device equivalence claim",
+        "rust_trace_sha256": "d3e0044fb33ab03cf0d776b101af2a0ac98e8c9c3a11678f64ba4da30365887f",
+        "sdk_trace_sha256": "4aa6d1b87b1a2d0c3754dcc2316dd980bad128388af3e69ca7f6093c3d9778ac",
+        "trace_rows": {
+          "input": 224988,
+          "rust": 224988,
+          "sdk": 224988
+        }
+      },
+      "discarded_snapshots": null
+    }
+  },
+  "performance": {
+    "passed": true,
+    "baseline_source": "7ed595bd2bd9f976cf3698e9f7345e19473218c4",
+    "candidate_source": "ceb73db04e0ce76d75eca29e8b6b464763d6c889",
+    "summary": {
+      "legacy_routing_1": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 340.2916666666667,
+        "candidate_median_ns_per_frame": 339.15625,
+        "baseline_min_max_ns_per_frame": [
+          335.66197916666664,
+          342.2604166666667
+        ],
+        "candidate_min_max_ns_per_frame": [
+          335.6517333333333,
+          343.4956583333333
+        ],
+        "paired_median_candidate_over_baseline_time": 0.9997916578161175,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9966634014938165,
+          1.006144053029539
+        ],
+        "paired_median_candidate_overhead_percent": -0.020834218388254833,
+        "all_checksums_equal": true
+      },
+      "mixed_stock_analog_1": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 1726.3217,
+        "candidate_median_ns_per_frame": 1724.5237833333333,
+        "baseline_min_max_ns_per_frame": [
+          1716.8677083333334,
+          1726.8092
+        ],
+        "candidate_min_max_ns_per_frame": [
+          1719.7852458333334,
+          1730.7142333333334
+        ],
+        "paired_median_candidate_over_baseline_time": 0.9997041097317952,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.996057785245433,
+          1.008064992388634
+        ],
+        "paired_median_candidate_overhead_percent": -0.029589026820475706,
+        "all_checksums_equal": true
+      },
+      "legacy_routing_16": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 1333.81875,
+        "candidate_median_ns_per_frame": 1350.8321166666667,
+        "baseline_min_max_ns_per_frame": [
+          1324.5399333333332,
+          1334.7097208333332
+        ],
+        "candidate_min_max_ns_per_frame": [
+          1341.931425,
+          1367.9692708333334
+        ],
+        "paired_median_candidate_over_baseline_time": 1.013130213162316,
+        "paired_min_max_candidate_over_baseline_time": [
+          1.0104853988262168,
+          1.0256035693255423
+        ],
+        "paired_median_candidate_overhead_percent": 1.3130213162316107,
+        "all_checksums_equal": true
+      },
+      "mixed_stock_analog_16": {
+        "pairs": 5,
+        "baseline_median_ns_per_frame": 19603.7173625,
+        "candidate_median_ns_per_frame": 19626.9390625,
+        "baseline_min_max_ns_per_frame": [
+          19532.30659583333,
+          19707.44930416667
+        ],
+        "candidate_min_max_ns_per_frame": [
+          19493.9734375,
+          19712.825520833332
+        ],
+        "paired_median_candidate_over_baseline_time": 1.0011845559477623,
+        "paired_min_max_candidate_over_baseline_time": [
+          0.9891677576650404,
+          1.0060224348233542
+        ],
+        "paired_median_candidate_overhead_percent": 0.11845559477623446,
+        "all_checksums_equal": true
+      }
+    },
+    "method": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "timed_audio_seconds": 5.0,
+      "timed_frames": 240000,
+      "rounds": 5,
+      "seed": 20261016,
+      "internal_warmup_frames_per_call": 2048,
+      "unmeasured_full_warmup_calls_per_build_per_case": 1,
+      "analysis_seconds": 0.5,
+      "order": "Deterministically shuffled workload order each round; baseline first in even zero-based rounds, candidate first in odd rounds",
+      "timing_scope": "Server benchmark Instant measures DSP and checksum reduction; excludes compilation, patch replacement and RPC",
+      "compile_latency": {
+        "measured": false,
+        "reason": "Existing MCP benchmark compiles before its timer; this harness adds no compilation timer or custom Core driver"
+      },
+      "correctness": "Before timing, exact reported analyze_signal JSON statistics excluding revision only; every warmup and timed checksum must match exactly",
+      "limitations": "Four fixed workloads on one host; no callback/device/UI/SDK measurements, affinity/thermal/power control or full sample-trace equivalence; no performance advantage claim"
+    },
+    "binary_sha256": {
+      "baseline": "33541cb4e7a652dd709310d6c6169f0eadaa889a0d1d7aea78495bcc16d8c67d",
+      "candidate": "9ef6159608f0da7f0ddf5d72a3b1468b81e61d9e33c0c29dd84688fd2896ce84"
+    },
+    "catalog_guards": {
+      "distinct_binary_sha256": true,
+      "binary_paths_still_match_recorded_sha256": true,
+      "baseline_has_exactly_76_unique_kinds": true,
+      "candidate_has_exactly_77_unique_kinds": true,
+      "stock_vca_mix_absent_from_baseline": true,
+      "stock_vca_mix_present_in_candidate": true,
+      "only_added_kind_is_stock_vca_mix": true,
+      "no_removed_kinds": true
+    },
+    "existing_catalog_changes": {}
+  },
+  "captures": {
+    "38925594740": {
+      "head": "ceb73db04e0ce76d75eca29e8b6b464763d6c889",
+      "passed": true,
+      "captures": 139,
+      "validation": {
+        "passed": true,
+        "count": 139,
+        "captures": [
+          {
+            "name": "rack.png",
+            "sha256": "91712963d290ee85451fe68f7193c8d2530978c7f5afdc102610d050b1bbceff",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-visuals.png",
+            "sha256": "799e0c662043609b9c47aee56319b668a4e793addaada7046c6462c6ceff9b34",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-utilities.png",
+            "sha256": "b5e22398abb4a8c731696b13937913caa0dc011a29de1d6fb0fcfc278cfd2852",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-polyphonic.png",
+            "sha256": "b6dc935ebe23069df54ecf96045d9dd30b2e7d0f8485803e1eb254d165aa63a4",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-routing.png",
+            "sha256": "fee143f5e7e8b4f8f878af3a4f1d20fd96132929063f9d9f04cac373de8aab42",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi.png",
+            "sha256": "f5eaf5ba562440fd7eef9f867799662b15aa932c93d82a3546ef14863cc51a3c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "audio-midi-settings.png",
+            "sha256": "6f68682f49fa051f5a3a7087b5a8ebb01ff49721ef5f6da3d381707e0b00d664",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stereo-width.png",
+            "sha256": "faf39d23c018d022924c064378c3309d8167c95c628feeed9038852832cf3edd",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-routing-modules.png",
+            "sha256": "ab413e7801e10b72ca562f0d33812069cc52ca9065118cc3a7354b57851695dc",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-modulation.png",
+            "sha256": "f6a1472de9929a3cfb2261fb175394909e0514cbd7f90a55b8842325538dc9c6",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "project-save.png",
+            "sha256": "72d682801665083c7c4121a0a4b53faf756877c2e17fc0f80fc4c6bc406086a6",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "project-unsaved.png",
+            "sha256": "e696e514b2f66066dc24f293608bf3fb0b3b43e8664dafe1213b60b374eced58",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "signal-scope.png",
+            "sha256": "7ad96613c6650c2db7a7b37a157d6887ef451fefec94e69889d86865fd354a9c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "signal-scope-xy.png",
+            "sha256": "4e63eb7f9cc2872c71a54ed201ae18ea2d7c2e7b3c71c38da0f44a34b699a185",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-sequencer.png",
+            "sha256": "ae9c81097f3158cae3d9c694acee9542cc27be4a293165e475f124b5863a3363",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-switches.png",
+            "sha256": "d2d91b4310e2a49a91cf84587349f77377f66817dab266b0bbc8d330f7d9445c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-voltage-utilities.png",
+            "sha256": "a2af00672d7078b14e36ff151179385a678cadfbe4bd05eeac365ad3cd96506a",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-bypass.png",
+            "sha256": "f7094943245173e9aceff3c9b70b4ce4d62af6d909497ea603ba387a9d42e253",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-gate-shaping.png",
+            "sha256": "eeb668991f9ef67cbbcb6fb952431db2419ca4f747d062895a76b73d7082481e",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-manual-gates.png",
+            "sha256": "31ac05aa8ca4a32203ba7374f30346eca573d2adc334c30acecaa5cdcf09da3f",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-vca-mix-fade.png",
+            "sha256": "3275dbd9ef5110c73827ff2e2a8b35a8691e9b0e61584970621c0d73a3e99898",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-duplication.png",
+            "sha256": "040a10ea7f8e89c80ce07984bd5bb4828b4386d84c824b46f8716537e65e5dbe",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stacked-routing.png",
+            "sha256": "bc42a733b7d557e4c119a319c78dae48ec23707eb2878687dfa765918e6e5422",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-multi-vco.png",
+            "sha256": "1cb405ee0be40299e45f135843a00c3e83c004588e8f3f8df430c6b774c5233b",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-preset-save.png",
+            "sha256": "dd27dce674e9fdcc0fc3ce124c6257b9a17c2a00771afec5bf3e371a35709acb",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-preset-browser.png",
+            "sha256": "c4f56fea6cca40f981b6a8b2ce0103bddbf9031feddaa93eebedb21c980550e0",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-duplication-outgoing.png",
+            "sha256": "d915b4c87fd4879498fdf118863850e223328179d7ea529520870ba06e3846d1",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-browser.png",
+            "sha256": "697b019ae59a0c16ef9043a7a5c9161d74b652c48077b20f30c13f1aa64f130a",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-library-compact.png",
+            "sha256": "0aa62f7088ec698f60f7cb0ac0828e98a62d75d0f4fc34d52cca2c191fad9bc2",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "analysis-dock-compact.png",
+            "sha256": "8484f8641169e6c41c56b20c8aaa9619068802404b58cc6aece0a0e2fa5691c9",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "analysis-visuals-compact.png",
+            "sha256": "fcab345f7ef3136b79684c5e58ce59f6b12fff78ddf3b2cb9af6f9bcd9584bab",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-pulses.png",
+            "sha256": "d74dd4d1b5414cd20cbfdfd1338abcc214c7a9949fa291e705adf2467dfd54b0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-push.png",
+            "sha256": "511bcdebf02e14c66f7a9f58e7b1416a9b2209f6a4b99e4742f50e3d743196ea",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-gates.png",
+            "sha256": "637ef6b9634d3ce03e54d99aafcecfac7f34af32d9593ff083bacdbdd1d61049",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "audio-performance-simulated.png",
+            "sha256": "bbbf9f632328353e825411e2d7bd61d931382e5eee3a1ea7b768182df0289950",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "parameter-context-entry.png",
+            "sha256": "e63c0bac81e75f747b31f4736dc6d376a6be2de6c901ba91ab709986dd750aa3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-output-menu.png",
+            "sha256": "b130a0b547f35048e9feaa13d7b3243f69474248433ea9c460f43f525d10d6c2",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-input-menu.png",
+            "sha256": "6ef671cfec46d6c0d27221fe698418c419886cf6a08795f40ce6dcb8ab7efa31",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-score-studio.png",
+            "sha256": "0aa2d59bd7a21b3715dbbbc8515119891957da70ad55257e9a34b963abf68eae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-time.png",
+            "sha256": "3091a09c33b933a545dec15e2ffc2537a68c26610edacf241f3d3fe820af2c00",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-xy.png",
+            "sha256": "449627e1804b02b291b259f6c7cc634b0430cdcd2a42a64cc5060d6a24156cd3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-external.png",
+            "sha256": "99f6d197d535df664243089ae44fe0d48f64398cd9d39d2ba3a564e8efbd2d08",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-modal-resonator.png",
+            "sha256": "b48e3e9e99ff306b4c81de072ee165afa5358abb7e386ed82857816394700b0b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-colored-noise.png",
+            "sha256": "7fcf325bf61c8a66718529adad68be00ad83c9a6f7e166c1f5dde6987cec6dae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random-values.png",
+            "sha256": "564fede8ade95a70f8389cb97efc48a4363375edd017b4de4477fc259c694be3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-shift-register.png",
+            "sha256": "8562f8555240bc5d899bda1b9dc6a22907020240bdabfc2267cee783361ea6db",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-080.png",
+            "sha256": "1c0dd694f8a3f6377b23ff2b2cb5304ad1963706ce5648acedf5ac2df03d11fa",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-180.png",
+            "sha256": "f0e2a1c0663c9a48bbf0d7bc82f890173543b4d017e989ca3caa7330e31db6e9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-340.png",
+            "sha256": "dffb7c8ac723ddc6e3dd3bdb9f0a16e440b7f730b57d58fe58988f4093ad62ad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-settled.png",
+            "sha256": "2fda7c7b6e882595232e4417239575310307aff2895efa0c4d97ea0c1f21cc8b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "mcp-session.png",
+            "sha256": "5ee13480a88eb196441361082ddaaf2070caedc4e899ed1820437f72e035f0ab",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-lights-on.png",
+            "sha256": "da6481dc7e450a5d4bfd1723453c35594930392130fcc0042ad7731041642231",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-dark.png",
+            "sha256": "e95afa09560d4159f0e4c1405044c191a6e446f3433dc69c2fa142871a7cbbfb",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-lights-out.png",
+            "sha256": "7db09cb1e0f9a38fdb2c650a1eef7fed22644388ff01e7e83a7f8726dfa6ad4e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-inspection.png",
+            "sha256": "41e40c55e608d7fcc1a4a7b723e4090e96780ebcc3c72084e6e4ffd4cb50ea63",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "parameter-precision-navigation.png",
+            "sha256": "b28f484f40a37dfd65a6b31dc4a49466e58ffdbc96408c419b5ed8f733a7dfc9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-gesture-guidance.png",
+            "sha256": "195b1bbc7a70d780eebabf747670cbc1a04cc7f3f9ab81505a372ace8688c9c9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-gesture-lights-out.png",
+            "sha256": "c70bdb801450b591957b1eb2efdf625432a1226ee9767b9dd29157c46b295c3c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-palette-editor.png",
+            "sha256": "78ab7bda1da0afe8275091ecb2aa4041ffb551c0b0f56a4478c9806c6e16a18a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-palette-created.png",
+            "sha256": "8c48fbd2e58896459cb95f180c2bf12b5d93ec0f0eb4354eab4bb969ab70de5c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-adsr-eg.png",
+            "sha256": "029a9c2fe9e5eeb626dfccf4268a5255525c76fcb708473f82a874e816f808b3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-adsr-eg-lights-out.png",
+            "sha256": "82d8c96c684c7ededdddaab2445f71ee25897b1c492982b4ca988d06c717e173",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-cc.png",
+            "sha256": "32cbaf9b1a277141a11c66726c330f506b89cab2b50bc9e893c976a48f75943c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-cc-lights-out.png",
+            "sha256": "67fae7dab879d26444f35b013481a33e16065a8fd197ee18b9e3def0d77262b1",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-gate.png",
+            "sha256": "aba7e5922fadedcfd43cfdc50b6febda7706ece02fb99820951da86433037a5e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-gate-lights-out.png",
+            "sha256": "93e777ad96c86b8b91fb5aaaf7e3dfd17c2bac678076ee415ebe190c9cd34512",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-annotations.png",
+            "sha256": "c2f06f8722609698287bb909a36fc22690329aa31bc43ad3af67e57048008a71",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-annotations-lights-out.png",
+            "sha256": "b33b8484927d99bd43df2fc0f390b7aa643509c2561e1b9790c7064d1a267402",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "notes-editor.png",
+            "sha256": "87c65415a98a7030dc04734e160e585375e8ddc51ae4a1a53c3c57f194be79eb",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "notes-editor-conflict.png",
+            "sha256": "786c8e1e1a23917b88944601f0266c1a08bfab8504a441adc8da0e32c54ffc76",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vcf.png",
+            "sha256": "d07ef753db10fec23868a5c9db8404c48750b3bc545cc308d2cf030b28d79c61",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vcf-lights-out.png",
+            "sha256": "e0ddc4b3a420bb52dc1b0ef3ba668d4834ce8c1d983768a8b2a274afdf669a50",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca.png",
+            "sha256": "e2f5879f8849ad1b1cf8d5f4b09b39cdeeeadae02da3a4f8ce4682bfc7d72c9a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-lights-out.png",
+            "sha256": "9dbf72eb8fe2af7e12c3e5c431470e942c2e1d6e1b5e0973abe111f13a973ba2",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-parameter-choices.png",
+            "sha256": "2eaa8c3fdec03256ae195e3b41f2b52daaa3d6e5b04f3b167dd4da3e55de3603",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-parameter-choices-lights-out.png",
+            "sha256": "bc9433f67f7dfc486665a16fb1b96dfda5635b80364896318bcbac6c9e8c2b89",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-port-lights.png",
+            "sha256": "f84e19345179532bacf69e0666114021d61e6719051f16db6cc5162c74620b4a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-port-lights-lights-out.png",
+            "sha256": "93d4f589c230d8861340b886505a3772e7cbccd38eefd5057a9e209ee70be392",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "view-cable-controls.png",
+            "sha256": "5a422034bdb350c2f88f85e730f6f5c9b42f630de47531481d8a8b184877c85a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-presentation-clear-panel.png",
+            "sha256": "34e04edd8a3a75b4b9c2b5a3fe15e1876b0545b29f30dc08a3c5dd11d2e461ab",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-presentation-loose.png",
+            "sha256": "76bbcd9a4e403e1bd84795deefd36b0b32a51bb93565d51e7eb5763972e7cde6",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-100.png",
+            "sha256": "9910f2a3a582780038f298279ab62bd66d0b46137e8008f94c4755a537b17536",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-wide.png",
+            "sha256": "cb6a62cced803a9ee0e3ca4815dcf55205311863ada2f0bcd844bf45f5bda6b3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-compact.png",
+            "sha256": "5559e87316e1a6a0d952a55286db4473278f008603e7a531ecd528d3364f50aa",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-200.png",
+            "sha256": "7506f32fdb56d21412ad690dd9526b5407a56954c54d262f405cd004b1e51f99",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-small-labels.png",
+            "sha256": "0b9d4681aa56de59a3de9074b4f760a14c0f6e2ebf625a6389f8b9d9ffadcfec",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-unplug.png",
+            "sha256": "370d29258052560b88c50b293289354b55a68a49a96e2dbec705bb0c29b9eac9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-travel.png",
+            "sha256": "5bfba9c29a26b0a8915de62ee83a335d955a286c341f1593548ebd8ed7209bd0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-settle.png",
+            "sha256": "664d3d8332a99e6a4a6392f037cb2ffa48cc9d04e7f38bf6c504e3a2d89bff73",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-complete.png",
+            "sha256": "67a940374e7fe2e7f8421aa2639a086770816c199bda72036bd4c11ee7ff9dad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-tension-tight.png",
+            "sha256": "0369e9c1cbb923a39592e76b593a8daf014313de6c4a3524e32bbbd137817854",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-before.png",
+            "sha256": "ae0a280548deab9064b751ecc2fd47ed7784670f757b5c2f78ef66400b3008c5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-mid.png",
+            "sha256": "e485cabbca7fb71d376404427730e106ae297456c92ac16fafc774cac8ad1cd9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-settled.png",
+            "sha256": "0a85a03f80218d6a9f0f89cfcbb16814ccd24e443c544106c9bcedba38f7a748",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-delay.png",
+            "sha256": "698105489ec1256fc6c58404e0dfdb71089cd0d49327a663610c312385651ca1",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-delay-lights-out.png",
+            "sha256": "1ca235539d8b5d92b09e11f08b073968e399369d9e1d977863f22d74b439863c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-delay-library.png",
+            "sha256": "6bc48b9e44fd6eca0d03deba39d649e939244d896f2300de030a2c42567e255b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-wavetable.png",
+            "sha256": "fefc8b2a3fbb1058b55e2589602091070acb84bc11fa0bdcfc675f7a6acc4025",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-wavetable-lights-out.png",
+            "sha256": "b185feeb4a91406be4dd44d59569b21fad2c0bd5049c4dff590e44d406d60601",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "wavetable-library.png",
+            "sha256": "6fd8501c705274a8e0815961cd90e5fd03b294ac6eda617d57b6daa8f0531b91",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random.png",
+            "sha256": "97ef0fcaba7df946e2103673914598ddd1c304ed40a3f8399afb5ceadc2bfab6",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random-lights-out.png",
+            "sha256": "24df3014d82fcaeef7bf848b5e6a106328e01c397b67d6a6d95ae2719e49a26e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "random-library.png",
+            "sha256": "fc3ecf1aaeddf2b530a8cdef1dbf37b00c5475adbed143e6d0ac12a02f17f7df",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope.png",
+            "sha256": "bc916f49349f8b9ed29f47402913ffe07aa4be4c7a3f74e16114d3444f51ad54",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope-lights-out.png",
+            "sha256": "97de6d6481ccbf6bd134c7aae843ae92411c45f234a683ca0e93b8b2ead23867",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope-manual.png",
+            "sha256": "ac1f194b2d1b02f2bfdd99d2069b910105f02ea8bb880282ca82a42210805e7f",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-opening.png",
+            "sha256": "022174d4dd8177b375e4cfb40e02fd52ab92b28d2fbcc3025fbc98fb90c13fd0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-mid.png",
+            "sha256": "a5af3d5df33900019f4e6b52b0e46cc2db5002c88d3d675994473f1c3a0f7708",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-settled.png",
+            "sha256": "694f2f82dae7f429e037c2aa73b82f02e023bc6984fa2745d74bd5eccec5fd6c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-merge.png",
+            "sha256": "56b77e52ae45fc555b665a9e77b88c0cc7e6e151e42fee6789b8db9e11bc9e3c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-merge-lights-out.png",
+            "sha256": "ff8939e3d242eb08e812af5e5e305feae289d26b5b6fa1c75e05b7cb823bdd11",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "merge-library.png",
+            "sha256": "50c5bb6465cc9439484b76fe51ce8c373c7d5d1f784ec9faa41c56916af92d37",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-split.png",
+            "sha256": "33e5971d4c8ca674c2db82f429e2eb9cfe1a6cb4ce8f52b5b35d4f45d2413836",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-split-lights-out.png",
+            "sha256": "12433997974bb44dbe7359149b4693bf9585530da07ef117873f02ace04144e5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "split-library.png",
+            "sha256": "b340336d93dbf929365649ffd9baacc37f33f95a0ec17cef2e4dd454dbb80050",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-lfo.png",
+            "sha256": "522df8a54b9211759106aa7d743e3ece8ded6858ae56de9d547fd23f12a9bdda",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-lfo-lights-out.png",
+            "sha256": "4a59d562b005f76516b9f3a6b38aed4bf64c1ff70e24deb3893199027969cc9c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-lfo-library.png",
+            "sha256": "a0597b1e5d2a5c339b5a663eb9c1c36fc43e4ef3e1eecfb11a21b00386be53d5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vco.png",
+            "sha256": "7fd264564df036d02ea4dcb53198bc9594e082eb015876a33745c3ef7224ce26",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vco-lights-out.png",
+            "sha256": "e950d12333516828acd8bddabcdea82cb85180ff7f309da15e13255108215bbb",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-vco-library.png",
+            "sha256": "f98e09853d7ccfa6eb40e0bb1bd148f61e9d68a7e44a2fdf3d8107415eef9b15",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-seq3.png",
+            "sha256": "78ff978a73c6a2282bc239cb8e37aa806b17b15b72856290d624bee05dfe92ae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-seq3-lights-out.png",
+            "sha256": "b7b00d82b1d52919365c43743e18b8b20be441d3f405372d573369611098ff3e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-seq3-library.png",
+            "sha256": "802733abc4814cd6b85bb80fa854e7e9485e021ace908984cc0262da249f91fd",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-quantizer.png",
+            "sha256": "4a674daa1c1f9c4dfeca8e0ac86e3553c41a26d23e78cc311210a46cf2ddbf66",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-quantizer-lights-out.png",
+            "sha256": "4ba6f1109b96c5b20d8bdea0d03b879c480fbe277205d43d38ad035f3c89abef",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-quantizer-library.png",
+            "sha256": "774b2940eb81f2f4a16b7ffd69d3612e56654715ea5cf063f6c3edbc5dc71307",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mid-side.png",
+            "sha256": "f9e2c80935a728cfca7e2703526dcdce819cf75a563bed5bb23e47f63a3a6c8f",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mid-side-lights-out.png",
+            "sha256": "269f8265ddcb0bf034579b466a0538ba2c833e68d55aa7b827b7c4a24c1cd583",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-mid-side-library.png",
+            "sha256": "d13ae4b0e119251ea69051275b0fb6123844e98ae5e1c1d82a0e78af50d9aa56",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mix.png",
+            "sha256": "0985269a94032e9eeb57e75413dc71b643bce052a29337125efbd6e1e3edcce4",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mix-lights-out.png",
+            "sha256": "27d072f5fe0c35e7f97ab50620cca6bbcbe88886c25625a2c0385a71dbfb7b75",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-mix-library.png",
+            "sha256": "7cfdab61073f2927b7789a25ea6e5bb09f4c59383b6c1bf4df64430eaaa84b03",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-octave.png",
+            "sha256": "2cef8f43f86e18ff509327258d1e1c06b164f1d50dd9605324bfb1a97ed5c8ad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-octave-lights-out.png",
+            "sha256": "74a62effa485312faabb30757a0d70a0f8bef0e38dca5b3ee34ee7d2b6562193",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-octave-library.png",
+            "sha256": "2e0c22236e0a30f373b3b4552c2746f190582d994b8769d7e07099b2158804d0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-mix.png",
+            "sha256": "1a3f5e750b90fcc3d1f6ccee01316cf4f8ed52a01ce5cb8616228cffe52909af",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-mix-lights-out.png",
+            "sha256": "f6beecfa3efa770557ca5809aa58db32c3bbedb1a4292452ed7c112e45b4e927",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-vca-mix-library.png",
+            "sha256": "1375d0117e4ece3d60aecdb2fd903d8d6d84d85b756a5d21f46383790d60155a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          }
+        ]
+      },
+      "reviewed_contact_pages": 6,
+      "full_size_review": [
+        "rack-stock-vca-mix.png",
+        "rack-stock-vca-mix-lights-out.png",
+        "stock-vca-mix-library.png"
+      ],
+      "observations": "All 136 existing scenes retained; new rack/browser show shared geometry, large knobs and sockets, real sum/master schematic; lights-out preserves measured strip lamps. No blank or missing captures, clipping or overlaps found in reviewed new scenes."
+    },
+    "38925658043": {
+      "head": "ceb73db04e0ce76d75eca29e8b6b464763d6c889",
+      "passed": true,
+      "captures": 139,
+      "validation": {
+        "passed": true,
+        "count": 139,
+        "captures": [
+          {
+            "name": "rack.png",
+            "sha256": "91712963d290ee85451fe68f7193c8d2530978c7f5afdc102610d050b1bbceff",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-visuals.png",
+            "sha256": "321809c62d5d3ba94da9767c59c027edd11b98d060fa228734dbd66e005bd2bb",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-utilities.png",
+            "sha256": "8a6611789606db0106436d13f2f3db35043ef6d61696a8adfc023f27b35e2ce3",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-polyphonic.png",
+            "sha256": "899127f05be84d12f7ad9ba2d319e4a7761de2b11d38dcf63efb957c65347188",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-routing.png",
+            "sha256": "d0a2871973ca169fc542ec593884fb39a7fb5fe3fbf981db87b264396e4a602c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi.png",
+            "sha256": "3cb46c07d88b0de846bcce376b9d50fe9d5ddc032062dbbbc16c9ef87ef12f58",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "audio-midi-settings.png",
+            "sha256": "1127b995e567fa595331df506c588531615b606764cf105d4ad4803e87412475",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stereo-width.png",
+            "sha256": "a251d55447124a37eb68324b6f34f64ea7530d08cf540b0d12a7bd242e46fa40",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-routing-modules.png",
+            "sha256": "f7c2f06d43ee33f5cee22747eed6024af9187c537e3c16ad3ce8d730c87c56eb",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-modulation.png",
+            "sha256": "f8a6d3da5260f1f47f775b7739bb903ca09ea96beb5d33c4a42fd196fb7526c0",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "project-save.png",
+            "sha256": "7da9140295dab5672676d640d77f3782259fa3f55842dce87c365d9e472cf68b",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "project-unsaved.png",
+            "sha256": "84fa8b74f32e51e411913b8c0ecbbc79230120ad172fd19442ebb10bccd12b1b",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "signal-scope.png",
+            "sha256": "7ad96613c6650c2db7a7b37a157d6887ef451fefec94e69889d86865fd354a9c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "signal-scope-xy.png",
+            "sha256": "4e63eb7f9cc2872c71a54ed201ae18ea2d7c2e7b3c71c38da0f44a34b699a185",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-sequencer.png",
+            "sha256": "ae9c81097f3158cae3d9c694acee9542cc27be4a293165e475f124b5863a3363",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-switches.png",
+            "sha256": "d2d91b4310e2a49a91cf84587349f77377f66817dab266b0bbc8d330f7d9445c",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-voltage-utilities.png",
+            "sha256": "a2af00672d7078b14e36ff151179385a678cadfbe4bd05eeac365ad3cd96506a",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-bypass.png",
+            "sha256": "f7094943245173e9aceff3c9b70b4ce4d62af6d909497ea603ba387a9d42e253",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-gate-shaping.png",
+            "sha256": "eeb668991f9ef67cbbcb6fb952431db2419ca4f747d062895a76b73d7082481e",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-manual-gates.png",
+            "sha256": "31ac05aa8ca4a32203ba7374f30346eca573d2adc334c30acecaa5cdcf09da3f",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-vca-mix-fade.png",
+            "sha256": "3275dbd9ef5110c73827ff2e2a8b35a8691e9b0e61584970621c0d73a3e99898",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-duplication.png",
+            "sha256": "040a10ea7f8e89c80ce07984bd5bb4828b4386d84c824b46f8716537e65e5dbe",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stacked-routing.png",
+            "sha256": "bc42a733b7d557e4c119a319c78dae48ec23707eb2878687dfa765918e6e5422",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-multi-vco.png",
+            "sha256": "1cb405ee0be40299e45f135843a00c3e83c004588e8f3f8df430c6b774c5233b",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-preset-save.png",
+            "sha256": "dd27dce674e9fdcc0fc3ce124c6257b9a17c2a00771afec5bf3e371a35709acb",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-preset-browser.png",
+            "sha256": "c4f56fea6cca40f981b6a8b2ce0103bddbf9031feddaa93eebedb21c980550e0",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-duplication-outgoing.png",
+            "sha256": "d915b4c87fd4879498fdf118863850e223328179d7ea529520870ba06e3846d1",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-browser.png",
+            "sha256": "697b019ae59a0c16ef9043a7a5c9161d74b652c48077b20f30c13f1aa64f130a",
+            "width": 1280,
+            "height": 880,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-library-compact.png",
+            "sha256": "0aa62f7088ec698f60f7cb0ac0828e98a62d75d0f4fc34d52cca2c191fad9bc2",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "analysis-dock-compact.png",
+            "sha256": "8484f8641169e6c41c56b20c8aaa9619068802404b58cc6aece0a0e2fa5691c9",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "analysis-visuals-compact.png",
+            "sha256": "071f4f2dff219e20de92bad113cb51a6f62f46f029c2dd069995ee7f95ea9ca9",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-pulses.png",
+            "sha256": "d74dd4d1b5414cd20cbfdfd1338abcc214c7a9949fa291e705adf2467dfd54b0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-push.png",
+            "sha256": "511bcdebf02e14c66f7a9f58e7b1416a9b2209f6a4b99e4742f50e3d743196ea",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-gates.png",
+            "sha256": "637ef6b9634d3ce03e54d99aafcecfac7f34af32d9593ff083bacdbdd1d61049",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "audio-performance-simulated.png",
+            "sha256": "bbbf9f632328353e825411e2d7bd61d931382e5eee3a1ea7b768182df0289950",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "parameter-context-entry.png",
+            "sha256": "e63c0bac81e75f747b31f4736dc6d376a6be2de6c901ba91ab709986dd750aa3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-output-menu.png",
+            "sha256": "b130a0b547f35048e9feaa13d7b3243f69474248433ea9c460f43f525d10d6c2",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-input-menu.png",
+            "sha256": "6ef671cfec46d6c0d27221fe698418c419886cf6a08795f40ce6dcb8ab7efa31",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-score-studio.png",
+            "sha256": "0aa2d59bd7a21b3715dbbbc8515119891957da70ad55257e9a34b963abf68eae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-time.png",
+            "sha256": "3091a09c33b933a545dec15e2ffc2537a68c26610edacf241f3d3fe820af2c00",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-xy.png",
+            "sha256": "449627e1804b02b291b259f6c7cc634b0430cdcd2a42a64cc5060d6a24156cd3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-scope-external.png",
+            "sha256": "99f6d197d535df664243089ae44fe0d48f64398cd9d39d2ba3a564e8efbd2d08",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-modal-resonator.png",
+            "sha256": "b48e3e9e99ff306b4c81de072ee165afa5358abb7e386ed82857816394700b0b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-colored-noise.png",
+            "sha256": "7fcf325bf61c8a66718529adad68be00ad83c9a6f7e166c1f5dde6987cec6dae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random-values.png",
+            "sha256": "564fede8ade95a70f8389cb97efc48a4363375edd017b4de4477fc259c694be3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-shift-register.png",
+            "sha256": "8562f8555240bc5d899bda1b9dc6a22907020240bdabfc2267cee783361ea6db",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-080.png",
+            "sha256": "1c0dd694f8a3f6377b23ff2b2cb5304ad1963706ce5648acedf5ac2df03d11fa",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-180.png",
+            "sha256": "f0e2a1c0663c9a48bbf0d7bc82f890173543b4d017e989ca3caa7330e31db6e9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-340.png",
+            "sha256": "dffb7c8ac723ddc6e3dd3bdb9f0a16e440b7f730b57d58fe58988f4093ad62ad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "construction-motion-settled.png",
+            "sha256": "2fda7c7b6e882595232e4417239575310307aff2895efa0c4d97ea0c1f21cc8b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "mcp-session.png",
+            "sha256": "d3a5cbc559237f082636ec4abe233a47213a6051639376c94a0c3fa54d1143ce",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-lights-on.png",
+            "sha256": "da6481dc7e450a5d4bfd1723453c35594930392130fcc0042ad7731041642231",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-dark.png",
+            "sha256": "e95afa09560d4159f0e4c1405044c191a6e446f3433dc69c2fa142871a7cbbfb",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "room-lights-out.png",
+            "sha256": "7db09cb1e0f9a38fdb2c650a1eef7fed22644388ff01e7e83a7f8726dfa6ad4e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "module-inspection.png",
+            "sha256": "41e40c55e608d7fcc1a4a7b723e4090e96780ebcc3c72084e6e4ffd4cb50ea63",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "parameter-precision-navigation.png",
+            "sha256": "da4afba7a87751a4c13eb28a89a6fa0b2bf0837a4f1e063070dc63aeeee991a5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-gesture-guidance.png",
+            "sha256": "195b1bbc7a70d780eebabf747670cbc1a04cc7f3f9ab81505a372ace8688c9c9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-gesture-lights-out.png",
+            "sha256": "c70bdb801450b591957b1eb2efdf625432a1226ee9767b9dd29157c46b295c3c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-palette-editor.png",
+            "sha256": "78ab7bda1da0afe8275091ecb2aa4041ffb551c0b0f56a4478c9806c6e16a18a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-palette-created.png",
+            "sha256": "8c48fbd2e58896459cb95f180c2bf12b5d93ec0f0eb4354eab4bb969ab70de5c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-adsr-eg.png",
+            "sha256": "029a9c2fe9e5eeb626dfccf4268a5255525c76fcb708473f82a874e816f808b3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-adsr-eg-lights-out.png",
+            "sha256": "82d8c96c684c7ededdddaab2445f71ee25897b1c492982b4ca988d06c717e173",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-cc.png",
+            "sha256": "32cbaf9b1a277141a11c66726c330f506b89cab2b50bc9e893c976a48f75943c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-cc-lights-out.png",
+            "sha256": "67fae7dab879d26444f35b013481a33e16065a8fd197ee18b9e3def0d77262b1",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-gate.png",
+            "sha256": "aba7e5922fadedcfd43cfdc50b6febda7706ece02fb99820951da86433037a5e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-midi-gate-lights-out.png",
+            "sha256": "93e777ad96c86b8b91fb5aaaf7e3dfd17c2bac678076ee415ebe190c9cd34512",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-annotations.png",
+            "sha256": "c2f06f8722609698287bb909a36fc22690329aa31bc43ad3af67e57048008a71",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-annotations-lights-out.png",
+            "sha256": "b33b8484927d99bd43df2fc0f390b7aa643509c2561e1b9790c7064d1a267402",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "notes-editor.png",
+            "sha256": "7dc0fdf5c72ea8fb5f1827658a407f07975c289c54e133e1c3ec11ad57c6e5d0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "notes-editor-conflict.png",
+            "sha256": "b69d61da8abda7105317232cbc42e538506df3230c504c208dcc0ad7c7176c1d",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vcf.png",
+            "sha256": "d07ef753db10fec23868a5c9db8404c48750b3bc545cc308d2cf030b28d79c61",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vcf-lights-out.png",
+            "sha256": "e0ddc4b3a420bb52dc1b0ef3ba668d4834ce8c1d983768a8b2a274afdf669a50",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca.png",
+            "sha256": "e2f5879f8849ad1b1cf8d5f4b09b39cdeeeadae02da3a4f8ce4682bfc7d72c9a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-lights-out.png",
+            "sha256": "9dbf72eb8fe2af7e12c3e5c431470e942c2e1d6e1b5e0973abe111f13a973ba2",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-parameter-choices.png",
+            "sha256": "2eaa8c3fdec03256ae195e3b41f2b52daaa3d6e5b04f3b167dd4da3e55de3603",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-parameter-choices-lights-out.png",
+            "sha256": "bc9433f67f7dfc486665a16fb1b96dfda5635b80364896318bcbac6c9e8c2b89",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-port-lights.png",
+            "sha256": "f84e19345179532bacf69e0666114021d61e6719051f16db6cc5162c74620b4a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-port-lights-lights-out.png",
+            "sha256": "93d4f589c230d8861340b886505a3772e7cbccd38eefd5057a9e209ee70be392",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "view-cable-controls.png",
+            "sha256": "5a422034bdb350c2f88f85e730f6f5c9b42f630de47531481d8a8b184877c85a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-presentation-clear-panel.png",
+            "sha256": "34e04edd8a3a75b4b9c2b5a3fe15e1876b0545b29f30dc08a3c5dd11d2e461ab",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-presentation-loose.png",
+            "sha256": "76bbcd9a4e403e1bd84795deefd36b0b32a51bb93565d51e7eb5763972e7cde6",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-100.png",
+            "sha256": "9910f2a3a582780038f298279ab62bd66d0b46137e8008f94c4755a537b17536",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-wide.png",
+            "sha256": "cb6a62cced803a9ee0e3ca4815dcf55205311863ada2f0bcd844bf45f5bda6b3",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-compact.png",
+            "sha256": "5559e87316e1a6a0d952a55286db4473278f008603e7a531ecd528d3364f50aa",
+            "width": 940,
+            "height": 680,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "library-zoom-200.png",
+            "sha256": "7506f32fdb56d21412ad690dd9526b5407a56954c54d262f405cd004b1e51f99",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-small-labels.png",
+            "sha256": "0b9d4681aa56de59a3de9074b4f760a14c0f6e2ebf625a6389f8b9d9ffadcfec",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-unplug.png",
+            "sha256": "370d29258052560b88c50b293289354b55a68a49a96e2dbec705bb0c29b9eac9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-travel.png",
+            "sha256": "5bfba9c29a26b0a8915de62ee83a335d955a286c341f1593548ebd8ed7209bd0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-settle.png",
+            "sha256": "664d3d8332a99e6a4a6392f037cb2ffa48cc9d04e7f38bf6c504e3a2d89bff73",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-move-complete.png",
+            "sha256": "67a940374e7fe2e7f8421aa2639a086770816c199bda72036bd4c11ee7ff9dad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "cable-tension-tight.png",
+            "sha256": "0369e9c1cbb923a39592e76b593a8daf014313de6c4a3524e32bbbd137817854",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-before.png",
+            "sha256": "ae0a280548deab9064b751ecc2fd47ed7784670f757b5c2f78ef66400b3008c5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-mid.png",
+            "sha256": "e485cabbca7fb71d376404427730e106ae297456c92ac16fafc774cac8ad1cd9",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "agent-follow-settled.png",
+            "sha256": "0a85a03f80218d6a9f0f89cfcbb16814ccd24e443c544106c9bcedba38f7a748",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-delay.png",
+            "sha256": "698105489ec1256fc6c58404e0dfdb71089cd0d49327a663610c312385651ca1",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-delay-lights-out.png",
+            "sha256": "1ca235539d8b5d92b09e11f08b073968e399369d9e1d977863f22d74b439863c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-delay-library.png",
+            "sha256": "6bc48b9e44fd6eca0d03deba39d649e939244d896f2300de030a2c42567e255b",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-wavetable.png",
+            "sha256": "fefc8b2a3fbb1058b55e2589602091070acb84bc11fa0bdcfc675f7a6acc4025",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-wavetable-lights-out.png",
+            "sha256": "b185feeb4a91406be4dd44d59569b21fad2c0bd5049c4dff590e44d406d60601",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "wavetable-library.png",
+            "sha256": "6fd8501c705274a8e0815961cd90e5fd03b294ac6eda617d57b6daa8f0531b91",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random.png",
+            "sha256": "97ef0fcaba7df946e2103673914598ddd1c304ed40a3f8399afb5ceadc2bfab6",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-random-lights-out.png",
+            "sha256": "24df3014d82fcaeef7bf848b5e6a106328e01c397b67d6a6d95ae2719e49a26e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "random-library.png",
+            "sha256": "fc3ecf1aaeddf2b530a8cdef1dbf37b00c5475adbed143e6d0ac12a02f17f7df",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope.png",
+            "sha256": "bc916f49349f8b9ed29f47402913ffe07aa4be4c7a3f74e16114d3444f51ad54",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope-lights-out.png",
+            "sha256": "97de6d6481ccbf6bd134c7aae843ae92411c45f234a683ca0e93b8b2ead23867",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-weak-scope-manual.png",
+            "sha256": "ac1f194b2d1b02f2bfdd99d2069b910105f02ea8bb880282ca82a42210805e7f",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-opening.png",
+            "sha256": "022174d4dd8177b375e4cfb40e02fd52ab92b28d2fbcc3025fbc98fb90c13fd0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-mid.png",
+            "sha256": "a5af3d5df33900019f4e6b52b0e46cc2db5002c88d3d675994473f1c3a0f7708",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "menu-motion-settled.png",
+            "sha256": "694f2f82dae7f429e037c2aa73b82f02e023bc6984fa2745d74bd5eccec5fd6c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-merge.png",
+            "sha256": "56b77e52ae45fc555b665a9e77b88c0cc7e6e151e42fee6789b8db9e11bc9e3c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-merge-lights-out.png",
+            "sha256": "ff8939e3d242eb08e812af5e5e305feae289d26b5b6fa1c75e05b7cb823bdd11",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "merge-library.png",
+            "sha256": "34377ad84867117957cf9e57ae919c31fb0b31f07f68267469d6cd31f2c08376",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-split.png",
+            "sha256": "33e5971d4c8ca674c2db82f429e2eb9cfe1a6cb4ce8f52b5b35d4f45d2413836",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-split-lights-out.png",
+            "sha256": "12433997974bb44dbe7359149b4693bf9585530da07ef117873f02ace04144e5",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "split-library.png",
+            "sha256": "790ac2bb6999e411517c87b45159417d59b98320a5fe47c38f7597cbfa9a0a82",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-lfo.png",
+            "sha256": "522df8a54b9211759106aa7d743e3ece8ded6858ae56de9d547fd23f12a9bdda",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-lfo-lights-out.png",
+            "sha256": "4a59d562b005f76516b9f3a6b38aed4bf64c1ff70e24deb3893199027969cc9c",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-lfo-library.png",
+            "sha256": "9522cb682e73c970855eaf81f3824940ccae243f40b6e23a6a82644d1432a15f",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vco.png",
+            "sha256": "7fd264564df036d02ea4dcb53198bc9594e082eb015876a33745c3ef7224ce26",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vco-lights-out.png",
+            "sha256": "e950d12333516828acd8bddabcdea82cb85180ff7f309da15e13255108215bbb",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-vco-library.png",
+            "sha256": "03ad0148dcc16181ccda86464b65e08a91b5e810bbbb660d12e0f7aae3796790",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-seq3.png",
+            "sha256": "78ff978a73c6a2282bc239cb8e37aa806b17b15b72856290d624bee05dfe92ae",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-seq3-lights-out.png",
+            "sha256": "b7b00d82b1d52919365c43743e18b8b20be441d3f405372d573369611098ff3e",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-seq3-library.png",
+            "sha256": "f119d204d0f3ee76242ebbd417dc3201e98d370548cf544fc6963669c2805d33",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-quantizer.png",
+            "sha256": "4a674daa1c1f9c4dfeca8e0ac86e3553c41a26d23e78cc311210a46cf2ddbf66",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-quantizer-lights-out.png",
+            "sha256": "4ba6f1109b96c5b20d8bdea0d03b879c480fbe277205d43d38ad035f3c89abef",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-quantizer-library.png",
+            "sha256": "774b2940eb81f2f4a16b7ffd69d3612e56654715ea5cf063f6c3edbc5dc71307",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mid-side.png",
+            "sha256": "f9e2c80935a728cfca7e2703526dcdce819cf75a563bed5bb23e47f63a3a6c8f",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mid-side-lights-out.png",
+            "sha256": "269f8265ddcb0bf034579b466a0538ba2c833e68d55aa7b827b7c4a24c1cd583",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-mid-side-library.png",
+            "sha256": "d13ae4b0e119251ea69051275b0fb6123844e98ae5e1c1d82a0e78af50d9aa56",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mix.png",
+            "sha256": "0985269a94032e9eeb57e75413dc71b643bce052a29337125efbd6e1e3edcce4",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-mix-lights-out.png",
+            "sha256": "27d072f5fe0c35e7f97ab50620cca6bbcbe88886c25625a2c0385a71dbfb7b75",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-mix-library.png",
+            "sha256": "7cfdab61073f2927b7789a25ea6e5bb09f4c59383b6c1bf4df64430eaaa84b03",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-octave.png",
+            "sha256": "2cef8f43f86e18ff509327258d1e1c06b164f1d50dd9605324bfb1a97ed5c8ad",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-octave-lights-out.png",
+            "sha256": "74a62effa485312faabb30757a0d70a0f8bef0e38dca5b3ee34ee7d2b6562193",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-octave-library.png",
+            "sha256": "2e0c22236e0a30f373b3b4552c2746f190582d994b8769d7e07099b2158804d0",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-mix.png",
+            "sha256": "1a3f5e750b90fcc3d1f6ccee01316cf4f8ed52a01ce5cb8616228cffe52909af",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "rack-stock-vca-mix-lights-out.png",
+            "sha256": "f6beecfa3efa770557ca5809aa58db32c3bbedb1a4292452ed7c112e45b4e927",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          },
+          {
+            "name": "stock-vca-mix-library.png",
+            "sha256": "1375d0117e4ece3d60aecdb2fd903d8d6d84d85b756a5d21f46383790d60155a",
+            "width": 1440,
+            "height": 960,
+            "all_crc_and_rows_valid": true
+          }
+        ]
+      },
+      "reviewed_contact_pages": 6,
+      "full_size_review": [
+        "rack-stock-vca-mix.png",
+        "rack-stock-vca-mix-lights-out.png",
+        "stock-vca-mix-library.png"
+      ],
+      "observations": "All 136 existing scenes retained; new rack/browser show shared geometry, large knobs and sockets, real sum/master schematic; lights-out preserves measured strip lamps. No blank or missing captures, clipping or overlaps found in reviewed new scenes."
+    }
+  },
+  "bundle": {
+    "verified_at": "2026-10-16T15:51:35.220412+00:00",
+    "bundle": "/Users/dbrewer/Projects/openpatch-stock-vca-mix/native-test-output/stock-vca-mix/delivery/OpenPatch.app",
+    "strict_adhoc_signature": true,
+    "architecture": "arm64",
+    "installed": false,
+    "launched": false,
+    "binaries": [
+      {
+        "name": "openpatch-desktop",
+        "release_sha256": "8755ee9e45545e62b36efbd950f5e776306a774143ff6070ef3b90a7acb83a03",
+        "signed_sha256": "9420720e58d397e7a64857b4dced0d4d50fe3b4f5dd950550c2cd924439e6fd5",
+        "file_backed_sections_equal": true,
+        "uuid": [
+          "3fa6eac3166f3856ad3e00164c531d35"
+        ],
+        "sections": {
+          "__TEXT:__text": {
+            "bytes": 8037004,
+            "sha256": "5eade3031b8753e8dc4e43a0b74f7ac376e065f24bea9fd2cfb0ce701e32adb3"
+          },
+          "__TEXT:__stubs": {
+            "bytes": 3432,
+            "sha256": "08a3a0865cdd64152946c5b2f912641f4763a6ade1b22a3bc71372dd8648ec52"
+          },
+          "__TEXT:__stub_helper": {
+            "bytes": 3456,
+            "sha256": "8409ba4eaa04618c3c87990113580e4b84f19cce0c93d2ec3230d927a8f16627"
+          },
+          "__TEXT:__gcc_except_tab": {
+            "bytes": 396596,
+            "sha256": "ee4a0c37994ed88be3415508ac87f72b481093708c9122259a3201813adee6ce"
+          },
+          "__TEXT:__const": {
+            "bytes": 21049928,
+            "sha256": "bcb12c4638e23c016c8e6d833316ff033e024b81d8741f73a2f6593c8c15088b"
+          },
+          "__TEXT:__cstring": {
+            "bytes": 95955,
+            "sha256": "ec6e249ed89c29744b52e743f920a2260587b32a637c8dee617da0066cdf9c13"
+          },
+          "__TEXT:__unwind_info": {
+            "bytes": 84496,
+            "sha256": "b24fce476cc18cd77fcec59b3d8a4c75ae0af75e8adccceaed3f1879a59dbe70"
+          },
+          "__TEXT:__eh_frame": {
+            "bytes": 524652,
+            "sha256": "a22f7eabe068101881f231bfbde0007f0ef6dcf944572d96cef2d7d4be349b27"
+          },
+          "__DATA_CONST:__const": {
+            "bytes": 187912,
+            "sha256": "e71f614e3310cd221e95b667de1abad5a2a21a0d7d6f2760e5cc96b2784d9c19"
+          },
+          "__DATA_CONST:__got": {
+            "bytes": 544,
+            "sha256": "663776518f2c190527039558165ba1ba533d1caf1395beebe535ce71d89cff9a"
+          },
+          "__DATA:__la_symbol_ptr": {
+            "bytes": 2288,
+            "sha256": "6b25efc4eeb548fc6fb96a84369b9546e3535f314f897ee29867d1e12fdf974b"
+          },
+          "__DATA:__data": {
+            "bytes": 30480,
+            "sha256": "318627c7ddc813fcb360a3f620c0d2d0f9ae31ed48976d8afd13524968caa516"
+          },
+          "__DATA:__thread_vars": {
+            "bytes": 384,
+            "sha256": "010c6bf6d486de3e534ca1095dbfd9fcd618e91170a1a6a947fd7f8327fe6086"
+          },
+          "__DATA:__thread_data": {
+            "bytes": 144,
+            "sha256": "38ef0cca006304ad0052b0911a6b30b94bfbd6c5aeb6b4f694873e02e0fafff7"
+          }
+        },
+        "no_libRack_dependency": true,
+        "catalog_kinds": null
+      },
+      {
+        "name": "openpatch",
+        "release_sha256": "9ef6159608f0da7f0ddf5d72a3b1468b81e61d9e33c0c29dd84688fd2896ce84",
+        "signed_sha256": "42af790b74edfd532d872ace9f03802210ec3326333975476150903c4223c2d7",
+        "file_backed_sections_equal": true,
+        "uuid": [
+          "123c309da25e3e3a9375ff853f109ed9"
+        ],
+        "sections": {
+          "__TEXT:__text": {
+            "bytes": 2525608,
+            "sha256": "bc431f14ad99b00aa7d44981786f1026ae5bdd631e307bd1a9e6598de5b58a6f"
+          },
+          "__TEXT:__stubs": {
+            "bytes": 1512,
+            "sha256": "969e5d28dee00d20b814d0e34a82b716f6ff4df7982327a9c45138d55cbe1320"
+          },
+          "__TEXT:__stub_helper": {
+            "bytes": 1536,
+            "sha256": "450fdab54975d8d6a5c4b8fc4aef22b77c03fb1b0ca255233b7d3b83489db642"
+          },
+          "__TEXT:__cstring": {
+            "bytes": 21841,
+            "sha256": "c6800ed4a63c2fabf1867c97eb962602c79c889dae2ae671269dfb4b1b99cbd7"
+          },
+          "__TEXT:__gcc_except_tab": {
+            "bytes": 142944,
+            "sha256": "75f9775f6d102883a734dac35ef39c494fcddbb9237eaeed7992314398a6de20"
+          },
+          "__TEXT:__const": {
+            "bytes": 285248,
+            "sha256": "986950e30a12a1cf29e9a1110e93045baff04cbc630de58a40825e278885f0e9"
+          },
+          "__TEXT:__unwind_info": {
+            "bytes": 26520,
+            "sha256": "324343332d2b94a885699605dfcb929ec8dcda41527f0d73535d2b48c2626d05"
+          },
+          "__TEXT:__eh_frame": {
+            "bytes": 160072,
+            "sha256": "37ec5c1fbb548f051918a1cc78dacf9e2d5d29db3be63fbfdf0998319b083761"
+          },
+          "__DATA_CONST:__const": {
+            "bytes": 53024,
+            "sha256": "cc53038ba8809e7d40747bfe1860b31427c5d5df9777cb35709390412d5c5f34"
+          },
+          "__DATA_CONST:__got": {
+            "bytes": 16,
+            "sha256": "f7dd27387f4d58ba9790850a12302b243ef46b985f15fd255f07cb3a30b619d7"
+          },
+          "__DATA:__la_symbol_ptr": {
+            "bytes": 1008,
+            "sha256": "11351cc7a02ad56f7b201a9e02824b75b2b0bba6f950b656b788cb3e780f664b"
+          },
+          "__DATA:__data": {
+            "bytes": 28208,
+            "sha256": "f44120bc18e4e88db2ddc54616cfa8803e21b49286de3a38c85cddeae9a6d43c"
+          },
+          "__DATA:__thread_vars": {
+            "bytes": 192,
+            "sha256": "a098c926275aa08256e7535ee7b7a65f46d22ec6143aa8f91433f2057ea40490"
+          },
+          "__DATA:__thread_data": {
+            "bytes": 64,
+            "sha256": "31af326ab62a3c451cc198c3d40e7b72353ed0e79d83c9903d21194efe5b5f36"
+          }
+        },
+        "no_libRack_dependency": true,
+        "catalog_kinds": 77
+      }
+    ],
+    "note": "Bundle uses the exact immutable measured and 109-Python-check-tested CLI; Desktop uses isolated optimized workspace build. Signing metadata may differ; all file-backed Mach-O sections and UUID must match.",
+    "all_four_fonts_embedded": true,
+    "font_notice_exact": true,
+    "notices_exact": true,
+    "icon_exact": true,
+    "workspace_cli": {
+      "sha256": "f083bb67f77af36a87735e0dbbaa0acadf5896571b999aee3e949821bc9e47a2",
+      "catalog_exactly_matches_measured_cli": true,
+      "matches_measured_binary": false,
+      "qualification": "Workspace-unified catalog matches; the bundle uses the exact separately measured and MCP-tested CLI."
+    }
+  },
+  "limitations": [
+    "No local native Mac GUI/input/audio-device checks",
+    "Offline throughput is four existing workloads on one host; no speedup claim, VCV performance comparison or audio callback deadlines",
+    "Stock VCA Mix qualifies pinned source plus exact Rack SDK, not hardware or arbitrary distributed binaries",
+    "Broader Signal Atlas conversion and 49 Core/Free module parity remain incomplete; MIDI/live last"
+  ]
+}
