@@ -230,6 +230,24 @@ fn stock_mid_side_shared_renderer_preserves_named_jacks_labels_and_preview_geome
                     "{scale} browser={browser}: {label} clipped at {rect:?}"
                 );
             }
+            for section in ["ENCODER", "DECODER"] {
+                let heading = text.iter().find(|(label, _)| label == section).unwrap().1;
+                let width = text
+                    .iter()
+                    .filter(|(label, _)| label == "WIDTH")
+                    .map(|(_, rect)| *rect)
+                    .min_by(|a, b| {
+                        (a.center().x - heading.center().x)
+                            .abs()
+                            .total_cmp(&(b.center().x - heading.center().x).abs())
+                    })
+                    .unwrap();
+                assert!(
+                    heading.bottom() + zoom <= width.top(),
+                    "{scale} browser={browser}: {section} crowds WIDTH: {heading:?} {width:?}"
+                );
+                assert!(heading.top() >= fitted.top() + 65.0 * zoom);
+            }
             assert!(preview.renderer.editing.is_none());
             assert!(preview.renderer.pending.is_none());
             surfaces.push(primitives(&output));

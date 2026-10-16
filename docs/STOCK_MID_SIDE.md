@@ -29,6 +29,8 @@ Choose **File → Mid/Side stereo voice** for a connected example. Two Stock VCO
 feed the encoder; a slow Stock LFO moves decoder width. Scope displays the
 actual mid and side signals, and Stereo Audio receives the decoded left/right
 outputs. The rack and library use the same panel renderer and named jack layout.
+Encoder/decoder headings and width captions occupy separate lines at all five
+checked rack/browser scales; fader and jack targets stay in place.
 
 ## Reference evidence
 

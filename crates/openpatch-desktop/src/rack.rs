@@ -3057,7 +3057,7 @@ impl Rack {
             if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
-                        point(x, 78.0),
+                        point(x, 72.0),
                         Align2::CENTER_CENTER,
                         label,
                         crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
@@ -3552,6 +3552,9 @@ impl Rack {
                         23.0,
                     )
                 } else if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
+                    // Give the section heading and the separate WIDTH caption
+                    // distinct lines above the unchanged fader and value well.
+                    label_gap = 5.0;
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if node.kind == "mix6" {
                     (pos2(width * 0.5, 125.0), 32.0)
