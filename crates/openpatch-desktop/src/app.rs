@@ -4067,12 +4067,33 @@ impl OpenPatch {
                     Some(AnalysisTab::Scope) => self.scope.contents(ui, &self.patch, &self.catalog),
                     Some(AnalysisTab::Visuals) => {
                         ui.horizontal(|ui| {
-                            for (mode, name) in [(0, "Aurora"), (1, "Spectrum"), (2, "Waveform")] {
-                                ui.selectable_value(&mut self.visual_mode, mode, name);
+                            for (mode, name) in crate::visuals::MODES {
+                                let response =
+                                    ui.selectable_value(&mut self.visual_mode, mode, name);
+                                #[cfg(test)]
+                                ui.ctx().data_mut(|d| {
+                                    d.insert_temp(
+                                        egui::Id::new(("visual-mode", mode)),
+                                        response.rect,
+                                    )
+                                });
+                                let _ = response;
                             }
                         });
-                        let wave = self.audio.as_ref().map_or([0.0; 256], Audio::waveform);
-                        let peak = self.audio.as_ref().map_or(0.0, Audio::peak);
+                        let (wave, peak) = self
+                            .audio
+                            .as_ref()
+                            .map(|audio| (audio.waveform(), audio.peak()))
+                            .or_else(|| {
+                                self.smoke_test.as_ref().and_then(|_| {
+                                    ctx.data(|d| {
+                                        d.get_temp::<([f32; 256], f32)>(egui::Id::new(
+                                            "ferrofluid-smoke-audio",
+                                        ))
+                                    })
+                                })
+                            })
+                            .unwrap_or(([0.0; 256], 0.0));
                         if let Some(v) = &self.visualizer {
                             v.paint(
                                 ui,
@@ -4885,7 +4906,7 @@ impl OpenPatch {
             .default_size([730.0, 540.0])
             .show(ctx, |ui| {
                 ui.label(
-                    "GLSL 330 · u_time · u_resolution · u_level · u_wave[256] · u_spectrum[64]",
+                    "GLSL 330 · u_time · u_resolution · u_level · u_wave[256] · u_spectrum[64] · u_ferro",
                 );
                 ui.horizontal(|ui| {
                     if ui.button("Compile").clicked() {
@@ -8533,7 +8554,7 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/145 at frame {frame}: {}",
+                "Native smoke: capture {}/146 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
@@ -8544,6 +8565,7 @@ impl OpenPatch {
     }
 }
 include!("stock_noise_fixture.rs");
+include!("ferrofluid_fixture.rs");
 include!("studio_mixer_fixture.rs");
 impl eframe::App for OpenPatch {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
@@ -10914,6 +10936,50 @@ mod project_workflow_tests {
             } else {
                 assert!(app.rack.layout()["positions"].get(&id).is_none());
             }
+        }
+    }
+
+    #[test]
+    fn ferrofluid_can_be_selected_and_other_modes_remain_available() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.select_analysis(Some(AnalysisTab::Visuals));
+        let ctx = egui::Context::default();
+        let draw = |app: &mut OpenPatch, time: f64, events: Vec<egui::Event>| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 760.0),
+                    )),
+                    time: Some(time),
+                    events,
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| app.analysis_dock(ctx),
+            );
+        };
+        draw(&mut app, 0.0, vec![]);
+        draw(&mut app, 0.05, vec![]);
+        for (step, mode) in [3, 1, 0, 2, 3].into_iter().enumerate() {
+            let rect = ctx
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("visual-mode", mode))))
+                .unwrap();
+            let event = |pressed| egui::Event::PointerButton {
+                pos: rect.center(),
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            draw(
+                &mut app,
+                0.1 + step as f64 * 0.1,
+                vec![egui::Event::PointerMoved(rect.center()), event(true)],
+            );
+            draw(&mut app, 0.15 + step as f64 * 0.1, vec![event(false)]);
+            assert_eq!(app.visual_mode, mode);
+            assert_eq!(app.analysis_tab, Some(AnalysisTab::Visuals));
         }
     }
 

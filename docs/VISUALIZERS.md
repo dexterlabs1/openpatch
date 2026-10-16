@@ -8,15 +8,23 @@ control. They must never stall the audio callback.
 `openpatch-desktop` includes an optional OpenGL view in the native analysis dock.
 Click the **Visuals** toolbar icon or choose **View → Visualizers**, then drag the
 dock's divider to resize. Scope and Visuals are tabs in the same dock, keeping
-space available for the rack and library. Aurora, Spectrum, and Waveform modes
+space available for the rack and library. Aurora, Spectrum, Waveform, and Ferrofluid modes
 react to the same audio output as the rack. Playback
 starts paused; press Play in the window to hear the patch and drive its visuals.
 The animated background continues while paused, with audio input fading to zero.
+Ferrofluid renders a head-on black liquid sculpture with reflective spikes and
+studio lighting. Low-frequency energy swells the body; upper bands reshape the
+surface and add rapid ripples. Fast attack/release envelopes
+and a relative peak pulse make the movement prominent during playback. A soft
+energy mapping retains variation instead of flattening louder signals at a hard
+ceiling. This is a visual interpretation, rather than a physical simulation.
+Ray marching has a fixed 120-step limit and stays outside the audio callback.
+
 No browser or local audio-file selection is needed for this native view.
 
 The **Edit GLSL** window edits a GLSL 330 core fragment shader against a fixed
 fullscreen vertex shader. The built-in source in
-[`visuals.rs`](../crates/openpatch-desktop/src/visuals.rs) defines the interface:
+[`visuals.frag`](../crates/openpatch-desktop/assets/shaders/visuals.frag) defines the interface:
 
 | Input | Meaning |
 | --- | --- |
@@ -27,7 +35,8 @@ fullscreen vertex shader. The built-in source in
 | `uniform float u_level` | Recent decaying peak after transport and volume gain |
 | `uniform float u_wave[256]` | Best-effort waveform, oldest sample first |
 | `uniform float u_spectrum[64]` | Hann-windowed DFT magnitudes from the waveform |
-| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Waveform |
+| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Waveform, 3 Ferrofluid |
+| `uniform vec4 u_ferro` | Smoothed low, middle, high and peak envelopes, each 0..1 |
 
 Compile/link errors keep the previous working shader active and show driver
 diagnostics. Sources are limited to 64 KiB. Restore source restores the editor

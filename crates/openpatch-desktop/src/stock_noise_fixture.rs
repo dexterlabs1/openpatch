@@ -63,7 +63,7 @@ impl OpenPatch {
     // Append captures only after all 139 existing receipts have been saved.
     // The old logical-frame schedule and its <2960 guard remain unchanged.
     fn smoke_noise_tail(&mut self, ctx: &egui::Context, path: &Path, captures: usize) {
-        if captures == 145 {
+        if captures == 146 {
             self.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
@@ -117,6 +117,7 @@ impl OpenPatch {
                     self.library.request_focus();
                     self.title = "Studio Mixer · Custom and Mixing".into();
                 }
+                145 => self.prepare_ferrofluid_fixture(ctx),
                 _ => panic!("Unexpected Noise tail capture"),
             }
         } else if let Some(expected) = stage.pending {
@@ -144,6 +145,7 @@ impl OpenPatch {
                     142 => "rack-studio-mixer.png",
                     143 => "rack-studio-mixer-lights-out.png",
                     144 => "studio-mixer-library.png",
+                    145 => "visuals-ferrofluid.png",
                     _ => unreachable!(),
                 };
                 let target = path.with_file_name(name);
@@ -156,13 +158,13 @@ impl OpenPatch {
                 )
                 .expect("Save Noise screenshot");
                 eprintln!(
-                    "Native smoke: capture {}/145 at frame 2959: {}",
+                    "Native smoke: capture {}/146 at frame 2959: {}",
                     captures + 1,
                     target.display()
                 );
                 self.smoke_test.as_mut().unwrap().2 = captures + 1;
                 stage.pending = None;
-                if captures == 144 {
+                if captures == 145 {
                     self.allow_close = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }

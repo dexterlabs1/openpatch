@@ -3,47 +3,14 @@ use eframe::{egui, egui_glow, glow};
 use glow::HasContext;
 use std::sync::{Arc, Mutex};
 
-pub const DEFAULT_SHADER: &str = r#"#version 330 core
-in vec2 v_uv;
-out vec4 frag_color;
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform float u_level;
-uniform float u_wave[256];
-uniform float u_spectrum[64];
-uniform int u_mode; // 0 aurora, 1 spectrum, 2 oscilloscope
-void main() {
-    vec2 uv = v_uv;
-    vec2 p = (uv - 0.5) * vec2(u_resolution.x/u_resolution.y, 1.0);
-    vec3 col = vec3(0.019, 0.028, 0.054);
-    float grid = pow(max(0.0, cos(p.x*48.0)), 32.0)*0.012
-               + pow(max(0.0, cos(p.y*48.0)), 32.0)*0.012;
-    col += vec3(0.2,0.55,0.7)*grid;
-    if (u_mode == 0) {
-        for (int i=0; i<7; i++) {
-            float f = float(i);
-            float y = sin(p.x*(1.5+f*0.16)+u_time*(0.2+f*0.045)+f*0.45)*0.15;
-            y += sin(p.x*3.0-u_time*0.3+f)*0.045;
-            y += u_wave[int(clamp(uv.x*255.0,0.0,255.0))]*0.30;
-            float d = abs(p.y-y+(f-3.0)*0.025);
-            vec3 tint = mix(vec3(0.04,0.8,0.74),vec3(0.48,0.25,0.97),f/6.0);
-            col += tint*(0.0018/(d+0.004)+exp(-d*18.0)*0.08)*(0.38+u_level*3.0);
-        }
-    } else if (u_mode == 1) {
-        float bin = clamp(floor(uv.x*64.0),0.0,63.0);
-        float amplitude = clamp(sqrt(u_spectrum[int(bin)])*2.3,0.0,0.9);
-        float bar = step(0.12,fract(uv.x*64.0))*step(uv.y,amplitude+0.045)*step(0.045,uv.y);
-        col += mix(vec3(0.08,0.85,0.75),vec3(0.55,0.3,0.98),uv.x)*bar*(0.45+uv.y);
-    } else {
-        float index = clamp(uv.x*254.0,0.0,254.0);
-        float wave = mix(u_wave[int(index)],u_wave[int(index)+1],fract(index));
-        float d = abs(uv.y-0.5-wave*1.3);
-        col += vec3(0.12,0.9,0.75)*(0.003/(d+0.004)+exp(-d*80.0)*0.1);
-    }
-    col *= 1.0-smoothstep(0.25,0.85,length(uv-0.5))*0.5;
-    frag_color = vec4(col,1.0);
-}
-"#;
+pub const MODES: [(i32, &str); 4] = [
+    (0, "Aurora"),
+    (1, "Spectrum"),
+    (2, "Waveform"),
+    (3, "Ferrofluid"),
+];
+
+pub const DEFAULT_SHADER: &str = include_str!("../assets/shaders/visuals.frag");
 const VERTEX: &str = "#version 330 core\nout vec2 v_uv;\nvoid main(){ vec2 p=vec2(float((gl_VertexID << 1) & 2),float(gl_VertexID & 2)); v_uv=p; gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
 
 struct Program {
@@ -55,6 +22,7 @@ struct Program {
     wave: Option<glow::UniformLocation>,
     spectrum: Option<glow::UniformLocation>,
     mode: Option<glow::UniformLocation>,
+    ferro: Option<glow::UniformLocation>,
 }
 
 impl Program {
@@ -100,6 +68,7 @@ impl Program {
                 wave: gl.get_uniform_location(program, "u_wave[0]"),
                 spectrum: gl.get_uniform_location(program, "u_spectrum[0]"),
                 mode: gl.get_uniform_location(program, "u_mode"),
+                ferro: gl.get_uniform_location(program, "u_ferro"),
                 program,
                 vao,
             })
@@ -116,11 +85,13 @@ impl Program {
 
 pub struct Visualizer {
     program: Arc<Mutex<Program>>,
+    dynamics: Mutex<FerroDynamics>,
 }
 impl Visualizer {
     pub fn new(gl: &glow::Context) -> Result<Self, String> {
         Ok(Self {
             program: Arc::new(Mutex::new(Program::new(gl, DEFAULT_SHADER)?)),
+            dynamics: Mutex::new(FerroDynamics::default()),
         })
     }
     pub fn compile(&mut self, gl: &glow::Context, source: &str) -> Result<(), String> {
@@ -145,6 +116,7 @@ impl Visualizer {
         let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
         let program = self.program.clone();
         let spectrum = spectrum(&wave);
+        let ferro = self.dynamics.lock().unwrap().update(time, &spectrum, level);
         ui.painter().add(egui::PaintCallback {
             rect,
             callback: Arc::new(egui_glow::CallbackFn::new(move |_, painter| {
@@ -160,6 +132,7 @@ impl Visualizer {
                     gl.uniform_1_f32_slice(p.wave.as_ref(), &wave);
                     gl.uniform_1_f32_slice(p.spectrum.as_ref(), &spectrum);
                     gl.uniform_1_i32(p.mode.as_ref(), mode);
+                    gl.uniform_4_f32(p.ferro.as_ref(), ferro[0], ferro[1], ferro[2], ferro[3]);
                     gl.draw_arrays(glow::TRIANGLES, 0, 3);
                 }
             })),
@@ -167,6 +140,49 @@ impl Visualizer {
     }
     pub fn destroy(&self, gl: &glow::Context) {
         self.program.lock().unwrap().destroy(gl);
+    }
+}
+
+// UI-only envelopes keep rapid transients smooth without changing the audio path.
+#[derive(Default)]
+struct FerroDynamics {
+    previous_time: Option<f32>,
+    bands: [f32; 4],
+    slow_level: f32,
+}
+impl FerroDynamics {
+    fn update(&mut self, time: f32, spectrum: &[f32; 64], level: f32) -> [f32; 4] {
+        let finite = |x: f32| if x.is_finite() { x.max(0.0) } else { 0.0 };
+        let energy = |range: std::ops::Range<usize>, gain: f32| {
+            let strength = (range
+                .map(|i| finite(spectrum[i]).min(4.0).powi(2))
+                .sum::<f32>()
+                .sqrt()
+                * gain)
+                .max(0.0);
+            strength / (1.0 + strength)
+        };
+        let peak = finite(level).min(1.0);
+        self.slow_level += (peak - self.slow_level) * 0.025;
+        let pulse =
+            ((peak - self.slow_level * 0.82).max(0.0) / (self.slow_level + 0.015) * 1.8).min(1.0);
+        let target = [
+            energy(1..5, 35.0),
+            energy(5..19, 55.0),
+            energy(19..56, 90.0),
+            pulse,
+        ];
+        let dt = self
+            .previous_time
+            .map_or(1.0 / 60.0, |old| finite(time - old).min(0.1));
+        if time.is_finite() {
+            self.previous_time = Some(time);
+        }
+        for (current, target) in self.bands.iter_mut().zip(target) {
+            let tau = if target > *current { 0.008 } else { 0.085 };
+            *current += (target - *current) * (1.0 - (-dt / tau).exp());
+        }
+        self.bands
     }
 }
 
@@ -186,6 +202,39 @@ fn spectrum(wave: &[f32; 256]) -> [f32; 64] {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ferrofluid_separates_bands_and_releases_to_rest() {
+        let tone = |bin: f32| {
+            std::array::from_fn(|i| 0.1 * (std::f32::consts::TAU * i as f32 * bin / 256.0).sin())
+        };
+        let mut low = super::FerroDynamics::default();
+        let mut high = super::FerroDynamics::default();
+        for frame in 0..60 {
+            let t = frame as f32 / 60.0;
+            low.update(t, &super::spectrum(&tone(2.0)), 0.1);
+            high.update(t, &super::spectrum(&tone(32.0)), 0.1);
+        }
+        assert!(low.bands[0] > 0.3 && low.bands[2] < 0.001);
+        assert!(high.bands[2] > 0.5 && high.bands[0] < 0.001);
+        for frame in 60..300 {
+            low.update(frame as f32 / 60.0, &[0.0; 64], 0.0);
+        }
+        assert!(low.bands.iter().all(|&v| v < 0.0001));
+    }
+
+    #[test]
+    fn ferrofluid_envelopes_stay_bounded_across_bad_inputs_and_clock_jumps() {
+        let mut dynamics = super::FerroDynamics::default();
+        for time in [0.0, 0.016, f32::NAN, -10.0, 10000.0, f32::INFINITY] {
+            for value in [f32::NAN, f32::INFINITY, -100.0, f32::MAX, 1.0] {
+                let bands = dynamics.update(time, &[value; 64], value);
+                assert!(bands
+                    .iter()
+                    .all(|v| v.is_finite() && (0.0..=1.0).contains(v)));
+            }
+        }
+    }
+
     #[test]
     fn spectrum_finds_tone() {
         let wave = std::array::from_fn(|i| (std::f32::consts::TAU * i as f32 * 8.0 / 256.0).sin());
