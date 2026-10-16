@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 74 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 75 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix has bounded digital reference proof; its delivery gates are tracked below. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -57,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 74 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 74 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 75 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 75 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -232,8 +232,33 @@ Core/Session/Desktop suites pass 1,983 Rust tests, all 96 Python/MCP checks pass
 and strict Clippy/formatting and an isolated ARM build/separate signed bundle pass.
 Three appended native scenes bring configured captures to 130. The [four-workload performance screen](PERFORMANCE.md#retained-host-port-transport-measured-incremental-cost)
 records an always-on transport cost, especially for routing-heavy legacy patches;
-platform CI and reviewed captures remain pending for this milestone. This proof does not establish full Rack host compatibility,
+the milestone merged in [PR15](https://github.com/dexterlabs1/openpatch/pull/15). This proof does not establish full Rack host compatibility,
 hardware accuracy, native Mac/device behavior or a performance advantage.
+
+## Stock Mix: first paired host comparison passed
+
+A separate [Stock Mix](STOCK_MIX.md) preserves `mix6` while adding the pinned
+processor's raw-lane summation, gain-before-output averaging, persistent flags
+and write-before-channel-retirement behavior. Its finite arithmetic domain
+includes signed zero, subnormals and underflow under Rack's FTZ/DAZ rules.
+Canonical stacked-input additions use the same arithmetic environment; raw
+single-cable copies retain their bits. Older logical-frame contracts remain.
+
+The independently authored, pre-execution frozen genuine Engine SDK gate passes
+28,383 cases and all 86,355 constructor/event snapshots at 44.1/48/96 kHz,
+including 708 hand anchors. The first paired production Core comparison passes
+the same unchanged gate: both complete traces are byte-identical, with zero
+discarded snapshots. It compares every field and every raw lane of actual
+sources, mixer and sinks, including no-sample host edits and real adoption.
+A separately frozen pre-rounding supplement caught a true tiny-signal mismatch
+in the initial implementation. The correction passes all 576 supplementary
+snapshots and the unchanged original gate. The corrected Rust workspace passes
+2,016 tests (six existing ignored), strict Clippy and formatting. All 99
+Python/MCP checks pass. The final four-workload experiment reports
++5.34% mono-routing and +0.80% 16-voice routing cost versus PR15; mixed-voice
+medians remain near parity. Both attempts are retained. Final-head CI and all
+133 native captures are separate pre-merge gates. Native devices and hardware
+accuracy remain unqualified; no speed advantage is claimed.
 
 ## Clocked routing
 

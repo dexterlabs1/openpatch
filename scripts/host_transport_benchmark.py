@@ -156,6 +156,10 @@ def check_artifacts(result: dict, binaries: dict[str, Path]) -> None:
             raise RuntimeError(f"Malformed actual {build} catalog")
         modules[build] = {module["kind"]: module for module in values}
     baseline, candidate = modules["baseline"], modules["candidate"]
+    expected = result["artifact_guard_inputs"]
+    baseline_count = expected["baseline_kind_count"]
+    candidate_count = expected["candidate_kind_count"]
+    added_kind = expected["added_kind"]
     added = sorted(candidate.keys() - baseline.keys())
     removed = sorted(baseline.keys() - candidate.keys())
     result["catalog_diff"] = {
@@ -178,11 +182,11 @@ def check_artifacts(result: dict, binaries: dict[str, Path]) -> None:
         "binary_paths_still_match_recorded_sha256": all(
             hashlib.sha256(path.read_bytes()).hexdigest() == result["binaries"][build]["sha256"]
             for build, path in binaries.items()),
-        "baseline_has_exactly_73_unique_kinds": len(baseline) == len(result["catalogs"]["baseline"]["modules"]) == 73,
-        "candidate_has_exactly_74_unique_kinds": len(candidate) == len(result["catalogs"]["candidate"]["modules"]) == 74,
-        "stock_mid_side_absent_from_baseline": "stock_mid_side" not in baseline,
-        "stock_mid_side_present_in_candidate": "stock_mid_side" in candidate,
-        "only_added_kind_is_stock_mid_side": added == ["stock_mid_side"],
+        f"baseline_has_exactly_{baseline_count}_unique_kinds": len(baseline) == len(result["catalogs"]["baseline"]["modules"]) == baseline_count,
+        f"candidate_has_exactly_{candidate_count}_unique_kinds": len(candidate) == len(result["catalogs"]["candidate"]["modules"]) == candidate_count,
+        f"{added_kind}_absent_from_baseline": added_kind not in baseline,
+        f"{added_kind}_present_in_candidate": added_kind in candidate,
+        f"only_added_kind_is_{added_kind}": added == [added_kind],
         "no_removed_kinds": not removed,
     }
     result["artifact_guards"] = guards
@@ -233,6 +237,9 @@ def run(arguments: argparse.Namespace) -> dict:
                    "limitations": "Four fixed workloads on one host; no callback/device/UI/SDK measurements, affinity/thermal/power control or full sample-trace equivalence; no performance advantage claim"},
         "workloads": definitions, "rpc": {name: [] for name in binaries},
         "catalogs": {}, "artifact_guards": {},
+        "artifact_guard_inputs": {"baseline_kind_count": arguments.baseline_kind_count,
+                                 "candidate_kind_count": arguments.candidate_kind_count,
+                                 "added_kind": arguments.added_kind},
         "analysis": {}, "warmup": {}, "pairs": {name: [] for name in definitions},
     }
     clients: dict[str, RecordingClient] = {}
@@ -335,6 +342,12 @@ def main() -> int:
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--baseline-source", default="5844d26")
     parser.add_argument("--candidate-source", required=True)
+    parser.add_argument("--baseline-kind-count", type=int, default=73,
+                        help="Required baseline catalog size (unique kinds; default: 73)")
+    parser.add_argument("--candidate-kind-count", type=int, default=74,
+                        help="Required candidate catalog size (unique kinds; default: 74)")
+    parser.add_argument("--added-kind", default="stock_mid_side",
+                        help="Only permitted added catalog kind (default: stock_mid_side)")
     parser.add_argument("--baseline-build-command", default="not supplied")
     parser.add_argument("--candidate-build-command", default="not supplied")
     parser.add_argument("--toolchain", default="not supplied")
@@ -343,6 +356,10 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20261016)
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
+    if arguments.baseline_kind_count < 1 or arguments.candidate_kind_count != arguments.baseline_kind_count + 1:
+        parser.error("Catalog guards require a positive baseline count and exactly one additional candidate kind")
+    if not arguments.added_kind or arguments.added_kind != arguments.added_kind.strip():
+        parser.error("Added kind must be a nonempty name without surrounding whitespace")
     for binary in (arguments.baseline, arguments.candidate):
         if not binary.is_file():
             parser.error(f"Executable does not exist: {binary}")

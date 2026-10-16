@@ -2130,6 +2130,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::random_motion_layout())
                 .expect("bundled Random motion layout");
+        } else if title == "Stock Mix layered voice" {
+            self.rack
+                .restore_layout(&Self::stock_mix_voice_layout())
+                .expect("bundled Stock Mix voice layout");
         } else if title == "Mid/Side stereo voice" {
             self.rack
                 .restore_layout(&Self::stock_mid_side_voice_layout())
@@ -2154,6 +2158,12 @@ impl OpenPatch {
         self.documents.mark_unsaved();
         self.autosave_needed = true;
         self.capture_document();
+    }
+    fn stock_mix_voice_layout() -> Value {
+        json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
+            "bass":[0,0],"fifth":[390,0],"upper":[780,0],
+            "mix":[0,420],"scope":[270,420],"motion":[930,420],"out":[1320,420]
+        }})
     }
     fn stock_mid_side_voice_layout() -> Value {
         json!({"version":1,"zoom":0.85,"pan":[24,12],"positions":{
@@ -3199,6 +3209,13 @@ impl OpenPatch {
                 ))
                 .expect("valid MIDI controller voice");
                 self.replace_from_menu(patch, "MIDI controller voice");
+                ui.close();
+            }
+            if ui.button("Stock Mix layered voice").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/stock-mix-voice.json"))
+                        .expect("valid Stock Mix layered voice");
+                self.replace_from_menu(patch, "Stock Mix layered voice");
                 ui.close();
             }
             if ui.button("Mid/Side stereo voice").clicked() {
@@ -5645,6 +5662,65 @@ impl OpenPatch {
         lights
     }
 
+    fn prepare_stock_mix_fixture(&mut self) -> openpatch_core::ScopeSnapshot {
+        let patch: Patch =
+            serde_json::from_str(include_str!("../../../examples/stock-mix-voice.json"))
+                .expect("valid Stock Mix layered voice");
+        let mut engine = patch.compile().expect("Stock Mix fixture compiles");
+        engine.set_port_lights_enabled(true);
+        let mut audio = vec![[0.0; 2]; 24032];
+        engine.process_audio_block(&mut audio);
+        assert!(audio.iter().flatten().all(|sample| sample.is_finite()));
+        for channel in 0..2 {
+            assert!(audio.iter().any(|sample| sample[channel].abs() > 0.001));
+        }
+        assert!(
+            audio.iter().all(|sample| sample[0] == sample[1]),
+            "Mono mix is explicitly sent to both audio channels"
+        );
+        let lights: BTreeMap<_, _> = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let handle = engine.resolve_module_lights(&node.id).ok()?;
+                Some((node.id.clone(), engine.module_lights(handle)?))
+            })
+            .collect();
+        assert!(lights.get("mix").is_none_or(|state| state.count == 0));
+        let scope = engine
+            .module_scope(engine.resolve_module_scope("scope").unwrap())
+            .unwrap()
+            .clone();
+        assert_eq!((scope.x_channels, scope.y_channels), (1, 1));
+        for lane in [&scope.x[0], &scope.y[0]] {
+            assert!(lane
+                .iter()
+                .any(|point| point.min.is_finite() && point.max.abs() > 0.001));
+        }
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack
+            .restore_layout(&Self::stock_mix_voice_layout())
+            .unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack
+            .set_scope_states(BTreeMap::from([("scope".into(), Arc::new(scope.clone()))]));
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Stock Mix · layered voice".into();
+        self.status = "Actual offline Engine · Scope X: averaged mix, Y: bass reference · slow pitch modulation · centered mono · no Mix lamps · no live audio".into();
+        scope
+    }
+
     fn prepare_stock_mid_side_fixture(&mut self) -> openpatch_core::ScopeSnapshot {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-mid-side-voice.json"))
@@ -7753,6 +7829,25 @@ impl OpenPatch {
             self.title = "Stock Mid/Side · shared browser thumbnail".into();
             self.status = "Same Stock Mid/Side faceplate in rack and filtered browser · encoder left, decoder right · inactive preview telemetry".into();
         }
+        if frame == 2848 {
+            self.library = ModuleLibrary::default();
+            egui::Popup::close_all(ctx);
+            self.prepare_stock_mix_fixture();
+            self.rack.set_room_brightness(1.0);
+        }
+        if frame == 2882 {
+            self.rack.set_room_brightness(0.0);
+            self.status = "Stock Mix · actual Scope, oscillator and port emission · no Mix module lamps · no live audio".into();
+        }
+        if frame == 2914 {
+            self.rack.set_room_brightness(1.0);
+            self.library = ModuleLibrary::default();
+            self.library.set_preview_zoom(0.7);
+            self.browse();
+            self.library.request_focus();
+            self.title = "Stock Mix · shared browser thumbnail".into();
+            self.status = "Same Stock Mix panel in rack and filtered browser · saved Average / Invert flags · inactive preview telemetry".into();
+        }
         if frame == 1176 {
             assert!(
                 self.rack.precision_is_open_for_smoke(),
@@ -7896,6 +7991,9 @@ impl OpenPatch {
                 | 2766
                 | 2798
                 | 2830
+                | 2866
+                | 2898
+                | 2930
         ) {
             let token = if let Some(receipt) = crate::smoke_schedule::request(frame, captures) {
                 assert!(
@@ -8068,6 +8166,9 @@ impl OpenPatch {
                 127 => path.with_file_name("rack-stock-mid-side.png"),
                 128 => path.with_file_name("rack-stock-mid-side-lights-out.png"),
                 129 => path.with_file_name("stock-mid-side-library.png"),
+                130 => path.with_file_name("rack-stock-mix.png"),
+                131 => path.with_file_name("rack-stock-mix-lights-out.png"),
+                132 => path.with_file_name("stock-mix-library.png"),
                 _ => unreachable!("Unexpected native smoke capture index"),
             };
             image::save_buffer(
@@ -8082,18 +8183,18 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/130 at frame {frame}: {}",
+                "Native smoke: capture {}/133 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
             let captures = captures + 1;
             self.smoke_test.as_mut().unwrap().2 = captures;
-            if captures == 130 {
+            if captures == 133 {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
-        assert!(frame < 2860, "Native screenshot timeout");
+        assert!(frame < 2960, "Native screenshot timeout");
     }
 }
 impl eframe::App for OpenPatch {
@@ -8119,6 +8220,9 @@ impl eframe::App for OpenPatch {
             }
         }
         if let Some((_, frame, _)) = &self.smoke_test {
+            if *frame == 2918 {
+                input.events.push(egui::Event::Text("stock_mix".into()));
+            }
             if *frame == 2818 {
                 input
                     .events
@@ -8438,6 +8542,9 @@ mod project_workflow_tests {
     }
     mod random_factory_tests {
         include!("random_factory_tests.rs");
+    }
+    mod stock_mix_factory_tests {
+        include!("stock_mix_factory_tests.rs");
     }
     mod stock_mid_side_factory_tests {
         include!("stock_mid_side_factory_tests.rs");

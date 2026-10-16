@@ -1,9 +1,10 @@
 # Stereo and polyphonic routing
 
-Four engine-v2 modules extend the stock utility coverage with original Rust
+Four original engine-v2 modules extend the stock utility coverage with Rust
 implementations. These are mathematical signal processors, not analog circuit
 models. Every cable still contributes one sample of delay; internal normaling
-does not introduce an extra cable delay.
+does not introduce an extra cable delay. Separate `stock_mid_side` and
+`stock_mix` kinds have their own source-defined contracts linked below.
 
 ## Mid/Side
 
@@ -44,6 +45,9 @@ feed the encoder. Turn either Width control to hear the stereo image narrow or
 widen. The decoder outputs connect independently to STEREO AUDIO's L/R inputs;
 headphones or stereo speakers make the difference easiest to hear.
 
+The separate [Stock Mid/Side](STOCK_MID_SIDE.md), merged in PR15, uses additive
+width CV and retained raw normaling. It does not change this `mid_side` contract.
+
 ## Mix 6
 
 `mix6` sums inputs `in1`…`in6` into `out`. `level` is 0–1, default 1. `invert`
@@ -55,6 +59,14 @@ An empty mixer produces mono zero. The output uses the largest input voice count
 with mono broadcast and zero for missing lanes in shorter polyphonic inputs.
 Averaging uses the same active-jack denominator for every voice. Complete sums
 are averaged and scaled before the final arithmetic safety bound is applied.
+
+The separate [Stock Mix](STOCK_MIX.md) reads raw lanes without mono broadcast
+and divides gain before multiplying the ordered lane sum. Mono `[2]` plus
+`[4, 6, 8]` therefore yields `[6, 6, 8]` at unity gain. It retains private port
+history and finite FTZ/DAZ behavior. The independent genuine Engine SDK gate
+and first paired production comparison pass with byte-identical complete
+traces; delivery gates remain pending. Existing `mix6` behavior and patches
+are preserved.
 
 ## Octave
 
@@ -79,7 +91,7 @@ cable adds one more cable, and therefore one sample of total path latency.
 
 ## Validation and scope
 
-Mid/Side, Mix 6, and Octave treat nonfinite input values as zero. Their arithmetic
+The original `mid_side`, `mix6`, and `octave` treat nonfinite input values as zero. Their arithmetic
 outputs use the engine's ±1,000,000 V safety bound; Mult performs an exact frame
 copy without arithmetic. Inactive output slots remain zero for engine-generated
 frames.
@@ -95,4 +107,6 @@ boundary condition.
 The [official VCV Free manuals](https://vcvrack.com/Free) describe the target
 functional roles and the Mid/Side equations. Their unspecified width-CV details,
 negative rounding ties, and detailed channel choices are documented above as
-OpenPatch policies. These implementations do not copy VCV source or artwork.
+OpenPatch policies. These four original implementations do not copy VCV source
+or artwork. The separate Stock contracts document their pinned reference
+sources and evidence boundaries.

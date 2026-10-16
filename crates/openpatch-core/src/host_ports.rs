@@ -108,6 +108,8 @@ fn finite(value: f32) -> f32 {
 
 /// Actual end-of-frame cable transfer; only connected groups are visited.
 /// Preserve untouched raw slots beyond both the old and new channel counts.
+/// Single cables copy finite bits unchanged; stacked f32 additions use the
+/// Engine's signed FTZ/DAZ arithmetic environment, without changing global flags.
 pub(crate) fn transfer_input(
     input: &mut HostPortSnapshot,
     outputs: &[HostPortSnapshot],
@@ -149,11 +151,12 @@ pub(crate) fn transfer_input(
         if output.channels == 1 {
             let value = finite(output.values[0]);
             for lane in &mut input.values[..usize::from(channels)] {
-                *lane += value;
+                *lane = crate::native_float::rack_add(*lane, value);
             }
         } else {
             for lane in 0..usize::from(output.channels) {
-                input.values[lane] += finite(output.values[lane]);
+                input.values[lane] =
+                    crate::native_float::rack_add(input.values[lane], finite(output.values[lane]));
             }
         }
     }
@@ -315,5 +318,111 @@ mod tests {
         assert_eq!(second.values[0], 0.0);
         assert!(first.values[1..].iter().all(|value| value.to_bits() == 0));
         assert!(second.values[1..].iter().all(|value| value.to_bits() == 0));
+    }
+
+    #[test]
+    fn stacked_normal_cancellation_flushes_tiny_results_with_sign_and_preserves_tail() {
+        let minimum = f32::MIN_POSITIVE;
+        let next = f32::from_bits(0x0080_0001);
+        let mut wide = HostPortSnapshot {
+            channels: 2,
+            ..Default::default()
+        };
+        wide.values[..2].copy_from_slice(&[minimum, next]);
+        let mono = HostPortSnapshot {
+            channels: 1,
+            values: [-next; 16],
+        };
+        let tail = f32::from_bits(0xffc1_2345);
+        let mut input = HostPortSnapshot {
+            channels: 3,
+            values: [tail; 16],
+        };
+        transfer_input(&mut input, &[wide, mono], &[0, 1]);
+        assert_eq!(input.channels, 2);
+        assert_eq!(input.values[0].to_bits(), (-0.0_f32).to_bits());
+        assert_eq!(input.values[1].to_bits(), 0);
+        assert_eq!(input.values[2].to_bits(), 0);
+        assert!(input.values[3..]
+            .iter()
+            .all(|value| value.to_bits() == tail.to_bits()));
+    }
+
+    #[test]
+    fn stacked_subnormal_operands_flush_before_mono_broadcast_addition() {
+        for negative in [false, true] {
+            let normal = if negative {
+                -f32::MIN_POSITIVE
+            } else {
+                f32::MIN_POSITIVE
+            };
+            let mono = HostPortSnapshot {
+                channels: 1,
+                values: [normal; 16],
+            };
+            let mut poly = HostPortSnapshot {
+                channels: 2,
+                ..Default::default()
+            };
+            poly.values[..2].copy_from_slice(&[f32::from_bits(1), f32::from_bits(0x8000_0001)]);
+            let mut input = HostPortSnapshot::default();
+            transfer_input(&mut input, &[mono, poly], &[0, 1]);
+            assert_eq!(input.channels, 2);
+            assert_eq!(input.values[0].to_bits(), normal.to_bits());
+            assert_eq!(input.values[1].to_bits(), normal.to_bits());
+        }
+    }
+
+    #[test]
+    fn stacked_mono_zero_signs_keep_source_order_after_underflow() {
+        let minimum = f32::MIN_POSITIVE;
+        let next = f32::from_bits(0x0080_0001);
+        let outputs = [
+            HostPortSnapshot {
+                channels: 2,
+                values: [minimum; 16],
+            },
+            HostPortSnapshot {
+                channels: 1,
+                values: [-next; 16],
+            },
+            HostPortSnapshot {
+                channels: 1,
+                values: [-0.0; 16],
+            },
+            HostPortSnapshot {
+                channels: 1,
+                values: [0.0; 16],
+            },
+        ];
+        let mut negative = HostPortSnapshot::default();
+        let mut positive = HostPortSnapshot::default();
+        transfer_input(&mut negative, &outputs, &[0, 3, 1, 2]);
+        transfer_input(&mut positive, &outputs, &[0, 1, 2, 3]);
+        for lane in 0..2 {
+            assert_eq!(negative.values[lane].to_bits(), (-0.0_f32).to_bits());
+            assert_eq!(positive.values[lane].to_bits(), 0);
+        }
+    }
+
+    #[test]
+    fn single_cable_subnormal_slots_remain_raw_copy_bits() {
+        let mut output = HostPortSnapshot {
+            channels: 2,
+            ..Default::default()
+        };
+        output.values[..2].copy_from_slice(&[f32::from_bits(1), f32::from_bits(0x8000_0001)]);
+        let tail = f32::from_bits(0x8000_0042);
+        let mut input = HostPortSnapshot {
+            channels: 2,
+            values: [tail; 16],
+        };
+        transfer_input(&mut input, &[output], &[0]);
+        assert_eq!(input.channels, 2);
+        assert_eq!(input.values[0].to_bits(), 1);
+        assert_eq!(input.values[1].to_bits(), 0x8000_0001);
+        assert!(input.values[2..]
+            .iter()
+            .all(|value| value.to_bits() == tail.to_bits()));
     }
 }

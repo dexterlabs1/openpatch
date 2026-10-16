@@ -470,3 +470,37 @@ compilation, adoption, memory, callback deadlines, physical devices, UI load or
 VCV Rack performance. A shared-target build that returned the old baseline
 executable was rejected before timing and retained in the report. Broader CPU
 optimization and callback qualification remain open.
+
+## Stock Mix and explicit FTZ/DAZ: measured incremental cost
+
+The Stock Mix milestone also makes canonical stacked-cable addition follow
+Rack's signed FTZ/DAZ behavior without changing thread-wide floating-point
+flags. This applies to retained host transport in existing version-2 patches,
+including patches with no Stock Mix. It adds measurable work.
+
+The final retained experiment compares the prior qualified PR15 release CLI
+(catalog 74) with the Stock Mix release CLI (catalog 75) on the same M1 Max.
+The unchanged four workloads run at 48 kHz, five seconds per measurement and
+five alternating pairs. Before timing, reported signal statistics match exactly;
+all warmup and timed checksums match. Actual catalogs and binary hashes are
+checked before any analysis or timing. Separate source/build manifests and
+both complete wire logs are retained in the
+[report](benchmarks/stock-mix-transport-overhead.json).
+
+| Workload | Paired median elapsed-time change from PR15 |
+|---|---:|
+| Sixteen-stage mono routing | +5.34% |
+| Sixteen-stage 16-voice routing | +0.80% |
+| Mixed stock/analog mono voice | +0.32% |
+| Mixed stock/analog 16-voice voice | −0.34% |
+
+The mono-routing increase appears in all five pairs (+5.06% to +5.72%).
+The 16-voice routing pairs range from +0.43% to +0.98%. The mixed-voice paired
+ranges cross parity, so their small medians do not establish a speed change. This incremental experiment neither
+replaces the earlier retained-host transport cost nor establishes an advantage
+over VCV Rack. It does not measure compile/adoption latency, memory, UI, audio
+devices or live callback deadlines. An initial attempt is also retained (+4.85% mono routing). It predates the
+separate pre-rounding correctness fix and is not the final-source measurement.
+The report retains both attempts, source manifests and wire records; no timing
+attempt was discarded and no optimization search was performed. The benchmark measures existing patches,
+not a direct throughput comparison of Stock Mix with Rack's Mixer.

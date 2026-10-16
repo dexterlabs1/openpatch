@@ -1,5 +1,5 @@
 {
-  "artifact_manifest_sha256": "657ea6d98cf88619ec93516f8611bb112ba7a99f196b3132fe2a2738d3ff8990",
+  "artifact_manifest_sha256": "87f18a5b2a2fc5e9708e25f00f1d143465c05855c3ce70b5fbfb28e02047baec",
   "discarded_snapshots": 0,
   "evidence_directory": "native-test-output/stock-mid-side/paired-host-reference/attempt-002",
   "limitations": [
@@ -7,8 +7,8 @@
     "SDK trace is the byte-verified retained first genuine execution; this runner does not re-execute Rack."
   ],
   "passed": true,
-  "production_probe_sha256": "7f12f94a928c66e4dcd146c8433186e3cbb2057881218afce99f8ad15898b10f",
-  "production_source_files": 81,
+  "production_probe_sha256": "ccaf601d301e2d8188d00b66e59b99a0f77efe678c9e2b1086377eb9a0b9f6c9",
+  "production_source_files": 83,
   "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
   "scope": "paired production Core and genuine Rack Engine host snapshots",
   "sdk_artifacts_verified": 690,
