@@ -6,7 +6,9 @@ pub(crate) use crate::port_light_transport::{offline_frame, PortLightFrame, Port
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use openpatch::control::LiveModuleEvents;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
-use openpatch_core::{Engine, MidiEvent, Patch, ResolvedTap, TapSample, BLOCK_SIZE};
+use openpatch_core::{
+    Engine, MidiEvent, Patch, PreparedWaveBanks, ResolvedTap, TapSample, BLOCK_SIZE,
+};
 #[path = "audio_diagnostics.rs"]
 mod audio_diagnostics;
 pub use audio_diagnostics::Snapshot as AudioTimingSnapshot;
@@ -24,6 +26,9 @@ pub use scope_stream::{ScopeEndpoint, ScopePacket, ScopeSelection};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+
+#[cfg(test)]
+use openpatch_core::WavePreparationCache;
 
 pub const WAVEFORM_SIZE: usize = 256;
 const QUEUE_SIZE: usize = 2;
@@ -450,11 +455,13 @@ fn prepare_graph(
     generation: u64,
     strict: bool,
 ) -> Result<PreparedGraph, String> {
-    prepare_graph_for_control(patch, rate, binding, generation, strict, 1)
+    let banks = patch.prepare_wave_banks(&WavePreparationCache::default())?;
+    prepare_graph_for_control(patch, &banks, rate, binding, generation, strict, 1)
 }
 
 fn prepare_graph_for_control(
     patch: &Patch,
+    banks: &PreparedWaveBanks,
     rate: u32,
     binding: Option<&ScopeBinding>,
     generation: u64,
@@ -463,7 +470,7 @@ fn prepare_graph_for_control(
 ) -> Result<PreparedGraph, String> {
     let mut device_patch = patch.clone();
     device_patch.sample_rate = rate;
-    let engine = device_patch.compile()?;
+    let engine = device_patch.compile_with_wave_banks(banks)?;
     let taps = binding
         .map(|binding| binding.resolve(&device_patch, &engine, strict))
         .transpose()?
@@ -505,22 +512,21 @@ pub struct Audio {
     scope_packets: Consumer<ScopePacket>,
     performance: Arc<Performance>,
     submitted_revision: u64,
+    prepared_wave_banks: Arc<PreparedWaveBanks>,
     port_light_reader: PortLightReader,
 }
 
 impl Audio {
-    pub fn new(patch: &Patch, port_lights_enabled: bool) -> Result<Self, String> {
-        Self::new_with_device(patch, None, port_lights_enabled)
-    }
-
     pub fn output_devices() -> Result<Vec<String>, String> {
         let host = cpal::default_host();
         let devices = host.output_devices().map_err(|e| e.to_string())?;
         Ok(devices.filter_map(|d| d.name().ok()).collect())
     }
 
-    pub fn new_with_device(
+    /// Uses a Session-prepared ticket; device-rate compilation never prepares banks.
+    pub fn new_with_device_and_wave_banks(
         patch: &Patch,
+        banks: Arc<PreparedWaveBanks>,
         selected: Option<&str>,
         port_lights_enabled: bool,
     ) -> Result<Self, String> {
@@ -549,7 +555,7 @@ impl Audio {
         }
         let mut device_patch = patch.clone();
         device_patch.sample_rate = sample_rate;
-        let engine = device_patch.compile()?;
+        let engine = device_patch.compile_with_wave_banks(&banks)?;
         let (incoming, updates) = RingBuffer::new(QUEUE_SIZE);
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
@@ -605,13 +611,25 @@ impl Audio {
             scope_packets,
             performance,
             submitted_revision: 0,
+            prepared_wave_banks: banks,
             port_light_reader,
         })
     }
 
     /// Compilation and superseded-edit disposal happen here, on the UI thread.
     /// If the callback is busy, the latest successfully compiled edit is retained.
+    #[cfg(test)]
     pub fn submit_patch_at_revision(&mut self, patch: &Patch, revision: u64) -> Result<(), String> {
+        let banks = patch.prepare_wave_banks(&WavePreparationCache::default())?;
+        self.submit_patch_with_wave_banks(patch, revision, banks)
+    }
+
+    pub fn submit_patch_with_wave_banks(
+        &mut self,
+        patch: &Patch,
+        revision: u64,
+        banks: Arc<PreparedWaveBanks>,
+    ) -> Result<(), String> {
         if revision < self.submitted_revision {
             return Err("Stale audio patch revision".into());
         }
@@ -621,6 +639,7 @@ impl Audio {
             .ok_or("Scope generation exhausted")?;
         let mut graph = prepare_graph_for_control(
             patch,
+            &banks,
             self.sample_rate,
             self.scope_binding.as_ref(),
             generation,
@@ -632,6 +651,7 @@ impl Audio {
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.submitted_revision = revision;
+        self.prepared_wave_banks = banks;
         self.scope_generation = generation;
         self.service();
         Ok(())
@@ -734,6 +754,7 @@ impl Audio {
             .ok_or("Scope generation exhausted")?;
         let mut graph = prepare_graph_for_control(
             patch,
+            &self.prepared_wave_banks,
             self.sample_rate,
             binding.as_ref(),
             generation,
@@ -1448,6 +1469,38 @@ pub(crate) fn test_module_incarnation_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_and_scope_graphs_use_admitted_ticket_without_preparation() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({
+            "version":2,"nodes":[{"id":"wt","kind":"wavetable_vco"}]
+        }))
+        .unwrap();
+        let cache = WavePreparationCache::default();
+        let banks = patch.prepare_wave_banks(&cache).unwrap();
+        let admitted = cache.stats().admitted_bytes;
+        let live_banks = cache.stats().live_banks;
+        assert!(admitted > 0);
+        for (generation, rate) in [(1, 44_100), (2, 48_000), (3, 96_000)] {
+            let graph =
+                prepare_graph_for_control(&patch, &banks, rate, None, generation, true, 1).unwrap();
+            assert_eq!(graph.scope.generation, generation);
+            assert_eq!(cache.stats().admitted_bytes, admitted);
+            assert_eq!(cache.stats().live_banks, live_banks);
+        }
+        assert!(prepare_graph_for_control(
+            &patch,
+            &PreparedWaveBanks::default(),
+            48_000,
+            None,
+            4,
+            true,
+            1,
+        )
+        .is_err());
+        assert_eq!(cache.stats().admitted_bytes, admitted);
+    }
+
     use openpatch_core::ModuleAction;
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::cell::Cell;

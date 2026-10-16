@@ -257,6 +257,32 @@ impl Session {
         args: &Value,
         effects: &mut EditEffects,
     ) -> Result<(), String> {
+        if name == "apply_module_preset" {
+            if let Some(filename) = args.get("filename") {
+                if args.get("preset").is_some() {
+                    return Err("Supply either preset or filename, not both".into());
+                }
+                let filename = filename.as_str().ok_or("filename must be a string")?;
+                let expected = string(args, "expected_file_sha256")?;
+                let (preset, digest) = crate::presets::read_with_digest(
+                    &self.file(filename, crate::presets::EXTENSION)?,
+                )?;
+                if expected != digest {
+                    return Err("Preset file changed since review; read it again".into());
+                }
+                let mut normalized = args.clone();
+                normalized.as_object_mut().unwrap().remove("filename");
+                normalized
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("expected_file_sha256");
+                normalized["preset"] = preset;
+                return self.apply_session_edit(candidate, name, &normalized, effects);
+            }
+            if args.get("preset").is_none() || args.get("expected_file_sha256").is_some() {
+                return Err("Supply preset, or filename with expected_file_sha256".into());
+            }
+        }
         // Observe successful topology operations, not arbitrary before/after
         // differences. A removed/recreated ID never regains continuity within
         // this transaction, even when a later explicit move succeeds.

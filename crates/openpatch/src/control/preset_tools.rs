@@ -24,10 +24,13 @@ impl Session {
             (None, "saved_parameters", None)
         };
         self.check_midi_cc_capture()?;
-        let preset = presets::capture_state(node, state)?;
-        Ok(
-            json!({"revision":self.revision,"id":id,"preset":preset,"state_source":source,"frame":frame}),
-        )
+        let preset = presets::capture_state_with_assets(node, state, &self.patch.assets)?;
+        let mut reply = preset_reply(&preset, args)?;
+        reply["revision"] = json!(self.revision);
+        reply["id"] = json!(id);
+        reply["state_source"] = json!(source);
+        reply["frame"] = json!(frame);
+        Ok(reply)
     }
 
     pub(super) fn preset_file_tool(&self, name: &str, args: &Value) -> Result<Value, String> {
@@ -36,13 +39,24 @@ impl Session {
                 let filename = string(args, "filename")?;
                 let path = self.file(filename, presets::EXTENSION)?;
                 let preset = args.get("preset").ok_or("preset required")?;
+                let mut reply = preset_reply(preset, args)?;
                 presets::save_new(&path, preset)?;
-                Ok(json!({"filename":filename,"preset":preset}))
+                reply["filename"] = json!(filename);
+                Ok(reply)
             }
             "read_module_preset" => {
                 let filename = string(args, "filename")?;
-                let preset = presets::read(&self.file(filename, presets::EXTENSION)?)?;
-                Ok(json!({"filename":filename,"preset":preset}))
+                let (preset, digest) =
+                    presets::read_with_digest(&self.file(filename, presets::EXTENSION)?)?;
+                let mut reply = preset_reply(&preset, args)?;
+                reply["filename"] = json!(filename);
+                if matches!(
+                    preset["kind"].as_str(),
+                    Some("wavetable_vco" | "wavetable_lfo")
+                ) {
+                    reply["file_sha256"] = json!(digest);
+                }
+                Ok(reply)
             }
             "list_module_presets" => {
                 let kind = args.get("kind").map(|_| string(args, "kind")).transpose()?;
@@ -73,6 +87,28 @@ impl Session {
     }
 }
 
+fn preset_reply(preset: &Value, args: &Value) -> Result<Value, String> {
+    let include_data = args
+        .get("include_asset_data")
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or("include_asset_data must be a boolean")
+        })
+        .transpose()?
+        .unwrap_or(false);
+    if !include_data
+        && matches!(
+            preset["kind"].as_str(),
+            Some("wavetable_vco" | "wavetable_lfo")
+        )
+    {
+        Ok(json!({"preset_summary":presets::summary(preset)?}))
+    } else {
+        Ok(json!({"preset":preset}))
+    }
+}
+
 pub(super) fn schema() -> Value {
     json!({"type":"object","properties":{
         "format":{"const":"openpatch-module-preset"},
@@ -80,7 +116,12 @@ pub(super) fn schema() -> Value {
         "params":{"type":"object","additionalProperties":{"type":"number"}},
         "bypassed":{"type":"boolean"},
         "score":{"type":"object"},
-        "content":content_schema()
+        "content":content_schema(),
+        "assets":{"type":"object","maxProperties":1,"additionalProperties":{
+            "type":"object","properties":{
+                "encoding":{"const":"f32le-base64-v1"},"data":{"type":"string","maxLength":2796204}
+            },"required":["encoding","data"],"additionalProperties":false
+        }}
     },"required":["format","version","kind","params"],"additionalProperties":false})
 }
 
@@ -93,6 +134,12 @@ pub(super) fn content_schema() -> Value {
         {"type":"object","properties":{
             "type":{"const":"blank"},
             "width_hp":{"type":"integer","minimum":3,"maximum":96}
-        },"required":["type","width_hp"],"additionalProperties":false}
+        },"required":["type","width_hp"],"additionalProperties":false},
+        {"type":"object","properties":{
+            "type":{"const":"wavetable"},
+            "asset_id":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+            "wave_points":{"type":"integer","minimum":2,"maximum":524288},
+            "name":{"type":"string","maxLength":1024}
+        },"required":["type","asset_id","wave_points","name"],"additionalProperties":false}
     ]})
 }

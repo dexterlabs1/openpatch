@@ -2,7 +2,7 @@
 //! and rack layout together. Cooperative writers serialize through a stable
 //! companion lock; an unrelated external editor can still race the final rename.
 use crate::rack::Rack;
-use openpatch_core::{catalog, Patch};
+use openpatch_core::{catalog, Patch, MAX_PATCH_FILE_BYTES};
 use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
@@ -12,8 +12,8 @@ use std::{
 };
 use tempfile::{Builder, NamedTempFile};
 
-const MAX_DOCUMENT_BYTES: usize = 2 * 1_048_576;
-const MAX_LEGACY_BYTES: usize = 1_048_576;
+const MAX_DOCUMENT_BYTES: usize = MAX_PATCH_FILE_BYTES;
+const MAX_LEGACY_LAYOUT_BYTES: usize = 1_048_576;
 const RECOVERY_PREFIX: &str = ".openpatch-recovery-";
 const EXTENSION: &str = ".openpatch";
 const TEMPLATE_NAME: &str = ".openpatch-template.openpatch";
@@ -43,18 +43,15 @@ impl Document {
         Rack::default().restore_layout(&self.layout)?;
         let bytes = serde_json::to_vec_pretty(&json!({"format":"openpatch-project","version":1,"patch":self.patch,"layout":self.layout})).map_err(|e| e.to_string())?;
         if bytes.len() > MAX_DOCUMENT_BYTES {
-            return Err("project exceeds 2 MiB".into());
+            return Err(format!(
+                "project exceeds {} MiB",
+                MAX_DOCUMENT_BYTES / 1_048_576
+            ));
         }
         Ok(bytes)
     }
     pub fn equivalent(&self, other: &Self) -> bool {
-        match (
-            serde_json::to_value(&self.patch),
-            serde_json::to_value(&other.patch),
-        ) {
-            (Ok(a), Ok(b)) => a == b && self.layout == other.layout,
-            _ => false,
-        }
+        self.patch.reference_view() == other.patch.reference_view() && self.layout == other.layout
     }
 }
 #[derive(Clone, Debug)]
@@ -138,13 +135,13 @@ impl Store {
                 imported: false,
             })
         } else if name.ends_with(".json") && !name.ends_with(".layout.json") {
-            let bytes = read_regular(&self.workspace.join(name), MAX_LEGACY_BYTES)?;
+            let bytes = read_regular(&self.workspace.join(name), MAX_DOCUMENT_BYTES)?;
             let patch: Patch =
                 serde_json::from_slice(&bytes).map_err(|e| format!("invalid legacy patch: {e}"))?;
             patch.validate()?;
             let sidecar = self.workspace.join(format!("{name}.layout.json"));
             let layout = match fs::symlink_metadata(&sidecar) {
-                Ok(_) => serde_json::from_slice(&read_regular(&sidecar, MAX_LEGACY_BYTES)?)
+                Ok(_) => serde_json::from_slice(&read_regular(&sidecar, MAX_LEGACY_LAYOUT_BYTES)?)
                     .map_err(|e| format!("invalid legacy layout: {e}"))?,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     let mut rack = Rack::default();
@@ -344,8 +341,12 @@ fn regular(path: &Path) -> Result<(), String> {
 fn read_regular(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
     regular(path)?;
     let file = File::open(path).map_err(|e| e.to_string())?;
-    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
         return Err("file must be regular".into());
+    }
+    if metadata.len() > limit as u64 {
+        return Err(format!("file exceeds {} MiB", limit / 1_048_576));
     }
     let mut bytes = Vec::new();
     file.take(limit as u64 + 1)
@@ -503,6 +504,151 @@ mod tests {
         Document::new(patch, rack.layout()).unwrap()
     }
     #[test]
+    fn maximum_wave_asset_round_trips_native_overwrite_template_recovery_and_legacy() {
+        use openpatch_core::{wavetable_file::MAX_WAVETABLE_SAMPLES, WaveAsset};
+        use std::sync::Arc;
+
+        assert_eq!(MAX_WAVETABLE_SAMPLES, 524_288);
+        let mut samples = vec![0.25; MAX_WAVETABLE_SAMPLES];
+        samples[0] = -0.0;
+        samples[MAX_WAVETABLE_SAMPLES - 1] = -0.75;
+        let asset = Arc::new(WaveAsset::new(&samples).unwrap());
+        let id = asset.id().to_owned();
+        let mut original = document(1.0);
+        original.patch.assets.insert(id.clone(), asset.clone());
+        let encoded = original.encode().unwrap();
+        assert!(
+            encoded.len() > 2 * 1_048_576,
+            "The maximum asset must exceed the old native-project limit"
+        );
+        assert!(encoded.len() < MAX_DOCUMENT_BYTES);
+        let envelope: Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(envelope["format"], "openpatch-project");
+        assert_eq!(envelope["version"], 1);
+        assert!(envelope["patch"]["assets"][&id]["data"].is_string());
+        drop(envelope);
+        drop(encoded);
+
+        let verify = |loaded: &Document, expected: &Document| {
+            assert!(loaded.equivalent(expected));
+            let decoded = &loaded.patch.assets[&id];
+            assert_eq!(decoded.id(), id);
+            assert_eq!(decoded.sample_count(), MAX_WAVETABLE_SAMPLES);
+            assert_eq!(decoded.decoded_bytes(), 2 * 1_048_576);
+            assert_eq!(decoded.sample(0).unwrap().to_bits(), (-0.0_f32).to_bits());
+            assert_eq!(decoded.sample(MAX_WAVETABLE_SAMPLES - 1), Some(-0.75));
+            assert_eq!(decoded.as_ref(), asset.as_ref());
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let token = store.save_new("wave.openpatch", &original).unwrap();
+        verify(&store.load("wave.openpatch").unwrap().document, &original);
+
+        let mut revised = original.clone();
+        revised.patch.nodes[0].params.insert("value".into(), 2.0);
+        assert!(Arc::ptr_eq(
+            &original.patch.assets[&id],
+            &revised.patch.assets[&id]
+        ));
+        store
+            .save_existing("wave.openpatch", &revised, &token)
+            .unwrap();
+        verify(&store.load("wave.openpatch").unwrap().document, &revised);
+        store.save_template(&revised, None).unwrap();
+        verify(&store.load_template().unwrap().unwrap(), &revised);
+        store.save_recovery(&revised).unwrap();
+        let recovery = store.recovery_name.clone();
+
+        let legacy = serde_json::to_vec(&revised.patch).unwrap();
+        assert!(
+            legacy.len() > 2 * 1_048_576,
+            "Legacy patch JSON needs the expanded envelope too"
+        );
+        let legacy_path = directory.path().join("wave.json");
+        fs::write(&legacy_path, &legacy).unwrap();
+        fs::write(
+            directory.path().join("wave.json.layout.json"),
+            serde_json::to_vec(&revised.layout).unwrap(),
+        )
+        .unwrap();
+        let imported = store.load("wave.json").unwrap();
+        assert!(imported.imported);
+        assert!(imported.token.is_none());
+        verify(&imported.document, &revised);
+        assert_eq!(fs::read(&legacy_path).unwrap(), legacy);
+
+        drop(store);
+        let restarted = Store::new(directory.path()).unwrap();
+        assert_eq!(restarted.recoveries(), vec![recovery.clone()]);
+        verify(
+            &restarted.load_recovery(&recovery).unwrap().document,
+            &revised,
+        );
+        verify(&restarted.load_template().unwrap().unwrap(), &revised);
+    }
+
+    #[test]
+    fn document_equivalence_distinguishes_asset_content_graph_and_layout_without_payload_views() {
+        use openpatch_core::WaveAsset;
+        use std::sync::Arc;
+
+        let asset = Arc::new(WaveAsset::new(&[0.0, 0.25, -0.5, 1.0]).unwrap());
+        let mut original = document(1.0);
+        original
+            .patch
+            .assets
+            .insert(asset.id().into(), asset.clone());
+        assert!(original.equivalent(&original.clone()));
+        // Different immutable content with the same sample count must dirty
+        // the document; a descriptor cannot be reduced to length alone.
+        let replacement = Arc::new(WaveAsset::new(&[0.0, 0.25, -0.5, 0.75]).unwrap());
+        let mut changed = original.clone();
+        changed.patch.assets.clear();
+        changed
+            .patch
+            .assets
+            .insert(replacement.id().into(), replacement);
+        assert!(!original.equivalent(&changed));
+        let mut changed = original.clone();
+        changed.patch.nodes[0].params.insert("value".into(), 2.0);
+        assert!(!original.equivalent(&changed));
+        let mut changed = original.clone();
+        changed.layout["pan"] = json!([100.0, 200.0]);
+        assert!(!original.equivalent(&changed));
+        let ordinary = document(1.0);
+        assert!(ordinary.equivalent(&ordinary.clone()));
+        assert!(serde_json::to_value(&ordinary.patch)
+            .unwrap()
+            .get("assets")
+            .is_none());
+    }
+
+    #[test]
+    fn oversized_recovery_uses_the_64_mib_envelope_without_reading_sparse_payload() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        store.save_recovery(&document(1.0)).unwrap();
+        let recovery = store.recovery_name.clone();
+        let path = directory.path().join(&recovery);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len((MAX_DOCUMENT_BYTES + 1) as u64)
+            .unwrap();
+        drop(store);
+        let restarted = Store::new(directory.path()).unwrap();
+        assert!(restarted
+            .load_recovery(&recovery)
+            .unwrap_err()
+            .contains("64 MiB"));
+        assert_eq!(
+            fs::metadata(path).unwrap().len(),
+            (MAX_DOCUMENT_BYTES + 1) as u64
+        );
+    }
+
+    #[test]
     fn templates_round_trip_both_engines_graph_ids_layout_and_saved_run_hold_values() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::new(directory.path()).unwrap();
@@ -631,9 +777,12 @@ mod tests {
             .path()
             .join(format!("{TEMPLATE_NAME}.lock"))
             .exists());
-        fs::write(&path, vec![b' '; MAX_DOCUMENT_BYTES + 1]).unwrap();
-        assert!(store.load_template().unwrap_err().contains("2 MiB"));
-        assert!(store.template_token().unwrap_err().contains("2 MiB"));
+        File::create(&path)
+            .unwrap()
+            .set_len((MAX_DOCUMENT_BYTES + 1) as u64)
+            .unwrap();
+        assert!(store.load_template().unwrap_err().contains("64 MiB"));
+        assert!(store.template_token().unwrap_err().contains("64 MiB"));
         assert!(store.save_template(&document(1.0), None).is_err());
         assert_eq!(
             fs::metadata(&path).unwrap().len(),
@@ -870,9 +1019,14 @@ mod tests {
         assert!(store.save_new("bad.openpatch", &bad).is_err());
         assert!(!directory.path().join("bad.openpatch").exists());
         assert!(!directory.path().join("bad.openpatch.lock").exists());
-        let oversized = vec![b' '; MAX_DOCUMENT_BYTES + 1];
-        fs::write(directory.path().join("large.openpatch"), oversized).unwrap();
-        assert!(store.load("large.openpatch").unwrap_err().contains("2 MiB"));
+        assert_eq!(MAX_DOCUMENT_BYTES, 64 * 1_048_576);
+        for name in ["large.openpatch", "large.json"] {
+            File::create(directory.path().join(name))
+                .unwrap()
+                .set_len((MAX_DOCUMENT_BYTES + 1) as u64)
+                .unwrap();
+            assert!(store.load(name).unwrap_err().contains("64 MiB"));
+        }
         for value in [
             json!({"format":"openpatch-project","version":2,"patch":{},"layout":{}}),
             json!({"format":"openpatch-project","version":1,"patch":{},"layout":{},"extra":1}),
@@ -903,8 +1057,11 @@ mod tests {
         assert!(store.load("legacy.json").is_err());
         assert_eq!(fs::read(&path).unwrap(), bytes);
         assert_eq!(fs::read(&sidecar).unwrap(), b"not JSON");
-        fs::write(&sidecar, vec![b' '; MAX_LEGACY_BYTES + 1]).unwrap();
-        assert!(store.load("legacy.json").is_err());
+        File::create(&sidecar)
+            .unwrap()
+            .set_len((MAX_LEGACY_LAYOUT_BYTES + 1) as u64)
+            .unwrap();
+        assert!(store.load("legacy.json").unwrap_err().contains("1 MiB"));
     }
     #[cfg(unix)]
     #[test]

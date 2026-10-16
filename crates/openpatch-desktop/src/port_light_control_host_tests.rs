@@ -26,6 +26,7 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         .unwrap();
     let audio = Audio {
         _stream: None,
+        prepared_wave_banks: patch.prepare_wave_banks(&openpatch_core::WavePreparationCache::default()).unwrap(),
         incoming,
         retired,
         pending: None,

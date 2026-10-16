@@ -98,6 +98,7 @@ impl Pulses {
     pub(crate) fn lights(&self) -> ModuleLightState {
         ModuleLightState {
             input_channels: None,
+            waveform_position: None,
             count: 10,
             brightness: std::array::from_fn(|button| {
                 [

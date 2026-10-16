@@ -63,6 +63,24 @@ mod svf_resampler;
 mod voice_tools;
 pub use parameter_actions::ModuleParameterActions;
 mod poly;
+mod wave_assets;
+mod wave_prepare;
+mod wavetable_bank;
+pub mod wavetable_file;
+mod wavetable_minblep;
+mod wavetable_osc;
+pub use wave_prepare::{PreparedWaveBanks, WavePreparationCache, WavePreparationStats};
+/// Original mathematically generated sine/triangle/saw/square table (4×1024).
+/// Construction allocates; use only on a control thread.
+pub fn default_wavetable_asset() -> std::sync::Arc<WaveAsset> {
+    wave_prepare::basic_asset()
+}
+#[doc(hidden)]
+pub mod wavetable_probe;
+pub use wave_assets::{
+    AssetId, WaveAsset, WaveAssets, MAX_HISTORY_ASSET_BYTES, MAX_PATCH_ASSETS,
+    MAX_PATCH_ASSET_BYTES, MAX_PATCH_FILE_BYTES,
+};
 pub mod port_lights;
 pub use port_lights::{PortDirection, PortLightState, ResolvedPortLight};
 mod pulses;
@@ -115,6 +133,14 @@ fn default_rate() -> u32 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Patch {
+    /// Immutable sample payloads, deduplicated by content digest. Names and wave
+    /// interpretation belong to the consuming module, not to sample identity.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "wave_assets::deserialize_assets"
+    )]
+    pub assets: WaveAssets,
     #[serde(default = "default_version")]
     pub version: u32,
     #[serde(default = "default_rate")]
@@ -137,6 +163,7 @@ pub struct Patch {
 impl Default for Patch {
     fn default() -> Self {
         Self {
+            assets: WaveAssets::new(),
             version: 1,
             sample_rate: 48_000,
             nodes: Vec::new(),
@@ -315,6 +342,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_delay::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .extend(wavetable_osc::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -704,6 +735,18 @@ impl Patch {
     }
 
     pub fn compile(&self) -> Result<Engine, String> {
+        let banks = self.prepare_wave_banks(&WavePreparationCache::default())?;
+        self.compile_with_wave_banks(&banks)
+    }
+
+    /// Compile using control-thread prepared immutable wave banks. Callers that
+    /// build revisions should retain a shared cache and prepare before commit.
+    pub fn compile_with_wave_banks(&self, banks: &PreparedWaveBanks) -> Result<Engine, String> {
+        banks.validate(self)?;
+        wave_assets::validate_assets(&self.assets)?;
+        if self.version != 2 && !self.assets.is_empty() {
+            return Err("wavetable assets require patch version 2".into());
+        }
         validate_cable_ids(&self.cables)?;
         for node in &self.nodes {
             validate_content(node)?;
@@ -722,7 +765,9 @@ impl Patch {
         }
         let inner = match self.version {
             1 => EngineKind::Legacy(self.compile_legacy()?),
-            2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile(self)?)),
+            2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile_with_wave_banks(
+                self, banks,
+            )?)),
             version => {
                 return Err(format!(
                     "unsupported patch version {version} (expected 1 or 2)"

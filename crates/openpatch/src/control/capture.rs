@@ -92,7 +92,7 @@ impl Session {
         let mut patch = self.patch.clone();
         patch.output = Some(id.into());
         patch.output_port = port.into();
-        let mut engine = patch.compile()?;
+        let mut engine = patch.compile_with_wave_banks(&self.prepared_wave_banks)?;
         let frames = (seconds * f64::from(patch.sample_rate)).round() as usize;
         let mut events = PerformanceEvents::new(args, frames, &engine)?;
         let node = patch

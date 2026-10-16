@@ -50,6 +50,8 @@ enum ModuleKind {
     MidiGate,
     StockVca,
     StockDelay,
+    WavetableVco,
+    WavetableLfo,
 }
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
@@ -74,6 +76,8 @@ impl ModuleKind {
             "midi_gate" => Some(Self::MidiGate),
             "stock_vca" => Some(Self::StockVca),
             "stock_delay" => Some(Self::StockDelay),
+            "wavetable_vco" => Some(Self::WavetableVco),
+            "wavetable_lfo" => Some(Self::WavetableLfo),
             _ => None,
         }
     }
@@ -99,6 +103,8 @@ impl ModuleKind {
             Self::MidiGate => "midi_gate",
             Self::StockVca => "stock_vca",
             Self::StockDelay => "stock_delay",
+            Self::WavetableVco => "wavetable_vco",
+            Self::WavetableLfo => "wavetable_lfo",
         }
     }
     fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {
@@ -253,6 +259,7 @@ struct Meter {
     cc_learning_serial: AtomicU64,
     cc_learning_cell: AtomicU32,
     input_channels: AtomicU32,
+    waveform_position: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
 }
 impl Meter {
@@ -274,6 +281,7 @@ impl Meter {
             cc_learning_serial: AtomicU64::new(0),
             cc_learning_cell: AtomicU32::new(0),
             input_channels: AtomicU32::new(u32::MAX),
+            waveform_position: AtomicU32::new(f32::NAN.to_bits()),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
@@ -345,6 +353,14 @@ impl Meter {
             flags |=
                 2 | (u32::from(controls.pressed) << 3) | (u32::from(controls.pressed_mask) << 16);
         }
+        // Position belongs to this exact light packet. Clear the slot for both
+        // absent lights and absent/invalid positions to avoid retained values.
+        let position = snapshot
+            .lights
+            .and_then(|lights| lights.waveform_position)
+            .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
+        self.waveform_position
+            .store(position.unwrap_or(f32::NAN).to_bits(), Ordering::SeqCst);
         if let Some(lights) = snapshot.lights {
             flags |= 4 | (u32::from(lights.manual) << 4) | (u32::from(lights.count) << 8);
             self.input_channels.store(
@@ -396,6 +412,7 @@ impl Meter {
             let cc_serial = self.cc_learning_serial.load(Ordering::SeqCst);
             let cc_cell = self.cc_learning_cell.load(Ordering::SeqCst);
             let input_channels = self.input_channels.load(Ordering::SeqCst);
+            let waveform_position = f32::from_bits(self.waveform_position.load(Ordering::SeqCst));
             let brightness = std::array::from_fn(|row| {
                 std::array::from_fn(|col| {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
@@ -432,6 +449,9 @@ impl Meter {
                         brightness,
                         manual: flags & 16 != 0,
                         input_channels: (input_channels <= 16).then_some(input_channels as u8),
+                        waveform_position: (waveform_position.is_finite()
+                            && (0.0..=1.0).contains(&waveform_position))
+                        .then_some(waveform_position),
                     }),
                     midi_learning: (cc_serial != 0 && cc_cell < 16)
                         .then_some((cc_serial, cc_cell as u8)),
@@ -1618,6 +1638,116 @@ mod midi_cc_performance_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wavetable_position_and_lights_share_a_coherent_packet_without_carryover() {
+        assert!(ModuleKind::from_name("wavetable_vco") == Some(ModuleKind::WavetableVco));
+        assert!(ModuleKind::from_name("wavetable_lfo") == Some(ModuleKind::WavetableLfo));
+        assert_eq!(ModuleKind::WavetableVco.name(), "wavetable_vco");
+        assert_eq!(ModuleKind::WavetableLfo.name(), "wavetable_lfo");
+
+        let meter = Arc::new(Meter::new());
+        let entry = Entry {
+            slot: 0,
+            token: 11,
+            born_revision: 1,
+            kind: ModuleKind::WavetableVco,
+            bypassed: false,
+            action_epoch: 1,
+        };
+        let writer_meter = meter.clone();
+        let writer = std::thread::spawn(move || {
+            for frame in 1..=2_000_u64 {
+                let position = (frame % 257) as f32 / 256.0;
+                let mut brightness = [[0.0; 2]; MAX_MODULE_LIGHTS];
+                brightness[0] = [position, 1.0 - position];
+                writer_meter.write(
+                    entry.token,
+                    ModuleSnapshot {
+                        revision: 1,
+                        frame,
+                        state: None,
+                        saved_state: None,
+                        controls: None,
+                        midi_learning: None,
+                        lights: (frame % 3 != 0).then_some(ModuleLightState {
+                            count: 5,
+                            manual: false,
+                            brightness,
+                            input_channels: Some((frame % 17) as u8),
+                            waveform_position: (frame % 3 == 1).then_some(position),
+                        }),
+                    },
+                );
+                std::thread::yield_now();
+            }
+        });
+        let check_packet = |snapshot: ModuleSnapshot| {
+            let frame = snapshot.frame;
+            if frame.is_multiple_of(3) {
+                assert!(snapshot.lights.is_none());
+            } else {
+                let lights = snapshot.lights.unwrap();
+                let position = (frame % 257) as f32 / 256.0;
+                assert_eq!(lights.count, 5);
+                assert_eq!(lights.input_channels, Some((frame % 17) as u8));
+                assert_eq!(lights.brightness[0], [position, 1.0 - position]);
+                assert_eq!(
+                    lights.waveform_position,
+                    (frame % 3 == 1).then_some(position)
+                );
+            }
+        };
+        for _ in 0..2_000 {
+            if let Some(snapshot) = meter.read(entry, 1) {
+                check_packet(snapshot);
+            }
+            std::thread::yield_now();
+        }
+        writer.join().unwrap();
+        let final_packet = meter.read(entry, 1).unwrap();
+        assert_eq!(final_packet.frame, 2_000);
+        check_packet(final_packet);
+
+        // Deterministically exercise present -> absent and rejected values,
+        // including a publication with no lights between two light packets.
+        for position in [
+            Some(0.0),
+            Some(1.0),
+            None,
+            Some(f32::NAN),
+            Some(f32::INFINITY),
+            Some(-0.001),
+            Some(1.001),
+        ] {
+            for lights_present in [false, true] {
+                meter.write(
+                    entry.token,
+                    ModuleSnapshot {
+                        revision: 1,
+                        frame: 2_001,
+                        state: None,
+                        saved_state: None,
+                        controls: None,
+                        midi_learning: None,
+                        lights: lights_present.then_some(ModuleLightState {
+                            count: 5,
+                            waveform_position: position,
+                            ..ModuleLightState::default()
+                        }),
+                    },
+                );
+                let packet = meter.read(entry, 1).unwrap();
+                assert_eq!(packet.lights.is_some(), lights_present);
+                let expected =
+                    position.filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
+                assert_eq!(
+                    packet.lights.and_then(|lights| lights.waveform_position),
+                    if lights_present { expected } else { None }
+                );
+            }
+        }
+    }
 
     #[test]
     fn multi_module_snapshot_never_exposes_a_partial_publish() {

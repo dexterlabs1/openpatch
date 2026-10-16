@@ -48,6 +48,9 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("macro_voice", "engine") => Enum,
         ("macro_voice", "frequency") => Log2,
         ("macro_voice", _) => Linear,
+        ("wavetable_vco" | "wavetable_lfo", "tune" | "rate" | "position") => Linear,
+        ("wavetable_vco", "sync_mode" | "fm_mode") | ("wavetable_lfo", "offset" | "invert") => Enum,
+        ("wavetable_vco" | "wavetable_lfo", _) => Disabled,
         ("stock_vca", "level") => Linear,
         ("stock_vca", "response") => Enum,
         ("stock_delay", "time" | "feedback" | "tone" | "mix") => Linear,
@@ -191,7 +194,9 @@ impl ModuleParameterActions {
     pub fn initialize(&self, node: &mut Node) -> Result<(), String> {
         let descriptor = self.descriptors(node)?;
         let params = descriptor["params"].as_object().unwrap();
-        if crate::content::is_annotation(&node.kind) {
+        if crate::content::is_annotation(&node.kind)
+            || matches!(node.kind.as_str(), "wavetable_vco" | "wavetable_lfo")
+        {
             node.content = None;
         }
         for (name, spec) in params {

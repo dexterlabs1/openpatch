@@ -449,6 +449,8 @@ impl Session {
     pub(super) fn detached_snapshot(&self) -> Self {
         Self {
             patch: self.patch.clone(),
+            wave_preparation_cache: self.wave_preparation_cache.clone(),
+            prepared_wave_banks: self.prepared_wave_banks.clone(),
             revision: self.revision,
             state_id: self.state_id,
             workspace: self.workspace.clone(),

@@ -29,8 +29,10 @@ use crate::studio_fx::{self, StudioFx};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
 use crate::voice_tools::{self, VoiceTools};
+use crate::wavetable_osc::{self, WavetableOscillator};
 use crate::{
-    build_dsp, parameter, Dsp, MidiEvent, Node, Patch, SavedModuleState, MAX_CABLES, MAX_NODES,
+    build_dsp, parameter, Dsp, MidiEvent, Node, Patch, PreparedWaveBanks, SavedModuleState,
+    MAX_CABLES, MAX_NODES,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -84,6 +86,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || utility_bank::input_names(kind).is_some()
         || signal::input_names(kind).is_some()
         || mixing::input_names(kind).is_some()
+        || wavetable_osc::input_names(kind).is_some()
         || matches!(
             kind,
             "poly_constant"
@@ -119,6 +122,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if let Some(ports) = wavetable_osc::input_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if kind == "macro_voice" {
         return macro_voice::INPUTS.iter().position(|p| *p == name);
     }
@@ -171,6 +177,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if let Some(ports) = wavetable_osc::output_names(kind) {
+        return ports.iter().position(|port| *port == name);
+    }
     if kind == "macro_voice" {
         return macro_voice::OUTPUTS.iter().position(|p| *p == name);
     }
@@ -290,13 +299,17 @@ fn voice_policy(kind: &str) -> VoicePolicy {
         "constant" | "gate" | "white_noise" | "colored_noise" => VoicePolicy::Generator,
         "sample_hold" => VoicePolicy::Primary(1),
         "stock_vcf" => VoicePolicy::Primary(3),
-        "mixer" | "crossfade" | "modal_resonator" | "stock_vca" => VoicePolicy::Maximum,
+        "mixer" | "crossfade" | "modal_resonator" | "stock_vca" | "wavetable_vco" => {
+            VoicePolicy::Maximum
+        }
         _ => VoicePolicy::Primary(0),
     }
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if kind == "macro_voice" {
+    let outputs = if let Some(names) = wavetable_osc::output_names(&kind) {
+        names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
+    } else if kind == "macro_voice" {
         macro_voice::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -527,6 +540,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     utility_bank::annotate(module);
     signal::annotate(module);
     mixing::annotate(module);
+    wavetable_osc::annotate(module);
     if kind == "multi_lfo" {
         multi_lfo::annotate(module);
     }
@@ -604,6 +618,7 @@ enum Model {
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
     MultiVco(Box<MultiVco>),
+    Wavetable(Box<WavetableOscillator>),
     Seq3(Box<Seq3>),
     Pulses(Box<Pulses>),
     Push(Box<Push>),
@@ -621,7 +636,14 @@ enum Model {
     Mixing(Mixing),
 }
 impl Model {
-    fn build(node: &Node, rate: u32) -> Result<Self, String> {
+    fn build(node: &Node, rate: u32, wave_banks: &PreparedWaveBanks) -> Result<Self, String> {
+        if wavetable_osc::input_names(&node.kind).is_some() {
+            let bank = wave_banks
+                .get(&node.id)
+                .ok_or_else(|| format!("node '{}': missing prepared wavetable bank", node.id))?;
+            return WavetableOscillator::build(node, rate, bank)
+                .map(|oscillator| Self::Wavetable(Box::new(oscillator)));
+        }
         if crate::content::is_annotation(&node.kind) {
             if let Some(key) = node.params.keys().next() {
                 return Err(format!("node '{}': unknown parameter '{key}'", node.id));
@@ -982,6 +1004,7 @@ impl PolyEngine {
             Some(Model::Sum(s)) => Some(s.lights()),
             Some(Model::Viz(v)) => Some(v.lights()),
             Some(Model::MidiGate(m)) => Some(m.lights()),
+            Some(Model::Wavetable(oscillator)) => Some(oscillator.module_lights()),
             _ => None,
         }
     }
@@ -1178,6 +1201,10 @@ impl PolyEngine {
                 s.reset_state();
                 colored_noise::OUTPUTS.len()
             }
+            Model::Wavetable(oscillator) => {
+                oscillator.reset_state();
+                wavetable_osc::OUTPUTS.len()
+            }
             Model::Stereo(s) => {
                 s.reset_state();
                 node.output_count
@@ -1277,6 +1304,7 @@ impl PolyEngine {
             Model::MidiGate(m) => m.initialize_state(),
             Model::ColoredNoise(s) => s.reset_state(),
             Model::MultiLfo(lfo) => lfo.initialize_state(),
+            Model::Wavetable(oscillator) => oscillator.initialize_state(),
             Model::Seq3(seq) => seq.initialize_state(),
             Model::Pulses(p) => p.reset_state(),
             Model::Push(p) => p.initialize_state(),
@@ -1354,7 +1382,16 @@ impl PolyEngine {
                 active: true,
             })
     }
+    #[cfg(test)]
     pub(crate) fn compile(patch: &Patch) -> Result<Self, String> {
+        let cache = crate::WavePreparationCache::default();
+        let wave_banks = patch.prepare_wave_banks(&cache)?;
+        Self::compile_with_wave_banks(patch, &wave_banks)
+    }
+    pub(crate) fn compile_with_wave_banks(
+        patch: &Patch,
+        wave_banks: &PreparedWaveBanks,
+    ) -> Result<Self, String> {
         if !(8000..=192000).contains(&patch.sample_rate) {
             return Err("sample_rate must be in 8000..=192000 Hz".into());
         }
@@ -1386,7 +1423,7 @@ impl PolyEngine {
             }
             nodes.push(PolyNode {
                 kind: node.kind.clone(),
-                model: Model::build(node, patch.sample_rate)?,
+                model: Model::build(node, patch.sample_rate, wave_banks)?,
                 inputs: [None; MAX_PORTS],
                 output_start: output_count,
                 output_count: 0,
@@ -1395,7 +1432,9 @@ impl PolyEngine {
                 connected_mask: 0,
                 base_connected_mask: 0,
             });
-            let count = if node.kind == "macro_voice" {
+            let count = if let Some(ports) = wavetable_osc::output_names(&node.kind) {
+                ports.len()
+            } else if node.kind == "macro_voice" {
                 macro_voice::OUTPUTS.len()
             } else if node.kind == "colored_noise" {
                 colored_noise::OUTPUTS.len()
@@ -2014,6 +2053,15 @@ impl PolyEngine {
                             [node.output_start..node.output_start + multi_vco::OUTPUTS.len()],
                     );
                 }
+                Model::Wavetable(oscillator) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    self.outputs[node.output_start] = oscillator.process(&inputs);
+                }
                 Model::Routing(routing) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2386,6 +2434,11 @@ impl PolyEngine {
                 }
                 (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
                 (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),
+                (Model::Wavetable(oscillator), Model::Wavetable(old)) => {
+                    // Keep the receiving parameters and bank ownership intact;
+                    // only bounded oscillator histories move on the callback.
+                    oscillator.adopt_from(old);
+                }
                 _ => {}
             }
             if let (Model::Mixing(mixing), Model::Mixing(previous)) =

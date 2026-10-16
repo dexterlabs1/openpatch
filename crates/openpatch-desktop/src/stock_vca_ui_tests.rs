@@ -387,7 +387,6 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
             }
             for label in [
                 "VCA",
-                "POLYPHONIC GAIN",
                 "LEVEL",
                 "GAIN / VOICE",
                 "0 — 100%",

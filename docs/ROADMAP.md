@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 66 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
+Baseline updated **2026-10-15**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 68 built-in module kinds, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. It has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -41,6 +41,10 @@ brightness, including observation disabled at zero; [behavior and validation](CA
 Specialized panels keep their dedicated editors. Held cable drags pan at visible
 rack edges. The broader module layout and material review remains open.
 Any changes must preserve cable targets, explicit values, undo and MCP edits.
+The latest shared rack/browser header pass removes brand/description headers
+and makes module names prominent and left-aligned. Local layout checks and the
+Mac ARM candidate build pass; capture review and native window/input
+qualification remain separate gates.
 
 The product direction also includes visible incremental agent work and eventual
 creation of genuinely new modules. Existing module insertion and progressive
@@ -53,7 +57,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 66 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 66 completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The current 68 built-in kinds include reference circuits, original utilities, and partial functional equivalents; this count does not represent 68 completed VCV equivalents.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -67,6 +71,7 @@ This plan starts from the code inspected on the baseline date:
 
 - `openpatch-core`: version 1 preserves mono, same-sample DAG routing and cycle rejection. Version 2 implements named input/output ports and 0–16 channels per port, and a synchronous scheduler with one sample of delay per cable, including channel counts. Feedback cycles are supported in version 2. Limits remain 256 nodes and 1024 cables. See [ENGINE_V2.md](ENGINE_V2.md).
 - Audio oscillator: four simultaneous outputs, FM/PWM, hard/soft sync and direct Fundamental 2.6.4 voltage comparisons. Reconstruction and retirement gaps remain; see [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md).
+- Wavetable family: separate audio/modulation oscillators, immutable custom assets, worker preparation and revision-checked publication, portable projects/presets and shared panels. The checked 153-case actual-class run qualifies bounded digital behavior; audio geometry, nonpositive-frequency safety policy and remaining platform/UI gates are explicit in [WAVETABLES.md](WAVETABLES.md).
 - Reference DSP: voltage-based VCO/ladder/OTA VCA/RC ADSR/gate/audio conversion, with documented idealizations and numerical tests. Ladder and VCA each add 64 samples of oversampling latency; parallel paths are not compensated. Legacy patches retain normalized semantics. See [ANALOG_MODELS.md](ANALOG_MODELS.md).
 - Functional utilities: quantizer, sample-and-hold, seeded Gaussian white noise, attenuverter and crossfade retain mono version-1 behavior and declared version-2 voice policies. Four additional version-2 kinds provide polyphonic constants, Split, Merge and Sum. SUM now adds output attenuation and revision-coherent six-band level/channel telemetry; [contract](POLYPHONIC_SUM.md). [VIZ](POLYPHONIC_VIZ.md) adds 16-channel signed indicators and genuine input-only modules, with primitive reference comparisons at three sample rates. Complete corresponding VCV module contracts remain open.
 - Native host: rack browser, module movement, direct parameter controls, cable creation/removal, single-file native projects with Save/Save As/Revert, recovery copies, and legacy JSON/sidecar import, shared multi-step patch undo/redo, and optional GLSL visuals. Studio Rack chrome provides direct transport/save/history controls and a bounded, tabbed Scope/Visuals dock beside the module library. Consecutive parameter edits can share an explicit gesture group. Stable history identities restore layouts for states observed by the GUI, with at most 129 retained layout snapshots. Single/group module moves now create one checkpoint in that shared history; drag previews are excluded from saved geometry. Selectable-device stereo output, one hardware MIDI input, polyphonic MIDI → CV, sixteen-output MIDI CC and MIDI Gate with Learn, and a performance keyboard are implemented. Hardware audio input and hands-on MIDI/device qualification remain open. See [MIDI_AUDIO.md](MIDI_AUDIO.md).
@@ -443,3 +448,27 @@ has not been installed or launched. Platform CI and native capture verification
 are release gates, with 97 screenshots configured (the previous 94 plus three
 Delay views). Full callback-budget and macOS ARM window/input/playback
 acceptance remain open.
+
+## Wavetable family milestone
+
+`wavetable_vco` and `wavetable_lfo` bring the catalog to **68 kinds**. Custom
+tables, position CV, audio FM/sync and modulation clock/reset share immutable
+assets and one rack/browser presentation. Workspace import prepares a complete
+candidate on a cancellable worker and rechecks authorization/revision before
+publication; ordinary inspection avoids large payload echoes. Portable presets
+contain their referenced samples and support digest-checked file application.
+History keeps durable assets and weak derived tickets, rebuilding cold banks
+on the control thread within explicit payload budgets.
+
+The checked actual-class SDK run passes 153 cases over 626,688 frames at
+44.1/48/96 kHz. Maximum error is 1.9073486328125e-6 V under the frozen
+2 mV + 10 ppm contract, with exact LFO voltages. Audio wave lengths are powers
+of two >=32; LFO lengths are integers >=2. Source Nyquist/rounded-endpoint
+compatibility and the independently tested safe through-zero extension have
+explicit boundaries in the [contract](WAVETABLES.md). The
+[production-hash proof](benchmarks/wavetable-reference.json) and local Mac ARM
+release build pass. New UI capture review and supported-platform CI remain
+pending.
+Neither this digital result nor local host tests qualify hardware behavior,
+an installed native app or complete Rack host/plugin parity. The full 49-module
+and host objective, with MIDI/live-performance work last, is unchanged.

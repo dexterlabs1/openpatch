@@ -8,6 +8,7 @@ use std::time::Duration;
 pub(crate) enum Boundary {
     Dispatch,
     ConstructionRegistration,
+    WavetableImportPrepared,
 }
 
 struct Hook {

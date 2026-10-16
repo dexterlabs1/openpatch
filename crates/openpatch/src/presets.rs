@@ -1,6 +1,7 @@
 //! Native module preset values and bounded workspace storage. Control-thread only.
-use openpatch_core::{catalog, Node, SavedModuleState};
+use openpatch_core::{catalog, ModuleContent, Node, SavedModuleState, WaveAssets};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{self, OpenOptions},
@@ -13,7 +14,7 @@ use std::{
 };
 
 pub const EXTENSION: &str = ".opreset";
-pub const MAX_BYTES: usize = 65_536;
+pub const MAX_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_LIBRARY_FILES: usize = 1024;
 
 fn descriptor(kind: &str) -> Result<&'static Value, String> {
@@ -29,15 +30,22 @@ fn descriptor(kind: &str) -> Result<&'static Value, String> {
 /// Validate a complete or partial native preset without inventing omitted values.
 /// Target-dependent graph/sample-rate constraints are checked when applying it.
 pub fn validate(preset: &Value) -> Result<(), String> {
+    if serde_json::to_vec(preset)
+        .map_err(|error| error.to_string())?
+        .len()
+        > MAX_BYTES
+    {
+        return Err("module preset exceeds 4 MiB".into());
+    }
     let object = preset.as_object().ok_or("preset must be an object")?;
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "format" | "version" | "kind" | "params" | "bypassed" | "score" | "content"
+            "format" | "version" | "kind" | "params" | "bypassed" | "score" | "content" | "assets"
         )
     }) {
         return Err(
-            "preset accepts only format, version, kind, params, bypassed, score, and content"
+            "preset accepts only format, version, kind, params, bypassed, score, content, and assets"
                 .into(),
         );
     }
@@ -56,6 +64,7 @@ pub fn validate(preset: &Value) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
         openpatch_core::validate_content(&node)?;
     }
+    decode_assets(preset)?;
     let params = preset["params"]
         .as_object()
         .ok_or("preset params must be an object")?;
@@ -121,14 +130,90 @@ pub fn validate(preset: &Value) -> Result<(), String> {
         );
         patch.validate()?;
     }
-    if serde_json::to_vec(preset)
-        .map_err(|error| error.to_string())?
-        .len()
-        > MAX_BYTES
-    {
-        return Err("module preset exceeds 64 KiB".into());
-    }
     Ok(())
+}
+
+fn is_wavetable(kind: &str) -> bool {
+    matches!(kind, "wavetable_vco" | "wavetable_lfo")
+}
+
+/// Decode only a portable preset's referenced asset, checking both its digest
+/// and interpretation. Descriptor-only inspection objects are never accepted.
+fn decode_assets(preset: &Value) -> Result<WaveAssets, String> {
+    let kind = preset["kind"]
+        .as_str()
+        .ok_or("preset kind must be a string")?;
+    if !is_wavetable(kind) && preset.get("assets").is_some() {
+        return Err("preset assets require a wavetable module".into());
+    }
+    let referenced = preset
+        .get("content")
+        .map(|content| serde_json::from_value::<ModuleContent>(content.clone()))
+        .transpose()
+        .map_err(|error| error.to_string())?;
+    let shape = match referenced {
+        Some(ModuleContent::Wavetable {
+            asset_id,
+            wave_points,
+            ..
+        }) => Some((asset_id, wave_points)),
+        _ => None,
+    };
+    let encoded = match preset.get("assets") {
+        Some(value) => Some(value.as_object().ok_or("preset assets must be an object")?),
+        None => None,
+    };
+    let count = encoded.map_or(0, |assets| assets.len());
+    if count != usize::from(shape.is_some()) {
+        return Err("preset assets must contain exactly the referenced wavetable asset".into());
+    }
+    let Some((id, points)) = shape else {
+        return Ok(WaveAssets::new());
+    };
+    let payload = encoded
+        .and_then(|assets| assets.get(&id))
+        .ok_or("preset is missing its referenced wavetable asset")?;
+    let asset: openpatch_core::WaveAsset = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("invalid preset wavetable asset: {error}"))?;
+    if asset.id() != id {
+        return Err("preset wavetable asset digest does not match sample bytes".into());
+    }
+    if points < 2 || points as usize > asset.sample_count() {
+        return Err("preset wave length must fit at least one complete wave".into());
+    }
+    Ok([(id, std::sync::Arc::new(asset))].into_iter().collect())
+}
+
+/// Return validated, self-contained samples to merge into the target patch
+/// before compiling a candidate. Applying the node alone does not install them.
+pub fn assets_from_preset(preset: &Value) -> Result<WaveAssets, String> {
+    validate(preset)?;
+    decode_assets(preset)
+}
+
+/// Compact review metadata, deliberately missing the portable format marker.
+/// This cannot be passed back as a valid preset with its samples omitted.
+pub fn summary(preset: &Value) -> Result<Value, String> {
+    let assets = assets_from_preset(preset)?;
+    let mut view = preset.clone();
+    let object = view.as_object_mut().ok_or("preset must be an object")?;
+    object.remove("format");
+    object.remove("version");
+    object.remove("assets");
+    object.insert("portable_preset".into(), json!(false));
+    object.insert("asset_data_included".into(), json!(false));
+    if !assets.is_empty() {
+        object.insert(
+            "assets".into(),
+            Value::Object(
+                assets
+                    .iter()
+                    .map(|(id, asset)| (id.clone(), asset.descriptor()))
+                    .collect(),
+            ),
+        );
+    }
+    Ok(view)
 }
 
 /// Capture effective defaults. The caller supplies coherent current SEQ3 Run.
@@ -138,6 +223,15 @@ pub fn capture(node: &Node, running: Option<bool>) -> Result<Value, String> {
 
 /// Capture current typed persistent state. Depressed controls and pulse tails are omitted.
 pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Value, String> {
+    capture_state_with_assets(node, state, &WaveAssets::new())
+}
+
+/// Capture a portable single-module preset with only its referenced samples.
+pub fn capture_state_with_assets(
+    node: &Node,
+    state: Option<SavedModuleState>,
+    assets: &WaveAssets,
+) -> Result<Value, String> {
     let module = descriptor(&node.kind)?;
     let mut params = BTreeMap::new();
     for (name, spec) in module["params"].as_object().unwrap() {
@@ -175,6 +269,17 @@ pub fn capture_state(node: &Node, state: Option<SavedModuleState>) -> Result<Val
     } else if let Some(width_hp) = node.effective_blank_width_hp() {
         preset["content"] = json!({"type":"blank","width_hp":width_hp});
     }
+    if let Some(ModuleContent::Wavetable { asset_id, .. }) = &node.content {
+        let asset = assets
+            .get(asset_id)
+            .ok_or("custom wavetable capture requires its referenced asset samples")?;
+        if asset.id() != asset_id {
+            return Err("capture wavetable asset digest does not match sample bytes".into());
+        }
+        preset["assets"] =
+            serde_json::to_value([(asset_id, asset)].into_iter().collect::<BTreeMap<_, _>>())
+                .map_err(|error| error.to_string())?;
+    }
     validate(&preset)?;
     Ok(preset)
 }
@@ -187,6 +292,10 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
     if let Some(content) = preset.get("content") {
         node.content =
             Some(serde_json::from_value(content.clone()).map_err(|error| error.to_string())?);
+    } else if is_wavetable(&node.kind) {
+        // A wavetable preset without custom content selects the production
+        // default bank. Legacy annotation presets retain their partial merge.
+        node.content = None;
     }
     if let Some(score) = preset.get("score") {
         node.score =
@@ -209,6 +318,12 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
 }
 
 pub fn read(path: &Path) -> Result<Value, String> {
+    read_with_digest(path).map(|(preset, _)| preset)
+}
+
+/// Hash the exact bounded bytes reviewed by the caller so applying from a file
+/// can reject a subsequent replacement instead of applying unseen contents.
+pub fn read_with_digest(path: &Path) -> Result<(Value, String), String> {
     let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("preset must be a regular file, not a symlink".into());
@@ -244,12 +359,12 @@ pub fn read(path: &Path) -> Result<Value, String> {
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if bytes.len() > MAX_BYTES {
-        return Err("module preset exceeds 64 KiB".into());
+        return Err("module preset exceeds 4 MiB".into());
     }
     let preset = serde_json::from_slice(&bytes)
         .map_err(|error| format!("invalid module preset JSON: {error}"))?;
     validate(&preset)?;
-    Ok(preset)
+    Ok((preset, format!("{:x}", Sha256::digest(&bytes))))
 }
 
 struct Staged(PathBuf);
@@ -265,7 +380,7 @@ pub fn save_new(path: &Path, preset: &Value) -> Result<(), String> {
     validate(preset)?;
     let bytes = serde_json::to_vec_pretty(preset).map_err(|error| error.to_string())?;
     if bytes.len() > MAX_BYTES {
-        return Err("module preset exceeds 64 KiB".into());
+        return Err("module preset exceeds 4 MiB".into());
     }
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let directory = path.parent().ok_or("preset path has no parent")?;

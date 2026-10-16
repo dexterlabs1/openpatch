@@ -6,6 +6,8 @@ Set ``OPENPATCH_BIN`` to override the default release binary location.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import math
 import os
@@ -201,6 +203,25 @@ class OpenPatchMCPTests(unittest.TestCase):
                 if isinstance(decoded, dict):
                     return decoded
         return None
+
+    def compact_wavetable_payload(self, result: dict[str, Any]) -> dict[str, Any]:
+        # Measure the complete MCP result, including its text/structured copies.
+        self.assertLess(len(json.dumps(result, separators=(",", ":")).encode()), 32 * 1024)
+        payload = self.payload(result)
+        self.assertIsInstance(payload, dict)
+        assert payload is not None
+
+        def check(value: Any) -> None:
+            if isinstance(value, dict):
+                self.assertNotIn("data", value, "ordinary reply leaked an encoded asset payload")
+                for child in value.values():
+                    check(child)
+            elif isinstance(value, list):
+                for child in value:
+                    check(child)
+
+        check(payload)
+        return payload
 
     def test_score_edit_roundtrip_and_bounded_arrangement_render(self) -> None:
         score = {"length":4,"tracks":[{"steps":[{"step":0,"notes":[0]}]}],"lanes":[{"points":[{"bar":0,"value":0.5}]}]}
@@ -1176,7 +1197,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 66)
+        self.assertEqual(len(catalog["modules"]), 68)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1236,7 +1257,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 66)
+        self.assertEqual(len(catalog["modules"]), 68)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1329,7 +1350,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 66)
+        self.assertEqual(len(catalog["modules"]), 68)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -1520,6 +1541,112 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_error("capture_project_patch", {"filename": "unexpected.openpatch"})
         self.assertFalse((self.workspace / "unexpected.openpatch").exists())
         self.assertEqual(self.patch_snapshot(), before)
+
+    def test_maximum_wavetable_uses_bounded_stdio_replies_and_portable_workspace_files(self) -> None:
+        # Signed zero, a subnormal and values outside [-1,1] expose unintended
+        # normalization or a lossy sample representation during persistence.
+        pattern = struct.pack("<8I", 0, 0x80000000, 0x3f800000, 0xbf800000,
+                              0x3eaaaaab, 1, 0x3f000001, 0xc0200000)
+        source = pattern * (524288 // 8)
+        (self.workspace / "maximum.f32").write_bytes(source)
+        self.require_tool_success("add_module", {"id": "wave", "kind": "wavetable_lfo"})
+        imported = self.compact_wavetable_payload(self.require_tool_success("import_wavetable", {
+            "id": "wave", "filename": "maximum.f32", "wave_points": 1024,
+        }))
+        digest = imported["asset"]["sha256"]
+        self.assertEqual(imported["asset"]["sample_count"], 524288)
+        inspected = self.compact_wavetable_payload(self.require_tool_success("inspect_patch"))
+        self.assertEqual(inspected["patch"]["assets"][digest]["sample_count"], 524288)
+        preview = self.compact_wavetable_payload(self.require_tool_success("preview_edits", {
+            "edits": [{"tool": "set_parameter", "arguments": {
+                "id": "wave", "parameter": "position", "value": 0.25,
+            }}], "expected_revision": inspected["revision"],
+        }))
+        self.assertFalse(preview["committed"])
+        self.assertEqual(self.patch_snapshot(), inspected)
+        changed = self.compact_wavetable_payload(self.require_tool_success("set_parameter", {
+            "id": "wave", "parameter": "position", "value": 0.5,
+        }))
+        undone = self.compact_wavetable_payload(self.require_tool_success("undo"))
+        self.assertEqual(undone["patch"], inspected["patch"])
+        redone = self.compact_wavetable_payload(self.require_tool_success("redo"))
+        self.assertEqual(redone["patch"], changed["patch"])
+
+        self.compact_wavetable_payload(self.require_tool_success("save_patch", {"filename": "maximum.json"}))
+        saved_bytes = (self.workspace / "maximum.json").read_bytes()
+        self.assertGreater(len(saved_bytes), 1024 * 1024)
+        saved = json.loads(saved_bytes)
+        self.assertEqual(saved["assets"][digest]["encoding"], "f32le-base64-v1")
+        self.assertEqual(base64.b64decode(saved["assets"][digest]["data"], validate=True), source)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2}})
+        loaded = self.compact_wavetable_payload(self.require_tool_success("load_patch", {"filename": "maximum.json"}))
+        self.assertEqual(loaded["patch"], changed["patch"])
+        for offset in (0, 524288 - 8):
+            chunk = self.compact_wavetable_payload(self.require_tool_success("inspect_wavetable", {
+                "id": "wave", "offset": offset, "limit": 8,
+            }))
+            self.assertEqual(chunk["asset"]["sha256"], digest)
+            self.assertEqual(struct.pack("<8f", *chunk["samples"]), pattern)
+        self.compact_wavetable_payload(self.require_tool_success("export_wavetable", {
+            "id": "wave", "filename": "maximum-restored.f32",
+        }))
+        restored = (self.workspace / "maximum-restored.f32").read_bytes()
+        self.assertEqual(hashlib.sha256(restored).digest(), hashlib.sha256(source).digest())
+        before_rejection = self.patch_snapshot()
+        self.require_tool_error("export_wavetable", {"id": "wave", "filename": "maximum-restored.f32"})
+        self.assertEqual((self.workspace / "maximum-restored.f32").read_bytes(), restored)
+        self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_wavetable_preset_file_review_digest_is_required_for_atomic_apply(self) -> None:
+        source = struct.pack("<4f", 0.0, -0.0, 0.25, -0.75) * 16
+        (self.workspace / "small.f32").write_bytes(source)
+        self.require_tool_success("add_module", {"id": "wave", "kind": "wavetable_lfo"})
+        imported = self.compact_wavetable_payload(self.require_tool_success("import_wavetable", {
+            "id": "wave", "filename": "small.f32", "wave_points": 32,
+        }))
+        digest = imported["asset"]["sha256"]
+        self.require_tool_success("set_parameter", {"id": "wave", "parameter": "position", "value": 0.25})
+        # Explicit full data is requested only for this small portable preset.
+        captured = self.payload(self.require_tool_success("capture_module_preset", {
+            "id": "wave", "include_asset_data": True,
+        }))["preset"]
+        saved = self.compact_wavetable_payload(self.require_tool_success("save_module_preset", {
+            "filename": "reviewed-wave.opreset", "preset": captured,
+        }))
+        self.assertNotIn("preset", saved)
+        reviewed = self.compact_wavetable_payload(self.require_tool_success("read_module_preset", {
+            "filename": "reviewed-wave.opreset",
+        }))
+        self.assertNotIn("preset", reviewed)
+        self.assertFalse(reviewed["preset_summary"]["portable_preset"])
+        preset_path = self.workspace / "reviewed-wave.opreset"
+        reviewed_bytes = preset_path.read_bytes()
+        self.assertEqual(reviewed["file_sha256"], hashlib.sha256(reviewed_bytes).hexdigest())
+        self.require_tool_success("replace_patch", {"patch": {"version": 2}})
+        self.require_tool_success("add_module", {"id": "target", "kind": "wavetable_lfo"})
+        before = self.patch_snapshot()
+        self.require_tool_error("apply_module_preset", {"id": "target", "filename": "reviewed-wave.opreset"})
+        self.assertEqual(self.patch_snapshot(), before)
+        applied = self.compact_wavetable_payload(self.require_tool_success("apply_module_preset", {
+            "id": "target", "filename": "reviewed-wave.opreset",
+            "expected_file_sha256": reviewed["file_sha256"], "expected_revision": before["revision"],
+        }))
+        target = next(node for node in applied["patch"]["nodes"] if node["id"] == "target")
+        self.assertEqual(target["params"]["position"], 0.25)
+        self.assertEqual(target["content"]["asset_id"], digest)
+        samples = self.compact_wavetable_payload(self.require_tool_success("inspect_wavetable", {
+            "id": "target", "offset": 0, "limit": 4,
+        }))["samples"]
+        self.assertEqual(struct.pack("<4f", *samples), source[:16])
+        # Even semantically identical JSON with changed bytes requires review.
+        preset_path.write_bytes(reviewed_bytes + b"\n")
+        before_rejection = self.patch_snapshot()
+        self.require_tool_error("apply_module_preset", {
+            "id": "target", "filename": "reviewed-wave.opreset",
+            "expected_file_sha256": reviewed["file_sha256"],
+            "expected_revision": before_rejection["revision"],
+        })
+        self.assertEqual(self.patch_snapshot(), before_rejection)
 
     def test_native_module_preset_capture_exact_save_partial_apply_and_history(self) -> None:
         self.require_tool_success("replace_patch", {"patch": {
