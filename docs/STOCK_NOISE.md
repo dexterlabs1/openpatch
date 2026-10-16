@@ -80,5 +80,8 @@ possible wiring and stream length. The companion
 [host reference report](benchmarks/stock-noise-host-reference.json) records
 the source/host evidence; the
 [release qualification record](benchmarks/stock-noise-release-qualification.json)
-tracks further gates. Application, UI, callback and release qualification are
-**pending**; the reference pass is not a claim that those checks have passed.
+records the combined-source release gates: all seven frozen reference
+regressions pass, alongside 1,013 desktop tests, 113 release-executable MCP checks,
+strict Clippy, macOS ARM/Linux/Windows CI and 145 validated native Linux captures.
+The ARM bundle passes static signature, architecture and embedded-resource checks.
+Local Mac GUI and physical audio-device playback were not exercised.

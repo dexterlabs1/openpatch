@@ -73,8 +73,8 @@ old/new value text tied to its readout. This cue reports an edit, not an audio
 measurement. Direct pointer or keyboard input takes over the control. Labels,
 readouts, the 68-point rotary targets and enlarged jack material need visible
 clearance at the library's reduced scales; moving text is preferable to making
-the controls smaller. Application qualification for these panel changes is
-pending.
+the controls smaller. Application qualification for these panel changes is recorded in
+[the combined release report](benchmarks/stock-noise-release-qualification.json).
 
 Stock Noise uses seven separate horizontal process marks terminating at its
 seven actual outputs. The marks name the normal draw, Voss rows, white and

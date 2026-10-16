@@ -25,4 +25,4 @@ The engine has 20 logical input ports and eight named mono output ports. Its nat
 
 ## Qualification
 
-Integration and release qualification are pending. The [public qualification report](benchmarks/studio-mixer-release-qualification.json) will be published when the release checks are complete; no full UI, native audio-device, or cross-platform pass is claimed here.
+The [public qualification report](benchmarks/studio-mixer-release-qualification.json) records passing Core/callback checks, 1,013 desktop tests, 113 release-executable MCP checks, strict Clippy, and macOS ARM, Linux and Windows CI. The native Linux captures include the console, lights-out mode and shared browser panel. Local Mac GUI and physical audio-device playback were not exercised. The bounded performance comparison covers four unchanged workloads; it does not measure the console’s own processing cost.

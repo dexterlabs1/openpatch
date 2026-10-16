@@ -816,5 +816,55 @@
       "uncompressed_sha256": "2d83012b720d0436c7cecaf1f9746379c9570717230e1b5d66a4c317c3b11dd7"
     }
   },
-  "application_qualification": "See stock-noise-release-qualification.json; independent source comparison does not qualify the application build."
+  "application_qualification": "See stock-noise-release-qualification.json; independent source comparison does not qualify the application build.",
+  "combined_console_core_validation": {
+    "recorded_at": "2026-10-16T17:36:17.029814+00:00",
+    "source_head": "436bc4b476c23e8620bf8e48e4a64df3f65bdbc9",
+    "passed": true,
+    "validation": {
+      "cases": 424,
+      "discarded_snapshots": 0,
+      "events": 17689,
+      "output_consumer_masks_per_rate": 128,
+      "paired": {
+        "discarded_snapshots": 0,
+        "paired_rows": 18113,
+        "passed": true
+      },
+      "passed": true,
+      "production": {
+        "dft_checks": 22,
+        "discarded_snapshots": 0,
+        "passed": true,
+        "rows": 18113
+      },
+      "sample_rates": [
+        44100,
+        48000,
+        96000
+      ],
+      "sdk": {
+        "dft_checks": 22,
+        "discarded_snapshots": 0,
+        "passed": true,
+        "rows": 18113
+      },
+      "snapshots": 18113
+    },
+    "complete_production_trace_exactly_matches_initial": true,
+    "production_trace_sha256": "dfba7346540496e3c865d3fc1055a594a10c8e73265d692b86473785adb0d665",
+    "complete_trace_file": "stock-noise-production.jsonl.gz",
+    "final_reports": {
+      "stock-noise-final-paired-result.json.gz": {
+        "compressed_sha256": "6d9e82c7176548a44960991a47b5b49f405ecb8ef5458f0d0da1fc996e683940",
+        "uncompressed_sha256": "d954f8aaad1e2d9382910e0e9b49ea8762309d521b8fe927980de81dd3c120b5",
+        "uncompressed_bytes": 77247
+      },
+      "stock-noise-final-production-build.json.gz": {
+        "compressed_sha256": "899f7c9c6786b6318ac42101e10e20843479e4e1df08c1aec5661f5ed252cdc7",
+        "uncompressed_sha256": "821bc7572e4ee040f09f0353834cc37ee0089b2b0d189c00811d35f2b334bdb2",
+        "uncompressed_bytes": 20783
+      }
+    }
+  }
 }
