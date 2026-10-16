@@ -4,7 +4,7 @@
 //! denormal operands/results flushed to signed zero. The qualified ARM FZ
 //! environment tests result tininess before rounding. Apply signed FTZ/DAZ with
 //! bit classification around arithmetic, without modifying FPCR/MXCSR or raw
-//! port copies. Used only by Stock Mix and canonical stacked-cable addition;
+//! port copies. Used by native Stock Mix, Stock VCA Mix and canonical stacked-cable addition;
 //! other legacy/native module arithmetic retains its separately qualified path.
 
 pub(crate) fn flush_tiny(value: f32) -> f32 {
@@ -18,6 +18,10 @@ pub(crate) fn flush_tiny(value: f32) -> f32 {
 
 pub(crate) fn rack_add(left: f32, right: f32) -> f32 {
     flush_tiny(flush_tiny(left) + flush_tiny(right))
+}
+
+pub(crate) fn rack_sub(left: f32, right: f32) -> f32 {
+    flush_tiny(flush_tiny(left) - flush_tiny(right))
 }
 
 pub(crate) fn rack_mul(left: f32, right: f32) -> f32 {

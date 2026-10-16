@@ -56,6 +56,8 @@ mod stock_octave_tests;
 mod stock_quantizer_tests;
 #[cfg(test)]
 mod stock_seq3_tests;
+#[cfg(test)]
+mod stock_vca_mix_tests;
 use openpatch_core::{
     catalog, render_audio_with_performance_events, validate_midi_events, validate_module_events,
     write_wav_interleaved, Cable, Engine, ModuleAction, ModuleHandle, ModuleParameterActions, Node,
@@ -1989,6 +1991,26 @@ fn apply_edit(
                     "Stock Octave octaves must be finite and in -4..=4 for interactive edits"
                         .into(),
                 );
+            }
+            if node.kind == "stock_vca_mix" {
+                let maximum = match parameter {
+                    "mix_level" => Some(2.0),
+                    "level1" | "level2" | "level3" | "level4" => {
+                        Some(f64::from(std::f32::consts::SQRT_2))
+                    }
+                    _ => None,
+                };
+                if maximum.is_some_and(|maximum| {
+                    !raw_value.is_finite() || !(0.0..=maximum).contains(&raw_value)
+                }) {
+                    return Err(
+                        "Stock VCA Mix interactive gain is outside its editing range".into(),
+                    );
+                }
+                if matches!(parameter, "channel_exp" | "mix_exp") && !matches!(raw_value, 0.0 | 1.0)
+                {
+                    return Err("Stock VCA Mix CV response must be 0 or 1".into());
+                }
             }
             let value = raw_value as f32;
             let previous_mappings = midi_cc::node_mappings(node);

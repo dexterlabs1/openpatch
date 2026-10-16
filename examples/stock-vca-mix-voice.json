@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {"id":"bass","kind":"stock_vco","params":{"frequency":-24}},
+    {"id":"low","kind":"stock_vco","params":{"frequency":-12}},
+    {"id":"fifth","kind":"stock_vco","params":{"frequency":-5}},
+    {"id":"air","kind":"stock_vco","params":{"frequency":0}},
+    {"id":"mix","kind":"stock_vca_mix","params":{"level1":0.65,"level2":0.5,"level3":0.4,"level4":0.3,"mix_level":0.75,"channel_exp":0,"mix_exp":0}},
+    {"id":"motion","kind":"stock_lfo","params":{"rate":-3,"offset":1,"invert":1}},
+    {"id":"scope","kind":"scope","params":{"time":0.025,"trigger_enabled":0,"x_scale":1,"y_scale":1}},
+    {"id":"out","kind":"audio_stereo","params":{"gain":0.12,"dc_block":1}},
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"VCA MIX · FOUR LAYERS\n\nFour tones build one voice.\nKnobs set each layer.\nClick a value to type.\n\nChannel CV: four VCAs.\nMix CV: overall volume.\nLIN / EXP sets CV response.\n\nMeters follow real signals.\nPoly voices can cancel.\n\nScope X: bass strip.\nScope Y: full mix.\nMaster feeds stereo output."}}
+  ],
+  "cables": [
+    {"id":"bass-strip","from":"bass","output":"triangle","to":"mix","input":"in1","color":[226,171,65]},
+    {"id":"low-strip","from":"low","output":"sine","to":"mix","input":"in2","color":[166,124,219]},
+    {"id":"fifth-strip","from":"fifth","output":"saw","to":"mix","input":"in3","color":[66,182,172]},
+    {"id":"air-strip","from":"air","output":"sine","to":"mix","input":"in4","color":[232,126,105]},
+    {"id":"master-motion","from":"motion","output":"sine","to":"mix","input":"mix_cv","color":[126,184,112]},
+    {"id":"air-motion","from":"motion","output":"triangle","to":"mix","input":"cv4","color":[126,184,112]},
+    {"id":"strip-scope","from":"mix","output":"out1","to":"scope","input":"x","color":[226,171,65]},
+    {"id":"mix-scope","from":"mix","output":"mix","to":"scope","input":"y","color":[66,182,172]},
+    {"id":"mix-left","from":"mix","output":"mix","to":"out","input":"left","color":[66,182,172]},
+    {"id":"mix-right","from":"mix","output":"mix","to":"out","input":"right","color":[66,182,172]}
+  ],
+  "output": "out"
+}

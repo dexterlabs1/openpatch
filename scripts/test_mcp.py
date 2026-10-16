@@ -1299,7 +1299,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 76)
+        self.assertEqual(len(catalog["modules"]), 77)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1359,7 +1359,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 76)
+        self.assertEqual(len(catalog["modules"]), 77)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1452,7 +1452,7 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 76)
+        self.assertEqual(len(catalog["modules"]), 77)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -2698,6 +2698,141 @@ class OpenPatchMCPTests(unittest.TestCase):
         invalid_preset = {**reviewed, "params": {"level": .75, "response": .5}}
         self.require_tool_error("apply_module_preset", {"id": "amplifier", "preset": invalid_preset})
         self.assertEqual(self.patch_snapshot(), before_rejection)
+
+    def test_stock_vca_mix_catalog_editing_bounds_and_atomic_revision(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        mixer = modules["stock_vca_mix"]
+        self.assertIn("vca_mix", modules, "Existing mixer remains independently available")
+        self.assertEqual(mixer["inputs"], ["mix_cv", "in1", "in2", "in3", "in4", "cv1", "cv2", "cv3", "cv4"])
+        self.assertEqual(mixer["outputs"], ["mix", "out1", "out2", "out3", "out4"])
+        self.assertEqual(mixer["light_names"], ["channel_1", "channel_2", "channel_3", "channel_4"])
+        self.assertEqual(mixer["bypass"]["routes"], [])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "mix", "kind": "stock_vca_mix", "params": {"mix_level": -2.5, "level1": 3.25}},
+            {"id": "legacy", "kind": "vca_mix", "params": {"level1": .75}}],
+            "output": "mix", "output_port": "mix"}})
+        initial = self.patch_snapshot()
+        strip_max = struct.unpack("<f", struct.pack("<f", math.sqrt(2)))[0]
+        for name in ("mix_level", "level1", "level2", "level3", "level4"):
+            maximum = 2 if name == "mix_level" else strip_max
+            self.assertEqual(mixer["params"][name]["max"], maximum)
+            for invalid in (-1e-300, -.001, maximum + 1e-10, 1e300):
+                self.require_tool_error("set_parameter", {"id": "mix", "parameter": name,
+                    "value": invalid, "expected_revision": initial["revision"]})
+                self.assertEqual(self.patch_snapshot(), initial,
+                                 "Check editing bounds before float32 rounding can hide invalid input")
+        for flag in ("channel_exp", "mix_exp"):
+            self.assertEqual(mixer["params"][flag]["values"], [0, 1])
+            for invalid in (-1, .5, 1 + 1e-10):
+                self.require_tool_error("set_parameter", {"id": "mix", "parameter": flag, "value": invalid})
+                self.assertEqual(self.patch_snapshot(), initial)
+        edits = {"expected_revision": initial["revision"], "edits": [
+            {"tool": "set_parameter", "arguments": {"id": "mix", "parameter": "level1", "value": .5}},
+            {"tool": "set_parameter", "arguments": {"id": "mix", "parameter": "mix_exp", "value": .5}}]}
+        for tool in ("preview_edits", "apply_edits"):
+            self.require_tool_error(tool, edits)
+            self.assertEqual(self.patch_snapshot(), initial)
+        edits["edits"][1]["arguments"]["value"] = 1
+        preview = self.payload(self.require_tool_success("preview_edits", edits))
+        self.assertEqual(self.patch_snapshot(), initial)
+        applied = self.payload(self.require_tool_success("apply_edits", edits))
+        self.assertEqual(applied["patch"], preview["patch"])
+        self.assertEqual(applied["revision"], initial["revision"] + 1)
+        self.require_tool_error("set_parameter", {"id": "mix", "parameter": "mix_level", "value": 1,
+            "expected_revision": initial["revision"]})
+        self.assertEqual(self.patch_snapshot(), applied)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], initial["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], applied["patch"])
+
+    def test_stock_vca_mix_raw_project_preset_initialize_and_history(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": [
+            {"id": "mix", "kind": "stock_vca_mix", "params": {
+                "mix_level": -2.5, "level1": 3.25, "level2": -8.75, "level3": 1, "level4": 1,
+                "channel_exp": 1, "mix_exp": 1}}],
+            "output": "mix", "output_port": "mix"}})
+        initial = self.patch_snapshot()
+        project = self.payload(self.require_tool_success("capture_project_patch"))
+        self.assertEqual(project["patch"], initial["patch"])
+        captured = self.payload(self.require_tool_success("capture_module_preset", {"id": "mix"}))
+        preset = captured["preset"]
+        self.assertEqual(captured["state_source"], "saved_parameters")
+        self.assertEqual(preset["params"], initial["patch"]["nodes"][0]["params"])
+        self.require_tool_success("save_module_preset", {"filename": "stock-vca-mix.opreset", "preset": preset})
+        reviewed = self.payload(self.require_tool_success("read_module_preset", {"filename": "stock-vca-mix.opreset"}))["preset"]
+        self.assertEqual(reviewed, preset)
+        self.require_tool_success("save_patch", {"filename": "stock-vca-mix.json"})
+        initialized = self.payload(self.require_tool_success("initialize_modules", {"ids": ["mix"]}))
+        self.assertEqual(initialized["patch"]["nodes"][0]["params"], {
+            "mix_level": 1, "level1": 1, "level2": 1, "level3": 1, "level4": 1,
+            "channel_exp": 0, "mix_exp": 0})
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], initial["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], initialized["patch"])
+        self.require_tool_success("apply_module_preset", {"id": "mix", "preset": reviewed})
+        self.assertEqual(self.patch_snapshot()["patch"], initial["patch"])
+        self.require_tool_success("set_parameter", {"id": "mix", "parameter": "mix_level", "value": .5})
+        self.assertEqual(self.payload(self.require_tool_success("load_patch", {"filename": "stock-vca-mix.json"}))["patch"], initial["patch"])
+        self.require_tool_success("replace_patch", {"patch": project["patch"]})
+        self.assertEqual(self.patch_snapshot()["patch"], initial["patch"])
+        for parameter, invalid in (("channel_exp", .5), ("mix_exp", 2), ("level3", 1e300)):
+            before = self.patch_snapshot()
+            self.require_tool_error("apply_module_preset", {"id": "mix",
+                "preset": {**reviewed, "params": {parameter: invalid}}})
+            self.assertEqual(self.patch_snapshot(), before)
+
+    def test_stock_vca_mix_polyphonic_cv_laws_named_outputs_and_bypass(self) -> None:
+        def graph(channel_exp: int = 0, mix_exp: int = 0, cv: tuple[float, ...] = (5,)) -> dict[str, Any]:
+            return {"version": 2, "sample_rate": 48000, "nodes": [
+                {"id": "poly", "kind": "poly_constant", "params": {"channels": 3, "v1": 4, "v2": -2, "v3": 8}},
+                {"id": "mono", "kind": "constant", "params": {"value": 2}},
+                {"id": "strip_cv", "kind": "poly_constant", "params": {
+                    "channels": len(cv), **{f"v{i}": value for i, value in enumerate(cv, 1)}}},
+                {"id": "master_cv", "kind": "constant", "params": {"value": 10}},
+                {"id": "mix", "kind": "stock_vca_mix", "params": {
+                    "level1": .5, "mix_level": .5, "channel_exp": channel_exp, "mix_exp": mix_exp}}],
+                "cables": [{"from": source, "to": "mix", "input": port}
+                           for source, port in (("poly", "in1"), ("mono", "in2"),
+                                                ("strip_cv", "cv1"), ("master_cv", "mix_cv"))]
+                # Two ordinary 10 V producers stacked at the same jack produce
+                # 20 V without exceeding the constant source's editing range.
+                + [{"from": "master_cv", "to": "mix", "input": "mix_cv"}]}
+
+        def trace(port: str, steady: tuple[float, ...], bypassed: bool = False) -> None:
+            before = self.patch_snapshot()
+            analyzed = self.payload(self.require_tool_success("analyze_signal", {
+                "id": "mix", "port": port, "seconds": .002, "expected_revision": before["revision"]}))
+            self.assertEqual((analyzed["frames"], analyzed["min_channels"], analyzed["max_channels"]),
+                             (96, 1, 1 if bypassed else 3))
+            self.assertEqual([channel["active_frames"] for channel in analyzed["channels"]],
+                             [96] if bypassed else [96, 95, 95])
+            for channel, value in enumerate(steady, 1):
+                captured = self.payload(self.require_tool_success("capture_signal", {
+                    "id": "mix", "port": port, "channel": channel, "seconds": .002, "points": 96,
+                    "expected_revision": before["revision"]}))
+                expected = [0] * 96 if bypassed else [0 if channel == 1 else None] + [value] * 95
+                self.assertEqual([point["mean"] for point in captured["bins"]], expected)
+            self.assertEqual(self.patch_snapshot(), before,
+                             "Offline analysis must not change revision, history or saved values")
+
+        self.require_tool_success("replace_patch", {"patch": graph()})
+        trace("out1", (.5, -.25, 1))
+        trace("out2", (2, 2, 2))
+        trace("mix", (2.5, 1.75, 3))
+        # Strip gain is squared; CV response laws are independent fourth powers.
+        for channel_exp, mix_exp, expected in (
+                (1, 0, (2.0625, 1.96875, 2.125)),
+                (0, 1, (20, 14, 24)), (1, 1, (16.5, 15.75, 17))):
+            self.require_tool_success("replace_patch", {"patch": graph(channel_exp, mix_exp)})
+            trace("mix", expected)
+        self.require_tool_success("replace_patch", {"patch": graph(cv=(5, 10))})
+        trace("out1", (.5, -.5, 0))
+        trace("mix", (2.5, 1.5, 2))
+        # A physically present zero-channel CV is not the same as an unpatched CV.
+        self.require_tool_success("replace_patch", {"patch": graph(cv=())})
+        trace("out1", (0, 0, 0))
+        trace("mix", (2, 2, 2))
+        self.require_tool_success("set_bypass", {"id": "mix", "bypassed": True})
+        trace("mix", (0,), bypassed=True)
+        trace("out1", (0,), bypassed=True)
 
     def test_stock_octave_catalog_interactive_bounds_and_atomic_revision(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}

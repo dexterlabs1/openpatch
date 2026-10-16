@@ -21,7 +21,7 @@ const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
     ),
 ];
 
-/// Family colors remain visible as large header blocks at rack overview scales.
+/// Family colors remain available for controls and actual status/role accents.
 /// Every stock kind is assigned explicitly; unknown modules use neutral metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
@@ -37,8 +37,8 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         }
         "seq3" | "stock_seq3" | "score_sequencer" => Color32::from_rgb(143, 104, 28),
         "gain" | "analog_vca" | "stock_vca" | "mixer" | "mix6" | "stock_mix" | "poly_sum"
-        | "cv_mix" | "vca_mix" | "fade" | "crossfade" | "attenuverter" | "attenuverter8"
-        | "mutes10" => Color32::from_rgb(65, 121, 77),
+        | "cv_mix" | "vca_mix" | "stock_vca_mix" | "fade" | "crossfade" | "attenuverter"
+        | "attenuverter8" | "mutes10" => Color32::from_rgb(65, 121, 77),
         "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
             Color32::from_rgb(59, 119, 108)
         }
@@ -58,28 +58,18 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
     }
 }
 
-pub(crate) const HEADER_INK: Color32 = Color32::from_rgb(249, 246, 236);
+pub(crate) const HEADER_INK: Color32 = INK;
 
-/// Reflective colored enamel: the caller's room lighting dims these shapes and
-/// the title together. Keep the controls on the existing warm, readable metal.
-pub(crate) fn identity_header(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32) {
-    let accent = family_accent(kind);
-    let inner = rect.shrink(1.0 * zoom);
-    let header_bottom = rect.top() + 65.0 * zoom;
-    painter.rect_filled(
-        Rect::from_min_max(inner.min, pos2(inner.right(), header_bottom)),
-        0.0,
-        accent.gamma_multiply(0.72),
-    );
-    // A continuous edge carries family identity below a partly obscured header,
-    // while staying clear of every control and connection target.
-    painter.rect_filled(
-        Rect::from_min_max(
-            pos2(inner.left(), header_bottom),
-            pos2(inner.left() + 4.0 * zoom, inner.bottom()),
-        ),
-        0.0,
-        accent,
+/// Shared neutral title section. Family color stays available for meaningful
+/// controls and status marks, while titles remain readable across every face.
+pub(crate) fn identity_header(painter: &egui::Painter, rect: Rect, _kind: &str, zoom: f32) {
+    let divider_y = rect.top() + 65.0 * zoom;
+    painter.line_segment(
+        [
+            pos2(rect.left() + 7.0 * zoom, divider_y),
+            pos2(rect.right() - 7.0 * zoom, divider_y),
+        ],
+        Stroke::new(0.65 * zoom, Color32::from_rgb(190, 183, 169)),
     );
 }
 
@@ -156,6 +146,25 @@ pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
     painter.line_segment(
         [face.left_top(), face.right_top()],
         Stroke::new(0.6 * zoom, Color32::from_rgb(237, 234, 223)),
+    );
+}
+
+/// Unprinted warm-ivory stock used by the Signal Atlas VCA mixer faceplate.
+/// This intentionally has no family-color enamel band.
+pub(crate) fn signal_atlas_face(painter: &egui::Painter, rect: Rect, zoom: f32) {
+    painter.rect_filled(
+        rect.translate(vec2(1.0, 1.5) * zoom),
+        1.0 * zoom,
+        Color32::from_black_alpha(44),
+    );
+    painter.rect_filled(rect, 1.0 * zoom, Color32::from_rgb(66, 67, 64));
+    let face = rect.shrink(1.1 * zoom);
+    painter.rect_filled(face, 0.0, Color32::from_rgb(238, 232, 216));
+    painter.rect_stroke(
+        face,
+        0.0,
+        Stroke::new(0.7 * zoom, Color32::from_rgb(204, 195, 176)),
+        egui::StrokeKind::Inside,
     );
 }
 
@@ -254,21 +263,31 @@ pub(crate) fn parameter_fader(
     );
 }
 
-pub(crate) fn socket(painter: &egui::Painter, center: Pos2, connected: bool, zoom: f32) {
+pub(crate) fn socket(
+    painter: &egui::Painter,
+    center: Pos2,
+    connected: bool,
+    zoom: f32,
+    scale: f32,
+) {
     // Flat concentric marks keep the connection target legible without a
     // decorative nut, offset shadow or reflected-metal stack. Output surrounds
     // and actual signal emission are painted separately by the caller.
-    painter.circle_filled(center, 10.3 * zoom, Color32::from_rgb(190, 191, 182));
+    painter.circle_filled(
+        center,
+        10.3 * zoom * scale,
+        Color32::from_rgb(190, 191, 182),
+    );
     painter.circle_stroke(
         center,
-        10.3 * zoom,
+        10.3 * zoom * scale,
         Stroke::new(0.8 * zoom, Color32::from_rgb(106, 109, 103)),
     );
-    painter.circle_filled(center, 5.9 * zoom, Color32::from_rgb(12, 17, 16));
+    painter.circle_filled(center, 5.9 * zoom * scale, Color32::from_rgb(12, 17, 16));
     if connected {
         painter.circle_stroke(
             center,
-            8.1 * zoom,
+            8.1 * zoom * scale,
             Stroke::new(0.8 * zoom, Color32::from_rgb(163, 135, 86)),
         );
     }
@@ -448,6 +467,40 @@ pub(crate) fn control_style(ui: &mut egui::Ui, zoom: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_module_title_section_has_no_family_band_or_side_stripe() {
+        assert_eq!(HEADER_INK, INK);
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(180.0, 396.0));
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(240.0, 440.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                let painter = ctx.layer_painter(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new("neutral-module-header"),
+                ));
+                identity_header(&painter, rect, "stock_vcf", 1.0);
+            },
+        );
+        assert_eq!(
+            output.shapes.len(),
+            1,
+            "only the neutral divider is painted"
+        );
+        let egui::Shape::LineSegment { points, stroke } = &output.shapes[0].shape else {
+            panic!("module title section must not paint a colored band or stripe");
+        };
+        assert_eq!(stroke.color, Color32::from_rgb(190, 183, 169));
+        assert_eq!(points[0].y, 75.0);
+        assert_eq!(points[1].y, 75.0);
+        assert_eq!(points[0].x, 17.0);
+        assert_eq!(points[1].x, 183.0);
+        assert_ne!(stroke.color, family_accent("stock_vcf"));
+    }
 
     #[test]
     fn bundled_panel_face_is_static_semibold_and_covers_panel_glyphs() {
