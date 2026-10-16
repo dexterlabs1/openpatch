@@ -611,7 +611,7 @@ fn oscillator_rotary_faces_preserve_saved_rack_width_and_jack_centers() {
     for kind in ["multi_vco", "multi_lfo"] {
         let width = panel_width(kind);
         assert_eq!(width, 300.0);
-        assert_eq!(port_material_scale(kind), 1.0);
+        assert_eq!(port_material_scale(kind), 1.30);
         for index in 0..4 {
             let x = 60.0 + index as f32 * 60.0;
             assert_eq!(port_position(kind, true, index, 4, width), pos2(x, 332.0));
@@ -621,7 +621,7 @@ fn oscillator_rotary_faces_preserve_saved_rack_width_and_jack_centers() {
     for kind in ["wavetable_vco", "wavetable_lfo"] {
         let width = panel_width(kind);
         assert_eq!(width, 360.0);
-        assert_eq!(port_material_scale(kind), 1.0);
+        assert_eq!(port_material_scale(kind), 1.30);
         for index in 0..4 {
             assert_eq!(
                 port_position(kind, true, index, 4, width),

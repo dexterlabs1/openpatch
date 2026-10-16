@@ -112,13 +112,14 @@ controls in this slice. The [local qualification report](benchmarks/module-rotar
 records 1,028 passing Desktop tests, strict Clippy, formatting, 114 MCP checks,
 an optimized workspace build and a verified signed ARM bundle. Both exact-source
 platform CI runs and both 149-image native capture reviews passed before merge.
-The signed 0.2.3 build 5 candidate remains staged; installed 0.2.2 build 4 has
-not been replaced.
+Its 0.2.3 build 5 candidate is superseded by the qualified 0.2.4 build 6
+rotary release described below.
 
 
 ## Oscillator and voice rotary panels
 
-The next six panels extend the same ivory face and shared black knob hardware:
+[PR24](https://github.com/dexterlabs1/openpatch/pull/24) extends the same ivory face
+and shared black knob hardware to six more panels:
 
 | Panel | Rotary controls | Preserved dedicated behavior |
 |---|---|---|
@@ -138,5 +139,39 @@ preserved so saved neighboring modules do not start overlapping. Wavetable's
 second control row moves up five points; readouts and captions have separate
 space at 25% zoom. The original socket material remains pending the dedicated
 clearance pass. The [local qualification report](benchmarks/oscillator-voice-rotaries-local-qualification.json)
-records the executed checks and their limits. Platform CI and native screenshot
-review remain delivery gates for this 0.2.4 build 6 development candidate.
+records the executed checks and their limits. All eight jobs across both
+exact-source platform CI runs and both 149-image native screenshot reviews
+passed before PR24 merged. The signed macOS ARM candidate is 0.2.4 build 6;
+local native Mac window/input/device qualification remains open.
+
+
+## Larger sockets and crowded-port picking
+
+The 0.2.5 build 7 development candidate increases socket material by 30% on the
+sixteen panels from the two rotary rollouts above. Panel widths, rack positions,
+canonical port names and cable endpoints stay fixed. Existing enlarged Stock
+VCO/LFO, Stock Noise, Stock Process and Stock VCA Mix presentations stay intact.
+
+Caption placement now follows each panel's layout separately from socket size.
+Dense Compare and Process output labels sit above their sockets. Wavetable and
+Stock VCA edge outputs have above-socket labels; Multi VCO/LFO retain column
+legends between their output sockets. Stock VCF's last control row moves upward
+two logical points, retaining space between its numeric entry and CV captions.
+The existing Compare polarity lamps move five points below their old position
+to clear the larger output surround; they still display the same actual state.
+No new synthetic activity or DSP measurements are introduced.
+
+At reduced zoom, accessible jack targets can overlap. Press intent, hover
+instructions and context-menu selection resolve these overlaps by the nearest
+jack center, retaining each port's canonical identity. Right-click ownership
+requires an owned press and a matching release; interruptions and changed graph
+identity cancel it. A touch-and-hold uses egui's actual long-touch event and a
+separate, revision- and kind-checked deferred menu. It does not share the smoke
+request queue. Mouse holds do not become touch menus. Existing cable-drop snap
+behavior, duplicate-route rules, numeric controls and shared history remain.
+
+The [local qualification record](benchmarks/large-sockets-local-qualification.json)
+tracks the executed 16-panel real-font/socket matrix at 25%, 35%, 50% and 100%,
+parameter extremes, rack/browser parity, actual cable and menu events, genuine
+touch events, interruption handling, and the full Desktop suite. Platform CI
+and both native screenshot reviews remain delivery gates for this candidate.

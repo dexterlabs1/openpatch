@@ -1,0 +1,89 @@
+{
+  "base": "210f2609f55a4714b6ae212c9e118d7cc14e1780",
+  "candidate": "0.2.5 build7",
+  "changed_kinds": [
+    "analog_vco",
+    "ladder_vcf",
+    "fade",
+    "compare",
+    "process",
+    "rescale",
+    "gate",
+    "attenuverter",
+    "white_noise",
+    "oscillator",
+    "multi_vco",
+    "multi_lfo",
+    "wavetable_vco",
+    "wavetable_lfo",
+    "stock_vcf",
+    "stock_vca"
+  ],
+  "checked_at": "2026-10-16T20:55:14.432171+00:00",
+  "checks": {
+    "desktop_existing_ignored": 3,
+    "desktop_passed": 1071,
+    "format": true,
+    "geometry": "Sixteen independent actual-font/ring/target/label cases, 25/35/50/100% zoom and min/default/max parameter values; rack/browser equality and canonical endpoints",
+    "interaction": "All sixteen exact-center picks; shared VCF/VCA occupied menu ownership; actual Session new connection preserves prior feed; nearest hover guidance; primary/secondary release and interruption ownership",
+    "new_socket_and_touch_tests": 31,
+    "source_closure": "All quality008 and optimized release source inputs remain byte-identical after checks",
+    "strict_workspace_all_targets_clippy": true,
+    "touch": "Actual Touch plus native-style Pointer events past long-touch threshold; VCF overlap and unchanged Stock VCO/LFO menus, mouse-hold negative; deferred touch cancellation on focus/disabled/revision/Popup/removal/kind reuse"
+  },
+  "format_version": 1,
+  "limitations": [
+    "Both exact-source platform CI runs and native149image reviews required before merge/install",
+    "Geometric separation does not establish comfortable raster readability or physical touch-device qualification",
+    "Native Mac window/input/audio-device qualification not performed",
+    "Remaining catalog controls/socket conversion and VCV host/module parity remain open"
+  ],
+  "local_checks_passed": true,
+  "platform_and_native_render_delivery_gates_passed": false,
+  "release": {
+    "ARM_bundle_signature_verified": true,
+    "MCP_tests_passed": 114,
+    "all_four_fonts_embedded": true,
+    "catalog_kinds": 80,
+    "ferrofluid_shader_embedded": true,
+    "file_backed_sections_and_UUIDs_preserved_by_signing": true,
+    "installed": false,
+    "launched": false,
+    "notices_and_icon_verified": true,
+    "optimized_workspace_build": true,
+    "release_binaries": {
+      "openpatch": {
+        "bytes": 4377056,
+        "sha256": "dcd8fe25418e58881c786cd9cbf4a04c77c340432b4cb4e5f5c8cda054b1bfba"
+      },
+      "openpatch-desktop": {
+        "bytes": 33195440,
+        "sha256": "ff35c8bf88ebb0ffcd64b41737bffa69a08e78731929ba90267f84d478319a9d"
+      }
+    },
+    "signed_binaries": {
+      "openpatch": "1d2826d036af0f9073d2adc9f6e4efed05a8e56ebc73257634cb221e4a724232",
+      "openpatch-desktop": "a83724afce6b31df1c9bf2ab010f0bd856de68ac5e4feb8df58a4603b353877e"
+    }
+  },
+  "retained_attempts": {
+    "advisory": "Actual pinned egui long-touch behavior exposed missing touch path; restored and qualified by quality008",
+    "quality001": "Two test compile errors (borrowed vector and Debug interpolation) corrected without production changes",
+    "quality002": "One pass/three failures: artificial fixture clip and two proven wrong-port context menus",
+    "quality003": "Measured attenuverter caption/entry collision; moved input caption beside socket",
+    "quality004": "22 passed/two failures: measured VCF caption/entry collision; drop fixture used existing identical route from occupied output",
+    "quality005": "26 passed/two failures: measured VCF glyph/rim collision; outside-press fixture actually hit neighboring jack",
+    "quality006": "28 socket cases and strict lint pass",
+    "quality007": "1068 Desktop passed before touch restoration"
+  },
+  "scope": "30% larger socket material with per-panel captions, unchanged saved widths/jack centers/canonical identity; shared rack/browser paint; nearest-center press/hover/secondary menu ownership; restored genuine long-touch menu path with typed lifecycle guard; no Core/DSP changes",
+  "source_sha256": {
+    "Cargo.lock": "85f6fd91800b7f7145db3ad40186cc146b72b9f1d440b7f63bbf512003850508",
+    "crates/openpatch-desktop/Cargo.toml": "3f8219faf0e4cd8a4bc3f4185098adb02a75b580565628effa5bac2ba875c8d8",
+    "crates/openpatch-desktop/src/generic_fader_geometry_tests.rs": "b39eb92acafd56031ca1ff2b831852755f00c442f8e84018282779b388c05045",
+    "crates/openpatch-desktop/src/large_socket_ui_tests.rs": "64df4f936ee7adc8384c152f4037067b0605450e53cf92aa5ec832e4f7927f30",
+    "crates/openpatch-desktop/src/rack.rs": "bf5320e9e3c56022a8217dbb48a7869516ceccbceb0323037596a8975939bd5f",
+    "crates/openpatch-desktop/src/stock_vcf_panel.rs": "c594fcdf3ce9030848cb07bbdc1382efc46a742488138079be335d493c9bccd7",
+    "scripts/package_macos.py": "ff77159014624155a2fe1954e4ea936fac2153b14bc3d5a64e20a074020f8ea1"
+  }
+}

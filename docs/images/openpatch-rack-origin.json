@@ -1,0 +1,9 @@
+{
+  "source_version": "0.2.4 build6",
+  "source_head": "32a7265bac4f17b6203f3849dc6e9f0d368c9bbb",
+  "CI_run": 38961398973,
+  "capture": "rack-wavetable.png",
+  "image": "docs/images/openpatch-rack.png",
+  "sha256": "e5a27b46f86dde897e990c99abd895627270687472d42858a232657652026b2c",
+  "qualification": "Reviewed native Linux/Mesa CI snapshot; not a local native Mac input/audio-device test."
+}

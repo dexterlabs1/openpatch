@@ -202,6 +202,20 @@ resulting cable IDs and explicit colors.
 Click-to-connect remains an OpenPatch extension using the same endpoint rules;
 Escape or an empty-rack click cancels its draft.
 
+### Crowded ports and touch menus
+
+At low zoom, neighboring jack targets can overlap. Picking and hover guidance
+choose the nearest jack center; right-click uses the same endpoint, retaining
+its exact input/output name and connected-cable list. The menu requires a press
+owned by that jack and a matching release. Focus loss, another popup, disabled
+interaction, or a changed graph cancels a pending menu gesture.
+
+On a touch screen, hold a jack to open its cable menu. Touch holds are distinct
+from holding a mouse button. A queued touch menu is discarded if focus, patch
+revision, node kind or port validity changes before the next frame. Numeric
+control targets keep their existing priority. Cable drops retain the existing
+snap and duplicate-route rules described above.
+
 ### Reach jacks beyond the current view
 
 While holding a cable drag, move the pointer into the **48-pixel band inside a
