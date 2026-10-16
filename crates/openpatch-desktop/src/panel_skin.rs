@@ -263,6 +263,92 @@ pub(crate) fn parameter_fader(
     );
 }
 
+/// Reflective cap and emissive 270-degree position scale. The ring is a setting
+/// indicator; it deliberately does not imply measured audio activity.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn parameter_rotary(
+    painter: &egui::Painter,
+    center: Pos2,
+    radius: f32,
+    value: f32,
+    active: bool,
+    accent: Color32,
+    zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let value = fader_value(value);
+    let ring = (radius - 1.0).max(8.0) * zoom;
+    let body = ring * 0.80;
+    painter.circle_filled(
+        center + vec2(0.7, 2.0) * zoom,
+        body + 2.0 * zoom,
+        Color32::from_black_alpha(80),
+    );
+    painter.circle_filled(center, body + zoom, Color32::from_rgb(17, 23, 24));
+    for band in (0..8).rev() {
+        let t = band as f32 / 7.0;
+        painter.circle_filled(
+            center - vec2(0.2, 0.45) * zoom,
+            body * (0.88 + 0.12 * t),
+            Color32::from_gray((34.0 + 28.0 * t) as u8),
+        );
+    }
+    painter.circle_filled(center, body * 0.85, Color32::from_rgb(34, 39, 40));
+    painter.circle_stroke(
+        center,
+        body * 0.84,
+        Stroke::new(0.65 * zoom, Color32::from_rgb(65, 70, 68)),
+    );
+    let start = std::f32::consts::PI * 0.75;
+    let sweep = std::f32::consts::PI * 1.5;
+    for tick in 0..=24 {
+        let (sin, cos) = (start + sweep * tick as f32 / 24.0).sin_cos();
+        let direction = vec2(cos, sin);
+        painter.line_segment(
+            [
+                center + direction * (ring + 1.5 * zoom),
+                center + direction * (ring + if tick % 6 == 0 { 4.0 } else { 2.7 } * zoom),
+            ],
+            Stroke::new(0.65 * zoom, Color32::from_rgb(108, 108, 98)),
+        );
+    }
+    let emission = crate::lighting::next(painter);
+    let muted = Color32::from_rgb(69, 77, 76);
+    for segment in 0..48 {
+        let t = segment as f32 / 48.0;
+        let a = start + sweep * t;
+        let b = a + sweep / 48.0 * 0.72;
+        let points = [
+            center + vec2(a.cos(), a.sin()) * ring,
+            center + vec2(b.cos(), b.sin()) * ring,
+        ];
+        if t <= value {
+            painter.line_segment(points, Stroke::new(4.8 * zoom, accent.gamma_multiply(0.09)));
+            painter.line_segment(points, Stroke::new(2.6 * zoom, accent.gamma_multiply(0.32)));
+            painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
+        } else {
+            painter.line_segment(points, Stroke::new(1.1 * zoom, muted));
+        }
+    }
+    let angle = start + sweep * value;
+    let direction = vec2(angle.cos(), angle.sin());
+    painter.line_segment(
+        [
+            center + direction * body * 0.45,
+            center + direction * body * 0.86,
+        ],
+        Stroke::new(2.0 * zoom, Color32::from_rgb(248, 230, 190)),
+    );
+    if active {
+        painter.circle_stroke(
+            center,
+            ring + 5.0 * zoom,
+            Stroke::new(0.7 * zoom, accent.gamma_multiply(0.6)),
+        );
+    }
+    lighting.preserve(painter, emission);
+}
+
 pub(crate) fn socket(
     painter: &egui::Painter,
     center: Pos2,

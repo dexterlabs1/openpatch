@@ -1,0 +1,21 @@
+{
+  "recorded_at": "2026-10-16T17:29:00.805415+00:00",
+  "status": "application qualification in progress",
+  "scope": "Original Studio Mixer preserved from stable source snapshot, with Custom + Mixing library metadata and shared rack/browser UI",
+  "DSP_and_callback_tests": {
+    "passed": true,
+    "suite": "studio-core-tests-002",
+    "count": 28,
+    "mixers": 4,
+    "noise": 10,
+    "allocation": 14
+  },
+  "strict_workspace_clippy": {
+    "passed": true,
+    "suite": "studio-workspace-clippy-004"
+  },
+  "platform_and_native_capture_evidence": "Follow PR20 checks; final code must qualify before installation",
+  "final_release_MCP_and_performance": "pending",
+  "local_Mac_GUI_or_audio_device_used": false,
+  "original_working_copy_modified": false
+}

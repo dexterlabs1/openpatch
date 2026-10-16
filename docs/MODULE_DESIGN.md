@@ -82,3 +82,14 @@ pink-derived differences, gray FFT block, and black uniform mapping. They do
 not connect independent outputs or suggest a live spectrum. There are no
 decorative lamps or fake parameter knobs. Its native reference and application
 status are recorded in [Stock Noise](STOCK_NOISE.md).
+
+## Original module catalog tags
+
+Every future original OpenPatch module should declare `"Custom"` and at least
+one functional category in its catalog `tags` array. Studio Mixer uses
+`["Custom", "Mixing"]`; the two tags put it in both library filters while
+retaining Mixing as its musical role. Multiple categories are intentional:
+library membership and search match tags case-insensitively, while existing
+modules keep their kind-based category. Tags describe where a module belongs;
+they do not assert Rack or hardware equivalence. [Studio Mixer](STUDIO_MIXER.md)
+documents the console's source-backed meters and signal contract.

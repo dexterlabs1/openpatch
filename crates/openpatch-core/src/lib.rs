@@ -63,6 +63,7 @@ mod stock_vca;
 mod stock_vcf;
 mod stream_render;
 mod studio_fx;
+mod studio_mixer;
 pub use stream_render::{render_wav_stream, RenderStats};
 mod bypass;
 mod colored_noise;
@@ -360,6 +361,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(macro_voice::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(studio_mixer::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

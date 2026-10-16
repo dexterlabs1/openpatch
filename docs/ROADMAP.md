@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 78 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix, Stock Octave and Stock VCA Mix have merged bounded evidence; the separate Stock Noise has passed its controlled-draw SDK/Core reference gate, with combined application qualification pending. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is currently a native Rust instrument prototype with 79 built-in module kinds in the development branch, a tested reference analog voice, a versioned polyphonic engine, rack editing, and shared-session stdio MCP. Stock Mix, Stock Octave and Stock VCA Mix have merged bounded evidence; the separate Stock Noise has passed its controlled-draw SDK/Core reference gate, with combined application qualification pending. Studio Mixer is a new original custom module with targeted Core tests passing; combined desktop, release and CI qualification remain pending. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -65,7 +65,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 78 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 79 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents. Studio Mixer is tracked separately as an original custom module, outside the 49 VCV targets.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -331,6 +331,14 @@ erratum; this does not prove unmodified-source, uncontrolled Rack PRNG,
 distributed plugin-binary or hardware equivalence. The **File → Noise into
 matter** factory connects Stock Noise to the modal resonator. Combined app/UI,
 callback, native capture and platform qualification remain pending.
+
+## Studio Mixer: original custom module; combined qualification pending
+
+[Studio Mixer](STUDIO_MIXER.md) ports the user's original module from its stable
+snapshot, with 1–16 strips and FX A/B. Its catalog metadata places it in both
+Custom and Mixing. Targeted Core tests pass; combined desktop, release and CI
+qualification remain pending. This original-module work is separate from the
+49 VCV Core/Free targets and does not claim VCV equivalence.
 
 ## Clocked routing
 

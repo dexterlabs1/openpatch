@@ -37,6 +37,7 @@ enum Category {
     Routing,
     Utilities,
     InputOutput,
+    Custom,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +49,7 @@ enum FocusKind {
 }
 
 impl Category {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::All,
         Self::Favorites,
         Self::Oscillators,
@@ -60,6 +61,7 @@ impl Category {
         Self::Routing,
         Self::Utilities,
         Self::InputOutput,
+        Self::Custom,
     ];
 
     fn label(self) -> &'static str {
@@ -75,11 +77,13 @@ impl Category {
             Self::Routing => "Routing",
             Self::Utilities => "Utilities",
             Self::InputOutput => "I/O",
+            Self::Custom => "Custom",
         }
     }
 
     fn of_kind(kind: &str) -> Self {
         match kind {
+            "studio_mixer" => Self::Mixing,
             "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise"
             | "drum_voice" | "modal_resonator" | "colored_noise" | "stock_noise"
             | "macro_voice" | "wavetable_vco" => Self::Oscillators,
@@ -112,6 +116,67 @@ impl Category {
             _ => Self::Utilities,
         }
     }
+
+    fn matches_module(self, module: &Value) -> bool {
+        let kind = module["kind"].as_str().unwrap_or("");
+        match self {
+            Self::All | Self::Favorites => true,
+            Self::Custom => has_catalog_tag(module, Self::Custom.label()),
+            category => {
+                Self::of_kind(kind) == category || has_catalog_tag(module, category.label())
+            }
+        }
+    }
+}
+
+fn has_catalog_tag(module: &Value, expected: &str) -> bool {
+    module["tags"].as_array().is_some_and(|tags| {
+        tags.iter()
+            .filter_map(Value::as_str)
+            .any(|tag| tag.eq_ignore_ascii_case(expected))
+    })
+}
+
+/// Functional kind classification remains primary for existing modules. An
+/// explicit functional catalog tag supplies the role for future unknown kinds;
+/// Custom is an additional membership label, never a replacement role.
+fn category_labels(module: &Value) -> String {
+    let kind = module["kind"].as_str().unwrap_or("");
+    let inferred = Category::of_kind(kind);
+    let tagged_roles = [
+        Category::Oscillators,
+        Category::Filters,
+        Category::Envelopes,
+        Category::Sequencers,
+        Category::Modulation,
+        Category::Mixing,
+        Category::Routing,
+        Category::Utilities,
+        Category::InputOutput,
+    ]
+    .into_iter()
+    .filter(|category| has_catalog_tag(module, category.label()))
+    .collect::<Vec<_>>();
+
+    let mut labels = if inferred == Category::Utilities && !tagged_roles.is_empty() {
+        tagged_roles
+    } else {
+        let mut roles = vec![inferred];
+        roles.extend(
+            tagged_roles
+                .into_iter()
+                .filter(|category| *category != inferred),
+        );
+        roles
+    };
+    if has_catalog_tag(module, Category::Custom.label()) {
+        labels.push(Category::Custom);
+    }
+    labels
+        .into_iter()
+        .map(Category::label)
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 pub struct ModuleLibrary {
@@ -243,7 +308,7 @@ impl ModuleLibrary {
             return false;
         }
         if !matches!(self.category, Category::All | Category::Favorites)
-            && Category::of_kind(kind) != self.category
+            && !self.category.matches_module(module)
         {
             return false;
         }
@@ -820,7 +885,7 @@ impl ModuleLibrary {
                     ui.label(
                         egui::RichText::new(format!(
                             "Pinned · {} · Display only",
-                            Category::of_kind(&kind).label()
+                            category_labels(module)
                         ))
                         .size(11.0),
                     );
@@ -948,9 +1013,13 @@ impl ModuleLibrary {
                 response.hovered(),
                 supported,
             );
+            let has_custom_caption = has_catalog_tag(module, Category::Custom.label());
             let natural = vec2(crate::rack::panel_width(kind), PANEL_HEIGHT) * self.preview_zoom;
             let preview_bounds = Rect::from_min_size(
-                pos2(rect.center().x - natural.x * 0.5, rect.top() + 30.0),
+                pos2(
+                    rect.center().x - natural.x * 0.5,
+                    rect.top() + if has_custom_caption { 42.0 } else { 30.0 },
+                ),
                 natural,
             );
             let preview = self
@@ -1060,7 +1129,7 @@ impl ModuleLibrary {
         }
         let tooltip = format!(
             "{title} · {}\n{}\nImplementation: {}{}",
-            Category::of_kind(kind).label(),
+            category_labels(module),
             module["description"]
                 .as_str()
                 .unwrap_or("Built-in OpenPatch module"),
@@ -1094,19 +1163,28 @@ impl ModuleLibrary {
 
 /// Flow uses the visible viewport width, never a wide prior content extent.
 fn preview_flow(modules: &[&Value], zoom: f32, viewport_width: f32) -> (Vec<Rect>, Vec2) {
-    let height = PANEL_HEIGHT * zoom + 62.0;
     let gap = 8.0;
     let mut cursor = Vec2::ZERO;
     let mut width = 0.0_f32;
+    let mut row_height = 0.0_f32;
     let mut cards = Vec::with_capacity(modules.len());
     for module in modules {
         let kind = module["kind"].as_str().unwrap_or("");
         let card_width = (crate::rack::panel_width(kind) * zoom + 16.0).max(108.0);
+        let card_height = PANEL_HEIGHT * zoom
+            + 62.0
+            + if has_catalog_tag(module, Category::Custom.label()) {
+                12.0
+            } else {
+                0.0
+            };
         if cursor.x > 0.0 && cursor.x + card_width > viewport_width {
             cursor.x = 0.0;
-            cursor.y += height + gap;
+            cursor.y += row_height + gap;
+            row_height = 0.0;
         }
-        let rect = Rect::from_min_size(cursor.to_pos2(), vec2(card_width, height));
+        let rect = Rect::from_min_size(cursor.to_pos2(), vec2(card_width, card_height));
+        row_height = row_height.max(card_height);
         width = width.max(rect.right());
         cards.push(rect);
         cursor.x += card_width + gap;
@@ -1118,7 +1196,7 @@ fn preview_flow(modules: &[&Value], zoom: f32, viewport_width: f32) -> (Vec<Rect
             if modules.is_empty() {
                 0.0
             } else {
-                cursor.y + height
+                cursor.y + row_height
             },
         ),
     )
@@ -1226,6 +1304,21 @@ fn paint_tile(
         painter.layout_job(job),
         PANEL_TEXT,
     );
+    if has_catalog_tag(module, Category::Custom.label()) {
+        let caption = category_labels(module);
+        let mut job = egui::text::LayoutJob::simple(
+            caption,
+            crate::panel_skin::print_font(painter.ctx(), 9.0),
+            PANEL_MUTED,
+            rect.width() - 16.0,
+        );
+        job.wrap.max_rows = 1;
+        painter.galley(
+            rect.min + vec2(10.0, 30.0),
+            painter.layout_job(job),
+            PANEL_MUTED,
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2329,6 +2422,70 @@ mod tests {
             library.inspected.is_some(),
             "outside clicks keep the optional pin open"
         );
+    }
+
+    #[test]
+    fn custom_membership_coexists_with_functional_categories_and_tag_search() {
+        let catalog = json!({"modules":[
+            {"kind":"studio_mixer","title":"STUDIO MIXER","tags":["Custom","Mixing"],"params":{}},
+            {"kind":"future_console","title":"FUTURE CONSOLE","tags":["cUsToM","mIxInG","small room"],"params":{}},
+            {"kind":"analog_vco","title":"VCO","tags":["Custom"],"params":{}},
+            {"kind":"mixer","title":"MIXER","params":{}}
+        ]});
+        let mut library = ModuleLibrary {
+            category: Category::Custom,
+            ..Default::default()
+        };
+        assert_eq!(
+            library
+                .filtered(&catalog)
+                .iter()
+                .filter_map(|module| module["kind"].as_str())
+                .collect::<Vec<_>>(),
+            ["studio_mixer", "future_console", "analog_vco"]
+        );
+
+        library.category = Category::Mixing;
+        assert_eq!(
+            library
+                .filtered(&catalog)
+                .iter()
+                .filter_map(|module| module["kind"].as_str())
+                .collect::<Vec<_>>(),
+            ["studio_mixer", "future_console", "mixer"]
+        );
+        assert_eq!(Category::of_kind("studio_mixer"), Category::Mixing);
+        assert_eq!(category_labels(&catalog["modules"][0]), "Mixing · Custom");
+        assert_eq!(category_labels(&catalog["modules"][1]), "Mixing · Custom");
+        assert_eq!(
+            category_labels(&catalog["modules"][2]),
+            "Oscillators · Custom"
+        );
+        assert_eq!(category_labels(&catalog["modules"][3]), "Mixing");
+
+        library.category = Category::All;
+        library.search = "SMALL ROOM".into();
+        assert_eq!(library.filtered(&catalog).len(), 1);
+        assert_eq!(library.filtered(&catalog)[0]["kind"], "future_console");
+
+        library.search.clear();
+        library.set_favorites(&["future_console".into(), "mixer".into()], &catalog);
+        library.category = Category::Favorites;
+        library.search = "custom".into();
+        assert_eq!(library.filtered(&catalog).len(), 1);
+        assert_eq!(library.filtered(&catalog)[0]["kind"], "future_console");
+    }
+
+    #[test]
+    fn custom_tile_caption_adds_space_only_for_custom_catalog_entries() {
+        let legacy = json!({"kind":"mixer","title":"MIXER"});
+        let custom =
+            json!({"kind":"studio_mixer","title":"STUDIO MIXER","tags":["Custom","Mixing"]});
+        let legacy_height = preview_flow(&[&legacy], 0.5, 500.0).0[0].height();
+        let custom_height = preview_flow(&[&custom], 0.5, 500.0).0[0].height();
+        assert_eq!(legacy_height, PANEL_HEIGHT * 0.5 + 62.0);
+        assert_eq!(custom_height, legacy_height + 12.0);
+        assert_eq!(category_labels(&custom), "Mixing · Custom");
     }
 }
 

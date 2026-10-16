@@ -60,6 +60,75 @@ fn process_block_allocates_nothing_even_on_first_callback() {
 }
 
 #[test]
+fn studio_mixer_first_process_adoption_recreation_and_reset_use_no_heap() {
+    use openpatch_core::{Patch, PortDirection, PortFrame};
+    let mut patch: Patch = serde_json::from_value(serde_json::json!({
+        "version": 2,
+        "sample_rate": 48000,
+        "nodes": [
+            {"id": "source", "kind": "poly_constant", "params": {"channels": 2, "v1": 5, "v2": -3}},
+            {"id": "mix", "kind": "studio_mixer", "params": {"channels": 16, "send_a16": 1}}
+        ],
+        "cables": [],
+        "output": "mix",
+        "output_port": "left"
+    }))
+    .unwrap();
+    for input in (1..=16)
+        .map(|i| format!("in{i}"))
+        .chain(["return_a", "return_b", "send_a_cv", "send_b_cv"].map(str::to_owned))
+    {
+        patch.cables.push(
+            serde_json::from_value(serde_json::json!({
+                "from": "source", "output": "out", "to": "mix", "input": input
+            }))
+            .unwrap(),
+        );
+    }
+    let mut old = patch.compile().unwrap();
+    let mut adopted = patch.compile().unwrap();
+    let mut recreated = patch.compile().unwrap();
+    let handle = adopted.resolve_module_lights("mix").unwrap();
+    let recreated_handle = recreated.resolve_module_lights("mix").unwrap();
+    assert!(!adopted.enable_host_input_observer(handle, 19));
+    assert!(adopted.host_port_layout(handle).is_none());
+    adopted.set_port_lights_enabled(true);
+    recreated.set_port_lights_enabled(true);
+    let port_handles = ["return_a", "return_b", "send_a_cv", "send_b_cv"].map(|port| {
+        adopted
+            .resolve_port_light("mix", PortDirection::Input, port)
+            .unwrap()
+    });
+    let mut frames = [PortFrame::default(); 129];
+
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for length in [0, 1, 3, 64, 128, 129] {
+        old.process_poly_block(&mut frames[..length]);
+        adopted.adopt_state_from(&old);
+        adopted.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(adopted.module_lights(handle));
+        for port in port_handles {
+            std::hint::black_box(adopted.port_light(port));
+        }
+        assert!(adopted.reset_module_state(handle));
+        adopted.process_poly_block(&mut frames[..length]);
+        recreated.process_poly_block(&mut frames[..length]);
+        std::hint::black_box(recreated.module_lights(recreated_handle));
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.values.iter().all(|value| value.is_finite())));
+    assert!(port_handles.into_iter().all(|port| adopted
+        .port_light(port)
+        .is_some_and(|light| light.connected)));
+}
+
+#[test]
 fn merge_first_callback_adoption_initialization_and_telemetry_allocate_nothing() {
     use openpatch_core::{Patch, PortFrame};
     let patch: Patch = serde_json::from_value(serde_json::json!({

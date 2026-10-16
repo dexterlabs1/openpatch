@@ -1479,6 +1479,34 @@ impl OpenPatch {
             }
             let mut placements = s.take_layout_placements();
             placements.retain(|id, _| !restored_positions.contains(id));
+            // A console grows only after the outgoing geometry is saved.
+            // History layouts and freshly added incarnations already carry
+            // authoritative placement; ordinary GUI and MCP channel edits
+            // push only the overlapping right-hand chain in this new state.
+            if s.revision() != self.revision {
+                for node in &s.patch().nodes {
+                    if node.kind != "studio_mixer"
+                        || restored_positions.contains(&node.id)
+                        || placements.contains_key(&node.id)
+                    {
+                        continue;
+                    }
+                    if let Some(previous) = self
+                        .patch
+                        .nodes
+                        .iter()
+                        .find(|old| old.id == node.id && old.kind == node.kind)
+                    {
+                        if let Err(error) = self.rack.settle_studio_mixer_growth(
+                            s.patch(),
+                            &node.id,
+                            crate::rack::module_width(previous),
+                        ) {
+                            self.status = error;
+                        }
+                    }
+                }
+            }
             if !placements.is_empty() {
                 self.rack.place_in_rows(s.patch(), &placements);
             }
@@ -2155,6 +2183,10 @@ impl OpenPatch {
             self.rack
                 .restore_layout(&Self::stock_mix_voice_layout())
                 .expect("bundled Stock Mix voice layout");
+        } else if title == "Studio Mixer FX" {
+            self.rack
+                .restore_layout(&Self::studio_mixer_layout())
+                .expect("bundled Studio Mixer layout");
         } else if title == "Noise into matter" {
             self.rack
                 .restore_layout(&Self::stock_noise_layout())
@@ -2196,6 +2228,25 @@ impl OpenPatch {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "bass":[0,0],"fifth":[390,0],"upper":[780,0],
             "mix":[0,420],"scope":[270,420],"motion":[930,420],"out":[1320,420]
+        }})
+    }
+    fn studio_mixer_layout() -> Value {
+        let voice = crate::rack::panel_width("stock_vco");
+        let noise = crate::rack::panel_width("stock_noise");
+        let console: openpatch_core::Node = serde_json::from_value(json!({
+            "id":"console","kind":"studio_mixer","params":{"channels":4}
+        }))
+        .expect("factory console");
+        let console = crate::rack::module_width(&console);
+        let scope = crate::rack::panel_width("scope");
+        let out = crate::rack::panel_width("audio_stereo");
+        let delay = crate::rack::panel_width("stereo_delay");
+        let reverb = crate::rack::panel_width("stereo_reverb");
+        let merge = crate::rack::panel_width("poly_merge");
+        json!({"version":1,"zoom":0.6,"pan":[24,12],"positions":{
+            "bass":[0,0],"lead":[voice,0],"air":[2.0*voice,0],"motion":[2.0*voice+noise,0],
+            "console":[0,420],"scope":[console,420],"out":[console+scope,420],"guide":[console+scope+out,420],
+            "delay":[0,840],"reverb":[delay,840],"return-a":[delay+reverb,840],"return-b":[delay+reverb+merge,840]
         }})
     }
     fn stock_noise_layout() -> Value {
@@ -3291,6 +3342,13 @@ impl OpenPatch {
                     serde_json::from_str(include_str!("../../../examples/stock-mix-voice.json"))
                         .expect("valid Stock Mix layered voice");
                 self.replace_from_menu(patch, "Stock Mix layered voice");
+                ui.close();
+            }
+            if ui.button("Studio Mixer FX").clicked() {
+                let patch =
+                    serde_json::from_str(include_str!("../../../examples/studio-mixer-fx.json"))
+                        .expect("valid Studio Mixer FX voice");
+                self.replace_from_menu(patch, "Studio Mixer FX");
                 ui.close();
             }
             if ui.button("Noise into matter").clicked() {
@@ -8475,7 +8533,7 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/142 at frame {frame}: {}",
+                "Native smoke: capture {}/145 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
@@ -8486,12 +8544,20 @@ impl OpenPatch {
     }
 }
 include!("stock_noise_fixture.rs");
+include!("studio_mixer_fixture.rs");
 impl eframe::App for OpenPatch {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let tail_id = egui::Id::new("native-smoke-noise-tail");
         if let Some(mut tail) = ctx.data(|d| d.get_temp::<NoiseSmokeCapture>(tail_id)) {
-            if tail.index == 141 && !tail.query_sent {
-                input.events.push(egui::Event::Text("stock_noise".into()));
+            if matches!(tail.index, 141 | 144) && !tail.query_sent {
+                input.events.push(egui::Event::Text(
+                    if tail.index == 141 {
+                        "stock_noise"
+                    } else {
+                        "studio_mixer"
+                    }
+                    .into(),
+                ));
                 tail.query_sent = true;
                 ctx.data_mut(|d| d.insert_temp(tail_id, tail));
             }
@@ -8848,6 +8914,9 @@ mod project_workflow_tests {
     }
     mod stock_mix_factory_tests {
         include!("stock_mix_factory_tests.rs");
+    }
+    mod studio_mixer_factory_tests {
+        include!("studio_mixer_factory_tests.rs");
     }
     mod stock_noise_factory_tests {
         include!("stock_noise_factory_tests.rs");

@@ -23,6 +23,7 @@ include!("stock_seq3_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("stock_vca_mix_panel.rs");
 include!("stock_noise_panel.rs");
+include!("studio_mixer_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -995,6 +996,68 @@ impl Rack {
         self.reveal_module_once = reveal.then_some(id);
         self.suppress_reveal_once = !reveal;
         self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// Move only the right-hand collision chain reached by a growing mixer.
+    /// The caller runs this after saving the outgoing history layout and before
+    /// presenting the incoming state, so undo restores the prior geometry.
+    pub(crate) fn settle_studio_mixer_growth(
+        &mut self,
+        patch: &Patch,
+        id: &str,
+        old_width: f32,
+    ) -> Result<(), String> {
+        let Some(mixer) = patch
+            .nodes
+            .iter()
+            .find(|node| node.id == id && node.kind == "studio_mixer")
+        else {
+            return Ok(());
+        };
+        let delta = module_width(mixer) - old_width;
+        if delta <= 0.0 {
+            return Ok(());
+        }
+        let Some(origin) = self.positions.get(id).copied() else {
+            return Ok(());
+        };
+        let old_right = origin.x + old_width;
+        let mut neighbors: Vec<_> = patch
+            .nodes
+            .iter()
+            .filter(|node| node.id != id)
+            .filter_map(|node| {
+                self.positions
+                    .get(&node.id)
+                    .copied()
+                    .map(|position| (node, position))
+            })
+            .filter(|(_, position)| {
+                (position.y - origin.y).abs() < PANEL_HEIGHT && position.x >= old_right - 0.5
+            })
+            .map(|(node, position)| (node.id.clone(), position, module_width(node)))
+            .collect();
+        neighbors.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+        let mut right = old_right + delta;
+        let mut changes = Vec::new();
+        for (neighbor, position, width) in neighbors {
+            if position.x >= right - 0.5 {
+                break;
+            }
+            if right + width > 100_000.0 {
+                return Err("No room to expand mixer on this rack row".into());
+            }
+            changes.push((neighbor, pos2(right, position.y)));
+            right += width;
+        }
+        if changes.is_empty() {
+            return Ok(());
+        }
+        for (neighbor, position) in changes {
+            self.positions.insert(neighbor, position);
+        }
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+        Ok(())
     }
 
     /// Append agent-requested modules to the end of their rack row, in graph
@@ -2491,6 +2554,9 @@ impl Rack {
                 ));
             }
             for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = point_from_port(
                     rect.min,
                     self.zoom,
@@ -3141,6 +3207,19 @@ impl Rack {
             if node.kind == "stock_noise" {
                 paint_stock_noise_face(&painter, rect, self.zoom);
             }
+            if node.kind == "studio_mixer" {
+                if let Some(edit) = self.studio_mixer_panel(
+                    ui,
+                    node,
+                    module,
+                    patch,
+                    rect,
+                    revision,
+                    mode.is_interactive(),
+                ) {
+                    action = Some(edit);
+                }
+            }
             if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
                 for (x, label) in [(width * 0.25, "ENCODER"), (width * 0.75, "DECODER")] {
                     painter.text(
@@ -3185,6 +3264,7 @@ impl Rack {
                     || node.kind == "stock_vca"
                     || node.kind == "stock_octave"
                     || node.kind == "stock_vca_mix"
+                    || node.kind == "studio_mixer"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || is_voltage_utility(&node.kind)
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
@@ -4352,6 +4432,9 @@ impl Rack {
                 );
             }
             for port in ports.iter().filter_map(Value::as_str) {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = inputs[&(node.id.clone(), port.to_string())];
                 let cables = input_groups
                     .get(&(node.id.as_str(), port))
@@ -4364,6 +4447,8 @@ impl Rack {
                         location,
                         if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
+                        } else if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
                         } else if node.kind == "stock_vca_mix" {
                             stock_vca_mix_port_label(port)
                         } else if node.kind == "stock_octave" {
@@ -4400,6 +4485,8 @@ impl Rack {
                     ui.id().with(("input", &node.id, port)),
                     if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
+                    } else if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
                     } else if node.kind == "stock_vca_mix" {
                         stock_vca_mix_port_label(port)
                     } else if node.kind == "stock_octave" {
@@ -4523,6 +4610,8 @@ impl Rack {
                         output_point,
                         if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
+                        } else if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
                         } else if node.kind == "adsr_eg" {
                             "ENV"
                         } else if node.kind == "stock_vca_mix" {
@@ -4572,6 +4661,8 @@ impl Rack {
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
+                    } else if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
                     } else if node.kind == "adsr_eg" {
                         "ENV"
                     } else if node.kind == "stock_vca_mix" {
@@ -8331,6 +8422,9 @@ impl Rack {
                     continue;
                 };
                 for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                    if input && !studio_mixer_input_visible(node, port) {
+                        continue;
+                    }
                     let center = canvas.min
                         + self.pan
                         + (self.positions[&node.id].to_vec2()
@@ -9923,6 +10017,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "studio_mixer" => return studio_mixer_port(input, index, width),
         "stock_quantizer" => return pos2(if input { 85.0 } else { 215.0 }, 376.0),
         "stock_vca_mix" if input => {
             return match index {
@@ -11115,6 +11210,9 @@ fn panel_button(
 }
 
 pub(crate) fn module_width(node: &Node) -> f32 {
+    if node.kind == "studio_mixer" {
+        return studio_mixer_channels(node) as f32 * 72.0 + 228.0;
+    }
     node.effective_blank_width_hp()
         .map_or_else(|| panel_width(&node.kind), |hp| f32::from(hp) * HP)
 }
@@ -11128,6 +11226,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
         "stock_noise" => HP * 20.0,
+        "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
         "scope" => HP * 42.0,
@@ -11203,6 +11302,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "stock_mix" => "STOCK MIX",
         "stock_vca_mix" => "STOCK VCA MIX",
         "stock_noise" => "STOCK NOISE",
+        "studio_mixer" => "STUDIO MIXER",
         "octave" => "OCTAVE",
         "mult" => "MULT",
         "poly_split" => "SPLIT",
@@ -13416,7 +13516,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            78,
+            79,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -20230,6 +20330,9 @@ mod tests {
     }
     mod stock_noise_ui_tests {
         include!("stock_noise_ui_tests.rs");
+    }
+    mod studio_mixer_ui_tests {
+        include!("studio_mixer_ui_tests.rs");
     }
     mod cable_autopan_tests {
         include!("cable_autopan_tests.rs");

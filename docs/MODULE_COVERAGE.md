@@ -10,9 +10,15 @@ OpenPatch uses Rust DSP, including explicitly attributed licensed algorithm adap
 
 Six additional native reconstruction tools—SCORE, DRUM, SVF, stereo delay, reverb and sidechain compression—extend the catalog; they are original algorithms, not new claims of completed Rack plugin equivalence. See [score and studio contract](SCORE_AND_STUDIO.md).
 
-The development catalog now contains **78 kinds**. Its separate `stock_noise`
+The development catalog now contains **79 kinds**. Its separate `stock_noise`
 kind adds seven mono source outputs without parameters, inputs or lamps; this
 count does not promote any of the 49 Core/Free targets to complete parity.
+
+[Studio Mixer](STUDIO_MIXER.md) is the 79th catalog kind and a separate original
+custom module ported from the user's stable snapshot. It provides 1–16 strips
+and FX A/B, and its catalog tags place it in both Custom and Mixing. Targeted
+Core tests pass; combined desktop, release and CI qualification remain pending.
+It is not one of the 49 VCV targets and does not claim VCV equivalence.
 
 VIZ adds a dedicated input-only 16-channel polarity display, bringing the total
 to 52 kinds; [signal and validation contract](POLYPHONIC_VIZ.md). Rack Scope adds

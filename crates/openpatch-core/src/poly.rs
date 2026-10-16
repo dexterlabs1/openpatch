@@ -40,6 +40,7 @@ use crate::stock_vca_mix::{self, StockVcaMix, StockVcaMixSnapshot};
 use crate::stock_vcf::{self, StockVcf};
 use crate::stock_vco::{self, StockVco};
 use crate::studio_fx::{self, StudioFx};
+use crate::studio_mixer::{self, StudioMixer};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
 use crate::voice_tools::{self, VoiceTools};
@@ -52,7 +53,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub const MAX_CHANNELS: usize = 16;
-const MAX_PORTS: usize = 16;
+const MAX_PORTS: usize = 20;
 
 /// A fixed-capacity port value. Engine-produced frames have 0..=16 channels and
 /// zero in inactive slots. Zero channels means disconnected for normaling.
@@ -93,6 +94,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || kind == "score_sequencer"
         || kind == "modal_resonator"
         || kind == "macro_voice"
+        || kind == "studio_mixer"
         || studio_fx::input_names(kind).is_some()
         || voice_tools::input_names(kind).is_some()
         || routing::input_names(kind).is_some()
@@ -146,6 +148,9 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if kind == "studio_mixer" {
+        return studio_mixer::INPUTS.iter().position(|port| *port == name);
+    }
     if let Some(ports) = wavetable_osc::input_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -215,6 +220,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "studio_mixer" {
+        return studio_mixer::OUTPUTS.iter().position(|port| *port == name);
+    }
     if let Some(ports) = wavetable_osc::output_names(kind) {
         return ports.iter().position(|port| *port == name);
     }
@@ -374,7 +382,12 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if let Some(names) = wavetable_osc::output_names(&kind) {
+    let outputs = if kind == "studio_mixer" {
+        studio_mixer::OUTPUTS
+            .iter()
+            .map(|port| (*port).to_owned())
+            .collect::<Vec<_>>()
+    } else if let Some(names) = wavetable_osc::output_names(&kind) {
         names.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>()
     } else if kind == "macro_voice" {
         macro_voice::OUTPUTS
@@ -642,6 +655,14 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         module["arithmetic_policy"] = json!({"sum":"f32 active lanes in channel order", "order":"sum then level then final safety bound", "safety_bound_volts":1_000_000, "nonfinite":"graph sources sanitize nonfinite samples to zero before SUM"});
     }
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
+    if kind == "studio_mixer" {
+        module["polyphony"]["version_2"] = json!("16 bounded mono/stereo input strips; inactive strips ignored; two-lane return cables are stereo; outputs are named mono L/R ports");
+        module["polyphony"]["primary_input"] = Value::Null;
+        module["light_names"] = json!((1..=16).map(|i| format!("Channel {i}")).collect::<Vec<_>>());
+        for output in module["output_metadata"].as_array_mut().unwrap() {
+            output["maximum_channels"] = json!(1);
+        }
+    }
     if matches!(
         kind.as_str(),
         "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
@@ -770,6 +791,7 @@ enum Model {
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
     MacroVoice(Box<MacroVoice>),
+    StudioMixer(Box<StudioMixer>),
     VoiceTools(Box<VoiceTools>),
     Voices {
         template: Dsp,
@@ -842,6 +864,9 @@ impl Model {
         }
         if node.kind == "macro_voice" {
             return MacroVoice::build(node, rate).map(|s| Self::MacroVoice(Box::new(s)));
+        }
+        if node.kind == "studio_mixer" {
+            return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
         }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
@@ -1260,6 +1285,9 @@ impl PolyEngine {
     pub(crate) fn host_port_layout(&self, index: usize) -> Option<(u8, u8, u16, u32, bool)> {
         self.host.as_ref()?;
         let node = self.nodes.get(index)?;
+        if usize::from(node.input_count) > host_ports::PORTS {
+            return None;
+        }
         Some((
             node.input_count,
             node.output_count as u8,
@@ -1277,6 +1305,9 @@ impl PolyEngine {
     ) -> Option<usize> {
         self.host.as_ref()?;
         let node = self.nodes.get(index)?;
+        if usize::from(node.input_count) > host_ports::PORTS {
+            return None;
+        }
         match direction {
             crate::PortDirection::Input => input_port(&node.kind, node.model.template(), name),
             crate::PortDirection::Output => output_port(&node.kind, name),
@@ -1286,6 +1317,9 @@ impl PolyEngine {
     pub(crate) fn host_module_snapshot(&self, index: usize) -> Option<HostModuleSnapshot> {
         let host = self.host.as_ref()?;
         let node = self.nodes.get(index)?;
+        if usize::from(node.input_count) > host_ports::PORTS {
+            return None;
+        }
         let mut outputs = [HostPortSnapshot::default(); host_ports::OUTPUT_PORTS];
         outputs[..node.output_count].copy_from_slice(
             &host.outputs[node.output_start..node.output_start + node.output_count],
@@ -1306,10 +1340,10 @@ impl PolyEngine {
     /// graph to the audio thread. It adds no edge, output consumer or model tap.
     pub(crate) fn enable_host_input_observer(&mut self, index: usize, port: usize) -> bool {
         if self.host.is_none()
-            || self
-                .nodes
-                .get(index)
-                .is_none_or(|node| port >= usize::from(node.input_count))
+            || self.nodes.get(index).is_none_or(|node| {
+                usize::from(node.input_count) > host_ports::PORTS
+                    || port >= usize::from(node.input_count)
+            })
         {
             return false;
         }
@@ -1407,6 +1441,9 @@ impl PolyEngine {
         let Some(host) = &self.host else { return };
         let previous = host.contexts[index];
         let node = &self.nodes[index];
+        if usize::from(node.input_count) > host_ports::PORTS {
+            return;
+        }
         let presence = self.compiled_input_presence(index);
         if previous.input_presence == presence
             && previous.output_consumers == node.connected_mask
@@ -1610,6 +1647,7 @@ impl PolyEngine {
                 ..ModuleLightState::default()
             }),
             Some(Model::StockVcaMix(m)) => Some(m.lights()),
+            Some(Model::StudioMixer(m)) => Some(m.lights()),
             Some(Model::StockSeq3(seq)) => Some(seq.lights()),
             Some(Model::Split(s)) => Some(s.lights()),
             Some(Model::Merge(m)) => Some(m.lights()),
@@ -1855,6 +1893,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::StudioMixer(s) => {
+                s.reset_state();
+                node.output_count
+            }
             Model::StudioFx(s) => {
                 s.reset_state();
                 node.output_count
@@ -1970,6 +2012,7 @@ impl PolyEngine {
             Model::Merge(m) => m.initialize_state(),
             Model::ModalResonator(s) => s.reset_state(),
             Model::MacroVoice(s) => s.reset_state(),
+            Model::StudioMixer(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including Split's observed input count (no source reset
             // callback), VCO phase, switch position, and process
@@ -2110,7 +2153,9 @@ impl PolyEngine {
                 connected_mask: 0,
                 base_connected_mask: 0,
             });
-            let count = if let Some(ports) = wavetable_osc::output_names(&node.kind) {
+            let count = if node.kind == "studio_mixer" {
+                studio_mixer::OUTPUTS.len()
+            } else if let Some(ports) = wavetable_osc::output_names(&node.kind) {
                 ports.len()
             } else if node.kind == "macro_voice" {
                 macro_voice::OUTPUTS.len()
@@ -2210,7 +2255,13 @@ impl PolyEngine {
                 index
             });
             nodes[destination].inputs[input] = Some(group);
-            nodes[destination].physical_input_mask |= 1 << input;
+            // Keep the existing 16-port host shadow for all supported ports.
+            // The mixer's ports 16–19 live only in the logical cable table;
+            // native-host lifecycle uses this u16 mask, while port lights use
+            // independent bindings for every logical input.
+            if input < host_ports::PORTS {
+                nodes[destination].physical_input_mask |= 1u16 << input;
+            }
             group_edges[group].push(index);
             let route = (
                 cable.from.clone(),
@@ -2513,6 +2564,7 @@ impl PolyEngine {
                 | Model::StudioFx(_)
                 | Model::VoiceTools(_)
                 | Model::MacroVoice(_)
+                | Model::StudioMixer(_)
                 | Model::ModalResonator(_) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -2533,6 +2585,7 @@ impl PolyEngine {
                         }
                         Model::ModalResonator(s) => s.process(&inputs, outputs),
                         Model::MacroVoice(s) => s.process(&inputs, outputs),
+                        Model::StudioMixer(s) => s.process(&inputs, outputs),
                         Model::StudioFx(s) => s.process(&inputs, outputs),
                         Model::VoiceTools(s) => s.process(&inputs, outputs),
                         _ => unreachable!(),
@@ -2909,7 +2962,10 @@ impl PolyEngine {
                     self.outputs[node.output_start] = oscillator.process(&inputs);
                 }
                 Model::Routing(routing) => {
-                    let mut inputs = [PortFrame::default(); MAX_PORTS];
+                    // Existing routing modules expose at most sixteen ports;
+                    // their fixed processing contract is independent of the
+                    // larger logical console input table.
+                    let mut inputs = [PortFrame::default(); 16];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
                             *input = self.input_frames[*edge];
@@ -2996,6 +3052,12 @@ impl PolyEngine {
         }
         if let Some(host) = &mut self.host {
             for group in &self.input_groups {
+                // The native shadow has 16 input slots. The mixer's return
+                // and send-CV cables use logical ports 16–19, whose frames
+                // and port lights are kept by the poly scheduler above.
+                if group.destination_port >= host_ports::PORTS {
+                    continue;
+                }
                 host_ports::transfer_input(
                     &mut host.inputs[group.destination_node][group.destination_port],
                     &host.outputs,
@@ -3360,6 +3422,7 @@ impl PolyEngine {
                     s.adopt(old, macro_trigger_unchanged)
                 }
                 (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
+                (Model::StudioMixer(s), Model::StudioMixer(old)) => s.adopt(old),
                 (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),
                 (Model::Wavetable(oscillator), Model::Wavetable(old)) => {
                     // Keep the receiving parameters and bank ownership intact;
