@@ -12,16 +12,16 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## Active product milestone: finish the approved module design
+## Current approval checkpoint: two faithful Signal Atlas panels
 
-The user wants the new module design soon. Extend the approved [**01 Signal Atlas reference**](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png) across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
+The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). **The broad goal is paused.** The newly authorized bounded task is two panels for approval, before integrating a new design or extending the catalog.
 
-- Warm ivory panels, black rotary knobs and larger ports; prominent top-left titles in the selected Rajdhani SemiBold font. No OpenPatch module branding, descriptions or colored header bands.
-- Markings describe actual ranges, units, routing and control behavior. Preserve meaningful differences between modules without decorative pseudo-circuitry or invented signal displays.
-- Rack panels and browser thumbnails share the same renderer. Keep titles, controls and jack labels legible at working zoom levels; retain useful weak-signal displays and genuine signal lights, including dark-room behavior.
-- Preserve numeric entry, fine adjustment, keyboard access, undo, cable hit areas and existing parameter behavior. Keep Ferrofluid, Studio Mixer FX sends/dynamic channels and Custom tags intact.
-- **Delivery:** inventory the remaining panels, apply shared controls first, then convert coherent layout families on one milestone branch. Review a representative changed panel early; avoid waiting for every catalog detail before making the design reviewable. Use focused UI/geometry checks and one Mac regression for the release candidate; unchanged DSP references do not need repeating.
-- **Done:** remaining supported catalog panels follow the approved design, browser previews match them, controls/labels remain usable, affected checks pass and the candidate is ready for one installation. Keep 0.2.5 installed during development.
+The [interactive design review](../design/reviews/signal-atlas-two-modules-v1/index.html) contains analog ADSR and Ladder VCF studies. They use the existing modules' controls, ranges and ports, large tactile knobs, functional stage/feedback diagrams, metal sockets and identical scaled thumbnails. This is an isolated HTML/SVG review artifact; it does not replace the native application or change DSP. Configured plots are explicitly separate from live audio.
+
+- **Done for this checkpoint:** render both panels and thumbnails, inspect legibility, verify review controls and save the review for user approval.
+- **Next:** collect approval or specific changes. Native integration, catalog rollout and installation wait for that approval. Keep 0.2.5 build 7 installed.
+
+The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress
 

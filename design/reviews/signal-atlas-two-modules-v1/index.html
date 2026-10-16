@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenPatch · Two panel design review</title>
+<link rel="stylesheet" href="review.css">
+<body>
+<header>
+  <div><p class="eyebrow">OPENPATCH / DESIGN REVIEW 01</p><h1>Signal Atlas, closer to the reference.</h1><p class="intro">Two working design studies. Real parameter ranges, deliberate signal diagrams, matching browser previews.</p></div>
+  <a class="reference" href="../../concepts/module-panels-20261016-v1/01-signal-atlas.png" target="_blank">Open approved reference ↗</a>
+</header>
+<nav aria-label="Review controls"><div class="segmented"><button id="light" class="selected" aria-pressed="true">Light room</button><button id="dark" aria-pressed="false">Dark room</button></div><button id="reset">Reset controls</button><span>Drag a knob · click a value to type · arrow keys adjust · Ctrl/⌘ for fine control</span></nav>
+<main>
+  <section class="review-panel" aria-labelledby="adsr-title"><div class="panel-heading"><h2 id="adsr-title">01 / ADSR</h2><span>Switched RC envelope</span></div><div class="rack" id="adsr"></div></section>
+  <section class="review-panel" aria-labelledby="ladder-title"><div class="panel-heading"><h2 id="ladder-title">02 / LADDER</h2><span>Four-pole transistor filter</span></div><div class="rack" id="ladder"></div></section>
+  <aside><h2>IN THE BROWSER</h2><p>The identical panel artwork, scaled down.</p><div class="browser-tile"><div id="adsr-thumb"></div><strong>ADSR</strong><small>Envelope · Analog</small></div><div class="browser-tile"><div id="ladder-thumb"></div><strong>LADDER</strong><small>Filter · Analog</small></div></aside>
+</main>
+<footer><div><b>For visual approval</b><p>Interactive design preview. Displays show configured responses, not live audio or hardware measurements. The installed app is unchanged.</p></div><div><b>What changed</b><p>Large tactile controls · functional diagrams · integrated displays · purposeful grouping · larger metal sockets</p></div></footer>
+<form id="editor" hidden><label id="edit-label" for="value-input"></label><div><input id="value-input" type="number" step="any"><span id="edit-unit"></span></div><small>Enter to apply · Esc to cancel</small></form>
+<script src="review.js"></script>
+</body></html>
