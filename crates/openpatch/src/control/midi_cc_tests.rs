@@ -10,6 +10,7 @@ struct Backend {
     fail_ack: AtomicBool,
     prepared: Mutex<Vec<String>>,
     loads: Mutex<Vec<SavedModuleState>>,
+    releases: Mutex<Vec<Vec<String>>>,
 }
 impl Backend {
     fn new() -> Self {
@@ -25,6 +26,7 @@ impl Backend {
             fail_ack: AtomicBool::new(false),
             prepared: Mutex::new(Vec::new()),
             loads: Mutex::new(Vec::new()),
+            releases: Mutex::new(Vec::new()),
         }
     }
     fn complete(&self, cell: u8, cc: i16, serial: u64) {
@@ -130,6 +132,9 @@ impl LiveModuleEvents for Backend {
             }
         }
     }
+    fn release_module_controls(&self, ids: &[String]) {
+        self.releases.lock().unwrap().push(ids.to_vec());
+    }
 }
 fn setup() -> (Session, Arc<Backend>) {
     let mut s = Session::new(&std::env::temp_dir()).unwrap();
@@ -140,6 +145,176 @@ fn setup() -> (Session, Arc<Backend>) {
     backend.prepared.lock().unwrap().clear();
     (s, backend)
 }
+
+fn grouped_mapping(mapping: i16) -> Value {
+    json!({"id":"cc","parameter":"cc1","value":mapping,"history_group":"saved-state-gesture"})
+}
+
+fn grouped_mapping_and_value(mapping: i16, value: u8) -> Value {
+    json!({"history_group":"saved-state-gesture","history_parameter":{"id":"cc","parameter":"cc1"},"edits":[
+        {"tool":"set_parameter","arguments":{"id":"cc","parameter":"cc1","value":mapping}},
+        {"tool":"set_parameter","arguments":{"id":"cc","parameter":"cc_value7","value":value}}
+    ]})
+}
+
+fn fill_controller_bank(backend: &Backend) -> SavedModuleState {
+    for controller in 0..128 {
+        backend.movement(controller, controller as u8);
+    }
+    *backend.state.lock().unwrap()
+}
+
+#[test]
+fn grouped_mapping_then_full_state_keeps_exact_undo_and_redo_checkpoints() {
+    let (mut s, b) = setup();
+    let original = fill_controller_bank(&b);
+    let undo_steps = s.undo.len();
+    s.execute("set_parameter", grouped_mapping(20)).unwrap();
+    let mapped = *b.state.lock().unwrap();
+    let mapping_state_id = s.state_id();
+    s.execute("apply_edits", grouped_mapping_and_value(21, 99))
+        .unwrap();
+    let final_state = *b.state.lock().unwrap();
+    assert_ne!(s.state_id(), mapping_state_id);
+    assert_eq!(s.undo.len(), undo_steps + 2);
+    for expected in [mapped, original] {
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), expected);
+    }
+    for expected in [mapped, final_state] {
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), expected);
+    }
+}
+
+#[test]
+fn grouped_full_state_then_mapping_keeps_exact_undo_and_redo_checkpoints() {
+    let (mut s, b) = setup();
+    let original = fill_controller_bank(&b);
+    let undo_steps = s.undo.len();
+    s.execute("apply_edits", grouped_mapping_and_value(20, 99))
+        .unwrap();
+    let full = *b.state.lock().unwrap();
+    let full_state_id = s.state_id();
+    s.execute("set_parameter", grouped_mapping(21)).unwrap();
+    let final_state = *b.state.lock().unwrap();
+    assert_ne!(s.state_id(), full_state_id);
+    assert_eq!(s.undo.len(), undo_steps + 2);
+    for expected in [full, original] {
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), expected);
+    }
+    for expected in [full, final_state] {
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), expected);
+    }
+}
+
+#[test]
+fn compatible_mapping_or_full_saved_state_gestures_still_coalesce() {
+    for full in [false, true] {
+        let (mut s, b) = setup();
+        let original = fill_controller_bank(&b);
+        let undo_steps = s.undo.len();
+        for (mapping, value) in [(20, 99), (21, 111)] {
+            if full {
+                s.execute("apply_edits", grouped_mapping_and_value(mapping, value))
+                    .unwrap();
+            } else {
+                s.execute("set_parameter", grouped_mapping(mapping))
+                    .unwrap();
+            }
+        }
+        let final_state = *b.state.lock().unwrap();
+        assert_eq!(s.undo.len(), undo_steps + 1);
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), original);
+        s.execute("redo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), final_state);
+    }
+}
+
+#[test]
+fn adding_or_removing_saved_module_coverage_starts_another_checkpoint() {
+    for mapping_first in [false, true] {
+        let (mut s, b) = setup();
+        let original = fill_controller_bank(&b);
+        let undo_steps = s.undo.len();
+        let mut states = Vec::new();
+        let mut patches = Vec::new();
+        for (first, smooth) in [(true, 0), (false, 1)] {
+            let mut request = json!({"history_group":"saved-state-gesture","history_parameter":{"id":"cc","parameter":"smooth"},"edits":[
+                {"tool":"set_parameter","arguments":{"id":"cc","parameter":"smooth","value":smooth}}
+            ]});
+            if first == mapping_first {
+                request["edits"].as_array_mut().unwrap().push(json!({
+                    "tool":"set_parameter","arguments":{"id":"cc","parameter":"cc1","value":20}
+                }));
+            }
+            s.execute("apply_edits", request).unwrap();
+            states.push(*b.state.lock().unwrap());
+            patches.push(s.patch.reference_view());
+        }
+        assert_eq!(s.undo.len(), undo_steps + 2);
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), states[0]);
+        assert_eq!(s.patch.reference_view(), patches[0]);
+        s.execute("undo", json!({})).unwrap();
+        assert_eq!(*b.state.lock().unwrap(), original);
+        for (expected_state, expected_patch) in states.into_iter().zip(patches) {
+            s.execute("redo", json!({})).unwrap();
+            assert_eq!(*b.state.lock().unwrap(), expected_state);
+            assert_eq!(s.patch.reference_view(), expected_patch);
+        }
+    }
+}
+
+#[test]
+fn changing_release_obligations_keeps_both_history_transitions() {
+    let (mut s, b) = setup();
+    s.execute("add_module", json!({"id":"other","kind":"constant"}))
+        .unwrap();
+    let original = s.patch.reference_view();
+    let undo_steps = s.undo.len();
+    let group = Some(("release-gesture".into(), "cc".into(), "smooth".into()));
+    let mut patches = Vec::new();
+    // Supply explicit effect receipts to exercise the generic commit boundary;
+    // ordinary parameter gestures currently do not request control releases.
+    for (id, value) in [("cc", 0), ("other", 1)] {
+        let mut candidate = s.patch.clone();
+        let mut effects = EditEffects::default();
+        s.apply_session_edit(
+            &mut candidate,
+            "set_parameter",
+            &json!({"id":"cc","parameter":"smooth","value":value}),
+            &mut effects,
+        )
+        .unwrap();
+        effects.release_controls.insert(id.into());
+        s.commit(candidate, None, group.clone(), &effects).unwrap();
+        patches.push(s.patch.reference_view());
+    }
+    assert_eq!(s.undo.len(), undo_steps + 2);
+    b.releases.lock().unwrap().clear();
+    s.execute("undo", json!({})).unwrap();
+    assert_eq!(s.patch.reference_view(), patches[0]);
+    s.execute("undo", json!({})).unwrap();
+    assert_eq!(s.patch.reference_view(), original);
+    s.execute("redo", json!({})).unwrap();
+    assert_eq!(s.patch.reference_view(), patches[0]);
+    s.execute("redo", json!({})).unwrap();
+    assert_eq!(s.patch.reference_view(), patches[1]);
+    assert_eq!(
+        *b.releases.lock().unwrap(),
+        vec![
+            vec!["other".to_owned()],
+            vec!["cc".to_owned()],
+            vec!["cc".to_owned()],
+            vec!["other".to_owned()]
+        ]
+    );
+}
+
 #[test]
 fn assignment_collision_and_undo_preserve_controller_motion() {
     let (mut s, b) = setup();

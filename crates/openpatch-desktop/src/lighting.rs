@@ -33,11 +33,11 @@ pub(crate) fn next(painter: &egui::Painter) -> usize {
 
 /// Keep a visible lens at overview zoom without enlarging any interaction target.
 pub(crate) fn lamp_radius(radius: f32) -> f32 {
-    (radius * 1.65).max(1.1)
+    (radius * 2.1).max(1.3)
 }
 
 pub(crate) fn port_lamp_radius(zoom: f32) -> f32 {
-    (3.2 * zoom).max(1.1)
+    (4.4 * zoom).max(1.3)
 }
 
 /// One bounded additive mesh, with a continuous falloff to transparent black.
@@ -49,11 +49,11 @@ fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32) {
     }
     const SEGMENTS: usize = 24;
     const PROFILE: [(f32, f32); 5] = [
-        (0.0, 0.38),
-        (0.55, 0.27),
-        (1.4, 0.13),
-        (2.8, 0.035),
-        (4.8, 0.0),
+        (0.0, 0.48),
+        (0.65, 0.34),
+        (1.7, 0.18),
+        (3.2, 0.055),
+        (5.2, 0.0),
     ];
     // Cache the unit perimeter: hundreds of rack lights must not each evaluate
     // trigonometric functions every animation frame.
@@ -119,7 +119,7 @@ impl Default for RoomLighting {
 
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
-        0.12 + 0.88 * (1.0 - self.amount).powf(1.5)
+        0.38 + 0.62 * (1.0 - self.amount).powf(1.5)
     }
 
     pub(crate) fn amount(&self) -> f32 {
@@ -181,13 +181,12 @@ impl RoomLighting {
     }
 
     fn lens_color(&self, original: Color32, strength: f32, floor: f32) -> Color32 {
-        if self.amount == 1.0 {
-            return original;
-        }
         let strength = signal(strength);
         let original_level = floor + (1.0 - floor) * strength;
         let lit_floor = floor * self.amount;
-        let lit_level = lit_floor + (1.0 - lit_floor) * strength;
+        // Lift small measured voltages perceptually while preserving a truly
+        // dark zero. Hue and polarity still come directly from the caller.
+        let lit_level = lit_floor + (1.0 - lit_floor) * strength.sqrt();
         tint(
             original,
             if original_level > 0.0 {
@@ -212,21 +211,28 @@ impl RoomLighting {
         let strength = signal(strength);
         let radius = lamp_radius(radius);
         let glow = strength.sqrt() * self.bloom_amount();
+        let emitter = tint(
+            original,
+            1.0 / (floor + (1.0 - floor) * strength).max(0.001),
+        );
         bloom(
             painter,
             Rect::from_center_size(center, vec2(radius, radius) * 2.0),
-            original,
+            emitter,
             glow,
         );
         painter.circle_filled(center, radius, self.lens_color(original, strength, floor));
         if strength > 0.001 {
-            painter.circle_filled(center, radius * 0.48, additive(original, glow * 0.4));
+            painter.circle_filled(center, radius * 0.58, additive(emitter, glow * 0.5));
         }
         self.preserve(painter, start);
     }
 
     /// Plug emission is already additive and calibrated from endpoint telemetry.
     pub(crate) fn port(&self, painter: &egui::Painter, center: Pos2, zoom: f32, color: Color32) {
+        if color.r() == 0 && color.g() == 0 && color.b() == 0 {
+            return;
+        }
         let start = if self.amount < 1.0 { next(painter) } else { 0 };
         let radius = port_lamp_radius(zoom);
         bloom(
@@ -238,8 +244,8 @@ impl RoomLighting {
         painter.circle_filled(center, radius, color);
         painter.circle_filled(
             center,
-            radius * 0.48,
-            additive(color, self.bloom_amount() * 0.4),
+            radius * 0.58,
+            additive(color, self.bloom_amount() * 0.5),
         );
         self.preserve(painter, start);
     }
@@ -253,8 +259,11 @@ impl RoomLighting {
         strength: f32,
         floor: f32,
     ) {
-        let start = if self.amount < 1.0 { next(painter) } else { 0 };
         let strength = signal(strength);
+        if floor == 0.0 && strength == 0.0 {
+            return;
+        }
+        let start = if self.amount < 1.0 { next(painter) } else { 0 };
         let rect = Rect::from_center_size(
             rect.center(),
             vec2((rect.width() * 1.2).max(1.0), rect.height()),
@@ -262,10 +271,24 @@ impl RoomLighting {
         bloom(
             painter,
             rect,
-            original,
+            if floor == 0.0 {
+                original
+            } else {
+                tint(
+                    original,
+                    1.0 / (floor + (1.0 - floor) * strength).max(0.001),
+                )
+            },
             strength.sqrt() * self.bloom_amount(),
         );
-        painter.rect_filled(rect, rounding, self.lens_color(original, strength, floor));
+        // A zero-floor meter already encodes its measured value in its filled
+        // geometry and supplies an unscaled accent, rather than a dimmed lens.
+        let lens = if floor == 0.0 {
+            original
+        } else {
+            self.lens_color(original, strength, floor)
+        };
+        painter.rect_filled(rect, rounding, lens);
         self.preserve(painter, start);
     }
 }
@@ -317,18 +340,56 @@ mod tests {
 
     #[test]
     fn missing_or_zero_signal_never_creates_bloom() {
-        for strength in [0.0, f32::NAN, f32::NEG_INFINITY] {
+        for strength in [0.0, -1.0, f32::NAN, f32::NEG_INFINITY, f32::INFINITY] {
             let ctx = egui::Context::default();
             let mut lighting = RoomLighting::default();
             lighting.set(0.0);
             let output = ctx.run(egui::RawInput::default(), |ctx| {
                 let painter = ctx.layer_painter(egui::LayerId::background());
                 lighting.circle(&painter, Pos2::ZERO, 2.0, Color32::GREEN, strength, 0.12);
+                lighting.rect(
+                    &painter,
+                    Rect::from_center_size(Pos2::ZERO, vec2(3.0, 20.0)),
+                    0.0,
+                    Color32::GREEN,
+                    strength,
+                    0.0,
+                );
             });
             assert!(!output
                 .shapes
                 .iter()
                 .any(|s| matches!(s.shape, egui::Shape::Mesh(_))));
+            assert!(output.shapes.iter().all(|s| match &s.shape {
+                egui::Shape::Circle(circle) => {
+                    circle.fill.r() == 0 && circle.fill.g() == 0 && circle.fill.b() == 0
+                }
+                egui::Shape::Rect(_) => false,
+                _ => true,
+            }));
+        }
+    }
+
+    #[test]
+    fn perceptual_lens_response_preserves_zero_polarity_and_voltage_order() {
+        let mut lighting = RoomLighting::default();
+        for room in [0.0, 1.0] {
+            lighting.set(room);
+            for base in [Color32::GREEN, Color32::RED] {
+                let lens = |strength: f32| {
+                    lighting.lens_color(base.gamma_multiply(0.12 + strength * 0.88), strength, 0.12)
+                };
+                let weak = lens(0.01);
+                let strong = lens(0.25);
+                let component = |c: Color32| if base == Color32::GREEN { c.g() } else { c.r() };
+                assert!(component(weak) > component(lens(0.0)));
+                assert!(component(strong) > component(weak));
+                assert_eq!(weak.g() == 0, base == Color32::RED);
+                assert_eq!(weak.r() == 0, base == Color32::GREEN);
+                if room == 0.0 {
+                    assert_eq!(component(lens(0.0)), 0);
+                }
+            }
         }
     }
 

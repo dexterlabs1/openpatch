@@ -1,22 +1,26 @@
 # Panel typography
 
-Barlow SemiBold and Barlow Semi Condensed SemiBold by Jeremy Tribby / The Barlow Project Authors.
-Unmodified font distributed under the SIL Open Font License 1.1; see
-[OFL-Barlow.txt](OFL-Barlow.txt).
+Rajdhani SemiBold by Indian Type Foundry, copyright 2014.
+The unmodified static weight-600 face is distributed under the SIL Open Font
+License 1.1; see [OFL-Rajdhani.txt](OFL-Rajdhani.txt).
 
-Source: [Google Fonts](https://github.com/google/fonts/tree/66928797f271fed5ee428544e7229685e2d90127/ofl/barlowsemicondensed).
+Pinned source: [Google Fonts at `1d0e46c7933245c8180fe83e47917961c913bbdb`](https://github.com/google/fonts/blob/1d0e46c7933245c8180fe83e47917961c913bbdb/ofl/rajdhani/Rajdhani-SemiBold.ttf).
 
-SHA-256 (`BarlowSemiCondensed-SemiBold.ttf`): `bd299f4bc5b44d30be8d42e9bad3a5df7d66af1cd55d0ed72a8b8916360a1424`.
+SHA-256 (`Rajdhani-SemiBold.ttf`, 390,340 bytes): `94bbd25a18ca665999feb05a537de9fd2b860dcfb78bbe9ca00270825bf235da`.
 
-Barlow SemiBold supplies model titles and primary control labels; Semi Condensed
-supplies fine print and dense utility labels. Both are embedded in the shared rack
-and browser renderer. General application text retains the existing UI faces
-first, with the bundled fallback faces below for missing glyphs.
+SHA-256 (`OFL-Rajdhani.txt`): `f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f`.
 
-Regular-width source: [Google Fonts](https://github.com/google/fonts/tree/66928797f271fed5ee428544e7229685e2d90127/ofl/barlow).
+This is candidate 09 selected from the browser font study. Both established
+`Panel Print` and `Panel Heading` families use this face for panel titles,
+labels, readouts and numeric entry. Digits have proportional advances; numeric
+wells retain their existing bounds and fit their text to the available width.
+General application text retains the existing UI faces first, with the bundled
+fallback faces below for missing glyphs. Calibrated scope screen typography
+retains its measurement font.
 
-SHA-256 (`Barlow-SemiBold.ttf`): `86577cb32f8abe3673db53ca0f4221e6856751a4f6730c867e00f720f8bb1fc5`.
-Both upstream families have the identical bundled OFL license.
+The prior Barlow font binaries are no longer bundled. [OFL-Barlow.txt](OFL-Barlow.txt)
+is retained as a historical source notice; it is not part of the current app's
+font-license output or package.
 
 ## Unicode fallback faces
 
@@ -63,5 +67,5 @@ license files are exact copies from the pinned source revisions:
 | [OFL-NotoMusic.txt](../licenses/OFL-NotoMusic.txt) | `google/fonts/ofl/notomusic/OFL.txt` | `1679cb60544990b4c2445320c6d5298e4bb0c08ff00dbb5a526f3793fdaa1e6f` |
 
 The macOS packager already copies every file in `assets/licenses` into
-`Contents/Resources/Licenses`; `--font-license` prints the Barlow license plus all
+`Contents/Resources/Licenses`; `--font-license` prints the Rajdhani license plus all
 three Noto license texts and the Noto notice above.

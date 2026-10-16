@@ -638,7 +638,7 @@ returned revision identifies the coherent snapshot that produced the trace.
 ## Atomic edits and shared history
 
 `apply_edits` accepts 1–256 graph edits and validates the **final** graph. The
-whole transaction commits one revision and one undo step. Temporary disconnected
+whole transaction commits one revision and, by default, one undo step. Temporary disconnected
 or unresolved connections inside the transaction are allowed; the final graph
 must compile. Any failure leaves the live graph, revision, and history unchanged.
 Supported operations include `add_module`, `duplicate_modules`, `remove_module`,
@@ -705,7 +705,34 @@ not have a recorded layout. `state_id` identifies a retained history state; use
 Consecutive `set_parameter` calls may use the same `history_group` string to
 form a single undo step for one parameter gesture, while each edit still advances
 the revision. Use a unique group per gesture; unrelated edits and undo/redo
-break the group. Omit this field inside transactions.
+break the group. Omit this field from individual edits inside transactions.
+
+A parameter gesture can start with an atomic companion setting. Supply both
+outer `history_group` and `history_parameter` to `apply_edits`:
+
+```json
+{
+  "expected_revision": 7,
+  "history_group": "scope-offset-gesture-unique-id",
+  "history_parameter": {"id": "scope", "parameter": "x_offset"},
+  "edits": [
+    {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": "x_offset", "value": 0.25}},
+    {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": "auto_range", "value": 0}}
+  ]
+}
+```
+
+Only `set_parameter` edits on that same module are allowed in a grouped batch,
+and its named primary parameter must appear. Following direct `set_parameter`
+calls for that primary parameter with the same unique group join the same undo
+step. One Undo restores the starting parameter and companion settings; Redo
+restores the final gesture. Every successful update still advances revision.
+Other parameter targets or committed edits break grouping. Changes in the
+coverage of persistent live-state snapshots also start a new checkpoint, so
+grouping cannot discard controller values or other module state needed for
+Undo/Redo. Malformed or stale
+requests preserve patch and history. Group fields belong only to committing
+transactions; omit them when using `preview_edits` to validate the edits.
 
 ## Visible construction
 

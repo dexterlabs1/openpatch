@@ -67,16 +67,23 @@ fn retired_viz_voice_keeps_its_release_tail_but_dims_number() {
     rack.module_lights.insert("viz".into(),state);
     let painted = frame_revision_state(&ctx,&mut rack,&patch,1.0,vec![],true,true,7).1;
     let mut texts = vec![];
-    let mut tail = false;
     for shape in &painted.shapes {
         visit(&shape.shape,&mut texts);
-        if let egui::Shape::Circle(circle) = &shape.shape {
-            if circle.center == pos2(159.0,300.0) && circle.radius == crate::lighting::lamp_radius(3.0) {
-                assert_eq!(circle.fill, Color32::from_rgb(65,174,102).gamma_multiply(0.15+0.75*0.85));
-                tail = true;
-            }
-        }
     }
-    assert!(tail);
+    let lens = |output: &egui::FullOutput, center: Pos2| {
+        output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Circle(circle)
+                if circle.center == center
+                    && circle.radius == crate::lighting::lamp_radius(3.0) => Some(circle.fill),
+            _ => None,
+        }).expect("voice lens")
+    };
+    let tail = lens(&painted, pos2(159.0,300.0));
+    assert!(tail.g() > tail.r() && tail.g() > tail.b(), "positive release tail stays green");
     assert_eq!(texts.iter().find(|(label,_,_)|label=="16").unwrap().2,Color32::from_gray(155));
+    state.brightness[15] = [0.0; 2];
+    rack.module_lights.insert("viz".into(),state);
+    let zero = frame_revision_state(&ctx,&mut rack,&patch,1.1,vec![],true,true,7).1;
+    assert!(tail.g() > lens(&zero, pos2(159.0,300.0)).g(), "the tail requires measured voltage");
+    assert_eq!(lens(&painted, pos2(169.0,300.0)), lens(&zero, pos2(169.0,300.0)), "negative brightness must not invent a red tail");
 }

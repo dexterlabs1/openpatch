@@ -556,7 +556,10 @@ fn stock_delay_clock_lamp_uses_actual_dsp_and_emits_with_room_lights_off() {
                 shapes.iter().map(|shape| emitted_core(shape, center)).sum()
             }
             egui::Shape::Circle(circle)
-                if circle.center.distance(center) < 0.01 && (circle.radius - 1.98).abs() < 0.01 =>
+                if circle.center.distance(center) < 0.01
+                    && circle.fill.a() == 0
+                    && circle.fill.r() > circle.fill.g()
+                    && circle.fill.g() > circle.fill.b() =>
             {
                 1
             }

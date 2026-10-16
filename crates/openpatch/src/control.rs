@@ -308,6 +308,19 @@ struct HistoryEntry {
     release_controls: Vec<String>,
 }
 
+fn saved_state_coverage_matches(
+    left: &BTreeMap<String, SavedModuleState>,
+    right: &BTreeMap<String, SavedModuleState>,
+) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|((left_id, left), (right_id, right))| {
+                left_id == right_id && std::mem::discriminant(left) == std::mem::discriminant(right)
+            })
+}
+
 const HISTORY_LIMIT: usize = 128;
 const MAX_EDITS: usize = 256;
 const EDIT_TOOLS: &[&str] = &[
@@ -416,6 +429,8 @@ fn check_transport_authorization(
     Ok(())
 }
 
+#[cfg(test)]
+mod grouped_parameter_tests;
 #[cfg(test)]
 pub(crate) mod transport_authorization_tests;
 
@@ -605,7 +620,20 @@ impl Session {
             &candidate,
             effects,
         );
-        if group.is_some() && group == self.history_group {
+        // A gesture may grow or shrink the persistent state it changes. Retain
+        // a separate checkpoint whenever its saved-state coverage changes, so
+        // neither the original undo snapshot nor the final redo loses fields.
+        let merge_group = group.is_some()
+            && group == self.history_group
+            && self.undo.back().is_some_and(|entry| {
+                saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
+                    && saved_state_coverage_matches(&entry.return_saved, &effects.after_saved)
+                    && entry
+                        .release_controls
+                        .iter()
+                        .eq(effects.release_controls.iter())
+            });
+        if merge_group {
             self.patch = candidate;
             if let Some(entry) = self.undo.back_mut() {
                 entry.return_saved.extend(effects.after_saved.clone());
@@ -1244,6 +1272,7 @@ impl Session {
         }
         let mut candidate = self.patch.clone();
         let mut effects = EditEffects::default();
+        let mut group = None;
         if matches!(name, "replace_patch" | "load_patch") {
             effects.retired = self.module_ids();
             effects.retired_cables = self.cable_ids();
@@ -1270,6 +1299,9 @@ impl Session {
                 candidate = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             }
             "apply_edits" | "preview_edits" => {
+                // Preview has no grouping fields in its schema. Only committed
+                // parameter transactions may join a continuing knob gesture.
+                group = transaction_history_group(&args)?;
                 let edits = args
                     .get("edits")
                     .and_then(Value::as_array)
@@ -1277,6 +1309,7 @@ impl Session {
                 if edits.is_empty() || edits.len() > MAX_EDITS {
                     return Err(format!("edits must contain 1..{MAX_EDITS} operations"));
                 }
+                let mut primary_edited = false;
                 for (index, edit) in edits.iter().enumerate() {
                     let result = (|| {
                         let object = edit.as_object().ok_or("edit must be an object")?;
@@ -1291,15 +1324,32 @@ impl Session {
                         validate_arguments(&schemas, tool, arguments)?;
                         if arguments.get("expected_revision").is_some()
                             || arguments.get("history_group").is_some()
+                            || arguments.get("history_parameter").is_some()
                         {
                             return Err(
                                 "revision and history grouping belong to the transaction, not an edit".into(),
                             );
                         }
+                        if let Some((_, id, parameter)) = &group {
+                            if tool != "set_parameter" {
+                                return Err(
+                                    "grouped transactions accept only set_parameter edits".into()
+                                );
+                            }
+                            if string(arguments, "id")? != id.as_str() {
+                                return Err(
+                                    "grouped parameter edits must target the history_parameter module".into(),
+                                );
+                            }
+                            primary_edited |= string(arguments, "parameter")? == parameter.as_str();
+                        }
                         self.apply_session_edit(&mut candidate, tool, arguments, &mut effects)?;
                         Ok(())
                     })();
                     result.map_err(|error: String| format!("edit {}: {error}", index + 1))?;
+                }
+                if group.is_some() && !primary_edited {
+                    return Err("grouped transaction must edit history_parameter".into());
                 }
                 if name == "preview_edits" {
                     self.prune_displaced_assets(&mut candidate);
@@ -1338,21 +1388,44 @@ impl Session {
             candidate.compile_with_wave_banks(&prepared)?;
             return Ok(self.snapshot());
         }
-        let group = if name == "set_parameter" && args.get("history_group").is_some() {
-            let group = string(&args, "history_group")?;
-            if group.is_empty() || group.len() > 128 {
-                return Err("history_group must contain 1..128 bytes".into());
-            }
-            Some((
-                group.into(),
+        if name == "set_parameter" && args.get("history_group").is_some() {
+            group = Some((
+                history_group_key(&args)?.into(),
                 string(&args, "id")?.into(),
                 string(&args, "parameter")?.into(),
-            ))
-        } else {
-            None
-        };
+            ));
+        }
         self.commit(candidate, expected_revision, group, &effects)?;
         Ok(self.snapshot())
+    }
+}
+
+fn history_group_key(args: &Value) -> Result<&str, String> {
+    let group = string(args, "history_group")?;
+    if group.is_empty() || group.len() > 128 {
+        return Err("history_group must contain 1..128 bytes".into());
+    }
+    Ok(group)
+}
+
+fn transaction_history_group(args: &Value) -> Result<Option<(String, String, String)>, String> {
+    match (args.get("history_group"), args.get("history_parameter")) {
+        (None, None) => Ok(None),
+        (Some(_), Some(primary)) => {
+            let group = history_group_key(args)?;
+            let object = primary
+                .as_object()
+                .ok_or("history_parameter must be an object")?;
+            if object.keys().any(|key| key != "id" && key != "parameter") {
+                return Err("history_parameter accepts only id and parameter".into());
+            }
+            Ok(Some((
+                group.into(),
+                string(primary, "id")?.into(),
+                string(primary, "parameter")?.into(),
+            )))
+        }
+        _ => Err("history_group and history_parameter must be supplied together".into()),
     }
 }
 
@@ -2067,9 +2140,26 @@ fn disconnect_tool(string_schema: &Value, id_schema: &Value, revision_schema: &V
     schema
 }
 
+fn apply_edits_tool(edits: &Value, revision: &Value, history_group: &Value) -> Value {
+    let mut schema = tool(
+        "apply_edits",
+        "Atomically apply 1..256 graph edits, validate the final graph, and commit one revision and undo step. Any error leaves state unchanged. Each edit has tool and arguments; revisions belong on this outer transaction. Optional history_group (1..128 UTF-8 bytes) requires history_parameter {id,parameter}, and vice versa. Grouped batches accept only set_parameter edits on that module and must include the primary parameter. Companion parameters may differ. Consecutive batches or direct set_parameter calls with the same group, module and primary parameter share one undo step when their saved-state coverage and control-release obligations match. Changed coverage starts a separate checkpoint; another committed edit breaks grouping. Use a unique group for each gesture; grouping fields are forbidden on nested edits and preview_edits.",
+        json!({"edits":edits,"expected_revision":revision,"history_group":history_group,
+            "history_parameter":{"type":"object","properties":{"id":{"type":"string"},"parameter":{"type":"string"}},"required":["id","parameter"],"additionalProperties":false}}),
+        &["edits"],
+        false,
+    );
+    schema["inputSchema"]["dependentRequired"] = json!({
+        "history_group":["history_parameter"],
+        "history_parameter":["history_group"]
+    });
+    schema
+}
+
 pub fn tools() -> Value {
     let s = json!({"type":"string"});
     let rev = json!({"type":"integer","minimum":0});
+    let history_group = json!({"type":"string","minLength":1,"maxLength":128});
     let module_id =
         json!({"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_.-]+$"});
     let duplicate_mappings = json!({"type":"array","minItems":1,"maxItems":MAX_EDITS,"items":{
@@ -2099,7 +2189,7 @@ pub fn tools() -> Value {
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("trigger_module","Queue a live module action: seq3 clock/run/reset, logic b_press/b_release, process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
-        tool("inspect_scope","Read a coherent live rack Scope capture for one voice (1..16). Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, applied revision and callback frame. Empty bins are null. Includes raw minimum/maximum/peak-to-peak statistics for the selected voice and all active voices, volts/screen, and actual trigger-source channels. Statistics cover stored completed bins, which may mix successive sweeps; they are not RMS or a timestamped sample window. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never performs an offline render or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
+        tool("inspect_scope","Read a coherent live rack Scope capture for one voice (1..16). Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, applied revision and callback frame. Empty bins are null. Includes raw minimum/maximum/peak-to-peak statistics for the selected voice and all active voices, configured manual volts/screen, and actual trigger-source channels. The native display may independently calibrate its automatic span when the scope node auto_range parameter is enabled; this capture does not report that temporary view span. Statistics cover stored completed bins, which may mix successive sweeps; they are not RMS or a timestamped sample window. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never performs an offline render or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
         tool("learn_midi_gate","Arm a MIDI Gate cell (1..16) to learn the next accepted positive-velocity NoteOn on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
@@ -2107,8 +2197,8 @@ pub fn tools() -> Value {
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 columns left or right, including three voltage rows and gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("inspect_history","Read shared GUI/MCP undo and redo counts. History contains up to 128 graph edits and native module-movement checkpoints; file writes and view pan/zoom are not included.",json!({}),&[],true),
-        tool("apply_edits","Atomically apply 1..256 graph edits, validate the final graph, and commit one revision and undo step. Any error leaves state unchanged. Each edit has tool and arguments; revisions belong on this outer transaction.",json!({"edits":edits,"expected_revision":rev}),&["edits"],false),
-        tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
+        apply_edits_tool(&edits, &rev, &history_group),
+        tool("preview_edits","Validate graph edits and return the proposed patch without committing, changing history, or playing sound. Use the returned revision with apply_edits. History grouping fields are accepted only by committed apply_edits, not previews.",json!({"edits":edits,"expected_revision":rev}),&["edits"],true),
         tool("undo","Undo one shared GUI/MCP edit or native module-movement checkpoint. Revision increases; file writes and view pan/zoom are not undone.",json!({"expected_revision":rev}),&[],false),
         tool("redo","Redo one undone graph edit. A new graph edit clears redo history.",json!({"expected_revision":rev}),&[],false),
         tool("import_wavetable","Decode a regular workspace WAV or raw table into a wavetable module. Atomically prepares and binds immutable samples, with one undo step; no normalization, playback, or partial publication. WAV channels remain interleaved. Omit wave_points to use a power-of-two WAV sample rate or the current/default geometry.",json!({"id":s,"filename":s,"wave_points":{"type":"integer","minimum":2,"maximum":524288},"expected_revision":rev}),&["id","filename"],false),
@@ -2132,7 +2222,7 @@ pub fn tools() -> Value {
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_module_content","Replace typed Notes text or Blank width. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
         tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
-        tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group merges consecutive changes to the same parameter into one undo step; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","parameter","value"],false),
+        tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group (1..128 UTF-8 bytes) merges consecutive changes to the same parameter into one undo step when saved-state coverage and control-release obligations match, including apply_edits with matching history_parameter; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":history_group}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),
         tool("invert_mutes","Invert all ten mutes10 mute flags atomically. Omitted flags default to passing (zero). Commits one revision and undo step.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("capture_module_preset","Capture a native module preset with effective parameter defaults, annotation content, and explicit bypass. Stateful modules capture actual Run, HOLD, MIDI CC assignments and controller values, or voltages and RNG from revision-coherent live telemetry, or deterministic initial state without a live backend. Returns exact preset contents, revision, state_source and coherent frame; transient controls, phase, cables, IDs and layout are excluded.",json!({"id":s,"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&["id"],true),

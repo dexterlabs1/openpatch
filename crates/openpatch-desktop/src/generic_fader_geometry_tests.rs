@@ -55,18 +55,24 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
             if rect.fill == Color32::from_rgb(235, 231, 216) {
                 surface.thumbs.push(rect.rect);
             }
-            if rect.fill == Color32::from_rgb(237, 233, 222) {
-                // Choice backgrounds share the numeric well material. Their
-                // actual painted heights distinguish them, rather than treating
-                // every rectangle of that color as a numeric input.
+            if rect.fill == Color32::from_rgb(47, 55, 48) {
+                // Numeric wells now use the dark entry material. Keep checking
+                // their painted height rather than counting arbitrary dark fills.
                 let height = rect.rect.height() / surface.scale;
-                if (height - 17.0).abs() < 0.001 {
-                    surface.readouts.push(rect.rect);
-                } else if (height - 24.0).abs() < 0.001 {
-                    surface.choices.push(rect.rect);
-                } else {
-                    panic!("unclassified shared entry material at height {height}");
-                }
+                assert!(
+                    (height - 17.0).abs() < 0.001,
+                    "numeric entry material at unexpected height {height}"
+                );
+                surface.readouts.push(rect.rect);
+            } else if rect.fill == Color32::from_rgb(237, 233, 222) {
+                // Categorical controls retain the light entry material and their
+                // own height; they must remain separate from numeric wells.
+                let height = rect.rect.height() / surface.scale;
+                assert!(
+                    (height - 24.0).abs() < 0.001,
+                    "categorical entry material at unexpected height {height}"
+                );
+                surface.choices.push(rect.rect);
             }
         }
         egui::Shape::Text(text) if !text.galley.text().is_empty() => {

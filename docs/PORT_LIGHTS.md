@@ -39,6 +39,16 @@ OpenPatch preserves native signal units. Some older modules use normalized audio
 rather than voltages; their lights can consequently be dimmer. No guessed unit
 conversion changes the sound or signal graph.
 
+The native display applies a zero-preserving square-root response to each
+clamped measured RGB component before color mixing and the user's linear
+brightness setting. Larger lenses and broader bloom make weak activity easier
+to see. This is a presentation curve, not a voltage calibration or an audio
+gain change: the detector, raw telemetry and numerical reference below remain
+unchanged. Polarity and polyphonic energy still select the colors; there is no
+synthetic pulse or idle breathing animation. Module signal lamps use the same
+perceptual emphasis, while meters whose geometry already encodes gain retain
+their calibrated accent color.
+
 Storage is prepared off the audio thread for at most 2,048 unique connected
 endpoints. A fixed triple-buffer payload publishes the active graph at most
 30 times per second of audio, with at most one publication per callback.

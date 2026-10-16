@@ -23,7 +23,8 @@ history; inactive lanes contribute no fabricated zeros.
 
 | Parameter | Range/default | Meaning |
 |---|---|---|
-| `x_scale`, `y_scale` | Integer 0–8; 0 | Display span is `20 / 2^scale` V per screen |
+| `auto_range` | 0 manual / 1 automatic; 1 | Native display-only fitting of weak or large signals |
+| `x_scale`, `y_scale` | Integer 0–8; 0 | Manual display span is `20 / 2^scale` V per screen |
 | `x_offset`, `y_offset` | −10…10 V; 0 | Display offset only |
 | `time` | 0.005…50 seconds; 0.5 | Requested screen duration |
 | `xy` | 0 time / 1 XY; 0 | XY mode runs continuously |
@@ -69,6 +70,22 @@ selection and nullable min/max bins for empty observations. It does not compile
 or render an offline replacement when live data is unavailable. `capture_signal` remains a separate offline-from-reset inspection path.
 
 ## Measurement controls and readouts
+
+**AUTO RANGE** starts enabled. The native display fits finite completed bins
+from every visible active voice, including zero as an absolute voltage
+reference. X and Y have independent 1/2/5 spans with headroom and hysteresis;
+XY fits only paired visible voices. Empty or all-zero axes use a stable
+20 V/screen fallback. AUTO readouts show the actual span and offset in V, mV
+or µV, so a tiny visible trace is never mistaken for a large voltage. This is
+an OpenPatch presentation extension, not a claim of Rack display equivalence.
+
+Turning AUTO RANGE off restores the saved manual ranges and offsets. A manual
+range or offset gesture turns it off atomically with that first edit; undo
+restores both settings together with the remainder of that drag. Direct MCP parameter edits retain
+their literal meaning: set `auto_range` to zero when selecting a manual range.
+Automatic fitting is temporary view state; the enable setting persists in
+patches, presets and history. No acquisition bins, output samples or raw
+measurements are amplified or rewritten.
 
 X/Y range selectors show the nine exact volts-per-screen choices: 20, 10, 5,
 2.5, 1.25, 0.625, 0.3125, 0.15625 and 0.078125 V. They map to saved scale values

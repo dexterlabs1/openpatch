@@ -18,8 +18,15 @@ renderer and fits the available screen without stretching the module.
 
 *Native Linux CI capture; macOS is the primary design target.*
 
-The Studio Rack skin uses a warm matte face, semibold model headings and restrained
-signal-family accents. Decorative corner screws are omitted. Ports use clean,
+The Studio Rack skin uses a warm matte face and large, left-aligned model headings
+on dark family-colored headers. A narrow matching edge continues down the panel:
+copper sources, teal filters, green gain/mixing, purple envelopes, violet
+modulation, ochre sequencers, blue-gray routing, blue measurement, navy I/O,
+petrol effects, sage utilities, and neutral annotations. Static module branding
+and descriptive subtitles are omitted. Four reflective corner screws attach
+each panel to the upper and lower rails; the lower rail meets the actual
+396-point panel bottom while the existing 420-point row pitch stays unchanged.
+Mounting hardware and headers dim with the room. Ports use clean,
 flat concentric rings and dark centers, with a quiet accent for connected sockets;
 there are no hex nuts, offset jack shadows or reflection stacks. Outputs retain
 charcoal labels and dark socket surrounds; inputs use dark print on the panel.
@@ -28,8 +35,10 @@ control spacing or cable hit targets. Actual plug signal lights remain separate
 from the socket's connected accent.
 
 Shared continuous and stepped numeric controls use direct vertical faders;
-specialized module panels retain their dedicated editors. Numeric wells use the
-same restrained materials as the panel. Fader handles and hover/focus outlines
+specialized module panels retain their dedicated editors. Dark numeric wells
+use larger fitted light text; primary labels fit their available control cell.
+Text and controls continue to scale with rack zoom rather than retaining a
+screen-sized minimum that overlaps neighboring controls. Fader handles and hover/focus outlines
 identify editable values.
 Permanent model captions match in the rack and browser; patch instance IDs appear
 in header tooltips and context menus. Parameter ranges, port positions and cable
@@ -92,11 +101,16 @@ isolation and card click/drag behavior over specialized controls. Categorical
 segments use that same passive preview path and cannot edit the live patch.
 On 2026-10-15, two reviews of actual captures from
 [c4fd1da Linux CI](https://github.com/dexterlabs1/openpatch/actions/runs/38778208214)
-found no new visual blocker in the screw-free panels and flat sockets. Reviewed
+found no new visual blocker in the earlier screw-free panels and flat sockets. Reviewed
 scenes include the normal rack, dense studio panels, standard/compact library,
 natural-size Inspect and dark-room signal/gain emission. This records the Linux
 visual gate. Native macOS/Windows window input and physical audio/device qualification
 remain separate; these images do not establish full Rack visual or host parity.
 
-Panel print uses [Barlow SemiBold and Semi Condensed SemiBold](../crates/openpatch-desktop/assets/fonts/README.md),
+The family headers, lower mounts, stronger readouts and larger lamps described
+above are a later revision; its native capture review is still pending. The
+panel titles, labels and numeric controls use the selected Rajdhani SemiBold
+face. Calibrated Scope screens keep their aligned monospace measurement text.
+
+Panel print uses [Rajdhani SemiBold](../crates/openpatch-desktop/assets/fonts/README.md),
 with its original SIL Open Font License bundled in the Mac application.

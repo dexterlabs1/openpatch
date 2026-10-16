@@ -308,6 +308,44 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(redone["patch"], committed["patch"])
         self.assertEqual(redone["revision"], committed["revision"] + 2)
 
+    def test_scope_manual_takeover_and_following_drag_share_one_mcp_undo_step(self) -> None:
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "nodes": [
+                {"id": "scope", "kind": "scope", "params": {"auto_range": 1, "x_offset": 0}},
+                {"id": "other", "kind": "scope"},
+            ],
+        }})
+        before = self.patch_snapshot()
+        request = {
+            "expected_revision": before["revision"],
+            "history_group": "scope-offset-drag",
+            "history_parameter": {"id": "scope", "parameter": "x_offset"},
+            "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": "x_offset", "value": 0.25}},
+                {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": "auto_range", "value": 0}},
+            ],
+        }
+        current = self.payload(self.require_tool_success("apply_edits", request))
+        for value in (0.5, 0.75, 1.0):
+            current = self.payload(self.require_tool_success("set_parameter", {
+                "expected_revision": current["revision"], "id": "scope", "parameter": "x_offset",
+                "value": value, "history_group": "scope-offset-drag",
+            }))
+        self.assertEqual(current["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        self.assertEqual(current["patch"]["nodes"][0]["params"], {"auto_range": 0.0, "x_offset": 1.0})
+        self.require_tool_error("apply_edits", request)
+        self.assertEqual(self.patch_snapshot(), current, "stale takeover must not affect history")
+        invalid = {**request, "expected_revision": current["revision"], "edits": [
+            request["edits"][0],
+            {"tool": "set_parameter", "arguments": {"id": "other", "parameter": "auto_range", "value": 0}},
+        ]}
+        self.require_tool_error("apply_edits", invalid)
+        self.assertEqual(self.patch_snapshot(), current, "a grouped batch cannot edit another module")
+        undone = self.payload(self.require_tool_success("undo", {"expected_revision": current["revision"]}))
+        self.assertEqual(undone["patch"], before["patch"])
+        redone = self.payload(self.require_tool_success("redo", {"expected_revision": undone["revision"]}))
+        self.assertEqual(redone["patch"], current["patch"])
+
     def test_cable_rgb_schema_persistence_and_malformed_color_rollback(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         schema = next(tool["inputSchema"] for tool in tools if tool["name"] == "connect")

@@ -2851,7 +2851,7 @@ impl Rack {
                         point(x, y + 12.0),
                         Align2::LEFT_CENTER,
                         format!("{:02}", channel + 1),
-                        FontId::monospace(9.0 * self.zoom),
+                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
                         MUTED,
                     );
                     if let Some(spec) = module.and_then(|module| module["params"].get(&parameter)) {
@@ -3804,9 +3804,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                painter.text(
+                crate::panel_skin::control_label(
+                    &painter,
                     center - vec2(0.0, (radius + 13.0) * self.zoom),
-                    Align2::CENTER_BOTTOM,
                     if node.kind == "seq3" {
                         ""
                     } else if node.kind == "random" {
@@ -3828,8 +3828,8 @@ impl Rack {
                     } else {
                         parameter_label(name)
                     },
-                    crate::panel_skin::heading_font(painter.ctx(), 11.0 * self.zoom),
-                    INK,
+                    readout_width * self.zoom,
+                    self.zoom,
                 );
                 crate::panel_skin::readout(
                     &painter,
@@ -5804,7 +5804,7 @@ impl Rack {
                 point(x, y),
                 Align2::CENTER_CENTER,
                 format!("{:02}", channel + 1),
-                FontId::monospace(12.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 12.0 * zoom),
                 if active { INK } else { Color32::from_gray(155) },
             );
             for (polarity, color) in [
@@ -5867,7 +5867,7 @@ impl Rack {
                 || "— / 16".to_owned(),
                 |s| format!("{} / 16", s.input_channels.unwrap().min(16)),
             ),
-            FontId::monospace(18.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 18.0 * zoom),
             INK,
         );
         painter.text(
@@ -5897,7 +5897,7 @@ impl Rack {
                 point(105.0, y),
                 Align2::LEFT_CENTER,
                 format!("{db}"),
-                FontId::monospace(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
         }
@@ -6246,7 +6246,7 @@ impl Rack {
                 point(35.0, y),
                 Align2::CENTER_CENTER,
                 format!("{:02}", row + 1),
-                FontId::monospace(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
             painter.rect_filled(
@@ -6691,7 +6691,7 @@ impl Rack {
                 point(53.0, y),
                 Align2::CENTER_CENTER,
                 format!("{:02}", row + 1),
-                FontId::monospace(8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
             let parameter = format!(
@@ -6772,7 +6772,7 @@ impl Rack {
                     hint.center(),
                     Align2::CENTER_CENTER,
                     label,
-                    FontId::monospace(8.0 * zoom),
+                    crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                     MUTED,
                 );
                 ui.interact(
@@ -6875,7 +6875,7 @@ impl Rack {
             point(90.0, 174.0),
             Align2::CENTER_CENTER,
             status,
-            FontId::monospace(9.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
             MUTED,
         );
         let many_x = if node.kind == "switch_1to4" {
@@ -7030,7 +7030,7 @@ impl Rack {
             point(107.0, 345.0),
             Align2::CENTER_CENTER,
             text,
-            FontId::monospace(9.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
             MUTED,
         );
         for row in 0..3 {
@@ -7038,7 +7038,7 @@ impl Rack {
                 point(203.0, 123.0 + row as f32 * 73.0),
                 Align2::RIGHT_CENTER,
                 format!("{}", row + 1),
-                FontId::monospace(9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 MUTED,
             );
         }
@@ -7186,19 +7186,31 @@ impl Rack {
         }
         let trace = painter.with_clip_rect(plot.shrink(1.0));
         if let Some(state) = self.scope_states.get(&node.id) {
+            let auto_range = scope_auto_range_enabled(node);
+            let range_id = ui.id().with(("scope-auto-range", &node.id));
+            let previous = ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id));
+            let ranges = scope_display_ranges(state, auto_range, previous);
+            ui.data_mut(|data| {
+                if auto_range {
+                    data.insert_temp(range_id, ranges);
+                } else {
+                    data.remove::<[ScopeDisplayRange; 2]>(range_id);
+                }
+            });
             let colors = [
                 Color32::from_rgb(86, 215, 222),
                 Color32::from_rgb(250, 185, 80),
             ];
-            let voltage_y = |v: f32, scale: u8, offset: f32| {
+            let voltage_y = |v: f32, range: ScopeDisplayRange| {
                 (f64::from(plot.center().y)
-                    - (f64::from(v) + f64::from(offset)) * f64::from(plot.height())
-                        / f64::from(scope_volts_per_screen(scale))) as f32
+                    - scope_display_fraction(v, range) * f64::from(plot.height()))
+                    as f32
             };
             let zero_stroke = |color: Color32| Stroke::new(0.8 * zoom, color.gamma_multiply(0.55));
             if state.xy {
-                let x_zero = plot.center().x
-                    + state.x_offset * plot.width() / scope_volts_per_screen(state.x_scale);
+                let x_zero = (f64::from(plot.center().x)
+                    + scope_display_fraction(0.0, ranges[0]) * f64::from(plot.width()))
+                    as f32;
                 if plot.x_range().contains(x_zero) {
                     trace.line_segment(
                         [pos2(x_zero, plot.top()), pos2(x_zero, plot.bottom())],
@@ -7213,14 +7225,14 @@ impl Rack {
                     );
                 }
             }
-            for (scale, offset, color, label) in [
-                (state.x_scale, state.x_offset, colors[0], "X 0 V"),
-                (state.y_scale, state.y_offset, colors[1], "Y 0 V"),
+            for (range, color, label) in [
+                (ranges[0], colors[0], "X 0 V"),
+                (ranges[1], colors[1], "Y 0 V"),
             ] {
                 if state.xy && label == "X 0 V" {
                     continue;
                 }
-                let y_zero = voltage_y(0.0, scale, offset);
+                let y_zero = voltage_y(0.0, range);
                 if plot.y_range().contains(y_zero) {
                     trace.line_segment(
                         [pos2(plot.left(), y_zero), pos2(plot.right(), y_zero)],
@@ -7239,7 +7251,7 @@ impl Rack {
                 }
             }
             if scope_x_trigger_guide(state) {
-                let trigger_y = voltage_y(state.threshold, state.x_scale, state.x_offset);
+                let trigger_y = voltage_y(state.threshold, ranges[0]);
                 if plot.y_range().contains(trigger_y) {
                     trace.line_segment(
                         [pos2(plot.left(), trigger_y), pos2(plot.right(), trigger_y)],
@@ -7268,10 +7280,10 @@ impl Rack {
                 }
             }
             painter.text(
-                point(40.0, 91.0),
+                point(40.0, 89.0),
                 Align2::LEFT_TOP,
-                scope_trigger_status(state),
-                FontId::monospace(8.5 * zoom),
+                scope_range_label(auto_range, ranges),
+                FontId::monospace(9.5 * zoom),
                 Color32::from_gray(180),
             );
             let measurements = state.measurements();
@@ -7299,11 +7311,9 @@ impl Rack {
                         }
                         let p = pos2(
                             (f64::from(plot.center().x)
-                                + (f64::from(scope_midpoint(x)) + f64::from(state.x_offset))
-                                    * f64::from(plot.width())
-                                    / f64::from(scope_volts_per_screen(state.x_scale)))
-                                as f32,
-                            voltage_y(scope_midpoint(y), state.y_scale, state.y_offset),
+                                + scope_display_fraction(scope_midpoint(x), ranges[0])
+                                    * f64::from(plot.width())) as f32,
+                            voltage_y(scope_midpoint(y), ranges[1]),
                         );
                         if !scope_position_finite(p) {
                             previous = None;
@@ -7319,21 +7329,9 @@ impl Rack {
                     }
                 }
             } else {
-                for (channel, count, scale, offset, color) in [
-                    (
-                        &state.x,
-                        state.x_channels,
-                        state.x_scale,
-                        state.x_offset,
-                        colors[0],
-                    ),
-                    (
-                        &state.y,
-                        state.y_channels,
-                        state.y_scale,
-                        state.y_offset,
-                        colors[1],
-                    ),
+                for (channel, count, range, color) in [
+                    (&state.x, state.x_channels, ranges[0], colors[0]),
+                    (&state.y, state.y_channels, ranges[1], colors[1]),
                 ] {
                     for (voice, samples) in
                         channel.iter().enumerate().take(usize::from(count.min(16)))
@@ -7345,8 +7343,8 @@ impl Rack {
                                 continue;
                             }
                             let x = plot.left() + plot.width() * bin as f32 / 255.0;
-                            let lo = pos2(x, voltage_y(sample.min, scale, offset));
-                            let hi = pos2(x, voltage_y(sample.max, scale, offset));
+                            let lo = pos2(x, voltage_y(sample.min, range));
+                            let hi = pos2(x, voltage_y(sample.max, range));
                             if !scope_position_finite(lo) || !scope_position_finite(hi) {
                                 previous = None;
                                 continue;
@@ -7364,16 +7362,16 @@ impl Rack {
                 }
             }
             painter.text(
-                point(40.0, 78.0),
+                point(40.0, 76.0),
                 Align2::LEFT_TOP,
                 format!(
-                    "X {} ch   Y {} ch   {}   {:.3} s requested",
+                    "X {} ch   Y {} ch   {}  |  {}",
                     state.x_channels,
                     state.y_channels,
                     if state.xy { "XY" } else { "TIME" },
-                    state.time
+                    scope_trigger_status(state)
                 ),
-                FontId::monospace(10.0 * zoom),
+                FontId::monospace(9.5 * zoom),
                 Color32::from_gray(216),
             );
         } else {
@@ -7405,13 +7403,13 @@ impl Rack {
             if let Some(spec) = module.and_then(|m| m["params"].get(*name)) {
                 let edit = if matches!(*name, "x_scale" | "y_scale") {
                     self.choice_parameter(ui, node, name, spec, control, &SCOPE_SCALE_CHOICES)
-                } else if matches!(*name, "xy" | "trigger_enabled") {
+                } else if matches!(*name, "xy" | "trigger_enabled" | "auto_range") {
                     self.choice_parameter(ui, node, name, spec, control, &["OFF", "ON"])
                 } else {
                     self.compact_parameter(ui, node, name, spec, control, suffix)
                 };
-                if edit.is_some() {
-                    action = edit;
+                if let Some(edit) = edit {
+                    action = Some(scope_parameter_action(node, edit, self.observed_revision));
                 }
             }
         }
@@ -7466,7 +7464,8 @@ impl Rack {
                 // inactive and text-edit surfaces to the panel readouts.
                 ui.visuals_mut().widgets.active.bg_fill = Color32::from_rgb(226, 197, 143);
                 crate::panel_skin::control_style(ui, self.zoom);
-                ui.style_mut().override_font_id = Some(FontId::monospace(10.0 * self.zoom));
+                ui.style_mut().override_font_id =
+                    Some(crate::panel_skin::print_font(ui.ctx(), 10.0 * self.zoom));
                 ui.spacing_mut().button_padding = vec2(2.0, 1.0) * self.zoom;
                 ui.spacing_mut().interact_size = vec2(8.0, 18.0) * self.zoom;
                 ui.add_sized(
@@ -10967,7 +10966,7 @@ fn paint_resonator_configuration(
             pos2(axis_x, plot.bottom() + 11.0 * zoom),
             Align2::CENTER_CENTER,
             label,
-            FontId::monospace(8.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
             MUTED,
         );
     }
@@ -11252,45 +11251,49 @@ fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32)
     let first_row = ((-pan.y) / (ROW * zoom)).floor() as i32 - 1;
     let last_row = ((canvas.height() - pan.y) / (ROW * zoom)).ceil() as i32 + 1;
     for row in first_row..=last_row {
-        let y = canvas.top() + pan.y + row as f32 * ROW * zoom;
-        let rail = Rect::from_min_size(
-            pos2(canvas.left(), y - 9.0 * zoom),
-            vec2(canvas.width(), 18.0 * zoom),
-        );
-        painter.rect_filled(rail, 0, Color32::from_rgb(58, 59, 57));
-        painter.rect_filled(
-            Rect::from_min_max(rail.min, pos2(rail.right(), y - 3.0 * zoom)),
-            0,
-            Color32::from_black_alpha(68),
-        );
-        painter.line_segment(
-            [rail.left_top(), rail.right_top()],
-            Stroke::new(1.0_f32, Color32::from_rgb(105, 106, 101)),
-        );
-        painter.line_segment(
-            [
-                pos2(rail.left(), y + 3.0 * zoom),
-                pos2(rail.right(), y + 3.0 * zoom),
-            ],
-            Stroke::new(1.6 * zoom, Color32::from_rgb(23, 24, 23)),
-        );
-        painter.line_segment(
-            [rail.left_bottom(), rail.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(114, 112, 104)),
-        );
-        let start = ((-pan.x) / (HP * zoom)).floor() as i32;
-        let count = (canvas.width() / (HP * zoom)).ceil() as i32 + 2;
-        for slot in start..start + count {
-            let x = canvas.left() + pan.x + slot as f32 * HP * zoom;
-            let hole = pos2(x + 7.5 * zoom, y);
-            painter.circle_filled(hole, 2.8 * zoom, Color32::from_rgb(19, 20, 20));
+        let row_y = canvas.top() + pan.y + row as f32 * ROW * zoom;
+        // Each faceplate attaches to its own lower rail. The next row's top
+        // rail remains at ROW, leaving the existing layout pitch unchanged.
+        for y in [row_y, row_y + PANEL_HEIGHT * zoom] {
+            let rail = Rect::from_min_size(
+                pos2(canvas.left(), y - 9.0 * zoom),
+                vec2(canvas.width(), 18.0 * zoom),
+            );
+            painter.rect_filled(rail, 0, Color32::from_rgb(58, 59, 57));
+            painter.rect_filled(
+                Rect::from_min_max(rail.min, pos2(rail.right(), y - 3.0 * zoom)),
+                0,
+                Color32::from_black_alpha(68),
+            );
+            painter.line_segment(
+                [rail.left_top(), rail.right_top()],
+                Stroke::new(1.0_f32, Color32::from_rgb(105, 106, 101)),
+            );
             painter.line_segment(
                 [
-                    hole + vec2(-1.5, -2.1) * zoom,
-                    hole + vec2(1.5, -2.1) * zoom,
+                    pos2(rail.left(), y + 3.0 * zoom),
+                    pos2(rail.right(), y + 3.0 * zoom),
                 ],
-                Stroke::new(0.7 * zoom, Color32::from_rgb(124, 124, 117)),
+                Stroke::new(1.6 * zoom, Color32::from_rgb(23, 24, 23)),
             );
+            painter.line_segment(
+                [rail.left_bottom(), rail.right_bottom()],
+                Stroke::new(1.0_f32, Color32::from_rgb(114, 112, 104)),
+            );
+            let start = ((-pan.x) / (HP * zoom)).floor() as i32;
+            let count = (canvas.width() / (HP * zoom)).ceil() as i32 + 2;
+            for slot in start..start + count {
+                let x = canvas.left() + pan.x + slot as f32 * HP * zoom;
+                let hole = pos2(x + 7.5 * zoom, y);
+                painter.circle_filled(hole, 2.8 * zoom, Color32::from_rgb(19, 20, 20));
+                painter.line_segment(
+                    [
+                        hole + vec2(-1.5, -2.1) * zoom,
+                        hole + vec2(1.5, -2.1) * zoom,
+                    ],
+                    Stroke::new(0.7 * zoom, Color32::from_rgb(124, 124, 117)),
+                );
+            }
         }
     }
 }
@@ -11313,6 +11316,32 @@ fn paint_panel(
     lighting: &crate::lighting::RoomLighting,
 ) {
     crate::panel_skin::metal(painter, rect, zoom);
+    crate::panel_skin::identity_header(painter, rect, &node.kind, zoom);
+    // Reflective mounting hardware belongs to the panel paint, including
+    // browser thumbnails, and dims with the room like the rails behind it.
+    for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
+        for y in [rect.top() + 5.0 * zoom, rect.bottom() - 5.0 * zoom] {
+            let center = pos2(x, y);
+            painter.circle_filled(
+                center + vec2(0.0, 0.6) * zoom,
+                3.7 * zoom,
+                Color32::from_black_alpha(104),
+            );
+            painter.circle_filled(center, 3.2 * zoom, Color32::from_rgb(100, 103, 100));
+            painter.circle_stroke(
+                center,
+                3.2 * zoom,
+                Stroke::new(0.65 * zoom, Color32::from_rgb(143, 146, 140)),
+            );
+            painter.line_segment(
+                [
+                    center + vec2(-1.7, 1.0) * zoom,
+                    center + vec2(1.7, -1.0) * zoom,
+                ],
+                Stroke::new(1.0 * zoom, Color32::from_rgb(39, 42, 40)),
+            );
+        }
+    }
     if node.bypassed {
         painter.rect_stroke(
             rect.shrink(3.0),
@@ -11344,15 +11373,16 @@ fn paint_panel(
     let width = rect.width() / zoom;
     let inset = if width < 90.0 { 8.0 } else { 14.0 };
     let label = panel_heading(&node.kind, width);
+    let header_ink = crate::panel_skin::HEADER_INK;
     let mut font = crate::panel_skin::heading_font(
         painter.ctx(),
         if width < 140.0 { 24.0 } else { 28.0 } * zoom,
     );
-    let measured = painter.layout_no_wrap(label.to_owned(), font.clone(), INK);
+    let measured = painter.layout_no_wrap(label.to_owned(), font.clone(), header_ink);
     let available = (width - inset * 2.0 - if master { 16.0 } else { 0.0 }).max(1.0) * zoom;
     font.size *= (available / measured.size().x.max(1.0)).min(1.0);
-    let heading = painter.layout_no_wrap(label.to_owned(), font, INK);
-    painter.galley(point(inset, 19.0), heading, INK);
+    let heading = painter.layout_no_wrap(label.to_owned(), font, header_ink);
+    painter.galley(point(inset, 19.0), heading, header_ink);
     // Bypass is current state, rather than a permanent descriptive subtitle.
     if node.bypassed {
         painter.text(
@@ -11360,13 +11390,9 @@ fn paint_panel(
             Align2::LEFT_CENTER,
             if width < 90.0 { "BYP" } else { "BYPASSED" },
             crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-            MUTED,
+            header_ink,
         );
     }
-    painter.line_segment(
-        [point(inset, 65.0), point(width - inset, 65.0)],
-        Stroke::new(1.6 * zoom, crate::panel_skin::family_accent(&node.kind)),
-    );
     if master {
         paint_jack_light(
             painter,
@@ -11403,7 +11429,7 @@ fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32,
             center + vec2(0.0, 55.0) * zoom,
             Align2::CENTER_CENTER,
             "A + B",
-            FontId::monospace(11.0 * zoom),
+            crate::panel_skin::print_font(painter.ctx(), 11.0 * zoom),
             MUTED,
         );
     } else {
@@ -11973,6 +11999,165 @@ fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: 
 }
 
 const SCOPE_TRIGGER_COLOR: Color32 = Color32::from_rgb(205, 125, 190);
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScopeDisplayRange {
+    span: f64,
+    offset: f64,
+}
+fn scope_auto_range_enabled(node: &Node) -> bool {
+    node.params.get("auto_range").copied().unwrap_or(1.0) >= 0.5
+}
+fn scope_display_fraction(volts: f32, range: ScopeDisplayRange) -> f64 {
+    (f64::from(volts) + range.offset) / range.span
+}
+fn scope_nice_span(required: f64) -> f64 {
+    let decade = 10.0_f64.powf(required.log10().floor());
+    for step in [1.0, 2.0, 5.0, 10.0] {
+        let span = step * decade;
+        if span >= required {
+            return span;
+        }
+    }
+    required
+}
+fn scope_auto_axis_range(
+    samples: &[[openpatch_core::ScopePoint; openpatch_core::SCOPE_BINS]; 16],
+    channels: u8,
+    paired: Option<&[[openpatch_core::ScopePoint; openpatch_core::SCOPE_BINS]; 16]>,
+    previous: Option<ScopeDisplayRange>,
+) -> ScopeDisplayRange {
+    // Zero remains an absolute voltage reference, including for DC. Invalid
+    // bins and inactive voices cannot set the display range.
+    let mut low = 0.0_f64;
+    let mut high = 0.0_f64;
+    for (voice, lane) in samples
+        .iter()
+        .enumerate()
+        .take(usize::from(channels.min(16)))
+    {
+        for (bin, point) in lane.iter().enumerate() {
+            if scope_point_valid(*point)
+                && paired.is_none_or(|axis| scope_point_valid(axis[voice][bin]))
+            {
+                low = low.min(f64::from(point.min));
+                high = high.max(f64::from(point.max));
+            }
+        }
+    }
+    if high == low {
+        return ScopeDisplayRange {
+            span: 20.0,
+            offset: 0.0,
+        };
+    }
+    let candidate = ScopeDisplayRange {
+        span: scope_nice_span((high - low) * 1.25),
+        offset: -(low + high) * 0.5,
+    };
+    if let Some(old) = previous
+        .filter(|range| range.span.is_finite() && range.span > 0.0 && range.offset.is_finite())
+    {
+        // Keep a useful calibrated range through small amplitude/DC changes.
+        // Expand immediately before clipping; shrink only a full range step.
+        let inner_low = -old.offset - old.span * 0.42;
+        let inner_high = -old.offset + old.span * 0.42;
+        if low >= inner_low && high <= inner_high && candidate.span >= old.span * 0.5 {
+            return old;
+        }
+    }
+    candidate
+}
+fn scope_display_ranges(
+    state: &openpatch_core::ScopeSnapshot,
+    automatic: bool,
+    previous: Option<[ScopeDisplayRange; 2]>,
+) -> [ScopeDisplayRange; 2] {
+    if automatic {
+        let channels = if state.xy {
+            [state.x_channels.min(state.y_channels); 2]
+        } else {
+            [state.x_channels, state.y_channels]
+        };
+        [
+            scope_auto_axis_range(
+                &state.x,
+                channels[0],
+                state.xy.then_some(&state.y),
+                previous.map(|ranges| ranges[0]),
+            ),
+            scope_auto_axis_range(
+                &state.y,
+                channels[1],
+                state.xy.then_some(&state.x),
+                previous.map(|ranges| ranges[1]),
+            ),
+        ]
+    } else {
+        [
+            (state.x_scale, state.x_offset),
+            (state.y_scale, state.y_offset),
+        ]
+        .map(|(scale, offset)| ScopeDisplayRange {
+            span: f64::from(scope_volts_per_screen(scale.min(8))),
+            offset: if offset.is_finite() {
+                f64::from(offset)
+            } else {
+                0.0
+            },
+        })
+    }
+}
+fn scope_calibrated_voltage(volts: f64) -> String {
+    let (value, unit) = if volts == 0.0 || volts.abs() >= 1.0 {
+        (volts, "V")
+    } else if volts.abs() >= 0.001 {
+        (volts * 1000.0, "mV")
+    } else {
+        (volts * 1_000_000.0, "µV")
+    };
+    format!("{} {unit}", scope_measurement_number(value))
+}
+fn scope_range_label(automatic: bool, ranges: [ScopeDisplayRange; 2]) -> String {
+    format!(
+        "{} X {}/screen offset {}  |  Y {}/screen offset {}",
+        if automatic { "AUTO" } else { "MANUAL" },
+        scope_calibrated_voltage(ranges[0].span),
+        scope_calibrated_voltage(ranges[0].offset),
+        scope_calibrated_voltage(ranges[1].span),
+        scope_calibrated_voltage(ranges[1].offset),
+    )
+}
+fn scope_parameter_action(node: &Node, action: RackAction, revision: u64) -> RackAction {
+    match action {
+        RackAction::Command("set_parameter", mut args) => {
+            let manual = args["parameter"].as_str().is_some_and(|name| {
+                matches!(name, "x_scale" | "y_scale" | "x_offset" | "y_offset")
+            });
+            if scope_auto_range_enabled(node) && manual {
+                let args_object = args.as_object_mut().unwrap();
+                args_object.remove("expected_revision");
+                let history_group = args_object.remove("history_group");
+                let primary = args["parameter"].clone();
+                let mut transaction = json!({
+                    "expected_revision":revision,
+                    "edits":[
+                        {"tool":"set_parameter","arguments":args},
+                        {"tool":"set_parameter","arguments":{"id":node.id,"parameter":"auto_range","value":0}}
+                    ]
+                });
+                if let Some(group) = history_group {
+                    transaction["history_group"] = group;
+                    transaction["history_parameter"] = json!({"id":node.id,"parameter":primary});
+                }
+                RackAction::Command("apply_edits", transaction)
+            } else {
+                args["expected_revision"] = json!(revision);
+                RackAction::Command("set_parameter", args)
+            }
+        }
+        other => other,
+    }
+}
 fn scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
     state.trigger_enabled && !state.xy && state.trigger_input_channels == 0 && state.x_channels > 0
 }
@@ -12034,7 +12219,7 @@ fn scope_measurement_number(value: f64) -> String {
         text.trim_end_matches('0').trim_end_matches('.').to_owned()
     }
 }
-const SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
+const SCOPE_CONTROLS: [(&str, &str, &str); 9] = [
     ("x_scale", "X RANGE", ""),
     ("y_scale", "Y RANGE", ""),
     ("time", "WINDOW", " s"),
@@ -12043,8 +12228,12 @@ const SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
     ("y_offset", "Y OFFSET", " V"),
     ("threshold", "TRIGGER LEVEL", " V"),
     ("trigger_enabled", "TRIGGER", ""),
+    ("auto_range", "AUTO RANGE", ""),
 ];
 fn scope_control_rect(index: usize) -> Rect {
+    if index == 8 {
+        return Rect::from_min_size(pos2(320.0, 353.0), vec2(105.0, 22.0));
+    }
     Rect::from_min_size(
         pos2(
             30.0 + (index % 4) as f32 * 145.0,
@@ -12082,6 +12271,9 @@ fn scope_xy_order(buffer_index: usize) -> impl Iterator<Item = usize> {
 mod tests {
     mod scope_ui_tests {
         include!("newscope_ui_tests.rs");
+    }
+    mod scope_visibility_tests {
+        include!("scope_visibility_tests.rs");
     }
     mod viz_ui_tests {
         include!("viz_ui_tests.rs");
@@ -15339,23 +15531,30 @@ mod tests {
                 if rect.rect.center() == pos2(208.0, 194.0)
                 && rect.fill == Color32::from_rgb(212, 166, 86))
         }));
-        for (index, channel, strength) in [(1, 1, 0.7), (5, 0, 1.0)] {
+        for (index, channel) in (0..6).flat_map(|index| (0..2).map(move |channel| (index, channel)))
+        {
             let jack = port_position("gates", false, index, 6, 240.0);
             let point = pos2(
                 24.0 + jack.x + if channel == 0 { -3.5 } else { 3.5 },
                 12.0 + jack.y + 17.0,
             );
-            let base = if channel == 0 {
-                Color32::from_rgb(242, 199, 59)
-            } else {
-                Color32::from_rgb(62, 155, 238)
-            };
-            assert!(
+            assert_eq!(
                 output.shapes.iter().any(|shape| {
-                    matches!(&shape.shape, egui::epaint::Shape::Circle(circle)
-                    if circle.center == point
-                    && circle.fill == base.gamma_multiply(0.12 + strength * 0.88))
+                    match &shape.shape {
+                        egui::epaint::Shape::Circle(circle) if circle.center == point => {
+                            circle.fill.a() == 0
+                                && if channel == 0 {
+                                    circle.fill.r() > circle.fill.g()
+                                        && circle.fill.g() > circle.fill.b()
+                                } else {
+                                    circle.fill.b() > circle.fill.g()
+                                        && circle.fill.g() > circle.fill.r()
+                                }
+                        }
+                        _ => false,
+                    }
                 }),
+                matches!((index, channel), (1, 1) | (5, 0)),
                 "output light {index}, channel {channel}"
             );
         }
