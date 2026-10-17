@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--binary", default="target/release/openpatch-desktop")
 parser.add_argument("--cli-binary", help="MCP attachment CLI (default: openpatch beside desktop binary)")
 parser.add_argument("--output", default="dist/OpenPatch.app")
+parser.add_argument("--bundle-id", default="org.openpatch.desktop", help="CFBundleIdentifier (use a distinct id for side-by-side previews)")
+parser.add_argument("--name", default="OpenPatch", help="Bundle and display name")
 args = parser.parse_args()
 binary = pathlib.Path(args.binary)
 if not binary.is_file():
@@ -44,9 +46,9 @@ shutil.copy2(root / "crates/openpatch-core/LICENSE-THIRD-PARTY", licenses / "Ope
 shutil.copy2(root / "crates/openpatch-core/LICENSE-GPL-3.0.txt", licenses / "LICENSE-GPL-3.0.txt")
 with (contents / "Info.plist").open("wb") as stream:
     plistlib.dump({
-        "CFBundleName": "OpenPatch",
-        "CFBundleDisplayName": "OpenPatch",
-        "CFBundleIdentifier": "org.openpatch.desktop",
+        "CFBundleName": args.name,
+        "CFBundleDisplayName": args.name,
+        "CFBundleIdentifier": args.bundle_id,
         "CFBundleVersion": "9",
         "CFBundleShortVersionString": version,
         "CFBundleExecutable": "openpatch-desktop",

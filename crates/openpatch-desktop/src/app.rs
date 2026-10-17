@@ -397,6 +397,8 @@ pub struct OpenPatch {
     start: Instant,
     mcp_session: crate::mcp_session_ui::Panel,
     patch_engine: crate::patch_engine_ui::Panel,
+    /// Title of the fresh document a Patch Engine build is waiting for (after any unsaved-changes prompt).
+    patch_engine_wait: Option<String>,
     construction: crate::construction_ui::Panel,
     smoke_motion_origin: Option<Instant>,
     documents: DocumentState,
@@ -593,6 +595,7 @@ impl OpenPatch {
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(mcp),
             patch_engine: Default::default(),
+            patch_engine_wait: None,
             construction: crate::construction_ui::Panel::default(),
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
@@ -8487,6 +8490,26 @@ impl eframe::App for OpenPatch {
                     }
                 }
                 crate::patch_engine_ui::Request::ShowPatch => self.rack.reset_view(),
+                crate::patch_engine_ui::Request::Prepare => {
+                    // Start a fresh, empty document named after the song through the normal replace path, so
+                    // unsaved work is protected (Save / Discard / Cancel) and title, file and recovery stay consistent.
+                    if let Some(title) = self.patch_engine.prepared_title() {
+                        let empty: Patch = serde_json::from_value(json!({"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}))
+                            .expect("empty patch");
+                        self.request_action(PendingAction::Replace(empty, title.clone()));
+                        self.patch_engine_wait = Some(title);
+                    }
+                }
+            }
+        }
+        if let Some(title) = self.patch_engine_wait.clone() {
+            if self.confirm_discard.is_none() && self.deferred_action.is_none() {
+                if self.title == title && self.patch.nodes.is_empty() {
+                    self.patch_engine.launch(&self.shared);
+                } else {
+                    self.patch_engine.cancel_armed();
+                }
+                self.patch_engine_wait = None;
             }
         }
         self.observe_document();
@@ -8722,6 +8745,7 @@ mod project_workflow_tests {
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(true),
             patch_engine: Default::default(),
+            patch_engine_wait: None,
             construction: crate::construction_ui::Panel::default(),
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),

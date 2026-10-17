@@ -18,7 +18,7 @@ enum Mode { Reveal, Showtime, Instant }
 
 /// Requests the app carries out after the panel draws.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Request { StartPlayback, ShowPatch }
+pub(crate) enum Request { StartPlayback, ShowPatch, Prepare }
 
 /// CPU budget for Light mode (Patch Engine cost units ≈ % of an Apple M-series core); about 60% of a Steam Deck core.
 const LIGHT_BUDGET: f64 = 18.0;
@@ -53,7 +53,13 @@ pub(crate) struct Panel {
     demo: Option<Demo>,
     light: bool,
     first_frame: bool,
+    armed: Option<Armed>,
+    prepare_sent: bool,
+    just_launched: bool,
 }
+
+/// A build waiting for the app to start a fresh document (which asks about unsaved changes first).
+struct Armed { g: usize, m: usize, t: usize, seed: u64, mode: Mode, interval: u32, budget: Option<f64> }
 
 /// Demo/capture mode for pitches and documentation screenshots, driven by environment variables:
 /// `OPENPATCH_PATCH_ENGINE_DEMO="Genre|Mood|Texture|seed"` opens the panel and builds that piece on launch;
@@ -88,7 +94,7 @@ impl Default for Panel {
             interval_ms: 120, autoplay: true, rng: now | 1, pending: None, started: None, elapsed: None, building: false,
             plan_steps: vec![], done: 0, total: 0, label: String::new(), remaining: None, info: None, error: None,
             history: vec![], last_poll: None, cursor: 0, demo: Demo::from_env(),
-            light: cfg!(target_os = "linux"), first_frame: true,
+            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false,
         }
     }
 }
@@ -113,7 +119,23 @@ impl Panel {
         if ui.add(button).on_hover_text("Compose a new patch from three words").clicked() { self.toggle(); }
     }
 
-    fn ready(&self) -> bool { self.genre.is_some() && self.mood.is_some() && self.texture.is_some() && !self.building && self.pending.is_none() }
+    fn ready(&self) -> bool {
+        self.genre.is_some() && self.mood.is_some() && self.texture.is_some() && !self.building && self.pending.is_none() && self.armed.is_none()
+    }
+
+    /// Document title for the next build; the app names the fresh document with it.
+    pub(crate) fn prepared_title(&self) -> Option<String> {
+        self.armed.as_ref().map(|a| format!("{} {} · {}", MOODS[a.m], GENRES[a.g], TEXTURES[a.t]))
+    }
+
+    /// The user cancelled the unsaved-changes prompt: forget the armed build.
+    pub(crate) fn cancel_armed(&mut self) {
+        if self.armed.take().is_some() {
+            self.label = "Build cancelled; your patch is unchanged".into();
+            self.started = None;
+            if let Some(h) = self.history.first() { if h.4 == 0.0 { self.history.remove(0); } }
+        }
+    }
 
     fn start(&mut self, session: &SharedSession) {
         let (Some(g), Some(m), Some(t)) = (self.genre, self.mood, self.texture) else { return };
@@ -121,7 +143,6 @@ impl Panel {
         if !self.keep_seed || self.seed == 0 { self.seed = next_seed(&mut self.rng); }
         let seed = self.seed;
         let (mode, interval) = (self.mode, self.interval_ms);
-        let budget = self.light.then_some(LIGHT_BUDGET);
         self.started = Some(Instant::now());
         self.elapsed = None;
         self.error = None;
@@ -131,14 +152,24 @@ impl Panel {
         self.label = "Composing…".into();
         self.history.insert(0, (g, m, t, seed, 0.0));
         self.history.truncate(8);
+        let budget = self.light.then_some(LIGHT_BUDGET);
+        let _ = session;
+        self.armed = Some(Armed { g, m, t, seed, mode, interval, budget });
+        self.prepare_sent = false;
+        self.label = "Starting a new document…".into();
+    }
+
+    /// The app has installed a fresh, empty document for this build: compose and construct it.
+    pub(crate) fn launch(&mut self, session: &SharedSession) {
+        let Some(Armed { g, m, t, seed, mode, interval, budget }) = self.armed.take() else { return };
+        self.label = "Composing…".into();
+        self.just_launched = true;
         let session = session.clone();
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
                 let r = Recipe::with_budget(GENRES[g], MOODS[m], TEXTURES[t], seed, budget)?;
-                let rev = revision(&session)?;
-                execute_shared(&session, "replace_patch", json!({"patch": {"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}, "expected_revision": rev}))?;
                 let title = format!("Patch Engine · {}", r.title);
                 let steps = match mode {
                     Mode::Instant => {
@@ -401,8 +432,9 @@ impl Panel {
                 ui.label(RichText::new("Steam Deck: D-pad picks row/word · A build · X surprise · B close · F1 panel · PgUp/PgDn zoom · Home view · F11 full screen. Building replaces the rack; Undo brings it back.").small().weak());
             });
         self.open = open;
-        let started = was_idle && (self.building || self.pending.is_some());
+        let started = std::mem::take(&mut self.just_launched) || (was_idle && (self.building || self.pending.is_some()));
         let mut requests = vec![];
+        if self.armed.is_some() && !self.prepare_sent { requests.push(Request::Prepare); self.prepare_sent = true; }
         if started && self.autoplay { requests.push(Request::StartPlayback); }
         if started && ctx.content_rect().height() <= 900.0 { requests.push(Request::ShowPatch); }
         requests
