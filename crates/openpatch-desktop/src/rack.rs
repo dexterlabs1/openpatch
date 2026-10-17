@@ -3496,7 +3496,9 @@ impl Rack {
                 }
             }
             if node.kind == "stock_vca" {
-                if let Some(edit) = self.stock_vca_panel(ui, node, rect, revision) {
+                if let Some(edit) =
+                    self.stock_vca_panel(ui, node, rect, revision, mode.is_interactive())
+                {
                     action = Some(edit);
                 }
             }
@@ -12485,7 +12487,13 @@ fn paint_panel(
     if atlas_voice(&node.kind)
         || matches!(
             node.kind.as_str(),
-            "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf"
+            "stock_vco"
+                | "adsr_eg"
+                | "stock_lfo"
+                | "stock_vcf"
+                | "stock_vca"
+                | "stock_process"
+                | "stock_octave"
         )
     {
         paint_atlas_voice_face(painter, rect, node, zoom);
@@ -12550,7 +12558,13 @@ fn paint_panel(
     if atlas_voice(&node.kind)
         || matches!(
             node.kind.as_str(),
-            "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf"
+            "stock_vco"
+                | "adsr_eg"
+                | "stock_lfo"
+                | "stock_vcf"
+                | "stock_vca"
+                | "stock_process"
+                | "stock_octave"
         )
     {
         if master {
@@ -12804,7 +12818,16 @@ fn paint_jack(
             );
         }
     }
-    if matches!(kind, "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf") {
+    if matches!(
+        kind,
+        "stock_vco"
+            | "adsr_eg"
+            | "stock_lfo"
+            | "stock_vcf"
+            | "stock_vca"
+            | "stock_process"
+            | "stock_octave"
+    ) {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
         crate::panel_skin::socket(painter, center, connected, zoom, port_scale);

@@ -26,18 +26,6 @@ fn stock_vco_parameter_value(parameter: &str, value: f32) -> String {
     }
 }
 
-/// Compact hardware retained by Stock Process. The arc reports the saved,
-/// bounded UI position; it is not a signal meter.
-fn stock_oscillator_rotary(
-    painter: &egui::Painter,
-    center: Pos2,
-    normalized: f32,
-    active: bool,
-    zoom: f32,
-) {
-    crate::panel_skin::signal_atlas_rotary(painter, center, normalized, active, 27.0, zoom);
-}
-
 // Large tuning/width pair flanks a compact four-wave guide; signed modulation
 // lives below. These positions also drive precision and construction anchors.
 fn stock_vco_control(parameter: &str) -> (Pos2, f32) {

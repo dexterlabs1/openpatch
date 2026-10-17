@@ -9606,7 +9606,7 @@ mod project_workflow_tests {
             );
             for text in [
                 "VCA",
-                "GAIN / VOICE",
+                "GAIN / VOICE · 0–100%",
                 "5 ACTIVE VOICES",
                 "EXP",
                 "LIN",

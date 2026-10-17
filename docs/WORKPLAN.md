@@ -49,6 +49,12 @@ Stock LFO now shares the VCO's larger main controls and four-wave display, with 
 
 [Native LFO/filter pair and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-stock-modulation.png). **85 focused checks passed**, including the actual LFO engine in all offset/invert modes at three widths, clock-aware editing, MCP anchors, real lamps, geometry, shared rendering and isolated simultaneous filter previews. Strict desktop Clippy and formatting passed; light/dark meshes were inspected. Prior `dc748c7` CI passed 1,090 desktop tests and failed one stale ADSR label expectation; that exact fixture is corrected and passes locally. No DSP sources/frozen references or installed app changed. Eleven native panels now have detailed layouts; next: Stock VCA, Process and Octave as a utility family.
 
+### Stock utility continuation
+
+Stock VCA, Process and Octave bring the detailed native design to fourteen panels. VCA has a larger central level knob and sixteen grouped actual-gain lanes, with a separate MCP cue for EXP/LIN response. Process adds sample/hold, track/hold and step/slew diagrams while keeping PRESS safety and actual button telemetry. Its step guide distinguishes the instantaneous detent from a linear limiting ramp. Octave keeps its nine authored selectors and exact-value behavior, with stronger key contrast and a pitch-plus-rounded-shift diagram; the effective shift remains actual engine state.
+
+[Native utility trio and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-stock-utilities.png). **42 focused checks passed**, including real Session edits/undo, actual gain lanes/dark-room telemetry, octave source/raw-value behavior, manual gate release, precise units, all affected MCP anchors and simultaneous isolated previews. A real-engine check confirms +1 V slew CV halves rate and doubles time. Strict desktop Clippy and formatting passed; light/dark native meshes were inspected. Preceding `92c4e0c` passed GitHub CI. No DSP/frozen-reference changes or installation. Next: the mixer family, starting with Stock VCA Mix and the two six-input mixers.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

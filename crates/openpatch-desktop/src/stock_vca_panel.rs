@@ -1,19 +1,19 @@
 // Shared rack/browser faceplate. Only a coherent DSP snapshot illuminates gains.
 const STOCK_VCA_PARAMS: [&str; 2] = ["level", "response"];
-const STOCK_VCA_KNOB_BODY: f32 = 27.0;
+const STOCK_VCA_KNOB_BODY: f32 = 35.0;
 fn stock_vca_knob_rect() -> Rect {
-    Rect::from_center_size(pos2(40.0, 202.0), Vec2::splat(60.0))
+    Rect::from_center_size(pos2(90.0, 106.0), Vec2::splat(76.0))
 }
 fn stock_vca_value_rect() -> Rect {
-    Rect::from_center_size(pos2(40.0, 295.0), vec2(54.0, 22.0))
+    Rect::from_center_size(pos2(90.0, 177.0), vec2(78.0, 18.0))
 }
 fn stock_vca_mode_rect() -> Rect {
-    Rect::from_min_max(pos2(77.0, 284.0), pos2(160.0, 306.0))
+    Rect::from_min_max(pos2(49.0, 198.0), pos2(131.0, 220.0))
 }
 fn stock_vca_gain_rect(channel: usize) -> Rect {
     Rect::from_min_max(
-        pos2(77.0 + channel as f32 * 5.0, 117.0),
-        pos2(80.5 + channel as f32 * 5.0, 273.0),
+        pos2(31.0 + channel as f32 * 7.5, 249.0),
+        pos2(36.5 + channel as f32 * 7.5, 287.0),
     )
 }
 fn stock_vca_edit(node: &Node, index: usize, revision: u64) -> ParameterEdit {
@@ -62,8 +62,11 @@ impl Rack {
         node: &Node,
         rect: Rect,
         revision: u64,
+        interactive: bool,
     ) -> Option<RackAction> {
         let z = self.zoom;
+        let surface = ui.id();
+        let scoped = |id: egui::Id| if interactive { id } else { surface.with(id) };
         let p = |x, y| rect.min + vec2(x, y) * z;
         let screen = |r: Rect| Rect::from_min_max(p(r.min.x, r.min.y), p(r.max.x, r.max.y));
         let painter = ui.painter().clone();
@@ -78,33 +81,32 @@ impl Rack {
         let response_mode = node.params.get("response").copied().unwrap_or(1.0);
         let mut action = None;
         painter.text(
-            p(40.0, 158.0),
+            p(90.0, 157.0),
             Align2::CENTER_CENTER,
             "LEVEL",
             font(10.0),
             INK,
         );
-        painter.text(p(40.0, 248.0), Align2::CENTER_CENTER, "0–100%", font(8.0), MUTED);
         painter.text(
-            p(118.0, 91.0),
+            p(90.0, 54.0),
             Align2::CENTER_CENTER,
-            "GAIN / VOICE",
-            font(9.0),
-            INK,
-        );
-        painter.text(
-            p(118.0, 107.0),
-            Align2::CENTER_CENTER,
-            "0 — 100%",
+            "0–100%",
             font(8.0),
             MUTED,
         );
+        painter.text(
+            p(90.0, 230.0),
+            Align2::CENTER_CENTER,
+            "GAIN / VOICE · 0–100%",
+            font(8.5),
+            INK,
+        );
 
-        // Global node+parameter identity survives graph reorder and culling.
+        // Native IDs remain stable across graph edits; preview surfaces are isolated.
         let knob_rect = screen(stock_vca_knob_rect());
         let knob = ui.interact(
             knob_rect,
-            egui::Id::new(("stock-vca-knob", &node.id, "level")),
+            scoped(egui::Id::new(("stock-vca-knob", &node.id, "level"))),
             Sense::click_and_drag(),
         );
         knob.widget_info(|| {
@@ -129,7 +131,11 @@ impl Rack {
         }
         let keyboard_step = ui.input(|i| {
             if i.modifiers.command || i.modifiers.ctrl {
-                if i.modifiers.shift { 0.0001 } else { 0.001 }
+                if i.modifiers.shift {
+                    0.0001
+                } else {
+                    0.001
+                }
             } else if i.modifiers.shift {
                 0.1
             } else {
@@ -159,7 +165,7 @@ impl Rack {
             );
         }
         knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text("Saved level 0–100%. Drag vertically; Ctrl/Cmd for fine adjustment. Arrow keys adjust, Home/End choose limits. Double-click resets to 100%. Right-click or click the readout for exact entry. The adjacent columns show actual gain, not audio amplitude.");
-        crate::panel_skin::signal_atlas_rotary(
+        paint_atlas_voice_rotary(
             &painter,
             knob_rect.center(),
             level,
@@ -172,6 +178,16 @@ impl Rack {
             .module_lights
             .get(&node.id)
             .filter(|s| s.count == 16 && s.input_channels.is_some_and(|c| (1..=16).contains(&c)));
+        let draw = AtlasVoicePaint {
+            painter: &painter,
+            origin: rect.min,
+            layout: AtlasVoiceLayout { width: 180.0 },
+            zoom: z,
+        };
+        draw.screen(screen(Rect::from_min_max(
+            pos2(26.0, 245.0),
+            pos2(154.0, 293.0),
+        )));
         for channel in 0..16 {
             let lane = screen(stock_vca_gain_rect(channel));
             let active = state.is_some_and(|s| channel < usize::from(s.input_channels.unwrap()));
@@ -201,14 +217,21 @@ impl Rack {
         }
         if state.is_none() {
             // Outline is explicitly a configuration reference, never a live meter.
-            let y = 273.0 - level * 156.0;
+            let y = 287.0 - level * 38.0;
             painter.rect_stroke(
-                Rect::from_min_max(p(75.0, y - 2.0), p(158.0, y + 2.0)),
+                Rect::from_min_max(p(29.0, y - 1.0), p(151.0, y + 1.0)),
                 0.0,
                 Stroke::new(0.8 * z, MUTED),
                 egui::StrokeKind::Inside,
             );
         }
+        painter.text(
+            p(90.0, 307.0),
+            Align2::CENTER_CENTER,
+            "IN × GAIN → OUT",
+            font(9.0),
+            INK,
+        );
         let status = match (state, node.bypassed) {
             (None, true) => "BYPASS · — OFFLINE".into(),
             (None, false) => "— TELEMETRY OFFLINE".into(),
@@ -222,15 +245,15 @@ impl Rack {
             font(8.0),
             MUTED,
         );
-        ui.interact(screen(Rect::from_min_max(pos2(72.0, 111.0), pos2(162.0, 276.0))), egui::Id::new(("stock-vca", &node.id, "gain")), Sense::hover())
+        ui.interact(screen(Rect::from_min_max(pos2(26.0, 245.0), pos2(154.0, 293.0))), scoped(egui::Id::new(("stock-vca", &node.id, "gain"))), Sense::hover())
             .on_hover_text("Each column shows actual effective gain, not audio amplitude. Silent audio can have full gain. CV is clamped to 0–10 V; EXP raises normalized CV to the fourth power. Bypass passes raw signal and freezes this meter. Offline: no live gain; the outline marks configured level only.");
 
         let value_rect = screen(stock_vca_value_rect());
         let label = format!("{:.0}%", level * 100.0);
-        crate::panel_skin::readout(&painter, value_rect.center(), &label, value_rect.width(), z);
+        paint_atlas_voice_readout(&painter, value_rect.center(), &label, value_rect.width(), z);
         let value = ui.interact(
             value_rect,
-            egui::Id::new(("stock-vca", &node.id, "level-value")),
+            scoped(egui::Id::new(("stock-vca", &node.id, "level-value"))),
             Sense::click(),
         );
         value.widget_info(|| {
@@ -251,7 +274,11 @@ impl Rack {
             consume_parameter_activation(ui.ctx());
             self.open_precision_editor(stock_vca_edit(node, 0, revision), value_rect);
         }
-        if let Some(cue) = self.construction_animation.parameter(&node.id, &node.kind, "level").cloned() {
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, "level")
+            .cloned()
+        {
             self.register_construction_anchor(
                 ui,
                 node,
@@ -262,7 +289,7 @@ impl Rack {
                     new_text: format!("{:.0}%", cue.new * 100.0),
                     marker: Some(crate::construction_motion::Marker::Rotary {
                         center: knob_rect.center(),
-                        radius: 30.0 * z,
+                        radius: 38.0 * z,
                         old: cue.old.clamp(0.0, 1.0),
                         new: cue.new.clamp(0.0, 1.0),
                     }),
@@ -308,7 +335,7 @@ impl Rack {
             );
             let mode = ui.interact(
                 half,
-                egui::Id::new(("stock-vca", &node.id, "response", index)),
+                scoped(egui::Id::new(("stock-vca", &node.id, "response", index))),
                 Sense::click(),
             );
             mode.widget_info(|| {
@@ -330,6 +357,27 @@ impl Rack {
                 self.open_precision_editor(stock_vca_edit(node, 1, revision), mode_rect);
             }
             mode.on_hover_text("CV response: LIN is proportional; EXP uses the fourth power. Right-click for numeric entry (0 = EXP, 1 = LIN).");
+        }
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, "response")
+            .cloned()
+        {
+            let label = |value: f32| if value >= 0.5 { "LIN" } else { "EXP" };
+            let ids = [0, 1]
+                .map(|index| scoped(egui::Id::new(("stock-vca", &node.id, "response", index))));
+            self.register_construction_anchor(
+                ui,
+                node,
+                "response",
+                crate::construction_motion::Anchor {
+                    rect: mode_rect,
+                    old_text: label(cue.old).into(),
+                    new_text: label(cue.new).into(),
+                    marker: None,
+                },
+                &ids,
+            );
         }
         if self.precision_collects(node) {
             self.register_precision_control(stock_vca_edit(node, 1, revision), mode_rect);
