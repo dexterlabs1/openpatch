@@ -3,8 +3,8 @@
 Concrete follow-on to the [sequence contract](RACKMCP_SEQUENCE_CONTRACT.md).
 The source engine primitives are qualified. Core target capabilities, coherent
 publication, project-save overlays and explicit parameter history/adoption are
-implemented for the two current capabilities. Source lane ownership and sequencer
-scheduling below remain open. Preserve
+implemented for the two current capabilities. Native sequence dispatch and explicit
+data-load intent are implemented; exclusive lane ownership below remains open. Preserve
 the [shared document authority](COMPATIBILITY_DECISION.md).
 
 The control document records authored intent. The active engine owns effective
@@ -120,3 +120,24 @@ recompiles, frozen/skipped plans, rate changes, deletion/recreation, host resets
 shared Session edit/undo/redo/save/reopen and suspension/resume, with no callback
 heap activity. These are native parameter authority checks. Source target
 scheduling, lane-cache ownership and a registered RackMCP workflow remain open.
+
+
+## Observed SDK binding boundary
+
+The real RackMCP module/SDK 2.6.6 comparison found same-target data loads
+self-unbinding their ParamHandles; a third load rebinds. Native binding remains
+idempotent as an explicit host correction. The raw comparison stays failed;
+all 18 output words and unaffected target values remain exact, and a separate
+strict audit checks the declared source/native differences without ignoring
+columns. [Evidence and contract](RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-finding-and-deliberate-host-correction).
+
+The separate two-sequencer source probe establishes exclusive ownership:
+takeover invalidates the previous claim; deleting the winner does not revive
+the displaced writer. Native arbitration is still required. Compile bounded
+claim identities outside the callback, preserve live claims over unrelated
+rebuilds, and apply explicit acquisition events in a declared order. A prepared
+plan's requested event and its live incarnation's consumed high-water mark
+are distinct. Do not let graph node order become an accidental ownership rule.
+Source provenance must fence imported identities before enabling this mapping.
+The actual saved patch has 13 distinct source target pairs across its two
+sequencers, but that absence of collisions does not qualify general ownership.

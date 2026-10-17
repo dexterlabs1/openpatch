@@ -92,3 +92,147 @@ fn rackmcp_data_on_other_kinds_and_invalid_batches_are_atomic_rejections() {
     assert_eq!(session.revision, revision);
     assert!(session.patch.nodes.is_empty());
 }
+
+#[derive(Default)]
+struct SequenceLoadObserver(Mutex<Vec<(u64, BTreeSet<String>)>>);
+impl LiveModuleEvents for SequenceLoadObserver {
+    fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
+        Err("not used by this control-only observer".into())
+    }
+    fn snapshot(&self) -> Value {
+        json!({"modules":{}})
+    }
+    fn sync_patch_with_intents(
+        &self,
+        _: &Patch,
+        revision: u64,
+        _: &BTreeMap<String, BTreeMap<String, f32>>,
+        loads: &BTreeSet<String>,
+    ) {
+        self.0.lock().unwrap().push((revision, loads.clone()));
+    }
+}
+
+#[test]
+fn explicit_equal_sequence_loads_and_history_emit_intent_without_unrelated_reloads() {
+    let mut session = Session::new(&std::env::temp_dir()).unwrap();
+    session
+        .execute(
+            "add_module",
+            json!({"id":"seq","kind":"rackmcp_sequencer","rackmcp_sequence":state()}),
+        )
+        .unwrap();
+    let backend = Arc::new(SequenceLoadObserver::default());
+    session
+        .set_live_module_events(Some(backend.clone()))
+        .unwrap();
+    let before = session.snapshot();
+    session.execute("preview_edits", json!({"edits":[{"tool":"set_rackmcp_sequence","arguments":{"id":"seq","rackmcp_sequence":state()}}]})).unwrap();
+    assert_eq!(session.snapshot(), before);
+    assert!(backend.0.lock().unwrap().is_empty());
+    for (tool, args, load) in [
+        (
+            "set_rackmcp_sequence",
+            json!({"id":"seq","rackmcp_sequence":state()}),
+            true,
+        ),
+        ("undo", json!({}), true),
+        ("redo", json!({}), true),
+        (
+            "set_parameter",
+            json!({"id":"seq","parameter":"bpm","value":128}),
+            false,
+        ),
+        ("undo", json!({}), false),
+        ("redo", json!({}), false),
+    ] {
+        session.execute(tool, args).unwrap();
+        let observed = backend.0.lock().unwrap();
+        let (revision, loads) = observed.last().unwrap();
+        assert_eq!(*revision, session.revision);
+        assert_eq!(
+            loads,
+            &if load {
+                BTreeSet::from(["seq".into()])
+            } else {
+                BTreeSet::new()
+            }
+        );
+    }
+    let before = session.snapshot();
+    let calls = backend.0.lock().unwrap().len();
+    let mut invalid = state();
+    invalid["data"]["patterns"][0]["length"] = json!(0);
+    assert!(session
+        .execute(
+            "set_rackmcp_sequence",
+            json!({"id":"seq","rackmcp_sequence":invalid})
+        )
+        .is_err());
+    assert!(session
+        .execute(
+            "set_rackmcp_sequence",
+            json!({"id":"seq","rackmcp_sequence":state(),"expected_revision":0})
+        )
+        .is_err());
+    assert_eq!(session.snapshot(), before);
+    assert_eq!(backend.0.lock().unwrap().len(), calls);
+}
+
+#[test]
+fn sequence_preset_intent_depends_on_explicit_data_and_batches_commit_one_final_load() {
+    let mut session = Session::new(&std::env::temp_dir()).unwrap();
+    session
+        .execute(
+            "add_module",
+            json!({"id":"seq","kind":"rackmcp_sequencer","rackmcp_sequence":state()}),
+        )
+        .unwrap();
+    session
+        .execute("add_module", json!({"id":"score","kind":"score_sequencer"}))
+        .unwrap();
+    let backend = Arc::new(SequenceLoadObserver::default());
+    session
+        .set_live_module_events(Some(backend.clone()))
+        .unwrap();
+    let preset = crate::presets::capture(&session.patch.nodes[0], None).unwrap();
+    session.execute("apply_module_preset", json!({"id":"seq","preset":{"format":"openpatch-module-preset","version":1,"kind":"rackmcp_sequencer","params":{"bpm":130}}})).unwrap();
+    assert!(backend.0.lock().unwrap().last().unwrap().1.is_empty());
+    session
+        .execute("apply_module_preset", json!({"id":"seq","preset":preset}))
+        .unwrap();
+    assert_eq!(
+        backend.0.lock().unwrap().last().unwrap().1,
+        BTreeSet::from(["seq".into()])
+    );
+    let before = backend.0.lock().unwrap().len();
+    let mut final_state = state();
+    final_state["data"]["patterns"][0]["length"] = json!(8);
+    session.execute("apply_edits", json!({"edits":[
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"seq","rackmcp_sequence":state()}},
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"seq","rackmcp_sequence":final_state}}
+    ]})).unwrap();
+    assert_eq!(backend.0.lock().unwrap().len(), before + 1);
+    assert_eq!(
+        session.patch.nodes[0]
+            .rackmcp_sequence
+            .as_ref()
+            .unwrap()
+            .data
+            .patterns[0]
+            .length,
+        8
+    );
+    assert_eq!(
+        backend.0.lock().unwrap().last().unwrap().1,
+        BTreeSet::from(["seq".into()])
+    );
+    let before = session.snapshot();
+    assert!(session
+        .execute(
+            "set_rackmcp_sequence",
+            json!({"id":"score","rackmcp_sequence":state()})
+        )
+        .is_err());
+    assert_eq!(session.snapshot(), before);
+}

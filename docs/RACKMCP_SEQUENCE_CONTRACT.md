@@ -163,17 +163,55 @@ a declared host boundary rather than Rack scheduling equivalence.
 Compatible graph adoption preserves transport/detectors/divider/cache, including
 across sample rates and node reorder. Receiving controls/data remain owned by
 the receiver. Changed source data reloads selection and invalidates lane cache;
-equal unrelated rebuilds do not. Fresh target incarnations invalidate only their
-lanes. Initialize does not invent an onReset event: the pinned module has no
-onReset/onSampleRateChange override. An explicit equal-data reload exists at the
-adapter boundary; transaction/undo/preset intent still needs to carry that event
-through prepared graph activation.
+equal unrelated rebuilds do not. Target disappearance/recreation retains the
+last successful lane value, matching the actual source; an initially missing
+target still has an unwritten NaN cache. Initialize does not invent an onReset
+event: the pinned module has no onReset/onSampleRateChange override.
+
+`set_rackmcp_sequence`, explicit sequence presets and their undo/redo transitions
+now carry data-load intent through graph activation, including equal data.
+Parameter-only presets and unrelated edits do not reload. One atomic native
+transaction loads its final state once per module; it does not replay intermediate
+JSON states. Prepared plans freeze requested epochs; a separate per-incarnation
+applied high-water mark prevents stale plans from replaying consumed events.
+Fresh constructors and changed-data adoption consume a load once. Compatible
+equal-data adoption applies the explicit event without resetting transport.
 
 Focused native tests cover all 18 outputs, destination values and process-order
 visibility, bypass freeze/resume, edits, adoption, publication, save and history.
 Actual callback processing/adoption is allocation/deallocation-free in the tested
 workflows. The dedicated Signal Atlas rack/browser panel displays authored
 selection/notes/drum hits/accents, never an invented live playhead. Direct
-transport/seek/status publication, explicit load intent, provenance-safe import,
+transport/seek/status publication, exclusive target ownership, provenance-safe import,
 Bridge and Listen capture remain open; this is not whole-module or whole-patch
 qualification.
+
+## Genuine wrapper finding and deliberate host correction
+
+The additional [unchanged module/SDK harness](../scripts/rackmcp_module_reference/README.md)
+compares all 18 output widths and canonical samples plus actual SDK parameter
+writes over nine cases / 25,104 frames. All 7,681,824 output words match exactly.
+The **raw full-module comparison fails** in three target-write cases: repeated
+equal data, changed data and reload after target recreation. It remains failed.
+
+The real SDK 2.6.6 registry audit confirms that a second same-target load leaves
+the target module registered and serialized source data intact, but changes the
+existing ParamHandles to module ID -1. A third load rebinds them. This is an
+observed interaction of the pinned module and SDK, not a substitute registry.
+OpenPatch deliberately keeps same-target rebinding idempotent so pattern edits,
+presets and undo do not detach automation. It remains a source-derived native
+sequencer with documented host binding semantics, not a whole-module equivalent.
+
+A separate strict correction audit checks every trace word. Every unaffected
+word must remain equal; all 1,964 differing words must occur in declared frame
+windows and equal explicitly specified source/native values. It never masks
+columns, changes tolerances, modifies the source, or turns the raw report green.
+See [machine-readable evidence](benchmarks/rackmcp-sequence-loads.json).
+
+A separate real two-sequencer probe passes six stages / 192 frames: the later
+claim displaces the former owner, reloading a displaced writer can reclaim it,
+and deleting the winner does not automatically restore the former writer.
+**Native exclusive ownership is not yet implemented.** It must preserve claims
+across ordinary rebuilds, apply explicit acquisition events in a declared order,
+and avoid callback allocation. Do not silently use native node order as competing
+writer arbitration or enable source import before this boundary is closed.

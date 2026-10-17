@@ -281,7 +281,7 @@ fn native_node_order_controls_same_sample_or_next_sample_destination_visibility(
 }
 
 #[test]
-fn unrelated_reorder_and_rate_adoption_preserve_transport_cache_and_fresh_target_rearms() {
+fn unrelated_reorder_and_rate_adoption_preserve_cache_even_when_target_is_recreated() {
     let mut patch = with_vca(automation("normalized", 0.25));
     patch.nodes.push(node(
         json!({"id":"unrelated","kind":"constant","params":{"value":1}}),
@@ -321,5 +321,55 @@ fn unrelated_reorder_and_rate_adoption_preserve_transport_cache_and_fresh_target
     render(&mut fresh, 19);
     assert_eq!(fresh.parameter_value(target), Some(0.8));
     render(&mut fresh, 1);
+    // The actual source keeps its last successful lane value even across
+    // target disappearance/recreation. A constant lane leaves fresh defaults.
+    assert_eq!(fresh.parameter_value(target), Some(0.8));
+    let sequence = fresh.resolve_module_state("seq").unwrap();
+    assert!(fresh.reload_rackmcp_sequence_data(sequence));
+    render(&mut fresh, 32);
     assert_eq!(fresh.parameter_value(target), Some(0.25));
+}
+
+#[test]
+fn explicit_equal_load_rearms_cache_without_resetting_playhead_and_handles_are_fenced() {
+    let mut patch = with_vca(automation("normalized", 0.25));
+    let mut loaded = patch.compile().unwrap();
+    render(&mut loaded, 1100);
+    let sequence = loaded.resolve_module_state("seq").unwrap();
+    let gain = loaded.resolve_parameter("vca", "level").unwrap();
+    assert!(loaded.set_parameter_value(gain, 0.75));
+    let mut unchanged = patch.compile().unwrap();
+    unchanged.adopt_state_from(&loaded);
+    unchanged.inherit_parameter_values(&loaded, &[], &[]);
+    let receiver = unchanged.resolve_module_state("seq").unwrap();
+    assert!(unchanged.rackmcp_sequence_data_matches(receiver, &loaded, sequence));
+    assert!(!unchanged.rackmcp_sequence_data_matches(sequence, &loaded, sequence));
+    assert!(!unchanged.reload_rackmcp_sequence_data(sequence));
+    assert!(!loaded.reload_rackmcp_sequence_data(gain.module()));
+    assert!(loaded.reload_rackmcp_sequence_data(sequence));
+    assert_eq!(render(&mut loaded, 1000), render(&mut unchanged, 1000));
+    assert_eq!(value(&loaded, "vca", "level"), 0.25);
+    assert_eq!(value(&unchanged, "vca", "level"), 0.75);
+    // Native binding metadata is not source data, and parameter-only graph
+    // edits must not masquerade as dataFromJson lifecycle events.
+    patch.nodes[0].rackmcp_sequence.as_mut().unwrap().targets[0].module = "missing".into();
+    let routing = patch.compile().unwrap();
+    assert!(loaded.rackmcp_sequence_data_matches(
+        sequence,
+        &routing,
+        routing.resolve_module_state("seq").unwrap()
+    ));
+    patch.nodes[0]
+        .rackmcp_sequence
+        .as_mut()
+        .unwrap()
+        .data
+        .patterns[0]
+        .length = 4;
+    let changed = patch.compile().unwrap();
+    assert!(!loaded.rackmcp_sequence_data_matches(
+        sequence,
+        &changed,
+        changed.resolve_module_state("seq").unwrap()
+    ));
 }

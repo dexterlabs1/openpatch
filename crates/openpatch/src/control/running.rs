@@ -4,6 +4,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct EditEffects {
     pub parameters: super::parameters::ParameterEffects,
+    pub sequence_loads: BTreeSet<String>,
     pub replacement_document: Option<ProjectDocument>,
     pub playback_mode: Option<PlaybackMode>,
     pub source_copies: BTreeMap<String, String>,
@@ -377,6 +378,13 @@ impl Session {
         let parameter_targets =
             super::parameters::before_edit(self, candidate, name, args, effects)?;
         self.apply_session_edit_inner(candidate, name, args, effects)?;
+        if name == "set_rackmcp_sequence"
+            || (name == "apply_module_preset" && args["preset"].get("rackmcp_sequence").is_some())
+        {
+            effects
+                .sequence_loads
+                .insert(string(args, "id")?.to_owned());
+        }
         super::parameters::after_edit(self, candidate, &parameter_targets, effects);
         effects.lifecycle_captured = true;
         if let Some(before) = lifecycle_before {

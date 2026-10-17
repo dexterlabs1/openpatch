@@ -241,19 +241,11 @@ impl RackMcpSequencer {
             .map(|index| index.map(|i| &self.state.targets[i]))
     }
 
-    /// Bind prepared native handles. A changed/missing destination rearms its
-    /// cache, including a destination that becomes available after repair.
+    /// Bind prepared native destinations. Source lane caches survive target
+    /// disappearance/recreation; only successful writes or explicit data loads
+    /// change them. A target missing before its first write retains NaN.
     pub(crate) fn bind_targets(&mut self, targets: [Option<ResolvedTarget>; LANES]) {
-        for (i, target) in targets.into_iter().enumerate() {
-            if self.targets[i] != target {
-                self.last_lane_value[i] = f32::NAN;
-            }
-            self.targets[i] = target;
-        }
-    }
-
-    pub(crate) fn resolved_targets(&self) -> [Option<ResolvedTarget>; LANES] {
-        self.targets
+        self.targets = targets;
     }
 
     /// Preserve source transport and detectors across graph replacement while
@@ -269,28 +261,22 @@ impl RackMcpSequencer {
             self.reload_data();
         } else {
             for i in 0..LANES {
-                if self.target_fingerprints[i] != old.target_fingerprints[i]
-                    || self.targets[i].map(|t| (t.parameter, t.min, t.max, t.snap))
-                        != old.targets[i].map(|t| (t.parameter, t.min, t.max, t.snap))
-                {
+                if self.target_fingerprints[i] != old.target_fingerprints[i] {
                     self.last_lane_value[i] = f32::NAN;
                 }
             }
         }
     }
 
+    /// Source-data identity is independent of resolved native target routes.
+    pub(crate) fn data_matches(&self, previous: &Self) -> bool {
+        self.data_fingerprint == previous.data_fingerprint
+    }
+
     /// Explicit source dataFromJson lifecycle, including an equal-data load.
     pub(crate) fn reload_data(&mut self) {
         self.player.adopt_data(&self.data);
         self.last_lane_value = [f32::NAN; LANES];
-    }
-
-    /// Rearm a binding whose native incarnation changed without changing its
-    /// compiled destination slot (the host owns incarnation identity).
-    pub(crate) fn invalidate_target(&mut self, lane: usize) {
-        if let Some(value) = self.last_lane_value.get_mut(lane) {
-            *value = f32::NAN;
-        }
     }
 
     /// Commit a cache entry only after the native destination accepted it.
@@ -524,7 +510,7 @@ mod tests {
         assert!(cycle(&mut playing).is_none());
         playing.acknowledge_write(0, 0.25 + 2e-7);
         assert!(cycle(&mut playing).is_some());
-        playing.invalidate_target(0);
+        playing.reload_data();
         assert_eq!(cycle(&mut playing).unwrap().value, 0.25);
     }
 

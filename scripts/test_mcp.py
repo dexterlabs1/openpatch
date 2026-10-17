@@ -225,6 +225,41 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_rackmcp_sequence_state_edit_history_preset_and_saved_roundtrip(self) -> None:
+        sequence = {"data": {"patterns": [{"name": "A", "length": 4, "tracks": [
+            {"voices": 2, "steps": [{"step": 0, "notes": [0, 7], "accent": True}]}]}]}}
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 8000,
+            "nodes": [{"id": "seq", "kind": "rackmcp_sequencer", "rackmcp_sequence": sequence}],
+            "output": "seq", "output_port": "pitch1"}})
+        before = self.patch_snapshot()
+        changed = json.loads(json.dumps(sequence))
+        changed["data"]["patterns"][0]["length"] = 8
+        self.require_tool_success("preview_edits", {"edits": [{"tool": "set_rackmcp_sequence",
+            "arguments": {"id": "seq", "rackmcp_sequence": changed}}]})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": changed})
+        after = self.patch_snapshot()
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], after["patch"])
+        # Explicit equal loads are accepted lifecycle events, not no-op edits.
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": changed})
+        self.assertEqual(self.patch_snapshot()["revision"], revision + 1)
+        bad = json.loads(json.dumps(changed))
+        bad["data"]["patterns"][0]["length"] = 0
+        stable = self.patch_snapshot()
+        self.require_tool_error("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": bad})
+        self.assertEqual(self.patch_snapshot(), stable)
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "seq"}))["preset"]
+        self.assertEqual(preset["rackmcp_sequence"]["data"]["patterns"][0]["length"], 8)
+        self.require_tool_success("save_patch", {"filename": "rackmcp-sequence.json"})
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": sequence})
+        self.require_tool_success("load_patch", {"filename": "rackmcp-sequence.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], stable["patch"])
+
     def test_score_edit_roundtrip_and_bounded_arrangement_render(self) -> None:
         score = {"length":4,"tracks":[{"steps":[{"step":0,"notes":[0]}]}],"lanes":[{"points":[{"bar":0,"value":0.5}]}]}
         self.require_tool_success("replace_patch", {"patch":{"version":2,"sample_rate":8000,"nodes":[{"id":"score","kind":"score_sequencer","score":score}],"output":"score","output_port":"automation"}})

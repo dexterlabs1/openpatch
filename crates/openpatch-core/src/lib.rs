@@ -2040,6 +2040,39 @@ impl Engine {
             _ => false,
         }
     }
+    /// Compare compiled source sequence data without allocating or resolving
+    /// strings. Native routing metadata is independent of source data loads.
+    pub fn rackmcp_sequence_data_matches(
+        &self,
+        handle: ModuleHandle,
+        previous: &Self,
+        previous_handle: ModuleHandle,
+    ) -> bool {
+        if handle.generation != self.identity || previous_handle.generation != previous.identity {
+            return false;
+        }
+        match (&self.inner, &previous.inner) {
+            (EngineKind::Poly(current), EngineKind::Poly(previous)) => {
+                current.rackmcp_sequence_data_matches(handle.node, previous, previous_handle.node)
+            }
+            _ => false,
+        }
+    }
+
+    /// Apply an explicit RackMCP data-load event to the receiving compiled
+    /// sequence. Preserves transport and rearms selection/automation caches,
+    /// including when loaded data equals the prior data. Hosts call this after
+    /// compatible graph adoption, never for unrelated graph replacements.
+    pub fn reload_rackmcp_sequence_data(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.reload_rackmcp_sequence_data(handle.node),
+            _ => false,
+        }
+    }
+
     /// Apply a module's dedicated Initialize runtime policy after compatible
     /// state adoption. This leaves cable histories and unrelated state intact.
     pub fn initialize_module_state(&mut self, handle: ModuleHandle) -> bool {

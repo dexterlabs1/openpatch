@@ -255,6 +255,18 @@ pub trait LiveModuleEvents: Send + Sync {
     ) {
         self.sync_patch(patch, revision);
     }
+    /// Atomically publish authored state with parameter assignments and explicit
+    /// RackMCP sequence-data load events. Equal data still counts as a load;
+    /// prepared graph plans must freeze its meaning before later edits arrive.
+    fn sync_patch_with_intents(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        _sequence_loads: &BTreeSet<String>,
+    ) {
+        self.sync_patch_with_parameters(patch, revision, assignments);
+    }
     /// Imported documents need a fenced execution gate, independent of mute.
     fn supports_document_execution(&self) -> bool {
         false
@@ -379,6 +391,7 @@ impl Drop for Session {
 
 #[derive(Clone)]
 struct HistoryEntry {
+    sequence_loads: BTreeSet<String>,
     restore_parameters: parameters::ParameterValues,
     return_parameters: parameters::ParameterValues,
     document: ProjectDocument,
@@ -427,6 +440,7 @@ const EDIT_TOOLS: &[&str] = &[
     "clear_cables",
     "set_parameter",
     "set_score",
+    "set_rackmcp_sequence",
     "set_module_content",
     "set_bypass",
     "rotate_sequence",
@@ -601,12 +615,31 @@ impl Session {
         Ok(())
     }
 
-    fn sync_live_parameters(&self, assignments: &parameters::ParameterValues) {
+    fn sync_live_intents(
+        &self,
+        assignments: &parameters::ParameterValues,
+        sequence_loads: &BTreeSet<String>,
+    ) {
         if let Some(backend) = &self.live_module_events {
             if self.document_execution {
                 backend.request_document_execution(self.revision, self.execution_disposition());
             }
-            backend.sync_patch_with_parameters(&self.patch, self.revision, assignments);
+            let sequence_loads = sequence_loads
+                .iter()
+                .filter(|id| {
+                    self.patch
+                        .nodes
+                        .iter()
+                        .any(|node| node.id == **id && node.kind == "rackmcp_sequencer")
+                })
+                .cloned()
+                .collect();
+            backend.sync_patch_with_intents(
+                &self.patch,
+                self.revision,
+                assignments,
+                &sequence_loads,
+            );
         }
     }
 
@@ -799,10 +832,12 @@ impl Session {
         // A gesture may grow or shrink the persistent state it changes. Retain
         // a separate checkpoint whenever its saved-state coverage changes, so
         // neither the original undo snapshot nor the final redo loses fields.
-        let merge_group = group.is_some()
+        let merge_group = effects.sequence_loads.is_empty()
+            && group.is_some()
             && group == self.history_group
             && self.undo.back().is_some_and(|entry| {
-                saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
+                entry.sequence_loads.is_empty()
+                    && saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
                     && saved_state_coverage_matches(&entry.return_saved, &effects.after_saved)
                     && parameters::same_coverage(
                         &entry.restore_parameters,
@@ -833,6 +868,7 @@ impl Session {
                 self.undo.pop_front();
             }
             self.undo.push_back(HistoryEntry {
+                sequence_loads: effects.sequence_loads.clone(),
                 restore_parameters: parameter_effects.before.clone(),
                 return_parameters: parameter_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
@@ -879,7 +915,7 @@ impl Session {
                 backend.retire_cables(&effects.retired_cables);
             }
         }
-        self.sync_live_parameters(&parameter_effects.after);
+        self.sync_live_intents(&parameter_effects.after, &effects.sequence_loads);
         if let Some(backend) = &self.live_module_events {
             if !effects.initialized.is_empty() {
                 backend
@@ -1049,6 +1085,7 @@ impl Session {
         }
         let entry = target;
         let mut opposite = HistoryEntry {
+            sequence_loads: entry.sequence_loads.clone(),
             restore_parameters: entry.return_parameters.clone(),
             return_parameters: entry.restore_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),
@@ -1103,7 +1140,7 @@ impl Session {
                 backend.retire_cables(&entry.retired_cables);
             }
         }
-        self.sync_live_parameters(&entry.restore_parameters);
+        self.sync_live_intents(&entry.restore_parameters, &entry.sequence_loads);
         if let Some(backend) = &self.live_module_events {
             let releases: Vec<_> = entry
                 .release_controls
@@ -2103,6 +2140,24 @@ fn apply_edit(
             node.content = Some(content);
             openpatch_core::validate_content(node)?;
         }
+        "set_rackmcp_sequence" => {
+            let id = string(args, "id")?;
+            let sequence = serde_json::from_value(
+                args.get("rackmcp_sequence")
+                    .cloned()
+                    .ok_or("rackmcp_sequence is required")?,
+            )
+            .map_err(|error| error.to_string())?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?;
+            if node.kind != "rackmcp_sequencer" {
+                return Err("set_rackmcp_sequence requires rackmcp_sequencer".into());
+            }
+            node.rackmcp_sequence = Some(sequence);
+        }
         "set_score" => {
             let id = string(args, "id")?;
             let score =
@@ -2610,6 +2665,7 @@ pub fn tools() -> Value {
         tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_module_content","Replace typed Notes text or Blank width. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
+        tool("set_rackmcp_sequence","Replace RackMCP source patterns and explicit native automation bindings atomically. Preserves transport; each native transaction loads its final sequence state once per module, including equal data. Reloads selection and lane caches. Undoable; valid in apply_edits and preview_edits. Only rackmcp_sequencer accepts this state; consult its catalog schema.",json!({"id":s,"rackmcp_sequence":{"type":"object"},"expected_revision":rev}),&["id","rackmcp_sequence"],false),
         tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group (1..128 UTF-8 bytes) merges consecutive changes to the same parameter into one undo step when saved-state coverage and control-release obligations match, including apply_edits with matching history_parameter; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":history_group}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),

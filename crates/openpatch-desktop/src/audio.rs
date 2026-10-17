@@ -1257,6 +1257,12 @@ impl Callback {
                     &previous.engine,
                     &active.host_lifecycle.resets,
                 );
+                active.modules.reload_sequences_with_host_exclusions(
+                    &mut active.engine,
+                    &previous.modules,
+                    &previous.engine,
+                    &active.host_lifecycle.resets,
+                );
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]
@@ -6045,6 +6051,7 @@ mod tests {
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
     include!("live_parameter_audio_tests.rs");
+    include!("sequence_load_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");
     include!("stock_lfo_audio_tests.rs");
     include!("stock_vco_audio_tests.rs");

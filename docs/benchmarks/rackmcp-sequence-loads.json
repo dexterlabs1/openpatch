@@ -1,0 +1,184 @@
+{
+  "status": "Explicit native sequence loads validated; source-derived host correction documented; source import remains disabled",
+  "source": {
+    "plugin": "RackMCP",
+    "version": "2.0.0",
+    "commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+    "sdk": "2.6.6"
+  },
+  "implemented": {
+    "mcp_tool": "set_rackmcp_sequence",
+    "events": "Explicit typed state edit, state-bearing preset, undo and redo, including equal data",
+    "atomic_native_transactions": "Apply the final state once per receiving module, not intermediate JSON loads",
+    "prepared_plans": "Frozen requested epoch and per-incarnation applied high-water mark; late old plans cannot replay consumed loads",
+    "runtime": "Post-adoption equal-data reload; fresh constructors and changed-data adoption load once; preserve transport",
+    "cache_correction": "Retain successful lane cache across target disappearance/recreation; explicit load clears cache",
+    "native_host_correction": "Same-target rebinding stays idempotent instead of reproducing observed SDK self-unbind"
+  },
+  "validation": {
+    "core_units": {
+      "passed": 16,
+      "log": "sequence-load-final-unit.log"
+    },
+    "native_model": {
+      "passed": 9,
+      "log": "sequence-load-final-core.log"
+    },
+    "heap_checks": {
+      "passed": 2,
+      "allocations": 0,
+      "deallocations": 0,
+      "log": "sequence-load-final-heap.log"
+    },
+    "shared_control": {
+      "passed": 285,
+      "log": "sequence-load-final-control.log"
+    },
+    "backend_registry": {
+      "passed": 28,
+      "log": "sequence-load-final-backend.log"
+    },
+    "actual_callback_loads": {
+      "passed": 10,
+      "log": "sequence-load-final-callback.log"
+    },
+    "existing_panel_and_callback": {
+      "passed": 5,
+      "log": "sequence-load-final-adapter.log"
+    },
+    "actual_stdio_mcp": {
+      "passed": 1,
+      "log": "sequence-load-mcp-001.log"
+    },
+    "strict_clippy": "sequence-load-final-clippy.log",
+    "formatting": "sequence-load-fmt-final.log"
+  },
+  "genuine_module_reference": {
+    "raw_comparison_passed": false,
+    "cases": 9,
+    "frames": 25104,
+    "source_unchanged": true,
+    "native_probe": "actual public Patch/Engine APIs",
+    "cases_detail": [
+      {
+        "case": "poly_internal",
+        "frames": 7000,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "selected_nonzero_first_advance",
+        "frames": 7000,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "schmitt_startup_disconnect_reset",
+        "frames": 800,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "stopped_divider_reset_button",
+        "frames": 512,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "raw_clamp",
+        "frames": 256,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "manual_cache_equal_reload",
+        "frames": 512,
+        "passed": false,
+        "differing_frames": 41
+      },
+      {
+        "case": "changed_data",
+        "frames": 8000,
+        "passed": false,
+        "differing_frames": 1473
+      },
+      {
+        "case": "missing_initial_return",
+        "frames": 512,
+        "passed": true,
+        "differing_frames": 0
+      },
+      {
+        "case": "written_target_disappear_return",
+        "frames": 512,
+        "passed": false,
+        "differing_frames": 225
+      }
+    ],
+    "manifest_sha256": "8c211bb40cd56473e0d0a75a7fba0f8de285a28c807687a7ca4580ca675b6900",
+    "raw_report_sha256": "f0943143a7f9d960a4b6fbf301c0b87d203e9c75eed4b4ab217e5bdf8ce79fd7",
+    "audit": "scripts/rackmcp_module_reference/audit_binding_correction.py",
+    "native_correction_contract_passed": true,
+    "all_18_output_words_exact": 7681824,
+    "unaffected_target_words_exact": 48244,
+    "explicit_correction_words": 1964,
+    "scope": "Every differing word is checked against declared source/native values and frame windows; all other words must match. Raw comparison remains failed; no full-module equivalence claim.",
+    "current_production_manifest_verified": {
+      "entries": 95,
+      "changed_entries": 0
+    }
+  },
+  "genuine_source_ownership": {
+    "passed": true,
+    "frames": 192,
+    "stages": [
+      {
+        "name": "A_acquires",
+        "passed": true,
+        "owner_after_32": 100
+      },
+      {
+        "name": "B_takes_over",
+        "passed": true,
+        "owner_after_32": 200
+      },
+      {
+        "name": "equal_incumbent_B_reload_self_unbinds",
+        "passed": true,
+        "owner_after_32": 0
+      },
+      {
+        "name": "displaced_A_reloads_and_acquires",
+        "passed": true,
+        "owner_after_32": 100
+      },
+      {
+        "name": "B_takes_over_again",
+        "passed": true,
+        "owner_after_32": 200
+      },
+      {
+        "name": "delete_winner_B_does_not_restore_A",
+        "passed": true,
+        "owner_after_32": 0
+      }
+    ],
+    "native_ownership_implemented": false
+  },
+  "actual_patch_readonly_audit": {
+    "sequencers": 2,
+    "lanes": 13,
+    "distinct_source_target_pairs": 13,
+    "cross_sequencer_collisions": 0,
+    "supported_targets": 10,
+    "unresolved_surge_targets": 3
+  },
+  "remaining": [
+    "Bounded exclusive target ownership, including ordered acquisition events and no automatic displaced-writer recovery",
+    "Source-package provenance and imported target binding",
+    "Direct transport/status, momentary reset UX",
+    "Bridge/Listen and complete supported musical excerpt",
+    "One full macOS milestone CI; no package/install yet"
+  ],
+  "installed_release": "0.2.6 build8 unchanged"
+}

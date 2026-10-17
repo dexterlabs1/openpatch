@@ -2353,6 +2353,33 @@ impl PolyEngine {
         }
         true
     }
+    pub(crate) fn rackmcp_sequence_data_matches(
+        &self,
+        index: usize,
+        previous: &Self,
+        previous_index: usize,
+    ) -> bool {
+        match (
+            self.nodes.get(index).map(|node| &node.model),
+            previous.nodes.get(previous_index).map(|node| &node.model),
+        ) {
+            (Some(Model::RackMcpSequencer(current)), Some(Model::RackMcpSequencer(previous))) => {
+                current.data_matches(previous)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn reload_rackmcp_sequence_data(&mut self, index: usize) -> bool {
+        let Some(Model::RackMcpSequencer(sequence)) =
+            self.nodes.get_mut(index).map(|n| &mut n.model)
+        else {
+            return false;
+        };
+        sequence.reload_data();
+        true
+    }
+
     pub(crate) fn initialize_module_state(&mut self, index: usize) -> bool {
         let Some(node) = self.nodes.get_mut(index) else {
             return false;
@@ -3773,11 +3800,6 @@ impl PolyEngine {
                 (&mut self.nodes[index].model, &old.nodes[previous].model)
             {
                 sequence.adopt(previous);
-                for (lane, target) in sequence.resolved_targets().into_iter().enumerate() {
-                    if target.is_some_and(|target| excluded[target.node]) {
-                        sequence.invalidate_target(lane);
-                    }
-                }
             }
         }
         if self.rate != old.rate {

@@ -126,15 +126,25 @@ The installed app and catalog remained unchanged at that checkpoint.
 now has typed persisted state, all 18 source outputs and prepared eight-lane
 native target dispatch. VCA/filter values feed the actual callback publication,
 MCP save, manual edit/undo/redo and saved reopen. Unrelated graph edits, node
-reorder and rate changes preserve transport/cache; target recreation rearms its
-lanes. The shared Signal Atlas rack/browser panel shows authored patterns,
+reorder and rate changes preserve transport/cache; target recreation preserves
+the source lane cache. The shared Signal Atlas rack/browser panel shows authored patterns,
 voices, drum hits and accents without inventing live telemetry. Native catalog
 now has 84 kinds on this milestone branch; source import remains unchanged.
 See the [adapter boundary and remaining work](RACKMCP_SEQUENCE_CONTRACT.md#native-adapter-checkpoint)
 and [actual panel captures](../design/reviews/rackmcp-sequencer-v1/README.md).
-Next carry explicit equal-data load intent through graph activation, guard
-source-provenance target binding, then close Bridge/Listen and the real musical
-excerpt. No release, installation or whole-module equivalence is claimed.
+**Data-load checkpoint:** equal/changed sequence edits, presets and undo/redo now
+carry explicit load intent through frozen graph plans. Late older plans cannot
+replay already consumed loads; unrelated edits preserve playhead and lane cache.
+Actual callback and stdio MCP workflows pass. The genuine SDK wrapper comparison
+found a self-unbinding defect on repeated source loads: native rebinding remains
+idempotent, and the raw comparison remains honestly failed for those target
+writes. All 18 output fields match throughout 25,104 frames; a strict separate
+audit verifies the exact native correction. [Evidence and remaining ownership boundary](RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-finding-and-deliberate-host-correction).
+
+Next implement exclusive target ownership against the genuine two-sequencer
+probe, guard source-provenance target binding, then close Bridge/Listen and the
+real musical excerpt. No release, installation or whole-module equivalence is
+claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at

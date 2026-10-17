@@ -741,7 +741,9 @@ fn rackmcp_native_automation_render_and_graph_handoff_use_no_heap() {
         "output":"vca"
     })).unwrap();
     let mut first = patch.compile().unwrap();
+    let first_sequence = first.resolve_module_state("seq").unwrap();
     let mut second = patch.compile().unwrap();
+    let second_sequence = second.resolve_module_state("seq").unwrap();
     patch.sample_rate = 96000;
     patch.nodes.swap(0, 2);
     let mut third = patch.compile().unwrap();
@@ -762,6 +764,8 @@ fn rackmcp_native_automation_render_and_graph_handoff_use_no_heap() {
     }
     second.handoff_state_from_excluding_routes(&mut first, &[], &[]);
     second.inherit_parameter_values(&first, &[], &[]);
+    assert!(second.rackmcp_sequence_data_matches(second_sequence, &first, first_sequence));
+    assert!(second.reload_rackmcp_sequence_data(second_sequence));
     for _ in 0..32 {
         second.process_poly_block(&mut output);
     }
