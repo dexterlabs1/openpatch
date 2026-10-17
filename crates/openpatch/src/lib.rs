@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 //! Control APIs shared by the offline CLI and native desktop application.
 //!
 //! The shared session belongs to UI and MCP control threads. Audio callbacks

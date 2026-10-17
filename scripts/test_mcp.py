@@ -3918,6 +3918,47 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_frame_scene_authoring_stable_ids_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["frame_scene"]
+        self.assertEqual(descriptor["outputs"], ["out1", "out2", "out3", "out4", "mix", "step"])
+        self.assertEqual(descriptor["content_schema"]["properties"]["keyframes"]["maxItems"], 64)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "scene", "kind": "frame_scene"}], "output": "scene", "output_port": "mix"}})
+        def edit(change: dict[str, Any], **extra: Any) -> dict[str, Any]:
+            return self.payload(self.require_tool_success("edit_frame_scene", {
+                "id": "scene", "edit": change, "expected_revision": self.patch_snapshot()["revision"], **extra}))
+        edit({"operation": "add", "timestamp": 0, "values": [65535, 0, 0, 0]})
+        edit({"operation": "add", "timestamp": 65535, "values": [0, 65535, 0, 0]})
+        self.require_tool_success("set_parameter", {"id": "scene", "parameter": "frame", "value": .5})
+        before_capture = self.patch_snapshot()
+        for port in ["out1", "out2"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {"id": "scene", "port": port, "seconds": .001}))
+            self.assertTrue(all(abs(point["mean"] - 5) < .02 for point in trace["bins"]))
+        self.assertEqual(self.patch_snapshot(), before_capture)
+        edit({"operation": "add", "timestamp": 32768, "values": [20000, 30000, 40000, 50000]})
+        before = self.patch_snapshot()
+        for timestamp in [50000, 55000]:
+            edit({"operation": "update", "keyframe_id": 0, "timestamp": timestamp}, history_group="move-frame0")
+        changed = self.patch_snapshot()
+        keys = changed["patch"]["nodes"][0]["content"]["keyframes"]
+        self.assertEqual([key["id"] for key in keys], [2, 0, 1])
+        self.assertEqual(changed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        changed = self.patch_snapshot()  # Undo/redo advance revision while restoring the same graph.
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "scene"}))["preset"]
+        self.assertEqual(preset["content"], changed["patch"]["nodes"][0]["content"])
+        for change in [{"operation": "remove", "keyframe_id": 999},
+                       {"operation": "update", "keyframe_id": 0, "timestamp": 32768},
+                       {"operation": "add", "timestamp": 1, "values": [1, 2, 3, 65536]}]:
+            self.require_tool_error("edit_frame_scene", {"id": "scene", "edit": change})
+            self.assertEqual(self.patch_snapshot(), changed)
+        self.require_tool_success("save_patch", {"filename": "frame-scene.json"})
+        edit({"operation": "clear"})
+        self.require_tool_success("load_patch", {"filename": "frame-scene.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_tidal_functions_source_outputs_history_presets_and_saved_reopen(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["tidal_functions"]

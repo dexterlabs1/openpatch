@@ -1,0 +1,221 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "FRAME SCENE \u00b7 EVOLVING VOICE\nTidal Functions scans four authored scenes.\nScene1 controls volume; Scene2 opens the ladder.\nClick a stored tick to select its stable ID.\nDrag a lane point or its large LEVEL knob.\nDrag the top tick to move the stored timestamp.\nFRAME is the configured offset; LIVE is measured.\nCURVES changes easing and channel response.\nMCP edit_frame_scene uses the same undo/history.\nRequires the Frame Scene development build."
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 1,
+        "level1": 0.8,
+        "master": 0.7
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 1.0,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "tidal_functions",
+      "params": {
+        "frequency": 0.08,
+        "output_mode": 2,
+        "slope": 0.6,
+        "smoothness": 0.4,
+        "shift": 0.6
+      }
+    },
+    {
+      "id": "scene",
+      "kind": "frame_scene",
+      "params": {
+        "frame": 0.5,
+        "modulation": 1,
+        "offset": 10,
+        "easing1": 4,
+        "easing2": 4
+      },
+      "content": {
+        "type": "frame_scene",
+        "next_id": 4,
+        "keyframes": [
+          {
+            "id": 0,
+            "timestamp": 0,
+            "values": [
+              12000,
+              4000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 1,
+            "timestamp": 20000,
+            "values": [
+              47000,
+              18000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 2,
+            "timestamp": 43000,
+            "values": [
+              26000,
+              7000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 3,
+            "timestamp": 65535,
+            "values": [
+              52000,
+              14000,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 98
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 180,
+        "resonance": 0.15,
+        "drive": 0.8
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.8
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "scene-0",
+      "from": "motion",
+      "output": "out1",
+      "to": "scene",
+      "input": "frame_cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-1",
+      "from": "scene",
+      "output": "out1",
+      "to": "vca",
+      "input": "cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-2",
+      "from": "scene",
+      "output": "out2",
+      "to": "filter",
+      "input": "cutoff_cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-3",
+      "from": "vco",
+      "output": "out",
+      "to": "filter",
+      "input": "signal",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-4",
+      "from": "filter",
+      "output": "out",
+      "to": "vca",
+      "input": "signal",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-5",
+      "from": "vca",
+      "output": "out",
+      "to": "console",
+      "input": "in1",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-6",
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-7",
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    }
+  ],
+  "output": "out"
+}

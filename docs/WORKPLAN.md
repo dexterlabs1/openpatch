@@ -28,16 +28,20 @@ panels. These changes are not installed; keep 0.2.7 build 9 stable.
 
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
 with independent contracts rather than renamed existing kinds. **Tidal Functions
-is the first implemented development candidate; nineteen remain.** Its native
-Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
+and Frame Scene are implemented development candidates; eighteen remain.** Tidal
+Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
 bit for bit, including nonzero amplitude scans, while preserving the original
 frame-zero clock failure as a negative and explicitly adapting native startup.
 Shared Signal Atlas controls, actual output lamps, matching browser thumbnails,
 MCP/history/presets/reopen and callback no-heap checks have focused Mac evidence.
 [Contract and bounds](TIDAL_FUNCTIONS.md), [actual panel capture](../design/reviews/tidal-functions-v1/README.md).
-Next implement Frame Scene, then Segment Garden; run family-level Mac CI once
-the candidate settles. Source fidelity, shared UI/MCP/history, Custom plus functional tags for
-original instruments and Mac validation remain done requirements. Binary-host
+Frame Scene adds 64 persistent stable-ID scenes, source-integer keyframing,
+explicit ideal VCA normaling, real UI telemetry and shared revision/history/MCP
+editing. Its 25 source cases match 163,013 integer records and pass an independent
+UBSan/bounds audit; source-undefined endpoints have explicit native extensions.
+[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md). Next implement Segment Garden; run
+family-level Mac CI once the three-instrument candidate settles. Source fidelity, shared UI/MCP/history, Custom plus functional
+tags for original instruments and Mac validation remain done requirements. Binary-host
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.
 

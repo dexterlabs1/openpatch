@@ -2013,3 +2013,62 @@ fn tidal_functions_first_blocks_high_clock_initialize_taps_and_adoption_use_no_h
         .flatten()
         .all(|value| value.is_finite()));
 }
+
+#[test]
+fn frame_scene_first_callbacks_sixty_four_keys_initialize_and_replacement_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node("all", "poly_constant", &[("channels", 16.0), ("v1", 2.0)]),
+            node("scene", "frame_scene", &[]),
+        ],
+        vec![cable("all", "out", "scene", "all")],
+        "scene",
+    );
+    p.output_port = "mix".into();
+    p.nodes[1].content = Some(openpatch_core::ModuleContent::FrameScene(
+        openpatch_core::FrameSceneData {
+            next_id: 64,
+            keyframes: (0..64)
+                .map(|i| openpatch_core::FrameSceneKeyframe {
+                    id: i,
+                    timestamp: i * 1000,
+                    values: [i * 1000; 4],
+                })
+                .collect(),
+        },
+    ));
+    let mut old = p.compile().unwrap();
+    p.nodes[1].params.insert("frame".into(), 0.9);
+    let mut replacement = p.compile().unwrap();
+    let handle = replacement.resolve_module_lights("scene").unwrap();
+    let taps = std::array::from_fn::<_, 6, _>(|i| {
+        Some(
+            old.resolve_tap(
+                "scene",
+                ["out1", "out2", "out3", "out4", "mix", "step"][i],
+                0,
+            )
+            .unwrap(),
+        )
+    });
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[openpatch_core::TapSample::default(); 6]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for count in [0, 1, 3, 64, 129] {
+        old.process_audio_block_with_taps(&mut audio[..count], &taps, &mut samples[..count]);
+        replacement.adopt_state_from(&old);
+        initialized = replacement.initialize_module_state(handle);
+        replacement.process_poly_block(&mut frames[..count]);
+        let _ = replacement.module_lights(handle);
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(samples
+        .iter()
+        .flatten()
+        .all(|s| s.active && s.value.is_finite()));
+}

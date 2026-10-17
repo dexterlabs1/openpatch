@@ -1,5 +1,13 @@
 # Rust module coverage
 
+Development addition (not installed): [Frame Scene](FRAME_SCENE.md) is the 88th
+catalog kind and second of the twenty new creative instruments. It combines
+sanitizer-audited source-integer keyframing with an explicitly ideal native
+VCA transfer, physical jack normaling and 64 persistent stable-ID scenes.
+Shared UI/MCP/history/presets/reopen and callback no-heap checks have focused
+Mac coverage. This is not complete Frames hardware/firmware or VCV compatibility.
+
+
 Development addition (not installed): [Tidal Functions](TIDAL_FUNCTIONS.md) is the
 87th catalog kind and the first of the twenty new creative instruments. Its
 Tides 2018 generator/extractor is a pinned MIT Rust source adaptation, with

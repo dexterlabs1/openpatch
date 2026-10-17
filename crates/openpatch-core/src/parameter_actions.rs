@@ -55,6 +55,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_vco", "frequency" | "pulse_width") => Linear,
         ("stock_vco", "linear_fm" | "soft_sync") => Enum,
         ("stock_vco", _) => Disabled,
+        ("frame_scene", "offset" | "easing1" | "easing2" | "easing3" | "easing4") => Enum,
+        ("frame_scene", _) => Linear,
         ("tidal_functions", "frequency") => Log2,
         ("tidal_functions", "ramp_mode" | "output_mode" | "range" | "clock_ratio") => Enum,
         ("tidal_functions", _) => Linear,

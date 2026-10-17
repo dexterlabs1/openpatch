@@ -155,6 +155,7 @@ pub(super) fn schema() -> Value {
 
 pub(super) fn content_schema() -> Value {
     json!({"oneOf":[
+        openpatch_core::FrameSceneData::content_schema(),
         {"type":"object","properties":{
             "type":{"const":"notes"},
             "text":{"type":"string","maxLength":8192,"description":"Multiline Unicode text; at most 8192 UTF-8 bytes."}

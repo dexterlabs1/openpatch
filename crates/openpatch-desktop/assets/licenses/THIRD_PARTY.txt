@@ -54,6 +54,11 @@ by Emilie Gillet under the MIT license. Exact revisions, adaptation scope and
 full notice are in Tides-algorithms.txt in this directory.
 
 
+FRAME SCENE adapts the Frames integer keyframer and resources by Emilie Gillet
+under the MIT license. Revisions, native transfer scope and full notice are in
+Frames-algorithms.txt in this directory.
+
+
 Wavetable serialization, hashing and FFT dependencies
 =====================================================
 

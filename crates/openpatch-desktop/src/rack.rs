@@ -64,6 +64,7 @@ include!("atlas_effect_panels.rs");
 include!("atlas_compressor_guide.rs");
 include!("atlas_creative_panels.rs");
 include!("tidal_functions_panel.rs");
+include!("frame_scene_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -106,7 +107,7 @@ fn port_material_scale(kind: &str) -> f32 {
         "seq3" => 1.20,
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
-        "modal_resonator" | "tidal_functions" => REDESIGNED_PORT_SCALE,
+        "modal_resonator" | "tidal_functions" | "frame_scene" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -193,6 +194,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("frame_scene", _, _) => Above(25.0),
         ("tidal_functions", _, false) => Above(21.0),
         ("tidal_functions", _, true) => Left(26.0),
         ("macro_voice", _, false) => Above(21.0),
@@ -746,6 +748,7 @@ pub struct Rack {
     bridge_ui: BridgeUi,
     rackmcp_ui: RackMcpUi,
     listen_ui: ListenUi,
+    frame_scene_ui: FrameSceneUi,
     unresolved_panels: Vec<UnresolvedPanel>,
     source_routes: Vec<Cable>,
     dependency_focus: Option<String>,
@@ -821,6 +824,7 @@ impl Default for Rack {
             bridge_ui: BridgeUi::default(),
             rackmcp_ui: RackMcpUi::default(),
             listen_ui: ListenUi::default(),
+            frame_scene_ui: FrameSceneUi::default(),
             unresolved_panels: Vec::new(),
             source_routes: Vec::new(),
             dependency_focus: None,
@@ -3915,6 +3919,11 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "frame_scene" {
+                if let Some(edit) = self.frame_scene_panel(ui, node, rect, revision, interactive) {
+                    action = Some(edit);
+                }
+            }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if (node.kind == "random" && *name == "seed")
                     || matches!(node.kind.as_str(), "scope" | "stock_scope")
@@ -3929,6 +3938,7 @@ impl Rack {
                     || node.kind == "stock_octave"
                     || node.kind == "stock_vca_mix"
                     || node.kind == "stock_process"
+                    || node.kind == "frame_scene"
                     || node.kind == "studio_mixer"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
                     || node.kind == "mutes10"
@@ -8901,6 +8911,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "frame_scene" => return frame_scene_port(input, index),
         "tidal_functions" => return tidal_port(input, index),
         "macro_voice" => {
             return pos2(
@@ -9903,6 +9914,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "frame_scene" => HP * 36.0,
         "tidal_functions" => HP * 28.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
@@ -9955,6 +9967,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "frame_scene" => "FRAME SCENE",
         "tidal_functions" => "TIDAL FUNCTIONS",
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
@@ -10799,6 +10812,7 @@ fn paint_panel(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "frame_scene"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10888,6 +10902,7 @@ fn paint_panel(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "frame_scene"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -11057,7 +11072,9 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
-    let label = if kind == "tidal_functions" {
+    let label = if kind == "frame_scene" {
+        frame_scene_port_label(port)
+    } else if kind == "tidal_functions" {
         tidal_port_label(port)
     } else if kind == "svf_filter" && port == "cutoff_cv" && !output {
         "FREQ CV"
@@ -11141,6 +11158,7 @@ fn paint_jack(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "frame_scene"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -12197,7 +12215,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            87,
+            88,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19077,6 +19095,10 @@ mod tests {
     mod atlas_listen_ui_tests {
         include!("atlas_listen_ui_tests.rs");
     }
+    mod frame_scene_ui_tests {
+        include!("frame_scene_ui_tests.rs");
+    }
+
     mod tidal_functions_ui_tests {
         include!("tidal_functions_ui_tests.rs");
     }

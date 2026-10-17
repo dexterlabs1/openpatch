@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "provenance": "eurorack pinned stmlib gitlink"
+    }
+  },
+  "files": {
+    "frames/keyframer.h": {
+      "repository": "eurorack",
+      "path": "frames/keyframer.h",
+      "sha256": "5ac303d90a28ffc425b7f21ec0702a917a68853e4e6b8fa1bedd5e1bcf335d29"
+    },
+    "frames/keyframer.cc": {
+      "repository": "eurorack",
+      "path": "frames/keyframer.cc",
+      "sha256": "2a11b5b49aaad37051ed245a153dc408e6bd6e1869afbb66e31db98cedb1c73c"
+    },
+    "frames/resources.h": {
+      "repository": "eurorack",
+      "path": "frames/resources.h",
+      "sha256": "7af4dd40b22917eb49f0f15768f148060d6b92c53b3e325d123db0f3ab9d1c1e"
+    },
+    "frames/resources.cc": {
+      "repository": "eurorack",
+      "path": "frames/resources.cc",
+      "sha256": "3ded7bd70c3e6d3f6d668b79d3757d4a9eb90848d93dc8d7fd4bf98cc1ec3999"
+    },
+    "stmlib/stmlib.h": {
+      "repository": "stmlib",
+      "path": "stmlib.h",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    }
+  },
+  "compile_sources": [
+    "frames/keyframer.cc",
+    "frames/resources.cc"
+  ]
+}
