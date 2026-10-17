@@ -10,6 +10,8 @@ mod construction_motion;
 mod construction_ui;
 mod document_state;
 mod expression;
+#[cfg(test)]
+mod headless_review;
 mod keyboard;
 #[cfg(test)]
 mod keyboard_acceptance_tests;

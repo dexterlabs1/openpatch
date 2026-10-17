@@ -287,7 +287,13 @@ impl Rack {
                 && self.editing.is_none()
                 && self.annotation_edit.is_none()
                 && !egui::Popup::is_any_open(ui.ctx());
-            let input = self.parameter_knob_input(ui, &knob, normalized, input_enabled);
+            let input = self.parameter_knob_input(
+                ui,
+                &knob,
+                normalized,
+                input_enabled,
+                &adsr_eg_parameter_value(i, raw),
+            );
             if input_enabled
                 && (knob.is_pointer_button_down_on()
                     || knob.clicked_by(PointerButton::Primary)

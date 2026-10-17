@@ -208,7 +208,13 @@ impl Rack {
             let input = if fader {
                 self.parameter_fader_input(ui, &response, track, norm, direct_interactive)
             } else {
-                self.parameter_knob_input(ui, &response, norm, direct_interactive)
+                self.parameter_knob_input(
+                    ui,
+                    &response,
+                    norm,
+                    direct_interactive,
+                    &parameter_value(name, value, spec),
+                )
             };
             let next = if input.reset {
                 Some(default)
@@ -239,7 +245,13 @@ impl Rack {
             if fader {
                 self.parameter_fader_input(ui, &response, track, norm, false);
             } else {
-                self.parameter_knob_input(ui, &response, norm, false);
+                self.parameter_knob_input(
+                    ui,
+                    &response,
+                    norm,
+                    false,
+                    &parameter_value(name, value, spec),
+                );
             }
         }
         if self.precision_collects(node) {

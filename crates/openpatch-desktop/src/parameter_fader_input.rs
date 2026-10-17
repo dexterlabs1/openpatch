@@ -15,6 +15,17 @@ enum ParameterPointer {
 }
 
 impl Rack {
+    pub(crate) fn parameter_keyboard_active(&self, ctx: &egui::Context) -> bool {
+        self.parameter_focus
+            .is_some_and(|id| ctx.memory(|memory| memory.focused()) == Some(id))
+    }
+
+    pub(crate) fn prepare_parameter_history(&mut self, ctx: &egui::Context) {
+        // A release in this frame must not replay the pre-undo cached value.
+        self.parameter_history_frame = Some(ctx.cumulative_frame_nr());
+        self.knob_value_bubble = None;
+    }
+
     fn parameter_fader_input(
         &mut self,
         ui: &egui::Ui,
@@ -23,7 +34,13 @@ impl Rack {
         normalized: f32,
         enabled: bool,
     ) -> FaderInput {
-        self.parameter_pointer_input(ui, response, ParameterPointer::Fader(track), normalized, enabled)
+        self.parameter_pointer_input(
+            ui,
+            response,
+            ParameterPointer::Fader(track),
+            normalized,
+            enabled,
+        )
     }
 
     fn parameter_knob_input(
@@ -32,14 +49,19 @@ impl Rack {
         response: &egui::Response,
         normalized: f32,
         enabled: bool,
+        display_value: &str,
     ) -> FaderInput {
-        self.parameter_pointer_input(
+        let input = self.parameter_pointer_input(
             ui,
             response,
-            ParameterPointer::Knob { travel: 150.0 * self.zoom },
+            ParameterPointer::Knob {
+                travel: 150.0 * self.zoom,
+            },
             normalized,
             enabled,
-        )
+        );
+        self.observe_knob_value_bubble(ui, response, &input, enabled, display_value);
+        input
     }
 
     fn parameter_pointer_input(
@@ -58,8 +80,15 @@ impl Rack {
         };
         let id = response.id;
         let relative_id = id.with("relative-after-fine");
-        let interrupted =
-            !enabled || !ui.input(|i| i.focused) || ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if enabled && response.has_focus() {
+            self.parameter_focus = Some(id);
+        } else if self.parameter_focus == Some(id) {
+            self.parameter_focus = None;
+        }
+        let interrupted = !enabled
+            || !ui.input(|i| i.focused)
+            || ui.input(|i| i.key_pressed(egui::Key::Escape))
+            || self.parameter_history_frame == Some(ui.ctx().cumulative_frame_nr());
         if interrupted {
             ui.data_mut(|d| {
                 d.remove::<f32>(id);
@@ -72,6 +101,7 @@ impl Rack {
             && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary));
         if pressed || response.drag_started_by(PointerButton::Primary) {
             response.request_focus();
+            self.parameter_focus = Some(id);
             if ui.data(|d| d.get_temp::<String>(id)).is_none() {
                 self.gesture = self.gesture.wrapping_add(1);
                 ui.data_mut(|d| {
@@ -110,7 +140,9 @@ impl Rack {
                     };
                     prior - response.drag_motion().y / travel * speed
                 } else {
-                    let ParameterPointer::Fader(track) = pointer_mode else { unreachable!() };
+                    let ParameterPointer::Fader(track) = pointer_mode else {
+                        unreachable!()
+                    };
                     (track.bottom() - pointer.y) / track.height()
                 }
                 .clamp(0.0, 1.0);

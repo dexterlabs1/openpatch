@@ -317,7 +317,13 @@ impl Rack {
             {
                 self.select_primary(node.id.clone());
             }
-            let input = self.parameter_knob_input(ui, &knob, normalized, interactive);
+            let display_value = if index == 4 {
+                format!("{}×", stock_vca_mix_raw_label(raw))
+            } else {
+                stock_vca_mix_raw_label(raw)
+            };
+            let input =
+                self.parameter_knob_input(ui, &knob, normalized, interactive, &display_value);
             let mut new_value = input
                 .reset
                 .then_some(1.0_f32.min(max))
@@ -416,11 +422,7 @@ impl Rack {
                 ui.id().with(("stock-vca-mix-value", &node.id, parameter)),
                 Sense::click(),
             );
-            let readout = if index == 4 {
-                format!("{}×", stock_vca_mix_raw_label(raw))
-            } else {
-                stock_vca_mix_raw_label(raw)
-            };
+            let readout = display_value;
             paint_atlas_voice_readout(
                 &painter,
                 value_rect.center(),

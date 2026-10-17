@@ -280,7 +280,13 @@ impl Rack {
         if knob.drag_started_by(PointerButton::Primary) || knob.clicked_by(PointerButton::Primary) {
             self.select_primary(node.id.clone());
         }
-        let input = self.parameter_knob_input(ui, &knob, normalized, control_enabled);
+        let input = self.parameter_knob_input(
+            ui,
+            &knob,
+            normalized,
+            control_enabled,
+            &stock_process_ms_label(raw),
+        );
         let span = STOCK_PROCESS_MAX_SLEW - STOCK_PROCESS_MIN_SLEW;
         let proposed = input
             .reset

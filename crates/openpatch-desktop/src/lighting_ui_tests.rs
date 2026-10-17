@@ -9,6 +9,16 @@ fn normalized(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
         .iter()
         .map(|clipped| {
             let mut clipped = clipped.clone();
+            // Emitted halos spread farther as the room darkens. Preserve their
+            // topology/order/clip, while comparing all physical geometry exactly.
+            if let egui::Shape::Mesh(mesh) = &mut clipped.shape {
+                if mesh.vertices.len() == 120 && mesh.vertices.iter().all(|v| v.color.a() == 0) {
+                    let mesh = std::sync::Arc::make_mut(mesh);
+                    for vertex in &mut mesh.vertices {
+                        vertex.pos = Pos2::ZERO;
+                    }
+                }
+            }
             egui::epaint::shape_transform::adjust_colors(&mut clipped.shape, |color| {
                 // Retain alpha while discarding ambient RGB. This compares the
                 // complete geometry, text meshes, order and clips of every shape.
@@ -128,7 +138,8 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
                 .find_map(|shape| match &shape.shape {
                     egui::Shape::Circle(circle)
                         if circle.center.distance(pos2(24.0 + x, 12.0 + y)) < 0.01
-                            && (circle.radius - crate::lighting::lamp_radius(radius)).abs() < 0.01 =>
+                            && (circle.radius - crate::lighting::lamp_radius(radius)).abs()
+                                < 0.01 =>
                     {
                         Some(circle.fill)
                     }

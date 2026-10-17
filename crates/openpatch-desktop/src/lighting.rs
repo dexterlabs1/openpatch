@@ -43,7 +43,7 @@ pub(crate) fn port_lamp_radius(zoom: f32) -> f32 {
 /// One bounded additive mesh, with a continuous falloff to transparent black.
 /// Rounded rectangles use the same profile as circular LEDs, so meters and
 /// plugs belong to one lighting system. No blur render target or DSP work.
-fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32) {
+fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32, diffusion: f32) {
     if intensity <= 0.001 {
         return;
     }
@@ -68,7 +68,7 @@ fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32) {
     let half = rect.size() * 0.5;
     let corner = half.x.min(half.y);
     let straight = half - vec2(corner, corner);
-    let spread = corner.max(1.0);
+    let spread = corner.max(1.0) * diffusion;
     let mut mesh = egui::Mesh::default();
     mesh.vertices.reserve(SEGMENTS * PROFILE.len());
     mesh.indices.reserve(SEGMENTS * (PROFILE.len() - 1) * 6);
@@ -119,7 +119,12 @@ impl Default for RoomLighting {
 
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
-        0.38 + 0.62 * (1.0 - self.amount).powf(1.5)
+        // Keep daytime lamps restrained; a dark room reveals their light spill.
+        0.38 + 1.22 * (1.0 - self.amount).powf(1.5)
+    }
+
+    fn bloom_diffusion(&self) -> f32 {
+        1.0 + 0.65 * (1.0 - self.amount).powf(1.5)
     }
 
     pub(crate) fn amount(&self) -> f32 {
@@ -220,6 +225,7 @@ impl RoomLighting {
             Rect::from_center_size(center, vec2(radius, radius) * 2.0),
             emitter,
             glow,
+            self.bloom_diffusion(),
         );
         painter.circle_filled(center, radius, self.lens_color(original, strength, floor));
         if strength > 0.001 {
@@ -240,6 +246,7 @@ impl RoomLighting {
             Rect::from_center_size(center, vec2(radius, radius) * 2.0),
             color,
             self.bloom_amount(),
+            self.bloom_diffusion(),
         );
         painter.circle_filled(center, radius, color);
         painter.circle_filled(
@@ -280,6 +287,7 @@ impl RoomLighting {
                 )
             },
             strength.sqrt() * self.bloom_amount(),
+            self.bloom_diffusion(),
         );
         // A zero-floor meter already encodes its measured value in its filled
         // geometry and supplies an unscaled accent, rather than a dimmed lens.
@@ -315,6 +323,7 @@ mod tests {
                 Rect::from_center_size(Pos2::ZERO, vec2(2.2, 2.2)),
                 Color32::GREEN,
                 1.0,
+                1.0,
             );
         });
         let mesh = output
@@ -339,6 +348,75 @@ mod tests {
     }
 
     #[test]
+    fn dark_room_reveals_wider_brighter_spill_for_leds_ports_and_meters() {
+        let mut room_energy = Vec::new();
+        let mut room_extent = Vec::new();
+        for amount in [1.0, 0.5, 0.0] {
+            let ctx = egui::Context::default();
+            let mut lighting = RoomLighting::default();
+            lighting.set(amount);
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                let painter = ctx.layer_painter(egui::LayerId::background());
+                lighting.circle(
+                    &painter,
+                    Pos2::ZERO,
+                    2.0,
+                    Color32::GREEN.gamma_multiply(0.12 + 0.88 * 0.01),
+                    0.01,
+                    0.12,
+                );
+                lighting.port(
+                    &painter,
+                    Pos2::new(100.0, 0.0),
+                    1.0,
+                    Color32::from_rgb_additive(0, 90, 0),
+                );
+                lighting.rect(
+                    &painter,
+                    Rect::from_center_size(Pos2::new(200.0, 0.0), vec2(3.0, 12.0)),
+                    1.0,
+                    Color32::GREEN,
+                    0.4,
+                    0.0,
+                );
+            });
+            let meshes: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Mesh(mesh) => Some(mesh),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(meshes.len(), 3);
+            room_energy.push(
+                meshes
+                    .iter()
+                    .map(|mesh| {
+                        mesh.vertices
+                            .iter()
+                            .map(|v| u32::from(v.color.g()))
+                            .sum::<u32>()
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            room_extent.push(
+                meshes
+                    .iter()
+                    .map(|mesh| mesh.calc_bounds().width())
+                    .collect::<Vec<_>>(),
+            );
+            assert!(meshes.iter().all(|mesh| mesh.vertices.len() == 120));
+        }
+        for light in 0..3 {
+            assert!(room_energy[2][light] > room_energy[1][light]);
+            assert!(room_energy[1][light] > room_energy[0][light]);
+            assert!(room_extent[2][light] > room_extent[1][light]);
+            assert!(room_extent[1][light] > room_extent[0][light]);
+        }
+    }
+
+    #[test]
     fn missing_or_zero_signal_never_creates_bloom() {
         for strength in [0.0, -1.0, f32::NAN, f32::NEG_INFINITY, f32::INFINITY] {
             let ctx = egui::Context::default();
@@ -347,6 +425,7 @@ mod tests {
             let output = ctx.run(egui::RawInput::default(), |ctx| {
                 let painter = ctx.layer_painter(egui::LayerId::background());
                 lighting.circle(&painter, Pos2::ZERO, 2.0, Color32::GREEN, strength, 0.12);
+                lighting.port(&painter, Pos2::ZERO, 1.0, Color32::TRANSPARENT);
                 lighting.rect(
                     &painter,
                     Rect::from_center_size(Pos2::ZERO, vec2(3.0, 20.0)),

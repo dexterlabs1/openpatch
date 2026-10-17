@@ -23,17 +23,26 @@ fn export_panel_design_preview() {
             )
         })
         .collect();
-    let light = std::env::var("OPENPATCH_PANEL_LIGHT").ok().and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
-    for preview in &mut previews { preview.renderer.lighting.set(light); }
+    let light = std::env::var("OPENPATCH_PANEL_LIGHT")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(1.0);
+    for preview in &mut previews {
+        preview.renderer.lighting.set(light);
+    }
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);
-    let review_scale = std::env::var("OPENPATCH_PANEL_SCALE").ok()
-        .and_then(|s| s.parse::<f32>().ok()).filter(|s| s.is_finite()).unwrap_or(1.0).clamp(0.5,3.0);
+    let review_scale = std::env::var("OPENPATCH_PANEL_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .filter(|s| s.is_finite())
+        .unwrap_or(1.0)
+        .clamp(0.5, 3.0);
     let size = vec2(
         previews.iter().map(|p| p.size().x + 12.0).sum::<f32>() + 28.0,
         650.0,
     ) * review_scale;
-    let mut texture = None;
+    let mut capture = crate::headless_review::CpuCapture::default();
     let mut output = None;
     for frame in 0..2 {
         let result = ctx.run(
@@ -48,7 +57,10 @@ fn export_panel_design_preview() {
                     .show(ctx, |ui| {
                         ui.painter()
                             .rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(28, 31, 31));
-                        for (scale, y) in [(review_scale, 26.0 * review_scale), (0.42 * review_scale, 456.0 * review_scale)] {
+                        for (scale, y) in [
+                            (review_scale, 26.0 * review_scale),
+                            (0.42 * review_scale, 456.0 * review_scale),
+                        ] {
                             let mut x = 20.0 * review_scale;
                             for preview in &mut previews {
                                 let bounds =
@@ -65,20 +77,7 @@ fn export_panel_design_preview() {
                     });
             },
         );
-        for (id, delta) in &result.textures_delta.set {
-            assert_eq!(*id, egui::TextureId::Managed(0));
-            let egui::ImageData::Color(image) = &delta.image;
-            if let Some([x, y]) = delta.pos {
-                let atlas: &mut egui::ColorImage = texture.as_mut().unwrap();
-                for row in 0..image.size[1] {
-                    for column in 0..image.size[0] {
-                        atlas[(x + column, y + row)] = image[(column, row)];
-                    }
-                }
-            } else {
-                texture = Some((**image).clone());
-            }
-        }
+        capture.observe(&result);
         output = Some(result);
     }
     let output = output.unwrap();
@@ -90,94 +89,151 @@ fn export_panel_design_preview() {
             );
         }
     }
-    let atlas = texture.unwrap();
-    let mut image =
-        image::RgbaImage::from_pixel(size.x as u32, size.y as u32, image::Rgba([28, 31, 31, 255]));
-    for primitive in ctx.tessellate(output.shapes, output.pixels_per_point) {
-        let egui::epaint::Primitive::Mesh(mesh) = primitive.primitive else {
-            panic!("panel preview contains a GPU callback");
-        };
-        assert_eq!(mesh.texture_id, egui::TextureId::Managed(0));
-        for indices in mesh.indices.as_chunks::<3>().0 {
-            let v = std::array::from_fn(|i| mesh.vertices[indices[i] as usize]);
-            raster_triangle(&mut image, &atlas, primitive.clip_rect, v);
-        }
-    }
-    image.save(path).unwrap();
+    capture.save(&ctx, output, size, path);
 }
 
-fn raster_triangle(
-    image: &mut image::RgbaImage,
-    atlas: &egui::ColorImage,
-    clip: Rect,
-    v: [egui::epaint::Vertex; 3],
-) {
-    let edge = |a: Pos2, b: Pos2, p: Pos2| (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-    let area = edge(v[0].pos, v[1].pos, v[2].pos);
-    if area.abs() < 1e-6 {
-        return;
-    }
-    let bounds = Rect::from_min_max(
-        pos2(
-            v.iter().map(|v| v.pos.x).fold(f32::INFINITY, f32::min),
-            v.iter().map(|v| v.pos.y).fold(f32::INFINITY, f32::min),
-        ),
-        pos2(
-            v.iter().map(|v| v.pos.x).fold(f32::NEG_INFINITY, f32::max),
-            v.iter().map(|v| v.pos.y).fold(f32::NEG_INFINITY, f32::max),
-        ),
-    )
-    .intersect(clip)
-    .intersect(Rect::from_min_size(
-        Pos2::ZERO,
-        vec2(image.width() as f32, image.height() as f32),
-    ));
-    for y in bounds.top().floor().max(0.0) as u32..bounds.bottom().ceil().max(0.0) as u32 {
-        for x in bounds.left().floor().max(0.0) as u32..bounds.right().ceil().max(0.0) as u32 {
-            let p = pos2(x as f32 + 0.5, y as f32 + 0.5);
-            let w = [
-                edge(v[1].pos, v[2].pos, p) / area,
-                edge(v[2].pos, v[0].pos, p) / area,
-                edge(v[0].pos, v[1].pos, p) / area,
-            ];
-            // Half-open edges keep adjacent mesh triangles from blending twice.
-            if w.iter().any(|w| *w < 0.0) {
-                continue;
-            }
-            if w.iter().enumerate().any(|(i, weight)| {
-                if *weight != 0.0 {
-                    return false;
-                }
-                let a = v[(i + 1) % 3].pos;
-                let b = v[(i + 2) % 3].pos;
-                let (a, b) = if area > 0.0 { (a, b) } else { (b, a) };
-                b.y < a.y || (b.y == a.y && b.x > a.x)
-            }) {
-                continue;
-            }
-            let uv = v[0].uv.to_vec2() * w[0] + v[1].uv.to_vec2() * w[1] + v[2].uv.to_vec2() * w[2];
-            let tx = (uv.x * atlas.size[0] as f32)
-                .floor()
-                .clamp(0.0, (atlas.size[0] - 1) as f32) as usize;
-            let ty = (uv.y * atlas.size[1] as f32)
-                .floor()
-                .clamp(0.0, (atlas.size[1] - 1) as f32) as usize;
-            let texel = atlas[(tx, ty)].to_array();
-            let mut source = [0.0; 4];
-            for channel in 0..4 {
-                source[channel] = (0..3)
-                    .map(|i| v[i].color[channel] as f32 * w[i])
-                    .sum::<f32>()
-                    * texel[channel] as f32
-                    / 255.0;
-            }
-            let pixel = image.get_pixel_mut(x, y);
-            for channel in 0..3 {
-                pixel[channel] = (source[channel]
-                    + pixel[channel] as f32 * (1.0 - source[3] / 255.0))
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
-            }
+#[test]
+#[ignore = "writes actual signal-driven CPU lighting PNGs to OPENPATCH_UX_PREVIEW_DIR"]
+fn export_dark_room_ux_review() {
+    let destination = std::path::PathBuf::from(std::env::var("OPENPATCH_UX_PREVIEW_DIR").unwrap());
+    let mut patch: Patch =
+        serde_json::from_str(include_str!("../../../examples/stock-vca-mix-voice.json")).unwrap();
+    patch
+        .nodes
+        .retain(|n| matches!(n.id.as_str(), "low" | "mix" | "motion" | "scope" | "out"));
+    patch.cables.retain(|c| {
+        patch.nodes.iter().any(|n| n.id == c.from) && patch.nodes.iter().any(|n| n.id == c.to)
+    });
+    let mut engine = patch.compile().unwrap();
+    engine.set_port_lights_enabled(true);
+    engine.process_block(&mut vec![0.0; 24_000]);
+    let lights: BTreeMap<_, _> = patch
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            engine
+                .resolve_module_lights(&n.id)
+                .ok()
+                .and_then(|h| engine.module_lights(h))
+                .map(|state| (n.id.clone(), state))
+        })
+        .collect();
+    let ports = crate::port_light_transport::offline_frame(&patch, &engine, 0).unwrap();
+    assert!(ports
+        .ports
+        .values()
+        .any(|s| s.raw_rgb.iter().any(|v| *v > 0.0)));
+    for amount in [1.0, 0.08, 0.0] {
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        let mut rack = Rack {
+            zoom: 1.15,
+            pan: vec2(24.0, 70.0),
+            module_lights: lights.clone(),
+            port_lights: Some(ports.clone()),
+            ..Default::default()
+        };
+        rack.set_room_brightness(amount);
+        let mut x = 0.0;
+        for id in ["low", "motion", "mix", "scope", "out"] {
+            let node = patch.nodes.iter().find(|n| n.id == id).unwrap();
+            rack.positions.insert(id.into(), pos2(x, 0.0));
+            x += module_width(node);
         }
+        let size = vec2(x * 1.15 + 48.0, 620.0);
+        let mut capture = crate::headless_review::CpuCapture::default();
+        let mut last = None;
+        for time in [0.0, 0.1] {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                    time: Some(time),
+                    focused: true,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::NONE)
+                        .show(ctx, |ui| {
+                            rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
+                        });
+                },
+            );
+            capture.observe(&output);
+            last = Some(output);
+        }
+        capture.save(
+            &ctx,
+            last.unwrap(),
+            size,
+            destination.join(format!("room-{amount:.2}.png")),
+        );
     }
+}
+
+#[test]
+#[ignore = "writes an actual knob drag CPU PNG to OPENPATCH_UX_PREVIEW_DIR"]
+fn export_knob_bubble_ux_review() {
+    let destination = std::path::PathBuf::from(std::env::var("OPENPATCH_UX_PREVIEW_DIR").unwrap());
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(dir.path()).unwrap();
+    let patch: Patch =
+        serde_json::from_value(json!({"version":2,"nodes":[{"id":"delay","kind":"stock_delay"}]}))
+            .unwrap();
+    session.replace_patch(patch, Some(0)).unwrap();
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let mut rack = Rack {
+        zoom: 1.4,
+        pan: vec2(65.0, 80.0),
+        ..Default::default()
+    };
+    rack.positions.insert("delay".into(), Pos2::ZERO);
+    let size = vec2(600.0, 720.0);
+    let at = pos2(65.0 + 46.0 * 1.4, 80.0 + 120.0 * 1.4);
+    let mut capture = crate::headless_review::CpuCapture::default();
+    let mut last = None;
+    for (time, events) in [
+        (0.0, vec![]),
+        (0.1, vec![]),
+        (1.0, vec![egui::Event::PointerMoved(at), button(at, true)]),
+        (1.1, vec![egui::Event::PointerMoved(at - vec2(0.0, 20.0))]),
+        (1.25, vec![]),
+    ] {
+        let mut action = None;
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                time: Some(time),
+                events,
+                focused: true,
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(ctx, |ui| {
+                        action = rack.show(
+                            ui,
+                            session.patch(),
+                            &openpatch_core::catalog(),
+                            48_000,
+                            session.revision(),
+                        );
+                    });
+            },
+        );
+        if let Some(RackAction::Command(name, args)) = action {
+            session.execute(name, args).unwrap();
+        }
+        capture.observe(&output);
+        last = Some(output);
+    }
+    assert!(rack.knob_value_bubble.is_some());
+    capture.save(
+        &ctx,
+        last.unwrap(),
+        size,
+        destination.join("knob-value-bubble.png"),
+    );
 }

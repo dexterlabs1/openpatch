@@ -16,6 +16,7 @@ mod cable_menu;
 use cable_menu::CableMenu;
 
 include!("parameter_fader_input.rs");
+include!("knob_value_bubble.rs");
 include!("parameter_choice.rs");
 include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
@@ -662,6 +663,9 @@ pub struct Rack {
     observed_revision: u64,
     dragging_cable: bool,
     editing: Option<ParameterEdit>,
+    knob_value_bubble: Option<KnobValueBubble>,
+    parameter_focus: Option<egui::Id>,
+    parameter_history_frame: Option<u64>,
     precision_controls: Vec<PrecisionControl>,
     precision_collect_id: Option<String>,
     precision_anchor: Option<Rect>,
@@ -723,6 +727,9 @@ impl Default for Rack {
             observed_revision: 0,
             dragging_cable: false,
             editing: None,
+            knob_value_bubble: None,
+            parameter_focus: None,
+            parameter_history_frame: None,
             precision_controls: Vec::new(),
             precision_collect_id: None,
             precision_anchor: None,
@@ -4617,7 +4624,7 @@ impl Rack {
                     let input = if choices.is_some() {
                         FaderInput::default()
                     } else if matches!(hardware, GenericParameterHardware::Rotary { .. }) {
-                        self.parameter_knob_input(ui, &knob, normalized, enabled)
+                        self.parameter_knob_input(ui, &knob, normalized, enabled, &display_value)
                     } else {
                         self.parameter_fader_input(ui, &knob, fader_track, normalized, enabled)
                     };
@@ -5404,6 +5411,9 @@ impl Rack {
             }
         }
         self.lighting.finish(&painter, lighting_start);
+        if mode.is_interactive() {
+            self.paint_knob_value_bubble(ui, canvas);
+        }
         RenderedModules {
             outputs,
             inputs,

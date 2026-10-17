@@ -165,7 +165,9 @@ fn converted_gate_rotary_click_stays_put_then_relative_drag_has_one_undo() {
         f.time = 2.0;
         assert!(f.press(center, egui::Modifiers::NONE).is_none());
         let end = center - vec2(0.0, 15.0 * zoom);
-        let edit = f.move_to(end, egui::Modifiers::NONE).expect("relative rotary drag");
+        let edit = f
+            .move_to(end, egui::Modifiers::NONE)
+            .expect("relative rotary drag");
         assert_eq!(edit["parameter"], "duty");
         assert_eq!(edit["expected_revision"], revision);
         assert!(edit["history_group"].as_str().is_some());
@@ -210,33 +212,55 @@ fn converted_rotary_fine_keyboard_and_exact_entry_share_session_authority() {
         (egui::Key::End, 0.99),
     ] {
         let action = f
-            .draw(vec![key_event(key, true, false, egui::Modifiers::NONE)], true)
+            .draw(
+                vec![key_event(key, true, false, egui::Modifiers::NONE)],
+                true,
+            )
             .expect("focused rotary keyboard edit");
         assert_eq!(action["parameter"], "duty");
         near(f.value("target", "duty"), expected);
-        f.draw(vec![key_event(key, false, false, egui::Modifiers::NONE)], true);
+        f.draw(
+            vec![key_event(key, false, false, egui::Modifiers::NONE)],
+            true,
+        );
     }
     let revision = f.session.revision();
     for key in [egui::Key::Space, egui::Key::Enter] {
         assert!(f
-            .draw(vec![key_event(key, true, false, egui::Modifiers::NONE)], true)
+            .draw(
+                vec![key_event(key, true, false, egui::Modifiers::NONE)],
+                true
+            )
             .is_none());
         assert_eq!(f.session.revision(), revision);
-        f.draw(vec![key_event(key, false, false, egui::Modifiers::NONE)], true);
+        f.draw(
+            vec![key_event(key, false, false, egui::Modifiers::NONE)],
+            true,
+        );
     }
 
-    assert_eq!(f.rack.pan, pan_before_keys, "focused rotary keys must not pan the rack");
+    assert_eq!(
+        f.rack.pan, pan_before_keys,
+        "focused rotary keys must not pan the rack"
+    );
     assert_eq!(readout, f.gate_duty_rotary().1);
     f.time = 3.0;
     // Move from the focused knob to the value field before pressing, as a
     // separate pointer frame; this settles egui's prior keyboard ownership.
-    assert!(f.draw(vec![egui::Event::PointerMoved(readout)], true).is_none());
+    assert!(f
+        .draw(vec![egui::Event::PointerMoved(readout)], true)
+        .is_none());
     f.click(readout);
     let edit = f.rack.editing.as_mut().expect("rotary exact value editor");
     assert_eq!((&*edit.id, &*edit.parameter), ("target", "duty"));
     edit.text = "0.375".into();
     f.draw(
-        vec![key_event(egui::Key::Enter, true, false, egui::Modifiers::NONE)],
+        vec![key_event(
+            egui::Key::Enter,
+            true,
+            false,
+            egui::Modifiers::NONE,
+        )],
         true,
     )
     .expect("exact value commits through Session");
@@ -340,7 +364,9 @@ fn multi_and_wavetable_rotaries_click_without_jump_then_drag_through_session() {
             f.time = 2.0;
             assert!(f.press(center, egui::Modifiers::NONE).is_none());
             let end = center - vec2(0.0, 30.0 * zoom);
-            let edit = f.move_to(end, egui::Modifiers::NONE).expect("relative knob edit");
+            let edit = f
+                .move_to(end, egui::Modifiers::NONE)
+                .expect("relative knob edit");
             assert_eq!(edit["parameter"], parameter);
             assert_eq!(edit["expected_revision"], initial_revision);
             assert!(edit["history_group"].as_str().is_some());
@@ -767,21 +793,36 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("sidechain_compressor", "makeup_db", 0.0, pos2(42.0, 297.0)),
         ("drum_voice", "pitch", 48.0, pos2(180.0, 112.0)),
         ("macro_voice", "frequency", 261.62558, pos2(50.0, 143.0)),
-        ("sidechain_compressor", "threshold_db", -10.5, pos2(70.0,103.0)),
-        ("sidechain_compressor", "ratio", 4.0, pos2(210.0,103.0)),
-        ("sidechain_compressor", "knee_db", 6.0, pos2(350.0,103.0)),
-        ("sidechain_compressor", "attack_ms", 2.0, pos2(70.0,210.0)),
-        ("sidechain_compressor", "release_ms", 200.0, pos2(210.0,210.0)),
-        ("sidechain_compressor", "detector_ms", 10.0, pos2(350.0,210.0)),
-        ("drum_voice", "decay", 0.2, pos2(300.0,112.0)),
-        ("drum_voice", "tone", 0.5, pos2(60.0,253.0)),
-        ("drum_voice", "drive", 0.2, pos2(180.0,253.0)),
-        ("drum_voice", "level", 1.0, pos2(300.0,253.0)),
-        ("macro_voice", "harmonics", 0.3, pos2(150.0,143.0)),
-        ("macro_voice", "timbre", 0.45, pos2(250.0,143.0)),
-        ("macro_voice", "morph", 0.4, pos2(50.0,245.0)),
-        ("macro_voice", "decay", 0.5, pos2(150.0,245.0)),
-        ("macro_voice", "level", 0.8, pos2(250.0,245.0)),
+        (
+            "sidechain_compressor",
+            "threshold_db",
+            -10.5,
+            pos2(70.0, 103.0),
+        ),
+        ("sidechain_compressor", "ratio", 4.0, pos2(210.0, 103.0)),
+        ("sidechain_compressor", "knee_db", 6.0, pos2(350.0, 103.0)),
+        ("sidechain_compressor", "attack_ms", 2.0, pos2(70.0, 210.0)),
+        (
+            "sidechain_compressor",
+            "release_ms",
+            200.0,
+            pos2(210.0, 210.0),
+        ),
+        (
+            "sidechain_compressor",
+            "detector_ms",
+            10.0,
+            pos2(350.0, 210.0),
+        ),
+        ("drum_voice", "decay", 0.2, pos2(300.0, 112.0)),
+        ("drum_voice", "tone", 0.5, pos2(60.0, 253.0)),
+        ("drum_voice", "drive", 0.2, pos2(180.0, 253.0)),
+        ("drum_voice", "level", 1.0, pos2(300.0, 253.0)),
+        ("macro_voice", "harmonics", 0.3, pos2(150.0, 143.0)),
+        ("macro_voice", "timbre", 0.45, pos2(250.0, 143.0)),
+        ("macro_voice", "morph", 0.4, pos2(50.0, 245.0)),
+        ("macro_voice", "decay", 0.5, pos2(150.0, 245.0)),
+        ("macro_voice", "level", 0.8, pos2(250.0, 245.0)),
         ("modal_resonator", "frequency", 220.0, pos2(44.0, 139.0)),
         ("crossfade", "mix", 0.5, pos2(90.0, 135.0)),
         ("quantizer", "offset", 0.0, pos2(120.0, 256.0)),
@@ -794,8 +835,8 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("lowpass", "cutoff", 1000.0, pos2(90.0, 99.0)),
         ("gain", "gain", 1.0, pos2(75.0, 99.0)),
         ("analog_vca", "gain", 1.0, pos2(75.0, 99.0)),
-        ("analog_vco", "frequency", 261.62558, pos2(65.5,93.5)),
-        ("analog_vco", "pulse_width", 0.5, pos2(163.0,198.0)),
+        ("analog_vco", "frequency", 261.62558, pos2(65.5, 93.5)),
+        ("analog_vco", "pulse_width", 0.5, pos2(163.0, 198.0)),
         ("adsr", "attack", 0.01, pos2(53.714287, 91.3)),
         ("adsr", "decay", 0.2, pos2(186.28572, 91.3)),
         ("adsr", "sustain", 0.5, pos2(53.714287, 198.0)),
@@ -805,16 +846,21 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("ladder_vcf", "drive", 1.0, pos2(163.0, 198.0)),
         ("adsr_eg", "attack", 0.5, pos2(58.0, 173.0)),
         ("lfo", "frequency", 2.0, pos2(56.142857, 93.5)),
-        ("lfo", "amplitude", 0.5, pos2(40.285713,198.0)),
-        ("lfo", "offset", 0.5, pos2(139.71428,198.0)),
+        ("lfo", "amplitude", 0.5, pos2(40.285713, 198.0)),
+        ("lfo", "offset", 0.5, pos2(139.71428, 198.0)),
         ("svf_filter", "cutoff", 1000.0, pos2(67.5, 139.0)),
     ] {
         let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
-        let center = f.rack.viewport.unwrap().min + f.rack.pan
-            + f.rack.positions["target"].to_vec2() + local.to_vec2();
+        let center = f.rack.viewport.unwrap().min
+            + f.rack.pan
+            + f.rack.positions["target"].to_vec2()
+            + local.to_vec2();
         let baseline = f.undo_steps();
         f.time = 1.0;
-        assert!(f.press(center, egui::Modifiers::NONE).is_none(), "{kind}: no click jump");
+        assert!(
+            f.press(center, egui::Modifiers::NONE).is_none(),
+            "{kind}: no click jump"
+        );
         let first = center - vec2(0.0, 10.0);
         let edit = f.move_to(first, egui::Modifiers::NONE).expect(kind);
         assert_eq!(edit["parameter"], parameter);
@@ -823,9 +869,16 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         let second = center - vec2(0.0, 20.0);
         f.move_to(second, egui::Modifiers::NONE).expect(kind);
         let after_second = f.value("target", parameter);
-        assert!(after_second > after_first, "{kind}: current revision on second move");
+        assert!(
+            after_second > after_first,
+            "{kind}: current revision on second move"
+        );
         f.release(second, egui::Modifiers::NONE);
-        assert_eq!(f.undo_steps(), baseline + 1, "{kind}: one gesture, one undo");
+        assert_eq!(
+            f.undo_steps(),
+            baseline + 1,
+            "{kind}: one gesture, one undo"
+        );
         f.session.execute("undo", json!({})).unwrap();
         near(f.value("target", parameter), initial);
         f.session.execute("redo", json!({})).unwrap();
@@ -836,54 +889,346 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
-        ("lfo", "frequency", 2.0, pos2(56.142857,151.15), "0", 0.0),
-        ("lfo", "amplitude", 0.5, pos2(40.285713,249.65), "0.001", 0.001),
-        ("lfo", "offset", 0.5, pos2(139.71428,249.65), "-0.25", -0.25),
-        ("lowpass", "cutoff", 1000.0, pos2(90.0,163.15), "80", 80.0),
-        ("gain", "gain", 1.0, pos2(75.0,163.15), "-4", -4.0),
-        ("analog_vco", "frequency", 261.62558, pos2(65.5,151.15), "440", 440.0),
-        ("analog_vco", "pulse_width", 0.5, pos2(163.0,249.65), "25", 0.25),
-        ("analog_vco", "waveform", 0.0, pos2(47.0,249.65), "1", 1.0),
-        ("analog_vca", "gain", 1.0, pos2(75.0,163.15), "1.5", 1.5),
-        ("adsr", "attack", 0.01, pos2(53.714287,145.2), "0.075", 0.075),
-        ("adsr", "decay", 0.2, pos2(186.28572,145.2), "0.8", 0.8),
-        ("adsr", "sustain", 0.5, pos2(53.714287,251.9), "75", 0.75),
-        ("adsr", "release", 0.3, pos2(186.28572,251.9), "1.2", 1.2),
-        ("ladder_vcf", "cutoff", 1200.0, pos2(65.5,151.15), "2500", 2500.0),
-        ("ladder_vcf", "resonance", 0.3, pos2(47.0,249.65), "80", 0.8),
-        ("ladder_vcf", "drive", 1.0, pos2(163.0,249.65), "2", 2.0),
+        ("lfo", "frequency", 2.0, pos2(56.142857, 151.15), "0", 0.0),
+        (
+            "lfo",
+            "amplitude",
+            0.5,
+            pos2(40.285713, 249.65),
+            "0.001",
+            0.001,
+        ),
+        (
+            "lfo",
+            "offset",
+            0.5,
+            pos2(139.71428, 249.65),
+            "-0.25",
+            -0.25,
+        ),
+        ("lowpass", "cutoff", 1000.0, pos2(90.0, 163.15), "80", 80.0),
+        ("gain", "gain", 1.0, pos2(75.0, 163.15), "-4", -4.0),
+        (
+            "analog_vco",
+            "frequency",
+            261.62558,
+            pos2(65.5, 151.15),
+            "440",
+            440.0,
+        ),
+        (
+            "analog_vco",
+            "pulse_width",
+            0.5,
+            pos2(163.0, 249.65),
+            "25",
+            0.25,
+        ),
+        ("analog_vco", "waveform", 0.0, pos2(47.0, 249.65), "1", 1.0),
+        ("analog_vca", "gain", 1.0, pos2(75.0, 163.15), "1.5", 1.5),
+        (
+            "adsr",
+            "attack",
+            0.01,
+            pos2(53.714287, 145.2),
+            "0.075",
+            0.075,
+        ),
+        ("adsr", "decay", 0.2, pos2(186.28572, 145.2), "0.8", 0.8),
+        ("adsr", "sustain", 0.5, pos2(53.714287, 251.9), "75", 0.75),
+        ("adsr", "release", 0.3, pos2(186.28572, 251.9), "1.2", 1.2),
+        (
+            "ladder_vcf",
+            "cutoff",
+            1200.0,
+            pos2(65.5, 151.15),
+            "2500",
+            2500.0,
+        ),
+        (
+            "ladder_vcf",
+            "resonance",
+            0.3,
+            pos2(47.0, 249.65),
+            "80",
+            0.8,
+        ),
+        ("ladder_vcf", "drive", 1.0, pos2(163.0, 249.65), "2", 2.0),
     ] {
-        let mut f = FaderFixture::new(kind,parameter,initial,1.0);
-        let target = f.rack.viewport.unwrap().min + f.rack.pan
-            + f.rack.positions["target"].to_vec2() + local.to_vec2();
+        let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
+        let target = f.rack.viewport.unwrap().min
+            + f.rack.pan
+            + f.rack.positions["target"].to_vec2()
+            + local.to_vec2();
         let baseline = f.undo_steps();
-        f.time=1.0;
-        f.draw(vec![egui::Event::PointerMoved(target)],true);
+        f.time = 1.0;
+        f.draw(vec![egui::Event::PointerMoved(target)], true);
         f.click(target);
-        let edit = f.rack.editing.as_mut().expect("approved numeric field opens");
-        assert_eq!(edit.parameter,parameter,"{kind}");
-        edit.text=text.into();
-        f.draw(vec![key_event(egui::Key::Enter,true,false,egui::Modifiers::NONE)],true)
-            .expect("typed setting commits through Session");
-        near(f.value("target",parameter),expected);
-        assert_eq!(f.undo_steps(),baseline+1);
-        f.session.execute("undo",json!({})).unwrap();
-        near(f.value("target",parameter),initial);
+        let edit = f
+            .rack
+            .editing
+            .as_mut()
+            .expect("approved numeric field opens");
+        assert_eq!(edit.parameter, parameter, "{kind}");
+        edit.text = text.into();
+        f.draw(
+            vec![key_event(
+                egui::Key::Enter,
+                true,
+                false,
+                egui::Modifiers::NONE,
+            )],
+            true,
+        )
+        .expect("typed setting commits through Session");
+        near(f.value("target", parameter), expected);
+        assert_eq!(f.undo_steps(), baseline + 1);
+        f.session.execute("undo", json!({})).unwrap();
+        near(f.value("target", parameter), initial);
     }
 }
 
 #[test]
 fn detailed_lfo_zero_hz_hold_remains_keyboard_editable() {
-    let mut f=FaderFixture::new("lfo","frequency",2.0,1.0);
-    let local=pos2(56.142857,93.5);
-    let center=f.rack.viewport.unwrap().min+f.rack.pan+f.rack.positions["target"].to_vec2()+local.to_vec2();
-    f.time=1.0;f.click(center);
-    f.draw(vec![key_event(egui::Key::Home,true,false,egui::Modifiers::NONE)],true).expect("Home sets a true zero-Hz hold");
-    assert_eq!(f.value("target","frequency"),0.0);
-    f.draw(vec![key_event(egui::Key::Home,false,false,egui::Modifiers::NONE)],true);
-    f.draw(vec![key_event(egui::Key::ArrowUp,true,false,egui::Modifiers::NONE)],true).expect("a held LFO can restart with an arrow key");
-    let hz=f.value("target","frequency");
-    assert!(hz.is_finite() && hz>0.0 && hz<0.1);
-    f.session.execute("undo",json!({})).unwrap();
-    assert_eq!(f.value("target","frequency"),0.0);
+    let mut f = FaderFixture::new("lfo", "frequency", 2.0, 1.0);
+    let local = pos2(56.142857, 93.5);
+    let center = f.rack.viewport.unwrap().min
+        + f.rack.pan
+        + f.rack.positions["target"].to_vec2()
+        + local.to_vec2();
+    f.time = 1.0;
+    f.click(center);
+    f.draw(
+        vec![key_event(
+            egui::Key::Home,
+            true,
+            false,
+            egui::Modifiers::NONE,
+        )],
+        true,
+    )
+    .expect("Home sets a true zero-Hz hold");
+    assert_eq!(f.value("target", "frequency"), 0.0);
+    f.draw(
+        vec![key_event(
+            egui::Key::Home,
+            false,
+            false,
+            egui::Modifiers::NONE,
+        )],
+        true,
+    );
+    f.draw(
+        vec![key_event(
+            egui::Key::ArrowUp,
+            true,
+            false,
+            egui::Modifiers::NONE,
+        )],
+        true,
+    )
+    .expect("a held LFO can restart with an arrow key");
+    let hz = f.value("target", "frequency");
+    assert!(hz.is_finite() && hz > 0.0 && hz < 0.1);
+    f.session.execute("undo", json!({})).unwrap();
+    assert_eq!(f.value("target", "frequency"), 0.0);
+}
+
+fn large_bubble_texts(output: &egui::FullOutput) -> Vec<(String, Rect, f32)> {
+    fn visit(shape: &egui::Shape, out: &mut Vec<(String, Rect, f32)>) {
+        match shape {
+            egui::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    visit(shape, out)
+                }
+            }
+            egui::Shape::Text(t) => {
+                let size = t
+                    .galley
+                    .job
+                    .sections
+                    .iter()
+                    .map(|s| s.format.font_id.size)
+                    .fold(0.0, f32::max);
+                if size >= 22.0 {
+                    out.push((
+                        t.galley.text().into(),
+                        Rect::from_min_size(t.pos, t.galley.size()),
+                        size,
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut texts = vec![];
+    for s in &output.shapes {
+        visit(&s.shape, &mut texts)
+    }
+    texts
+}
+#[test]
+fn knob_value_bubble_uses_human_units_above_the_control_without_stealing_drag_or_undo() {
+    for (kind, parameter, initial, local, unit) in [
+        ("gain", "gain", 1.0, pos2(75.0, 99.0), "×"),
+        ("stock_vca", "level", 0.5, pos2(90.0, 106.0), "%"),
+        (
+            "stock_delay",
+            "time",
+            stock_delay_default(0),
+            pos2(46.0, 120.0),
+            "ms",
+        ),
+        ("stock_vca_mix", "mix_level", 1.0, pos2(235.0, 154.0), "×"),
+        (
+            "macro_voice",
+            "frequency",
+            261.62558,
+            pos2(50.0, 143.0),
+            "Hz",
+        ),
+        (
+            "modal_resonator",
+            "frequency",
+            220.0,
+            pos2(44.0, 139.0),
+            "Hz",
+        ),
+    ] {
+        let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
+        assert!(f.rack.knob_value_bubble.is_none());
+        let center = f.rack.viewport.unwrap().min
+            + f.rack.pan
+            + f.rack.positions["target"].to_vec2()
+            + local.to_vec2();
+        let undo = f.undo_steps();
+        f.press(center, egui::Modifiers::NONE);
+        assert!(
+            f.rack.knob_value_bubble.is_none(),
+            "focus alone must not show a value change"
+        );
+        f.move_to(center - vec2(0.0, 10.0), egui::Modifiers::NONE)
+            .unwrap();
+        f.time += 0.12;
+        let (action, output) = frame_revision_state(
+            &f.ctx,
+            &mut f.rack,
+            f.session.patch(),
+            f.time,
+            vec![],
+            true,
+            true,
+            f.session.revision(),
+        );
+        assert!(action.is_none());
+        f.time += 0.05;
+        let bubble = f.rack.knob_value_bubble.as_ref().unwrap();
+        assert!(bubble.text.contains(unit), "{kind}: {}", bubble.text);
+        let text = large_bubble_texts(&output)
+            .into_iter()
+            .find(|(s, _, _)| s == &bubble.text)
+            .expect(kind);
+        assert!(
+            text.1.bottom() < bubble.anchor.top(),
+            "{kind}: bubble above knob"
+        );
+        let first = f.value("target", parameter);
+        // Continue the held drag through the floating overlay's region.
+        f.move_to(center - vec2(0.0, 70.0), egui::Modifiers::NONE)
+            .unwrap();
+        assert!(f.value("target", parameter) > first);
+        f.release(center - vec2(0.0, 70.0), egui::Modifiers::NONE);
+        assert_eq!(f.undo_steps(), undo + 1, "one drag still has one undo");
+        let last = f.rack.knob_value_bubble.as_ref().unwrap().last_active;
+        f.time = last + 0.58;
+        f.draw(vec![], true);
+        assert!(f.rack.knob_value_bubble.is_some(), "fading after release");
+        f.time = last + 0.80;
+        f.draw(vec![], true);
+        assert!(f.rack.knob_value_bubble.is_none(), "does not stick around");
+        f.session.execute("undo", json!({})).unwrap();
+        near(f.value("target", parameter), initial);
+    }
+}
+#[test]
+fn knob_value_bubble_supports_keyboard_and_clears_for_disabled_or_deleted_owner() {
+    let mut f = FaderFixture::new("stock_vca", "level", 0.5, 1.0);
+    let at = f.rack.viewport.unwrap().min
+        + f.rack.pan
+        + f.rack.positions["target"].to_vec2()
+        + vec2(90.0, 106.0);
+    f.press(at, egui::Modifiers::NONE);
+    f.release(at, egui::Modifiers::NONE);
+    f.draw(
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowUp,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        true,
+    )
+    .unwrap();
+    f.draw(vec![], true);
+    assert_eq!(f.rack.knob_value_bubble.as_ref().unwrap().text, "51%");
+    f.draw(vec![], false);
+    assert!(f.rack.knob_value_bubble.is_none());
+    let mut f = FaderFixture::new("stock_vca", "level", 0.5, 1.0);
+    f.press(at, egui::Modifiers::NONE);
+    f.release(at, egui::Modifiers::NONE);
+    f.draw(
+        vec![egui::Event::Key {
+            key: egui::Key::ArrowUp,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        true,
+    )
+    .unwrap();
+    let mut deleted = f.session.patch().clone();
+    deleted.nodes.retain(|n| n.id != "target");
+    frame_revision_state(
+        &f.ctx,
+        &mut f.rack,
+        &deleted,
+        f.time + 0.1,
+        vec![],
+        true,
+        true,
+        f.session.revision(),
+    );
+    assert!(f.rack.knob_value_bubble.is_none());
+}
+#[test]
+fn knob_value_bubble_stays_readable_at_small_zoom_and_inside_canvas_edges() {
+    for (zoom, pan) in [(0.35, vec2(24.0, 12.0)), (1.0, vec2(-60.0, -70.0))] {
+        let mut f = FaderFixture::new("gain", "gain", 1.0, zoom);
+        f.rack.pan = pan;
+        f.draw(vec![], true);
+        let at = f.rack.viewport.unwrap().min
+            + pan
+            + (f.rack.positions["target"].to_vec2() + vec2(75.0, 99.0)) * zoom;
+        f.press(at, egui::Modifiers::NONE);
+        f.move_to(at - vec2(0.0, 8.0), egui::Modifiers::NONE)
+            .unwrap();
+        let (_, output) = frame_revision_state(
+            &f.ctx,
+            &mut f.rack,
+            f.session.patch(),
+            f.time + 0.12,
+            vec![],
+            true,
+            true,
+            f.session.revision(),
+        );
+        let b = f.rack.knob_value_bubble.as_ref().unwrap();
+        let text = large_bubble_texts(&output)
+            .into_iter()
+            .find(|(t, _, _)| t == &b.text)
+            .unwrap();
+        assert!(f.ctx.content_rect().shrink(5.0).contains_rect(text.1));
+    }
 }
