@@ -149,8 +149,8 @@ Absent state creates a stopped, silent 16-step pattern A. Native bindings name
 matching uses the source pair rather than array order. Compilation resolves
 bounded handles once. Missing destinations retain their metadata and skip
 writes; a present destination without the declared live capability rejects
-compilation. Import has not yet enabled this model: source-package provenance
-checks are still required before translating source targets.
+compilation. RackMCP 2.0.0 import now enables this model with the source-package
+checks described below; unsupported lanes remain authored but unbound.
 
 The adapter implements source Schmitt startup, connected-clock detection,
 polyphonic pitch/gate/velocity/accent groups and mono clock/reset outputs. Its
@@ -186,7 +186,7 @@ visibility, bypass freeze/resume, edits, adoption, publication, save and history
 Actual callback processing/adoption is allocation/deallocation-free in the tested
 workflows. The dedicated Signal Atlas rack/browser panel displays authored
 selection/notes/drum hits/accents, never an invented live playhead. Direct
-transport/seek/status publication, provenance-safe import,
+transport/seek/status publication,
 Bridge and Listen capture remain open; this is not whole-module or whole-patch
 qualification.
 
@@ -237,5 +237,40 @@ Rejected graphs use the existing retirement queue, retaining ownership locally
 if it is full rather than freeing memory in the callback. Equal-revision
 rebuilds remain supported. Focused Core and actual callback tests cover these
 native policies, including allocation/deallocation checks; they do not establish
-general equivalence to Rack's scheduler. Source-provenance binding and the
-registered imported workflow remain required before enabling source import.
+general equivalence to Rack's scheduler.
+
+## Source import and automation authority
+
+The registered `vcv/RackMCP/Sequencer/2.0.0` mapping, translation version 1,
+is labeled `musical_role`: its bounded source-derived timing and outputs retain
+the declared native scheduling and healthy-binding corrections. It is not a
+whole-module equivalence claim. Bridge and Listen remain separate unresolved
+dependencies; import never starts a listener or audio device.
+
+Import retains every typed source lane and creates native bindings only for
+qualified Fundamental 2.6.4 VCA-1 parameter 0 (`stock_vca.level`) and VCF
+parameter 0 (`rack264_vcf.frequency`). Other source targets remain unbound,
+with their original IDs, points and curves intact.
+
+Every accepted document enforces imported automation authority. An existing
+native destination must belong to the sequencer's exact source package, retain
+the lane's original numeric module ID, and have the registered source mapping,
+native kind and exact parameter conversion. Native IDs are not parsed as source
+identities. An explicitly named qualified duplicate can be bound; validation
+never searches for another matching module. Pure native sequences (`source:
+None`) retain their explicit native bindings.
+
+Missing destinations remain dormant with their bindings preserved. Reusing the
+destination's native ID for an unrelated module rejects the entire edit/load,
+including a remove/recreate batch. Clear the binding before that replacement,
+or retain the target and give the new module a fresh ID. Clearing a binding
+leaves an unbound lane until it is explicitly resolved or removed. Arbitrary
+native authoring from an imported sequence is not granted by a caller-supplied
+fidelity label.
+
+`omitted_automation` lists every unbound, missing or unresolved imported lane in
+the state carrier, projection and shared execution status. Exact playback waits
+even when no module is unresolved; explicit Partial playback runs the supported
+graph with these omissions disclosed in the UI and MCP. The same complete-document
+validation protects audio tickets, offline rendering, history, replacement and
+save/reopen without filtering or rewriting authoritative sequence state.

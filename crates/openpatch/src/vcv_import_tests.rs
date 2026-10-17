@@ -846,7 +846,18 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
             .count()
     });
     assert_eq!(voice_counts, [1, 4]);
-    let new_mappings: usize = voice_counts.into_iter().sum();
+    let source_sequences = source_patch["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|module| {
+            module["plugin"] == "RackMCP"
+                && module["model"] == "Sequencer"
+                && module["version"] == "2.0.0"
+        })
+        .count();
+    assert_eq!(source_sequences, 2);
+    let new_mappings: usize = voice_counts.into_iter().sum::<usize>() + source_sequences;
     let result = import(&bytes).unwrap();
     assert_eq!(
         (result.report.module_count, result.report.cable_count),
@@ -860,6 +871,33 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     let doc = result.document;
     assert_eq!(doc.graph.nodes.len(), 55);
     assert_eq!(doc.graph.cables.len(), 83);
+    let sequences: Vec<_> = doc
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|entry| match entry {
+            DocumentNode::Native { node, .. } if node.kind == "rackmcp_sequencer" => {
+                node.rackmcp_sequence.as_ref()
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sequences.len(), 2);
+    assert_eq!(
+        sequences
+            .iter()
+            .map(|state| state.data.lanes.len())
+            .sum::<usize>(),
+        13
+    );
+    assert_eq!(
+        sequences
+            .iter()
+            .map(|state| state.targets.len())
+            .sum::<usize>(),
+        10
+    );
+    assert_eq!(doc.automation_omissions().unwrap().len(), 3);
     let source = &doc.sources[&result.report.package_id];
     assert_eq!(
         *source.patch,

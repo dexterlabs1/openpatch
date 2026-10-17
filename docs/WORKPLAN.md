@@ -162,14 +162,39 @@ Strict Core/CLI/desktop all-target Clippy and workspace formatting pass. The
 initial audio run exposed an obsolete VCA fixture that omitted explicit knob
 assignment intent; its gain/no-heap assertions pass after correcting that input.
 
-Next guard source-provenance target binding, then close Bridge/Listen and the
-real musical excerpt. No release, installation or whole-module equivalence is
-claimed.
+**Imported automation checkpoint:** RackMCP Sequencer 2.0.0 now imports with all
+typed source lanes retained. Bindings require the exact source package, original
+numeric destination ID, registered mapping and supported native control.
+Unrelated same-ID replacements reject atomically; missing targets remain dormant.
+Exact waits on unbound automation even with no unresolved modules; explicit
+Partial playback discloses omissions in the native inspector and MCP.
+
+The user's complete patch retains all 55 modules/83 cables and source bytes,
+now with **31 mapped / 24 unresolved** modules. Both sequencers and all 13 lanes
+are retained; ten VCA/filter bindings qualify and three Surge targets remain
+unbound. The strict mapping is labeled MusicalRole because native scheduling and
+healthy rebinding corrections are disclosed, not whole-module equivalence.
+Shared UI/MCP edit/history/save/reopen and an actual allocation-free callback
+workflow cover live levels, explicit reload, suspension, Partial resume and
+captured effective values. Import starts neither a listener nor an audio device;
+the installed app is unchanged.
+
+[Import evidence](benchmarks/rackmcp-sequence-import.json): 351 CLI-library
+checks (two ignored), 221 audio-callback checks (one ignored), seven native import
+UI checks, actual user-fixture import and desktop save/reopen, plus five real
+MCP stdio workflows pass. Strict CLI/desktop all-target Clippy and formatting
+pass. [Reviewed UI](../design/reviews/rackmcp-import-v1/README.md) shows Exact
+suspension and explicit Partial without invented telemetry. The frozen 96-file
+Core manifest is unchanged, so the existing numerical proof is reused.
+
+Next close transport/status publication, Bridge/Listen and the full imported
+musical control workflow. No release, installation or whole-module equivalence
+is claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.
-The read-only remaining-dependency audit still finds 26 unresolved modules in
+The current read-only import finds 24 unresolved modules in
 the full user patch: third-party instruments/effects, RackMCP controls and Core
 Notes/audio I/O. Preserve that complete fixture; a supported excerpt or explicit
 Partial playback is not whole-patch equivalence.

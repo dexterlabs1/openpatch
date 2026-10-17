@@ -13,3 +13,8 @@ pub mod vcv_archive;
 pub mod visualizer;
 
 pub mod vcv_import;
+
+#[cfg(test)]
+mod vcv_rackmcp_import_tests;
+#[cfg(test)]
+mod vcv_rackmcp_provenance_tests;

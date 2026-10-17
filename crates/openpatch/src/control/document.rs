@@ -191,7 +191,7 @@ impl Session {
         if self.execution_disposition().is_runnable() {
             Ok(())
         } else {
-            Err("playback is suspended: unresolved modules remain; repair dependencies or explicitly choose partial playback and review omitted routes".into())
+            Err("playback is suspended: unresolved modules or automation targets remain; repair dependencies or explicitly choose partial playback and review omitted routes and automation".into())
         }
     }
 
@@ -215,13 +215,39 @@ impl Session {
         effects: &EditEffects,
     ) -> Result<ProjectDocument, String> {
         if let Some(document) = &effects.replacement_document {
+            let mut document = document.clone();
+            // Fresh-instance intent can materialize an implicit live control
+            // default. Carry exactly those defaults into editable native state;
+            // the immutable Rack package and all other fields remain authored.
+            for entry in &mut document.graph.nodes {
+                let DocumentNode::Native { node, .. } = entry else {
+                    continue;
+                };
+                let Some(receiving) = candidate
+                    .nodes
+                    .iter()
+                    .find(|receiving| receiving.id == node.id && receiving.kind == node.kind)
+                else {
+                    continue;
+                };
+                for &key in openpatch_core::runtime_parameter_names(&node.kind) {
+                    let default = openpatch_core::runtime_parameter_descriptor(&node.kind, key)
+                        .expect("listed live parameter has a descriptor")
+                        .default;
+                    if !node.params.contains_key(key)
+                        && receiving.params.get(key).copied() == Some(default)
+                    {
+                        node.params.insert(key.to_owned(), default);
+                    }
+                }
+            }
             let carrier = document.state_carrier()?;
             if carrier.patch.reference_view() != candidate.reference_view()
                 || carrier.patch.assets != candidate.assets
             {
                 return Err("replacement document and native carrier disagree".into());
             }
-            return Ok(document.clone());
+            return Ok(document);
         }
         if !self.has_source_document() {
             let mut layout = self.document.layout.clone();
@@ -658,13 +684,19 @@ fn has_source(document: &ProjectDocument) -> bool {
         })
 }
 fn disposition(document: &ProjectDocument, mode: PlaybackMode) -> ExecutionDisposition {
+    let Ok(automation) = document.automation_omissions() else {
+        // Accepted documents cannot contain unsafe bindings. Keep this status
+        // boundary closed if a caller supplies an invalid in-memory document.
+        return ExecutionDisposition::SuspendedUnresolved;
+    };
     if mode == PlaybackMode::Partial {
         ExecutionDisposition::RunnablePartial
-    } else if document
-        .graph
-        .nodes
-        .iter()
-        .any(|node| matches!(node, DocumentNode::Unresolved { .. }))
+    } else if !automation.is_empty()
+        || document
+            .graph
+            .nodes
+            .iter()
+            .any(|node| matches!(node, DocumentNode::Unresolved { .. }))
     {
         ExecutionDisposition::SuspendedUnresolved
     } else {
@@ -673,6 +705,9 @@ fn disposition(document: &ProjectDocument, mode: PlaybackMode) -> ExecutionDispo
 }
 
 pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -> Value {
+    let automation = document.automation_omissions();
+    let automation_error = automation.as_ref().err();
+    let omitted_automation = automation.as_deref().unwrap_or_default();
     let unresolved: BTreeSet<_> = document
         .graph
         .nodes
@@ -713,7 +748,8 @@ pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -
     json!({"substitutions":substitutions,"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
         "requested_disposition":disposition(document,mode),"unresolved_modules":unresolved,
         "omitted_routes":omitted,"omitted_output":document.graph.output.as_ref().filter(|id|unresolved.contains(id.as_str())),
-        "warning":(!unresolved.is_empty()).then_some("Omitted modules and routes can change downstream normaling and musical behavior")})
+        "omitted_automation":omitted_automation,"automation_error":automation_error,
+        "warning":(!unresolved.is_empty() || !omitted_automation.is_empty()).then_some("Omitted modules, routes and automation can change downstream normaling and musical behavior")})
 }
 
 // Encoding and disk I/O run after releasing the shared Session lock.

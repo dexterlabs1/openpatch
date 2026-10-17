@@ -401,6 +401,70 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(inspect()["document"], original)
         self.assertEqual(source_path.read_bytes(), vcv_bytes)
 
+    def test_rackmcp_import_automation_omissions_provenance_history_and_reopen(self) -> None:
+        source = {"version": "2.6.6", "modules": [
+            {"id": 101, "plugin": "RackMCP", "model": "Sequencer", "version": "2.0.0",
+             "params": [{"id": 2, "value": 1}],
+             "data": {"patterns": [{"name": "A", "length": 4}], "lanes": [
+                 {"moduleId": "42", "paramId": 0, "points": [{"bar": 0, "value": 0.25}]},
+                 {"moduleId": "42", "paramId": 1, "points": [{"bar": 0, "value": 1}]}]}},
+            {"id": 7, "plugin": "Fundamental", "model": "VCO", "version": "2.6.4"},
+            {"id": 42, "plugin": "Fundamental", "model": "VCA-1", "version": "2.6.4"}],
+            "cables": [{"id": 1, "outputModuleId": 7, "outputId": 2,
+                        "inputModuleId": 42, "inputId": 1}]}
+        original = (json.dumps(source, indent=2) + "\n").encode()
+        path = self.workspace / "sequence.vcv"
+        path.write_bytes(original)
+        result = self.payload(self.require_tool_success("import_vcv", {"filename": path.name}))
+        self.assertEqual(result["report"]["mapped_count"], 3)
+        self.assertEqual(result["report"]["unresolved_count"], 0)
+
+        def inspect() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))
+
+        loaded = inspect()
+        self.assertEqual(loaded["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(len(loaded["execution"]["omitted_automation"]), 1)
+        self.assertEqual(loaded["execution"]["omitted_automation"][0]["source_param_id"], 1)
+        self.assertEqual(loaded["execution"]["substitutions"][0]["mapping"]["fidelity"], "musical_role")
+        self.require_tool_success("set_output", {"id": "vcv_m_42", "port": "out"})
+        self.require_tool_error("render_audio", {"filename": "blocked.wav", "seconds": 0.05})
+        self.assertFalse((self.workspace / "blocked.wav").exists())
+        before = inspect()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "remove_module", "arguments": {"id": "vcv_m_42"}},
+            {"tool": "add_module", "arguments": {"id": "vcv_m_42", "kind": "stock_vca"}}]})
+        self.assertEqual(inspect(), before)
+        self.require_tool_success("set_document_playback", {"mode": "partial"})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "runnable_partial")
+        self.require_tool_success("render_audio", {"filename": "partial.wav", "seconds": 0.05})
+        with wave.open(str(self.workspace / "partial.wav"), "rb") as rendered:
+            samples = self._first_channel_samples(rendered.readframes(rendered.getnframes()),
+                                                  rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(sample) > 100 for sample in samples))
+        self.require_tool_success("set_document_playback", {"mode": "exact"})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "suspended_unresolved")
+        sequence_node = next(item["node"] for item in inspect()["document"]["graph"]["nodes"]
+                             if item.get("node", {}).get("kind") == "rackmcp_sequencer")
+        sequence = sequence_node["rackmcp_sequence"]
+        self.assertEqual(len(sequence["data"]["lanes"]), 2)
+        self.assertEqual(len(sequence["targets"]), 1)
+        sequence["data"]["lanes"] = sequence["data"]["lanes"][:1]
+        self.require_tool_success("set_rackmcp_sequence", {"id": "vcv_m_101", "rackmcp_sequence": sequence})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "runnable_exact")
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "suspended_unresolved")
+        self.require_tool_success("redo")
+        edited = inspect()["document"]
+        self.require_tool_success("save_document", {"filename": "sequence.json"})
+        self.require_tool_success("load_document", {"filename": "sequence.json"})
+        reopened = inspect()
+        self.assertEqual(reopened["document"], edited)
+        self.assertEqual(reopened["execution"]["requested_disposition"], "runnable_exact")
+        self.assertEqual(reopened["document"]["sources"], loaded["document"]["sources"])
+        self.assertEqual(reopened["document"]["source_blobs"], loaded["document"]["source_blobs"])
+        self.assertEqual(path.read_bytes(), original)
+
     def test_rack264_voice_import_render_edit_and_reopen(self) -> None:
         source = {
             "version": "2.6.6",

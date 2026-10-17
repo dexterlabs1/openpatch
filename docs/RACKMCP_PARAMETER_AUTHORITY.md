@@ -122,7 +122,9 @@ recompiles, frozen/skipped plans, rate changes, deletion/recreation, host resets
 shared Session edit/undo/redo/save/reopen and suspension/resume, with no callback
 heap activity. These are native parameter authority checks. Exclusive lane
 ownership now follows ordered document loads and preserves vacant claims after
-winner deletion. Source provenance and a registered RackMCP workflow remain open.
+winner deletion. Source-provenance import and a real shared-session callback
+workflow are now qualified below; Bridge/Listen and direct transport/status
+publication remain open.
 
 
 ## Observed SDK binding boundary
@@ -136,11 +138,16 @@ columns. [Evidence and contract](RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-fi
 
 The separate two-sequencer source probe establishes exclusive ownership:
 takeover invalidates the previous claim; deleting the winner does not revive
-the displaced writer. Native arbitration is still required. Compile bounded
-claim identities outside the callback, preserve live claims over unrelated
-rebuilds, and apply explicit acquisition events in a declared order. A prepared
+the displaced writer. Native arbitration now compiles bounded claim identities
+outside the callback, preserves live claims over unrelated rebuilds, and applies
+explicit acquisition events in document action order. A prepared
 plan's requested event and its live incarnation's consumed high-water mark
 are distinct. Do not let graph node order become an accidental ownership rule.
-Source provenance must fence imported identities before enabling this mapping.
+Complete-document validation now fences imported identities by source package,
+original numeric ID, registered mapping/native kind and exact live parameter.
+Unsafe existing bindings reject edits and loads atomically; absent targets stay
+dormant and all unbound lanes appear in `omitted_automation`. Exact waits for
+those omissions; Partial is explicit. These invariants protect the authored
+carrier shared by audio and offline MCP without silently rewriting source state.
 The actual saved patch has 13 distinct source target pairs across its two
 sequencers, but that absence of collisions does not qualify general ownership.
