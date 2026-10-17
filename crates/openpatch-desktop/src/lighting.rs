@@ -120,11 +120,31 @@ impl Default for RoomLighting {
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
         // Keep daytime lamps restrained; a dark room reveals their light spill.
-        0.38 + 1.22 * (1.0 - self.amount).powf(1.5)
+        0.38 + 2.62 * (1.0 - self.amount).powf(1.5)
     }
 
     fn bloom_diffusion(&self) -> f32 {
-        1.0 + 0.65 * (1.0 - self.amount).powf(1.5)
+        1.0 + 1.15 * (1.0 - self.amount).powf(1.5)
+    }
+
+    /// Static display illumination, distinct from signal-driven lamps. The
+    /// halo is bounded in screen points, so wide displays do not wash out a rack.
+    pub(crate) fn screen_glow(&self, painter: &egui::Painter, rect: Rect, zoom: f32) {
+        let start = next(painter);
+        let corner = (rect.width().min(rect.height()) * 0.5).max(1.0);
+        let dark = (1.0 - self.amount).powf(1.5);
+        bloom(
+            painter,
+            rect,
+            Color32::from_rgb(104, 155, 119),
+            0.035 + 0.30 * dark,
+            (1.5 + 3.5 * dark) * zoom / corner,
+        );
+        self.preserve(painter, start);
+    }
+
+    pub(crate) fn setting_glow(&self, color: Color32, strength: f32) -> Color32 {
+        additive(color, strength * self.bloom_amount())
     }
 
     pub(crate) fn amount(&self) -> f32 {
@@ -413,6 +433,43 @@ mod tests {
             assert!(room_energy[1][light] > room_energy[0][light]);
             assert!(room_extent[2][light] > room_extent[1][light]);
             assert!(room_extent[1][light] > room_extent[0][light]);
+        }
+    }
+
+    #[test]
+    fn screen_spill_is_bounded_preserved_and_stronger_in_a_dark_room() {
+        for size in [vec2(290.0, 49.0), vec2(100.0, 240.0), vec2(250.0, 25.0)] {
+            let mut energy = Vec::new();
+            for room in [1.0, 0.0] {
+                let ctx = egui::Context::default();
+                let mut lighting = RoomLighting::default();
+                lighting.set(room);
+                let rect = Rect::from_min_size(Pos2::ZERO, size);
+                let output = ctx.run(egui::RawInput::default(), |ctx| {
+                    let painter = ctx.layer_painter(egui::LayerId::background());
+                    let start = lighting.begin(&painter);
+                    lighting.screen_glow(&painter, rect, 1.0);
+                    lighting.finish(&painter, start);
+                });
+                let egui::Shape::Mesh(mesh) = &output.shapes[0].shape else {
+                    panic!("display halo must be one bounded mesh")
+                };
+                assert_eq!(mesh.vertices.len(), 120);
+                assert!(mesh.vertices.iter().all(|v| v.color.a() == 0));
+                let bounds = mesh.calc_bounds();
+                assert!(bounds.width() <= size.x + 52.1);
+                assert!(bounds.height() <= size.y + 52.1);
+                energy.push(
+                    mesh.vertices
+                        .iter()
+                        .map(|v| u32::from(v.color.g()))
+                        .sum::<u32>(),
+                );
+            }
+            assert!(
+                energy[1] > energy[0] * 4,
+                "room-off screen spill must stay visible"
+            );
         }
     }
 

@@ -12,6 +12,12 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
+### Lights-off refinement
+
+Active LEDs, ports and meters now cast wider, stronger additive halos as ambient light falls; the daytime lamp profile stays restrained. Detailed-panel displays gain a bounded soft green spill, and Studio Mixer position rings have broader additive glow. Static display illumination remains separate from engine-driven lamps; zero or unavailable signal does not create activity.
+
+[Updated dim-room preview](../design/reviews/signal-atlas-two-modules-v1/native-ux-dark-room.png). **32 focused checks passed**, covering lighting, unchanged rack/browser geometry and cable targets, port signals, Studio Mixer behavior and eight oscillator acceptance fixtures corrected after the preceding CI run. Strict desktop Clippy and formatting passed. Actual-engine CPU captures were inspected at full, dim and zero ambient light; no native window/device or installed-release claim. The noise/stochastic design family resumes next.
+
 ## Active milestone: extend the approved native design
 
 The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). The user approved the two-panel preview (“Looks good”) and resumed work with “continue”. Extend that native design across the catalog in coherent families, retaining the finished ADSR/Ladder panels as the reference.

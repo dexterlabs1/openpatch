@@ -146,7 +146,7 @@ fn paint_atlas_creative_configuration(
         zoom,
     };
     let start = crate::lighting::next(painter);
-    draw.screen(band);
+    draw.screen(band, lighting);
     let ink = Color32::from_rgb(195, 200, 180);
     let blocks: Vec<(&str, f32)> = if macro_voice {
         vec![

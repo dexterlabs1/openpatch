@@ -235,10 +235,10 @@ impl Rack {
             },
             zoom: z,
         };
-        screen_paint.screen(screen(Rect::from_min_max(
-            pos2(10.0, 87.0),
-            pos2(260.0, 112.0),
-        )));
+        screen_paint.screen(
+            screen(Rect::from_min_max(pos2(10.0, 87.0), pos2(260.0, 112.0))),
+            &self.lighting,
+        );
         let screen_ink = Color32::from_rgb(195, 200, 180);
         painter.text(
             point(73.0, 99.5),

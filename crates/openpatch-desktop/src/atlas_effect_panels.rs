@@ -76,7 +76,7 @@ fn paint_atlas_studio_effect_configuration(
     };
     let band = Rect::from_min_max(p(12.0, 178.0), p(width - 12.0, 205.0));
     let lighting_start = crate::lighting::next(painter);
-    draw.screen(band);
+    draw.screen(band, lighting);
     let ink = Color32::from_rgb(195, 200, 180);
     let rule = Stroke::new(0.8 * zoom, ink);
     let text = |x, y, label: &str, size, color| {

@@ -586,7 +586,7 @@ fn primitive(shape: &egui::Shape, out: &mut Vec<String>) {
 #[test]
 fn stock_lfo_shared_rack_browser_geometry_keeps_controls_labels_and_jacks_separate() {
     assert_eq!(title("stock_lfo"), "STOCK LFO");
-    assert_eq!(title("multi_lfo"), "LFO");
+    assert_eq!(title("multi_lfo"), "MULTI LFO");
     let catalog = openpatch_core::catalog();
     let module = catalog["modules"]
         .as_array()

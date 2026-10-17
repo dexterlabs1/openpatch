@@ -68,7 +68,7 @@ fn paint_atlas_utility_configuration(
     let amber = Color32::from_rgb(229, 183, 103);
     let start = crate::lighting::next(painter);
     if node.kind == "lfo" {
-        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0));
+        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0), lighting);
         draw.text(313.0, 127.0, "CONFIGURED SINE", 9.0, ink);
         draw.text(313.0, 142.0, "AUTO FIT · ZERO FM", 8.0, quiet);
         let amplitude = atlas_voice_parameter(node, "amplitude", 0.5, 0.0, 1.0);
@@ -119,7 +119,7 @@ fn paint_atlas_utility_configuration(
         };
         draw.text(313.0, 263.0, &period, 8.0, quiet);
     } else {
-        draw.screen(draw.rect(38.0, 345.0, 344.0, 112.0));
+        draw.screen(draw.rect(38.0, 345.0, 344.0, 112.0), lighting);
         let lowpass = node.kind == "lowpass";
         draw.text(
             210.0,

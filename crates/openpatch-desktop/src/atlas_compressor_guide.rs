@@ -40,7 +40,7 @@ fn paint_atlas_compressor_guide(
         layout: AtlasVoiceLayout { width },
         zoom,
     };
-    draw.screen(bounds);
+    draw.screen(bounds, lighting);
 
     let threshold = atlas_voice_parameter(node, "threshold_db", -10.5, -60.0, 12.0);
     let ratio = atlas_voice_parameter(node, "ratio", 4.0, 1.0, 20.0);

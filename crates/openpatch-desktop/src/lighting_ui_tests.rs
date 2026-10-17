@@ -302,7 +302,7 @@ fn darkroom_numeric_editor_and_selection_remain_readable_and_controls_keep_targe
         let mut rack = Rack::default();
         rack.set_room_brightness(amount);
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let field = pos2(99.0, 169.0);
+        let field = pos2(24.0, 12.0) + atlas_multi_value_center("frequency").to_vec2();
         frame(
             &ctx,
             &mut rack,

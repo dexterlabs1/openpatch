@@ -104,7 +104,10 @@ fn paint_adsr_eg_guide(
     };
     let sx = 420.0 / layout.width;
     let sy = 720.0 / PANEL_HEIGHT;
-    draw.screen(draw.rect(32.0 * sx, 77.0 * sy, 296.0 * sx, 49.5 * sy));
+    draw.screen(
+        draw.rect(32.0 * sx, 77.0 * sy, 296.0 * sx, 49.5 * sy),
+        lighting,
+    );
     let screen_rect = Rect::from_min_max(p(32.0, 77.0), p(328.0, 126.5));
     ui.interact(
         screen_rect,

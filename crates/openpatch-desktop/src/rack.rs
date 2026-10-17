@@ -14047,6 +14047,14 @@ mod tests {
                             texts.iter().any(|(text, _)| text
                                 == if kind == "ladder_vcf" && name == "cutoff" {
                                     "POLE FREQUENCY"
+                                } else if matches!(kind, "multi_vco" | "multi_lfo")
+                                    && name == "fm_amount"
+                                {
+                                    "FM ±100%"
+                                } else if matches!(kind, "multi_vco" | "multi_lfo")
+                                    && name == "pwm_amount"
+                                {
+                                    "PWM ±100%"
                                 } else if kind == "stock_vco" {
                                     stock_vco_parameter_label(name)
                                 } else if kind == "stock_lfo" {
@@ -14251,10 +14259,10 @@ mod tests {
     #[test]
     fn multi_vco_value_editors_use_hz_and_percentages_without_clock_ratio_conversion() {
         for (name, position, text, scale, expected) in [
-            ("frequency", pos2(99.0, 169.0), "440", 1.0, 440.0),
-            ("pulse_width", pos2(249.0, 169.0), "35", 100.0, 0.35),
-            ("fm_amount", pos2(99.0, 269.0), "-25", 100.0, -0.25),
-            ("pwm_amount", pos2(249.0, 269.0), "75", 100.0, 0.75),
+            ("frequency", pos2(99.0, 186.0), "440", 1.0, 440.0),
+            ("pulse_width", pos2(249.0, 186.0), "35", 100.0, 0.35),
+            ("fm_amount", pos2(99.0, 281.0), "-25", 100.0, -0.25),
+            ("pwm_amount", pos2(249.0, 281.0), "75", 100.0, 0.75),
         ] {
             let ctx = egui::Context::default();
             let mut rack = Rack::default();
@@ -18174,7 +18182,7 @@ mod tests {
                 });
             }
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let value = pos2(99.0, 169.0);
+            let value = pos2(99.0, 186.0);
             for (time, pressed) in [(1.0, true), (1.04, false)] {
                 frame(
                     &ctx,
@@ -20028,7 +20036,7 @@ mod tests {
             ),
             (
                 "multi_vco",
-                pos2(249.0, 169.0),
+                pos2(249.0, 186.0),
                 "25 + 10",
                 "pulse_width",
                 0.35,
@@ -20044,7 +20052,7 @@ mod tests {
             ),
             (
                 "multi_lfo",
-                pos2(99.0, 169.0),
+                pos2(99.0, 186.0),
                 "1 + 1",
                 "frequency",
                 4.0,

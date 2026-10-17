@@ -54,7 +54,7 @@ fn paint_wavetable_display(
         layout: AtlasVoiceLayout { width: 360.0 },
         zoom,
     };
-    draw.screen(screen);
+    draw.screen(screen, lighting);
     let painter = painter.with_clip_rect(outer_clip.intersect(screen));
     let quiet = Color32::from_rgb(143, 155, 133);
     let amber = Color32::from_rgb(232, 184, 100);

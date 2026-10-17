@@ -117,7 +117,10 @@ fn paint_stock_oscillator_configuration(
         zoom,
     };
     let start = crate::lighting::next(painter);
-    draw.screen(Rect::from_min_max(p(133.0, 77.0), p(227.0, 191.0)));
+    draw.screen(
+        Rect::from_min_max(p(133.0, 77.0), p(227.0, 191.0)),
+        lighting,
+    );
     let quiet = Color32::from_rgb(153, 163, 140);
     let grid = Color32::from_rgb(43, 57, 43);
     text(

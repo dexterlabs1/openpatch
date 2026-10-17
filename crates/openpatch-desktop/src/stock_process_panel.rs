@@ -100,7 +100,7 @@ fn paint_stock_process_guide(
         zoom,
     };
     let start = crate::lighting::next(painter);
-    screen.screen(bounds);
+    screen.screen(bounds, lighting);
     let ink = Color32::from_rgb(195, 200, 180);
     let amber = Color32::from_rgb(229, 183, 103);
     let quiet = Color32::from_rgb(133, 143, 123);

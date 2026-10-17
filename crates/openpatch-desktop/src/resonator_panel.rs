@@ -70,7 +70,10 @@ fn paint_resonator_configuration(
         zoom,
     };
     let start = crate::lighting::next(painter);
-    draw.screen(Rect::from_min_max(point(304.0, 76.0), point(465.0, 309.0)));
+    draw.screen(
+        Rect::from_min_max(point(304.0, 76.0), point(465.0, 309.0)),
+        lighting,
+    );
     print(311.0, 83.0, "NATURAL MODES".into(), 11.0, screen_ink);
     print(
         311.0,

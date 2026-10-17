@@ -387,8 +387,14 @@ pub(crate) fn parameter_rotary(
             center + vec2(b.cos(), b.sin()) * ring,
         ];
         if t <= value {
-            painter.line_segment(points, Stroke::new(4.8 * zoom, accent.gamma_multiply(0.09)));
-            painter.line_segment(points, Stroke::new(2.6 * zoom, accent.gamma_multiply(0.32)));
+            painter.line_segment(
+                points,
+                Stroke::new(9.0 * zoom, lighting.setting_glow(accent, 0.07)),
+            );
+            painter.line_segment(
+                points,
+                Stroke::new(5.0 * zoom, lighting.setting_glow(accent, 0.22)),
+            );
             painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
         } else {
             painter.line_segment(points, Stroke::new(1.1 * zoom, muted));

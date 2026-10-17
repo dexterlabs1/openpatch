@@ -136,7 +136,8 @@ impl AtlasVoicePaint<'_> {
             }
         }
     }
-    fn screen(&self, rect: Rect) {
+    fn screen(&self, rect: Rect, lighting: &crate::lighting::RoomLighting) {
+        lighting.screen_glow(self.painter, rect, self.zoom);
         self.painter.rect_filled(
             rect.expand(3.0 * self.unit()),
             4.0 * self.unit(),
@@ -531,7 +532,7 @@ fn paint_atlas_voice_configuration(
     let amber = Color32::from_rgb(229, 183, 103);
     let start = crate::lighting::next(painter);
     if node.kind == "adsr" {
-        draw.screen(draw.rect(160.0, 148.0, 100.0, 239.0));
+        draw.screen(draw.rect(160.0, 148.0, 100.0, 239.0), lighting);
         draw.text(210.0, 168.0, "ENVELOPE", 9.0, screen_ink);
         draw.text(210.0, 182.0, "CONFIGURED", 8.0, quiet);
         draw.text(181.0, 205.0, "10 V", 8.0, quiet);
@@ -559,7 +560,7 @@ fn paint_atlas_voice_configuration(
         draw.text(210.0, 345.0, "A · D · S · R", 9.0, screen_ink);
         draw.text(210.0, 364.0, "0–10 V NOMINAL", 8.0, quiet);
     } else {
-        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0));
+        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0), lighting);
         draw.text(313.0, 127.0, "SMALL SIGNAL", 9.0, screen_ink);
         draw.text(
             313.0,

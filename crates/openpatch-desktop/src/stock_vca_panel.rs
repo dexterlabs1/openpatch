@@ -190,10 +190,10 @@ impl Rack {
             layout: AtlasVoiceLayout { width: 180.0 },
             zoom: z,
         };
-        draw.screen(screen(Rect::from_min_max(
-            pos2(26.0, 245.0),
-            pos2(154.0, 293.0),
-        )));
+        draw.screen(
+            screen(Rect::from_min_max(pos2(26.0, 245.0), pos2(154.0, 293.0))),
+            &self.lighting,
+        );
         for channel in 0..16 {
             let lane = screen(stock_vca_gain_rect(channel));
             let active = state.is_some_and(|s| channel < usize::from(s.input_channels.unwrap()));

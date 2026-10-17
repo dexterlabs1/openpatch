@@ -28,7 +28,7 @@ fn paint_atlas_analog_configuration(
     let amber = Color32::from_rgb(229, 183, 103);
     let start = crate::lighting::next(painter);
     if node.kind == "analog_vco" {
-        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0));
+        draw.screen(draw.rect(245.0, 109.0, 136.0, 164.0), lighting);
         draw.text(313.0, 127.0, "NOMINAL SHAPE", 9.0, ink);
         draw.text(313.0, 142.0, "±5 V · ONE CYCLE", 8.0, quiet);
         for y in [175.0, 201.0, 227.0] {
@@ -59,7 +59,7 @@ fn paint_atlas_analog_configuration(
         };
         draw.text(313.0, 252.0, &period, 8.0, quiet);
     } else {
-        draw.screen(draw.rect(38.0, 345.0, 344.0, 112.0));
+        draw.screen(draw.rect(38.0, 345.0, 344.0, 112.0), lighting);
         draw.text(210.0, 358.0, "DC TRANSFER · CV 10 V · 25°C", 12.0, ink);
         for y in [380.0, 408.0, 436.0] {
             painter.line_segment(

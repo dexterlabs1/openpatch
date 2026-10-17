@@ -115,7 +115,7 @@ fn paint_atlas_multi_configuration(
         },
         zoom,
     };
-    draw.screen(screen);
+    draw.screen(screen, lighting);
     let quiet = Color32::from_rgb(153, 165, 142);
     let amber = Color32::from_rgb(232, 184, 100);
     let grid = Color32::from_rgb(51, 67, 50);

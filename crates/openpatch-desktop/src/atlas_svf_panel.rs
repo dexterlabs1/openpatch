@@ -85,7 +85,7 @@ fn paint_atlas_svf_configuration(
         },
         zoom,
     };
-    draw.screen(screen);
+    draw.screen(screen, lighting);
     let muted = Color32::from_rgb(143, 155, 133);
     let colors = [
         Color32::from_rgb(232, 184, 100),

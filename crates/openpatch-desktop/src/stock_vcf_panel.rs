@@ -73,7 +73,7 @@ fn paint_stock_vcf_routing(
     };
     let bounds = Rect::from_min_max(point(22.0, 268.0), point(248.0, 307.0));
     let start = crate::lighting::next(painter);
-    draw.screen(bounds);
+    draw.screen(bounds, lighting);
     let ink = Color32::from_rgb(195, 200, 180);
     let amber = Color32::from_rgb(229, 183, 103);
     let text = |x, y, label: &str, size| {
