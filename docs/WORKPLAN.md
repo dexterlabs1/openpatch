@@ -30,8 +30,8 @@ are separate pending integration work. No source change is installed; keep
 
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
 with independent contracts rather than renamed existing kinds. **Tidal Functions,
-Frame Scene and Segment Garden passed the first family gate. Event Fork is the
-fourth implemented development candidate; sixteen remain.** Tidal
+Frame Scene and Segment Garden passed the first family gate. Event Fork and Rhythm Terrain are the
+fourth and fifth implemented development candidates; fifteen remain.** Tidal
 Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
 bit for bit, including nonzero amplitude scans, while preserving the original
 frame-zero clock failure as a negative and explicitly adapting native startup.
@@ -53,7 +53,7 @@ The focused family cut passes local Mac validation: **2,693 Rust tests and 127 P
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.
 
-**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. Family-level CI remains pending; no install or hardware/device qualification is claimed. Continue Recall Random and Rhythm Terrain in this family; retain all broader parity/host/rack-workflow requirements above.
+**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. Family-level CI remains pending; no install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random, then run one full Mac family gate. Retain all broader parity/host/rack-workflow requirements above.
 
 ## Execution changes
 

@@ -57,6 +57,13 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_vco", _) => Disabled,
         ("frame_scene", "offset" | "easing1" | "easing2" | "easing3" | "easing4") => Enum,
         ("frame_scene", _) => Linear,
+        ("rhythm_terrain", "seed") => Disabled,
+        ("rhythm_terrain", "tempo") => InclusiveInteger,
+        (
+            "rhythm_terrain",
+            "mode" | "resolution" | "gate_mode" | "alternate" | "swing" | "tap_tempo",
+        ) => Enum,
+        ("rhythm_terrain", _) => Linear,
         ("event_fork", "seed") => Disabled,
         ("event_fork", name) if name.starts_with("toggle") || name.starts_with("latch") => Enum,
         ("event_fork", _) => Linear,

@@ -2172,3 +2172,59 @@ fn event_fork_first_edges_normaling_seed_changes_and_state_handoff_use_no_heap()
         .iter()
         .all(|p| p.channels == 1 && matches!(p.values[0], 0.0 | 5.0)));
 }
+
+#[test]
+fn rhythm_terrain_first_scans_taps_fifo_lights_initialize_and_handoff_use_no_heap() {
+    use openpatch_core::ModuleAction;
+    let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {
+        let mut p = patch(
+            vec![
+                node("clock", "stock_lfo", &[("rate", 6.0)]),
+                node(
+                    "terrain",
+                    "rhythm_terrain",
+                    &[("tempo", 0.0), ("chaos", 0.5)],
+                ),
+            ],
+            vec![cable("clock", "square", "terrain", "clock")],
+            "terrain",
+        );
+        p.sample_rate = rate;
+        p.output_port = "trig1".into();
+        let old = p.compile().unwrap();
+        let h = old.resolve_module_control("terrain").unwrap();
+        p.nodes[1].params.insert("resolution".into(), 0.0);
+        let replacement = p.compile().unwrap();
+        let rh = replacement.resolve_module_control("terrain").unwrap();
+        let light = replacement.resolve_module_lights("terrain").unwrap();
+        (old, replacement, h, rh, light)
+    });
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, h, rh, light) in &mut engines {
+        for count in [0, 1, 7, 64, 129] {
+            for action in [
+                ModuleAction::TapPress,
+                ModuleAction::TapRelease,
+                ModuleAction::ReleaseTap,
+                ModuleAction::Reset,
+            ] {
+                assert!(old.handle_module_event(*h, action));
+            }
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            assert!(replacement.handle_module_event(*rh, ModuleAction::TapRelease));
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*light);
+            initialized |= replacement.initialize_module_state(*light);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|p| p.channels == 1 && matches!(p.values[0], 0.0 | 5.0)));
+}

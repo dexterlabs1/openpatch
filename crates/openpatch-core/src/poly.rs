@@ -26,6 +26,7 @@ use crate::rackmcp_listen::{self, ListenSink, ListenStatus, RackMcpListen};
 use crate::rackmcp_sequence::{self, RackMcpSequencer, ResolvedTarget};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
+use crate::rhythm_terrain::{self, RhythmTerrain};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
@@ -151,6 +152,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_lfo"
                 | "tidal_functions"
                 | "frame_scene"
+                | "rhythm_terrain"
                 | "event_fork"
                 | "segment_garden"
                 | "random_values"
@@ -221,6 +223,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_vco" | "rack264_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "frame_scene" => frame_scene::INPUTS.iter().position(|port| *port == name),
+        "rhythm_terrain" => rhythm_terrain::INPUTS.iter().position(|port| *port == name),
         "event_fork" => event_fork::INPUTS.iter().position(|port| *port == name),
         "segment_garden" => segment_garden::INPUTS.iter().position(|port| *port == name),
         "tidal_functions" => tidal_functions::INPUTS
@@ -351,6 +354,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "rhythm_terrain" {
+        rhythm_terrain::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "event_fork" {
         event_fork::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "segment_garden" {
@@ -590,6 +597,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "rhythm_terrain" {
+        rhythm_terrain::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "event_fork" {
         event_fork::OUTPUTS
             .iter()
@@ -836,6 +848,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
+    if kind == "rhythm_terrain" {
+        rhythm_terrain::annotate(module);
+    }
     if kind == "event_fork" {
         event_fork::annotate(module);
     }
@@ -957,6 +972,7 @@ enum Model {
     FrameScene(Box<FrameScene>),
     SegmentGarden(Box<SegmentGarden>),
     EventFork(EventFork),
+    RhythmTerrain(Box<RhythmTerrain>),
     StockVco(Box<StockVco>),
     Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
@@ -1122,6 +1138,11 @@ impl Model {
         }
         if node.kind == "rack264_vco" {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
+        }
+        if node.kind == "rhythm_terrain" {
+            return Ok(Self::RhythmTerrain(Box::new(RhythmTerrain::build(
+                node, rate,
+            )?)));
         }
         if node.kind == "event_fork" {
             return Ok(Self::EventFork(EventFork::build(node, rate)?));
@@ -2051,6 +2072,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(p)) => Some(p.controls()),
             Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
+            Some(Model::RhythmTerrain(r)) => Some(r.controls()),
             Some(Model::StockSeq3(seq)) => Some(seq.controls()),
             _ => None,
         }
@@ -2081,6 +2103,7 @@ impl PolyEngine {
             Some(Model::FrameScene(s)) => Some(s.lights()),
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::EventFork(s)) => Some(s.lights()),
+            Some(Model::RhythmTerrain(r)) => Some(r.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
@@ -2141,6 +2164,10 @@ impl PolyEngine {
                 g.release();
                 true
             }
+            Some(Model::RhythmTerrain(r)) => {
+                r.release();
+                true
+            }
             _ => false,
         }
     }
@@ -2161,6 +2188,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(_)) => ShiftRegister::supports(action),
             Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
+            Some(Model::RhythmTerrain(_)) => RhythmTerrain::supports(action),
             Some(Model::MidiGate(_)) => action == ModuleAction::MidiPanic,
             _ => false,
         }
@@ -2184,6 +2212,7 @@ impl PolyEngine {
                 | ModuleAction::MidiPanic
                 | ModuleAction::ClockRelease
                 | ModuleAction::RunRelease
+                | ModuleAction::TapRelease
         ) || action.pulse_button().is_some_and(|(_, press)| !press)
             || action.seq_gate_button().is_some_and(|(_, press)| !press);
         if !self.supports_module_action(index, action) || (self.nodes[index].bypassed && !release) {
@@ -2228,6 +2257,12 @@ impl PolyEngine {
             });
         }
         if self.nodes.get(node).is_some_and(|node| node.bypassed) {
+            if action == ModuleAction::TapRelease {
+                if let Model::RhythmTerrain(r) = &mut self.nodes[node].model {
+                    r.release();
+                    return true;
+                }
+            }
             if action == ModuleAction::GateRelease {
                 if let Model::StockProcess(process) = &mut self.nodes[node].model {
                     process.release();
@@ -2297,6 +2332,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(p)) => p.enqueue(action),
             Some(Model::RandomValues(p)) => p.enqueue(action),
             Some(Model::Gates(g)) => g.enqueue(action),
+            Some(Model::RhythmTerrain(r)) => r.enqueue(action),
             _ => false,
         }
     }
@@ -2579,6 +2615,7 @@ impl PolyEngine {
             Model::FrameScene(scene) => scene.initialize_state(),
             Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::EventFork(fork) => fork.initialize_state(),
+            Model::RhythmTerrain(r) => r.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
@@ -2795,6 +2832,7 @@ impl PolyEngine {
                     "frame_scene" => frame_scene::OUTPUTS.len(),
                     "segment_garden" => segment_garden::OUTPUTS.len(),
                     "event_fork" => event_fork::OUTPUTS.len(),
+                    "rhythm_terrain" => rhythm_terrain::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
@@ -3643,6 +3681,20 @@ impl PolyEngine {
                             [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
+                Model::RhythmTerrain(r) => {
+                    let mut inputs = [PortFrame::default(); 8];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    r.process(
+                        &inputs,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + rhythm_terrain::OUTPUTS.len()],
+                    );
+                }
                 Model::EventFork(fork) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4279,6 +4331,12 @@ impl PolyEngine {
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),
+                (Model::RhythmTerrain(s), Model::RhythmTerrain(old)) => {
+                    s.adopt(old);
+                    if bypass_changed {
+                        s.release();
+                    }
+                }
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::Rack264Vco(s), Model::Rack264Vco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),

@@ -89,7 +89,9 @@ impl Category {
             | "stock_noise" | "macro_voice" | "wavetable_vco" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" | "rack264_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
-            "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" => Self::Sequencers,
+            "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" | "rhythm_terrain" => {
+                Self::Sequencers
+            }
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
             | "random_values" | "sh_asr" | "tidal_functions" | "frame_scene" | "segment_garden"
             | "event_fork" => Self::Modulation,
@@ -2631,6 +2633,29 @@ mod event_fork_category_tests {
             assert!(category.matches_module(module));
         }
         for tag in ["Random", "Gates", "Logic"] {
+            assert!(has_catalog_tag(module, tag), "missing {tag}");
+            assert!(ModuleLibrary::default().matches(module, &tag.to_lowercase()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod rhythm_terrain_category_tests {
+    use super::*;
+    #[test]
+    fn rhythm_terrain_has_custom_clock_sequencer_modulation_random_membership() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == "rhythm_terrain")
+            .unwrap();
+        assert_eq!(Category::of_kind("rhythm_terrain"), Category::Sequencers);
+        for category in [Category::Custom, Category::Sequencers, Category::Modulation] {
+            assert!(category.matches_module(module));
+        }
+        for tag in ["Clock", "Sequencers", "Modulation", "Random", "Custom"] {
             assert!(has_catalog_tag(module, tag), "missing {tag}");
             assert!(ModuleLibrary::default().matches(module, &tag.to_lowercase()));
         }
