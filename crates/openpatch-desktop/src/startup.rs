@@ -96,7 +96,7 @@ pub fn prepare(
             .as_ref()
             .is_some_and(|store| !store.recoveries().is_empty());
     let mut session = Session::new(workspace)?;
-    session.new_document(document.patch.clone(), None)?;
+    session.new_project_document(document.project().clone(), None)?;
     let startup = Startup {
         store,
         document,
@@ -137,7 +137,7 @@ mod tests {
         assert!(startup.document.equivalent(&factory_document()));
         assert_eq!(
             serde_json::to_value(session.patch()).unwrap(),
-            serde_json::to_value(&startup.document.patch).unwrap()
+            serde_json::to_value(startup.document.patch()).unwrap()
         );
         assert_eq!(
             (session.revision(), session.state_id()),
@@ -148,7 +148,7 @@ mod tests {
         assert!(startup.status.is_none());
         assert_eq!(session.snapshot()["history"]["undo_steps"], 0);
         assert_eq!(session.snapshot()["history"]["redo_steps"], 0);
-        assert!(!startup.document.layout["positions"]
+        assert!(!startup.document.layout()["positions"]
             .as_object()
             .unwrap()
             .is_empty());
@@ -185,12 +185,12 @@ mod tests {
         }
         std::fs::write(
             workspace.path().join("legacy.json"),
-            serde_json::to_vec(&custom.patch).unwrap(),
+            serde_json::to_vec(custom.patch()).unwrap(),
         )
         .unwrap();
         std::fs::write(
             workspace.path().join("legacy.json.layout.json"),
-            serde_json::to_vec(&custom.layout).unwrap(),
+            serde_json::to_vec(custom.layout()).unwrap(),
         )
         .unwrap();
         let (_, native) = prepare(workspace.path(), Some("selected.openpatch"), false).unwrap();

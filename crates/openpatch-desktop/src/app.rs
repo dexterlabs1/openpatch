@@ -19,8 +19,12 @@ use eframe::{
     glow,
 };
 use openpatch::control::{execute_shared, SharedSession};
+use openpatch::project_document::{
+    DocumentNode, ExecutionDisposition, ProjectDocument, ProjectLayout,
+};
 use openpatch_core::{catalog, MidiEvent, Patch};
 include!("toolbar.rs");
+include!("app_import.rs");
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -336,8 +340,14 @@ fn preset_filename(name: &str) -> Option<String> {
 pub struct OpenPatch {
     shared: SharedSession,
     patch: Patch,
+    project: ProjectDocument,
+    import_review: Option<String>,
+    import_review_open: bool,
+    import_substitute_kind: String,
+    import_port_mappings: BTreeMap<String, String>,
     revision: u64,
     state_id: u64,
+    layout_generation: u64,
     history_layouts: BTreeMap<u64, Value>,
     audio_revision: Option<u64>,
     live_events_attach_pending: bool,
@@ -448,16 +458,28 @@ impl OpenPatch {
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
-        let (patch, wave_banks, revision, state_id, workspace) = {
+        let (
+            patch,
+            project,
+            disposition,
+            wave_banks,
+            revision,
+            state_id,
+            layout_generation,
+            workspace,
+        ) = {
             let mut s = shared.lock().unwrap();
             // A fresh engine starts from this exact document, with no old
             // signal history to which earlier host edges could apply.
             s.discard_audio_lifecycle_through_current();
             (
                 s.patch().clone(),
+                s.project_document().clone(),
+                s.execution_disposition(),
                 s.prepared_wave_banks(),
                 s.revision(),
                 s.state_id(),
+                s.layout_generation(),
                 s.workspace().display().to_string(),
             )
         };
@@ -474,6 +496,8 @@ impl OpenPatch {
             wave_banks,
             output_device.as_deref(),
             cable_presentation.plug_brightness > 0.0,
+            revision,
+            disposition,
         );
         let midi_epoch = audio.as_ref().map_or(0, Audio::midi_epoch);
         let midi = audio
@@ -487,9 +511,9 @@ impl OpenPatch {
         };
         let audio_revision = None;
         let volume = audio.as_ref().map_or(0.65, Audio::volume);
-        let (rack, documents) = Self::startup_view(&startup, &patch, revision);
+        let (rack, documents) = Self::startup_view(&startup, &project, revision);
         let history_layouts = BTreeMap::from([
-            (startup.state_id, startup.document.layout.clone()),
+            (startup.state_id, startup.document.layout().clone()),
             (state_id, rack.layout()),
         ]);
         let recovery_names = startup
@@ -507,8 +531,14 @@ impl OpenPatch {
         let mut app = Self {
             shared,
             patch,
+            project,
+            import_review: None,
+            import_review_open: true,
+            import_substitute_kind: String::new(),
+            import_port_mappings: BTreeMap::new(),
             revision,
             state_id,
+            layout_generation,
             history_layouts,
             audio_revision,
             live_events_attach_pending: false,
@@ -580,6 +610,9 @@ impl OpenPatch {
             allow_close: false,
             smoke_test: smoke_test.map(|path| (path, 0, 0)),
         };
+        if let Err(error) = app.publish_current_layout() {
+            app.status = error;
+        }
         app.refresh_recovery_list();
         app.apply_host_preferences(&preferences);
         app.refresh_files();
@@ -591,14 +624,20 @@ impl OpenPatch {
     }
     fn startup_view(
         startup: &crate::startup::Startup,
-        patch: &Patch,
+        project: &ProjectDocument,
         revision: u64,
     ) -> (Rack, DocumentState) {
+        let patch = project
+            .state_carrier()
+            .expect("validated startup document")
+            .patch;
         let mut rack = Rack::default();
-        rack.restore_layout(&startup.document.layout)
-            .expect("validated startup layout");
-        rack.reconcile(patch, &catalog());
-        let mut documents = DocumentState::new(patch, revision, &rack);
+        rack.restore_layout(
+            &serde_json::to_value(&project.layout).expect("validated project layout"),
+        )
+        .expect("validated startup layout");
+        rack.reconcile_document(&patch, project, &catalog());
+        let mut documents = DocumentState::new(project, revision, &rack);
         // MCP may already have changed the live graph since startup preparation.
         // Its edits remain current; the original document is the saved baseline.
         documents.mark_saved(&startup.document);
@@ -669,9 +708,17 @@ impl OpenPatch {
         wave_banks: std::sync::Arc<openpatch_core::PreparedWaveBanks>,
         device: Option<&str>,
         port_lights_enabled: bool,
+        revision: u64,
+        disposition: ExecutionDisposition,
     ) -> (Option<Audio>, String) {
-        let opened =
-            Audio::new_with_device_and_wave_banks(patch, wave_banks, device, port_lights_enabled);
+        let opened = Audio::new_with_device_and_wave_banks_and_execution(
+            patch,
+            wave_banks,
+            device,
+            port_lights_enabled,
+            revision,
+            disposition,
+        );
         match opened {
             Ok(audio) => {
                 let label = format!(
@@ -812,9 +859,9 @@ impl OpenPatch {
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
         self.scope.reset_connection();
-        let ticket = match self.shared.lock() {
+        let (ticket, disposition) = match self.shared.lock() {
             Ok(mut session) => match session.audio_snapshot() {
-                Ok(ticket) => ticket,
+                Ok(ticket) => (ticket, session.execution_disposition()),
                 Err(error) => {
                     self.settings_status = error;
                     return;
@@ -830,6 +877,8 @@ impl OpenPatch {
             ticket.banks.clone(),
             selected.as_deref(),
             self.rack.cable_presentation().plug_brightness > 0.0,
+            ticket.revision,
+            disposition,
         );
         if let Some(mut audio) = audio {
             // The new engine was compiled from this immutable ticket. Its
@@ -1241,6 +1290,23 @@ impl OpenPatch {
         {
             args["expected_revision"] = json!(self.revision);
         }
+        if args["expected_revision"]
+            .as_u64()
+            .is_none_or(|revision| revision == self.revision)
+        {
+            if let Err(error) = self.publish_current_layout() {
+                // Let the command's graph guard report an MCP race; a matching
+                // graph with stale geometry must synchronize before editing.
+                if self
+                    .shared
+                    .try_lock()
+                    .is_ok_and(|live| live.revision() == self.revision)
+                {
+                    self.status = error;
+                    return false;
+                }
+            }
+        }
         match execute_shared(&self.shared, name, args) {
             Ok(receipt) => {
                 if name == "replace_patch" {
@@ -1445,6 +1511,7 @@ impl OpenPatch {
             self.attach_live_events();
         }
         if let Ok(mut s) = self.shared.try_lock() {
+            let graph_changed = s.revision() != self.revision;
             let construction = s.construction_snapshot();
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
@@ -1457,8 +1524,24 @@ impl OpenPatch {
                     .insert(self.state_id, self.rack.layout());
                 if self.state_id != s.state_id() {
                     self.state_id = s.state_id();
+                    // An exact local receipt may have finalized this state's
+                    // placement after later MCP edits were already committed.
+                    // Its accepted cache completes pending historical geometry.
                     if let Some(layout) = self.history_layouts.get(&self.state_id) {
-                        if self.rack.restore_layout(layout).is_ok() {
+                        let mut layout = layout.clone();
+                        layout["pan"] = json!(s.project_document().layout.pan);
+                        layout["zoom"] = json!(s.project_document().layout.zoom);
+                        if self.rack.restore_layout(&layout).is_ok() {
+                            if let Some(positions) = layout["positions"].as_object() {
+                                restored_positions.extend(positions.keys().cloned());
+                            }
+                        }
+                    } else if s.layout_origin().is_some()
+                        || (!s.layout_pending()
+                            && self.project.layout != s.project_document().layout)
+                    {
+                        if let Ok(layout) = serde_json::to_value(&s.project_document().layout) {
+                            let _ = self.rack.restore_layout(&layout);
                             if let Some(positions) = layout["positions"].as_object() {
                                 restored_positions.extend(positions.keys().cloned());
                             }
@@ -1479,7 +1562,13 @@ impl OpenPatch {
                 }
             }
             let mut placements = s.take_layout_placements();
-            placements.retain(|id, _| !restored_positions.contains(id));
+            let current_layout = self.rack.layout();
+            placements.retain(|id, row| {
+                !restored_positions.contains(id)
+                    && !(self.patch.nodes.iter().any(|node| &node.id == id)
+                        && current_layout["positions"][id][1].as_f64()
+                            == Some(f64::from(*row) * 420.0))
+            });
             // A console grows only after the outgoing geometry is saved.
             // History layouts and freshly added incarnations already carry
             // authoritative placement; ordinary GUI and MCP channel edits
@@ -1547,6 +1636,53 @@ impl OpenPatch {
                 self.rack.reconcile_selection(&self.patch);
                 self.revision = s.revision();
             }
+            if !graph_changed
+                && self.layout_generation != s.layout_generation()
+                && !s.layout_pending()
+                && self.project.layout != s.project_document().layout
+            {
+                if let Ok(layout) = serde_json::to_value(&s.project_document().layout) {
+                    let _ = self.rack.restore_layout(&layout);
+                }
+            }
+            let imported_new_source =
+                s.layout_origin() == Some(openpatch::control::LayoutOrigin::SourceImport);
+            self.project = s.project_document().clone();
+            self.rack
+                .reconcile_document(&self.patch, &self.project, &self.catalog);
+            if imported_new_source {
+                self.rack.reflow_imported_source_layout(&self.project);
+            }
+            let publication = (|| -> Result<(), String> {
+                s.attach_layout_host()?;
+                let mut layout: ProjectLayout =
+                    serde_json::from_value(self.rack.layout()).map_err(|e| e.to_string())?;
+                if !self.rack.navigation_idle() {
+                    layout.pan = s.project_document().layout.pan;
+                    layout.zoom = s.project_document().layout.zoom;
+                }
+                let intent = if s.layout_pending()
+                    || s.layout_origin().is_some()
+                    || layout.positions != s.project_document().layout.positions
+                {
+                    Some(openpatch::control::LayoutIntent::Placement)
+                } else if layout != s.project_document().layout {
+                    Some(openpatch::control::LayoutIntent::Camera)
+                } else {
+                    None
+                };
+                if let Some(intent) = intent {
+                    let (revision, state_id, generation) =
+                        (s.revision(), s.state_id(), s.layout_generation());
+                    s.publish_host_layout(revision, state_id, generation, layout, intent)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = publication {
+                self.status = error;
+            }
+            self.layout_generation = s.layout_generation();
+            self.project.layout = s.project_document().layout.clone();
             // Seal patch, banks, revision and ordered host effects together.
             // Later commits append a separate segment while this one retries.
             if self.audio.is_some() && self.audio_revision != Some(s.revision()) {
@@ -1606,6 +1742,7 @@ impl OpenPatch {
         }
     }
     fn history(&mut self, redo: bool) {
+        let _ = self.publish_current_layout();
         let tool = if redo { "redo" } else { "undo" };
         if self.command(tool, json!({})) {
             self.status = if redo {
@@ -1817,15 +1954,31 @@ impl OpenPatch {
         }
     }
     fn observe_document(&mut self) {
-        let running = self
-            .shared
-            .try_lock()
-            .ok()
-            .and_then(|live| live.capture_project_running(Some(self.revision)).ok())
-            .map(|snapshot| snapshot.saved_states);
+        let _ = self.publish_current_layout();
+        let running = self.shared.try_lock().ok().and_then(|live| {
+            if live.revision() != self.revision {
+                return None;
+            }
+            if !live.execution_disposition().is_runnable() {
+                Some(
+                    live.patch()
+                        .nodes
+                        .iter()
+                        .filter_map(|node| {
+                            openpatch_core::SavedModuleState::from_node(node)
+                                .map(|state| (node.id.clone(), state))
+                        })
+                        .collect(),
+                )
+            } else {
+                live.capture_project_running(Some(self.revision))
+                    .ok()
+                    .map(|snapshot| snapshot.saved_states)
+            }
+        });
         if self
             .documents
-            .observe_saved_runtime(&self.patch, self.revision, &self.rack, running)
+            .observe_saved_runtime(&self.project, self.revision, &self.rack, running)
         {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
@@ -1834,41 +1987,56 @@ impl OpenPatch {
     // Persist one coherent graph/Run/HOLD/layout snapshot. Raw capture_document below
     // remains the graph/layout receipt used by history and UI installers.
     fn capture_persisted_document(&mut self) -> Result<Document, String> {
-        self.rack.reconcile(&self.patch, &self.catalog);
+        self.rack
+            .reconcile_document(&self.patch, &self.project, &self.catalog);
+        self.publish_current_layout()?;
         let captured = self
             .shared
             .try_lock()
             .map_err(|_| "Project is busy; try again".to_string())?
-            .capture_project_patch(Some(self.revision))?;
+            .capture_project_document(Some(self.revision))?;
+        let states = captured
+            .document
+            .graph
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                DocumentNode::Native { node, .. } => {
+                    openpatch_core::SavedModuleState::from_node(node)
+                        .map(|state| (node.id.clone(), state))
+                }
+                _ => None,
+            })
+            .collect();
         if self.documents.observe_saved_runtime(
-            &self.patch,
+            &captured.document,
             self.revision,
             &self.rack,
-            Some(captured.saved_states),
+            Some(states),
         ) {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
         }
-        Ok(Document {
-            patch: captured.patch,
-            layout: self.rack.layout(),
-        })
+        Document::from_project(captured.document)
     }
     fn close_if_saved(&mut self) {
+        if let Err(error) = self.publish_current_layout() {
+            self.status = error;
+            self.deferred_action = Some(PendingAction::Close);
+            return;
+        }
         let result = match self.shared.try_lock() {
-            Ok(mut live) => live
-                .capture_project_patch(Some(self.revision))
-                .and_then(|snapshot| {
-                    let document = Document {
-                        patch: snapshot.patch,
-                        layout: self.rack.layout(),
-                    };
-                    if self.documents.matches_saved(&document) {
-                        live.seal_for_close(self.revision).map(|()| true)
-                    } else {
-                        Ok(false)
-                    }
-                }),
+            Ok(mut live) => {
+                live.capture_project_document(Some(self.revision))
+                    .and_then(|snapshot| {
+                        let document = Document::from_project(snapshot.document)?;
+                        if self.documents.matches_saved(&document) {
+                            live.seal_for_close(self.revision).map(|()| true)
+                        } else {
+                            Ok(false)
+                        }
+                    })
+            }
             Err(_) => {
                 self.deferred_action = Some(PendingAction::Close);
                 return;
@@ -1892,12 +2060,40 @@ impl OpenPatch {
         self.documents.dirty()
     }
     fn capture_document(&mut self) -> Document {
-        self.rack.reconcile(&self.patch, &self.catalog);
+        self.rack
+            .reconcile_document(&self.patch, &self.project, &self.catalog);
+        let _ = self.publish_current_layout();
         self.observe_document();
-        Document {
-            patch: self.patch.clone(),
-            layout: self.rack.layout(),
-        }
+        Document::from_project(self.project.clone())
+            .and_then(|document| document.with_layout(self.rack.layout()))
+            .expect("validated UI document")
+    }
+
+    fn project_for_receipt(
+        &self,
+        receipt: &Value,
+        patch: &Patch,
+    ) -> Result<ProjectDocument, String> {
+        let Some(reference) = receipt.get("document") else {
+            return ProjectDocument::from_patch(patch.clone(), self.project.layout.clone());
+        };
+        let mut document = self.project.clone();
+        document.graph.nodes = serde_json::from_value(reference["graph"]["nodes"].clone())
+            .map_err(|e| e.to_string())?;
+        document.graph.cables = serde_json::from_value(reference["graph"]["cables"].clone())
+            .map_err(|e| e.to_string())?;
+        document.graph.version = patch.version;
+        document.graph.sample_rate = patch.sample_rate;
+        document.graph.assets = patch.assets.clone();
+        document.graph.output = reference["graph"]["output"].as_str().map(str::to_owned);
+        document.graph.output_port = reference["graph"]["output_port"]
+            .as_str()
+            .ok_or("document output port missing")?
+            .into();
+        document.layout =
+            serde_json::from_value(reference["layout"].clone()).map_err(|e| e.to_string())?;
+        document.validate_structure()?;
+        Ok(document)
     }
     fn request_action(&mut self, action: PendingAction) {
         self.cancel_wavetable_import();
@@ -1984,12 +2180,14 @@ impl OpenPatch {
             Ok(applied) => {
                 let locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
+                self.project = applied.project;
                 self.patch = applied.patch;
                 self.replace_rack_for_document(applied.rack, applied.revision);
                 self.rack.set_positions_locked(locked);
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
                 self.state_id = applied.state_id;
+                self.layout_generation = applied.layout_generation;
                 self.history_layouts.clear();
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
@@ -1998,7 +2196,7 @@ impl OpenPatch {
                     audio.set_playing(false);
                 }
                 self.clear_recovery();
-                self.documents = DocumentState::new(&self.patch, self.revision, &self.rack);
+                self.documents = DocumentState::new(&self.project, self.revision, &self.rack);
                 self.active_file = None;
                 self.active_token = None;
                 self.title = "Untitled".into();
@@ -2062,7 +2260,7 @@ impl OpenPatch {
         egui::Modal::new(egui::Id::new("save-template")).show(ctx, |ui| {
             ui.set_width(420.0);
             ui.heading("Use this patch as your template?");
-            ui.label(format!("Captured {} modules and {} cables, including layout and saved Run/HOLD settings.", snapshot.document.patch.nodes.len(), snapshot.document.patch.cables.len()));
+            ui.label(format!("Captured {} modules and {} cables, including layout and saved Run/HOLD settings.", snapshot.document.patch().nodes.len(), snapshot.document.patch().cables.len()));
             ui.label("This snapshot will replace the template used for New and future launches. Your current project and its saved file stay unchanged.");
             ui.horizontal(|ui| {
                 cancel = ui.button("Cancel").clicked();
@@ -2083,11 +2281,8 @@ impl OpenPatch {
         self.replace_now_guarded(patch, title, false);
     }
     fn check_saved_content(&self, live: &openpatch::control::Session) -> Result<(), String> {
-        let snapshot = live.capture_project_patch(Some(self.revision))?;
-        let document = Document {
-            patch: snapshot.patch,
-            layout: self.rack.layout(),
-        };
+        let snapshot = live.capture_project_document(Some(self.revision))?;
+        let document = Document::from_project(snapshot.document)?;
         if self.documents.matches_saved(&document) {
             Ok(())
         } else {
@@ -2103,7 +2298,10 @@ impl OpenPatch {
                 if require_saved {
                     self.check_saved_content(&live)?;
                 }
-                live.replace_patch(patch.clone(), Some(self.revision))
+                live.replace_project_document(
+                    ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?,
+                    Some(self.revision),
+                )
             });
         let document_revision = match result {
             Ok(revision) => revision,
@@ -2461,11 +2659,11 @@ impl OpenPatch {
                     let detail = match store.load_recovery(name) {
                         Ok(loaded) => format!(
                             "{} modules · {} cables\n{}",
-                            loaded.document.patch.nodes.len(),
-                            loaded.document.patch.cables.len(),
+                            loaded.document.patch().nodes.len(),
+                            loaded.document.patch().cables.len(),
                             loaded
                                 .document
-                                .patch
+                                .patch()
                                 .nodes
                                 .iter()
                                 .take(6)
@@ -2604,6 +2802,7 @@ impl OpenPatch {
             Ok((loaded, applied)) => {
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
+                self.project = applied.project;
                 self.patch = applied.patch;
                 let positions_locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
@@ -2612,6 +2811,7 @@ impl OpenPatch {
                 self.rack.set_room_brightness(room_brightness);
                 self.revision = applied.revision;
                 self.state_id = applied.state_id;
+                self.layout_generation = applied.layout_generation;
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
                 self.panic_notes();
@@ -2716,6 +2916,10 @@ impl OpenPatch {
         }
     }
     fn add_module(&mut self, kind: &str, placement: Option<(egui::Pos2, bool)>) -> bool {
+        if let Err(error) = self.publish_current_layout() {
+            self.status = error;
+            return false;
+        }
         let id = (1..)
             .map(|i| format!("{kind}-{i}"))
             .find(|id| !self.patch.nodes.iter().any(|node| node.id == *id))
@@ -2765,6 +2969,7 @@ impl OpenPatch {
         }
         self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
+        self.project = self.project_for_receipt(receipt, &patch)?;
         self.patch = patch;
         self.revision = revision;
         self.state_id = state_id;
@@ -2837,6 +3042,11 @@ impl OpenPatch {
         if movement.before == movement.after {
             return false;
         }
+        if let Err(error) = self.publish_current_layout() {
+            self.status = error;
+            self.sync();
+            return false;
+        }
         let base_state_id = self.state_id;
         let base_layout = self.rack.layout();
         // Prepare and validate geometry before recording the shared history step.
@@ -2851,17 +3061,20 @@ impl OpenPatch {
             let mut candidate = Rack::default();
             candidate.restore_layout(&base_layout)?;
             candidate.apply_module_move(&movement)?;
-            Ok(())
+            serde_json::from_value::<ProjectLayout>(candidate.layout()).map_err(|e| e.to_string())
         })();
-        if let Err(error) = prepared {
-            self.status = error;
-            return false;
-        }
+        let layout = match prepared {
+            Ok(layout) => layout,
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
         let result = self
             .shared
             .lock()
             .map_err(|_| "Session lock poisoned".to_string())
-            .and_then(|mut live| live.record_layout_checkpoint(movement.revision));
+            .and_then(|mut live| live.record_project_layout(layout, movement.revision));
         let receipt = match result {
             Ok(receipt) => receipt,
             Err(error) => {
@@ -2905,6 +3118,7 @@ impl OpenPatch {
         self.rack.apply_module_move(movement)?;
         self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
+        self.project = self.project_for_receipt(receipt, &patch)?;
         self.patch = patch;
         self.revision = revision;
         self.state_id = state_id;
@@ -3021,6 +3235,7 @@ impl OpenPatch {
             .ok_or("duplicate receipt has no state identity")?;
         self.rack.clear_construction_animation();
         self.history_layouts.insert(base_state_id, base_layout);
+        self.project = self.project_for_receipt(receipt, &patch)?;
         self.patch = patch;
         self.revision = revision;
         self.state_id = state_id;
@@ -3389,6 +3604,7 @@ impl OpenPatch {
     }
 
     fn rack_workspace(&mut self, ctx: &egui::Context, library_action: Option<LibraryAction>) {
+        self.import_dependencies_ui(ctx);
         self.service_agent_follow(ctx);
         let mut action = None;
         let mut pending_add = None;
@@ -3569,6 +3785,11 @@ impl OpenPatch {
                 self.confirm_engine_upgrade = true;
             }
         }
+        if let Some(id) = self.rack.take_dependency_focus() {
+            self.import_review = Some(id);
+            self.import_review_open = true;
+        }
+        let _ = self.publish_current_layout();
     }
 
     fn library_enabled(&self) -> bool {
@@ -8205,6 +8426,9 @@ mod project_workflow_tests {
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
     }
+    mod import_app_tests {
+        include!("import_app_tests.rs");
+    }
     mod construction_document_tests {
         include!("construction_document_tests.rs");
     }
@@ -8248,19 +8472,38 @@ mod project_workflow_tests {
             .replace_patch(openpatch_core::demo_patch(), None)
             .unwrap();
         let patch = session.patch().clone();
+        let mut project = session.project_document().clone();
         let revision = session.revision();
         let state_id = session.state_id();
         let workspace = session.workspace().display().to_string();
         let mut rack = Rack::default();
         rack.reconcile(&patch, &catalog());
-        let documents = DocumentState::new(&patch, revision, &rack);
+        session.attach_layout_host().unwrap();
+        session
+            .publish_host_layout(
+                revision,
+                state_id,
+                session.layout_generation(),
+                serde_json::from_value(rack.layout()).unwrap(),
+                openpatch::control::LayoutIntent::Placement,
+            )
+            .unwrap();
+        project.layout = session.project_document().layout.clone();
+        let layout_generation = session.layout_generation();
+        let documents = DocumentState::new(&project, revision, &rack);
         let store = Store::new(path).unwrap();
         let recovery_names = store.recoveries();
         OpenPatch {
             shared: session.into_shared(),
             patch,
+            project,
+            import_review: None,
+            import_review_open: true,
+            import_substitute_kind: String::new(),
+            import_port_mappings: BTreeMap::new(),
             revision,
             state_id,
+            layout_generation,
             history_layouts: BTreeMap::new(),
             audio_revision: None,
             live_events_attach_pending: false,
@@ -9200,7 +9443,11 @@ mod project_workflow_tests {
                 assert!(app.status.contains("revision conflict"), "{}", app.status);
                 assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
                 assert_eq!(app.revision, newer["revision"].as_u64().unwrap());
-                assert_eq!(app.rack.layout(), layout);
+                assert_eq!(
+                    app.rack.layout(),
+                    layout,
+                    "{mutation}, synced={sync_before_apply}"
+                );
                 assert_eq!(app.rack.selected_ids(), selection);
             }
         }
@@ -9743,10 +9990,16 @@ mod project_workflow_tests {
         assert_eq!(app.patch.nodes[0].kind, "constant");
         assert!(app.browser_open);
         let after = app.capture_document();
-        assert_eq!(after.layout["pan"], before.layout["pan"]);
-        assert_eq!(after.layout["zoom"], before.layout["zoom"]);
         assert_eq!(
-            after.layout["positions"]["constant-1"],
+            after.layout().clone()["pan"],
+            before.layout().clone()["pan"]
+        );
+        assert_eq!(
+            after.layout().clone()["zoom"],
+            before.layout().clone()["zoom"]
+        );
+        assert_eq!(
+            after.layout().clone()["positions"]["constant-1"],
             json!([285.0, 420.0])
         );
         assert_eq!(
@@ -9871,15 +10124,18 @@ mod project_workflow_tests {
             "library-add".into(),
             Some((egui::pos2(300.0, 420.0), false)),
             base,
-            before.layout.clone(),
+            before.layout().clone().clone(),
         )
         .unwrap();
         let committed = app.capture_document();
         assert_eq!(
-            committed.layout["positions"]["library-add"],
+            committed.layout().clone()["positions"]["library-add"],
             json!([300.0, 420.0])
         );
-        assert_eq!(app.history_layouts[&committed_state], committed.layout);
+        assert_eq!(
+            app.history_layouts[&committed_state],
+            committed.layout().clone()
+        );
         app.sync();
         assert_eq!(app.state_id, committed_state);
         drop(live);
@@ -9973,8 +10229,14 @@ mod project_workflow_tests {
         let proposal = movement(&app, &ids, egui::vec2(30.0, 420.0));
         assert!(app.move_modules(proposal));
         let after = app.capture_document();
-        assert_eq!(after.layout["zoom"], before.layout["zoom"]);
-        assert_eq!(after.layout["pan"], before.layout["pan"]);
+        assert_eq!(
+            after.layout().clone()["zoom"],
+            before.layout().clone()["zoom"]
+        );
+        assert_eq!(
+            after.layout().clone()["pan"],
+            before.layout().clone()["pan"]
+        );
         assert_eq!(app.rack.selected_ids(), selection);
         app.history(false);
         assert!(app.capture_document().equivalent(&before));
@@ -10035,7 +10297,7 @@ mod project_workflow_tests {
         let newer = app.shared.lock().unwrap().snapshot();
         assert!(!app.move_modules(stale));
         assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
-        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.layout(), before.layout().clone());
         assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
     }
 
@@ -10061,11 +10323,19 @@ mod project_workflow_tests {
             json!({"id":id,"parameter":"frequency","value":330}),
         )
         .unwrap();
-        app.install_move_receipt(&receipt, &proposal, base_state, before.layout.clone())
-            .unwrap();
+        app.install_move_receipt(
+            &receipt,
+            &proposal,
+            base_state,
+            before.layout().clone().clone(),
+        )
+        .unwrap();
         let moved = app.capture_document();
-        assert_eq!(app.history_layouts[&committed_state], moved.layout);
-        assert_eq!(app.history_layouts[&base_state], before.layout);
+        assert_eq!(
+            app.history_layouts[&committed_state],
+            moved.layout().clone()
+        );
+        assert_eq!(app.history_layouts[&base_state], before.layout().clone());
         drop(live);
         app.sync();
         assert_eq!(app.patch.nodes[0].params["frequency"], 330.0);
@@ -10098,7 +10368,7 @@ mod project_workflow_tests {
         let before = app.capture_document();
         let ctx = egui::Context::default();
         let target = start_module_preview(&mut app, &ctx);
-        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.layout(), before.layout().clone());
         app.save_current();
         assert!(app
             .projects
@@ -10117,7 +10387,7 @@ mod project_workflow_tests {
         assert_eq!(recoveries.len(), 1);
         let recovery: Value =
             serde_json::from_slice(&std::fs::read(&recoveries[0]).unwrap()).unwrap();
-        assert_eq!(recovery["layout"], before.layout);
+        assert_eq!(recovery["layout"], before.layout().clone());
         library_frame(
             &mut app,
             &ctx,
@@ -10125,9 +10395,12 @@ mod project_workflow_tests {
             vec![pointer_event(target, false)],
             true,
         );
-        assert_ne!(app.rack.layout()["positions"], before.layout["positions"]);
+        assert_ne!(
+            app.rack.layout()["positions"],
+            before.layout().clone()["positions"]
+        );
         app.history(false);
-        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.layout(), before.layout().clone());
     }
 
     #[test]
@@ -10170,7 +10443,7 @@ mod project_workflow_tests {
             if mutation == "grouped" {
                 assert_eq!(app.state_id, base_state);
             }
-            assert_eq!(app.history_layouts[&base_state], before.layout);
+            assert_eq!(app.history_layouts[&base_state], before.layout().clone());
             library_frame(
                 &mut app,
                 &ctx,
@@ -10180,7 +10453,7 @@ mod project_workflow_tests {
             );
             assert_eq!(app.shared.lock().unwrap().snapshot(), graph);
             if mutation == "grouped" {
-                assert_eq!(app.rack.layout(), before.layout);
+                assert_eq!(app.rack.layout(), before.layout().clone());
             } else {
                 assert!(app.rack.layout()["positions"].get(&id).is_none());
             }
@@ -10413,7 +10686,7 @@ mod project_workflow_tests {
         let files = recovery_files(dir.path());
         assert_eq!(files.len(), 1);
         let recovery: Value = serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
-        assert_eq!(recovery["patch"]["cables"], json!([]));
+        assert_eq!(recovery["graph"]["cables"], json!([]));
         assert_eq!(recovery["layout"], layout);
         app.save_document("cleared.openpatch", true);
         let saved = app
@@ -10744,7 +11017,7 @@ mod project_workflow_tests {
         }
         std::fs::write(
             dir.path().join("legacy.json"),
-            serde_json::to_vec(&expected.patch).unwrap(),
+            serde_json::to_vec(&expected.patch()).unwrap(),
         )
         .unwrap();
         let mut app = host(dir.path());
@@ -10773,7 +11046,7 @@ mod project_workflow_tests {
         assert!(app.rack.positions_locked());
         assert_eq!(app.rack.room_brightness(), 0.1);
         assert!(app.active_file.is_none());
-        assert_eq!(app.patch.nodes.len(), expected.patch.nodes.len());
+        assert_eq!(app.patch.nodes.len(), expected.patch().nodes.len());
     }
 
     #[test]
@@ -11202,11 +11475,11 @@ mod project_workflow_tests {
             .load("waveforms.openpatch")
             .unwrap();
         assert!(loaded.document.equivalent(&saved));
-        assert_eq!(loaded.document.layout, geometry);
-        assert_eq!(loaded.document.patch.cables.len(), 10);
+        assert_eq!(loaded.document.layout(), &geometry);
+        assert_eq!(loaded.document.patch().cables.len(), 10);
         let voice = loaded
             .document
-            .patch
+            .patch()
             .nodes
             .iter()
             .find(|n| n.id == "voice")
@@ -11304,8 +11577,8 @@ mod project_workflow_tests {
             app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
             steps + 1
         );
-        assert_eq!(app.patch.output, before.patch.output);
-        assert_eq!(app.patch.output_port, before.patch.output_port);
+        assert_eq!(app.patch.output, before.patch().output);
+        assert_eq!(app.patch.output_port, before.patch().output_port);
         assert_eq!(app.patch.cables.len(), 5);
         assert!(
             app.patch
@@ -11359,8 +11632,8 @@ mod project_workflow_tests {
         ));
         let after = app.capture_document();
         assert_eq!(app.rack.selected_ids(), vec!["pitch"]);
-        assert_eq!(app.patch.output, before.patch.output);
-        assert_eq!(app.patch.cables.len(), before.patch.cables.len() + 2);
+        assert_eq!(app.patch.output, before.patch().output);
+        assert_eq!(app.patch.cables.len(), before.patch().cables.len() + 2);
         assert!(app.patch.cables.iter().any(|cable| cable.from == "tone"
             && cable.to == "filter-copy-1"
             && cable.input == "signal"));
@@ -11373,8 +11646,8 @@ mod project_workflow_tests {
                 && cable.input == "signal"));
         for id in ["tone", "filter", "pitch", "out"] {
             assert_eq!(
-                after.layout["positions"][id],
-                before.layout["positions"][id]
+                after.layout().clone()["positions"][id],
+                before.layout().clone()["positions"][id]
             );
         }
         assert_eq!(
@@ -11409,7 +11682,7 @@ mod project_workflow_tests {
             false,
         ));
         assert!(app.status.contains("engine v2"));
-        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.layout(), before.layout().clone());
         assert_eq!(app.rack.selected_ids(), vec!["tone"]);
         assert!(app.duplicate_modules(
             &["tone".into()],
@@ -11540,12 +11813,21 @@ mod project_workflow_tests {
         let mut live = shared.lock().unwrap();
         live.execute("remove_module", json!({"id":"copy"})).unwrap();
         let later_revision = live.revision();
-        app.install_duplicate_receipt(&receipt, placement, base_state, before.layout.clone(), true)
-            .unwrap();
+        app.install_duplicate_receipt(
+            &receipt,
+            placement,
+            base_state,
+            before.layout().clone().clone(),
+            true,
+        )
+        .unwrap();
         let committed = app.capture_document();
         assert_eq!(app.state_id, committed_state);
-        assert_eq!(app.history_layouts[&base_state], before.layout);
-        assert_eq!(app.history_layouts[&committed_state], committed.layout);
+        assert_eq!(app.history_layouts[&base_state], before.layout().clone());
+        assert_eq!(
+            app.history_layouts[&committed_state],
+            committed.layout().clone()
+        );
         assert!(app.patch.nodes.iter().any(|n| n.id == "copy"));
         app.sync();
         assert_eq!(
@@ -11907,7 +12189,7 @@ mod project_workflow_tests {
             .unwrap()
             .document;
         assert_eq!(
-            SavedModuleState::from_node(&recovered.patch.nodes[1]),
+            SavedModuleState::from_node(&recovered.patch().nodes[1]),
             Some(saved)
         );
         app.save_current();
@@ -12039,7 +12321,7 @@ mod project_workflow_tests {
             .load("recovery-copy.openpatch")
             .unwrap()
             .document;
-        assert_eq!(recovery.patch.nodes[0].params["holding"], 1.0);
+        assert_eq!(recovery.patch().nodes[0].params["holding"], 1.0);
         app.save_current();
         assert!(!app.dirty());
         let saved = app
@@ -12179,8 +12461,8 @@ mod project_workflow_tests {
             .load("mixed.openpatch")
             .unwrap()
             .document;
-        assert_eq!(saved.patch.nodes[0].params["running"], 0.0);
-        assert_eq!(saved.patch.nodes[1].params["holding"], 1.0);
+        assert_eq!(saved.patch().nodes[0].params["running"], 0.0);
+        assert_eq!(saved.patch().nodes[1].params["holding"], 1.0);
         telemetry.0.lock().unwrap()["modules"]["button"]["frame"] = json!(512);
         assert!(app.capture_persisted_document().is_err());
         let still_saved = app
@@ -12218,8 +12500,8 @@ mod project_workflow_tests {
             .load("recovery-copy.openpatch")
             .unwrap()
             .document;
-        assert_eq!(recovery.patch.nodes[0].params["running"], 0.0);
-        assert_eq!(recovery.patch.nodes[1].params["running"], 1.0);
+        assert_eq!(recovery.patch().nodes[0].params["running"], 0.0);
+        assert_eq!(recovery.patch().nodes[1].params["running"], 1.0);
         app.save_current();
         assert!(!app.dirty());
         let saved = app
@@ -12431,8 +12713,8 @@ mod project_workflow_tests {
             .unwrap()
             .load("voice.openpatch")
             .unwrap();
-        assert_eq!(saved.document.patch.nodes[0].params["frequency"], 330.0);
-        assert_eq!(saved.document.layout["zoom"], 0.75);
+        assert_eq!(saved.document.patch().nodes[0].params["frequency"], 330.0);
+        assert_eq!(saved.document.layout()["zoom"], 0.75);
         edit(&mut app, 440.0);
         app.load_document("voice.openpatch", false);
         assert!(!app.dirty());
@@ -12793,7 +13075,7 @@ mod project_workflow_tests {
                 .load("recovered.openpatch")
                 .unwrap()
                 .document
-                .patch
+                .patch()
                 .nodes[0]
                 .params["frequency"],
             330.0
@@ -12813,8 +13095,10 @@ mod project_workflow_tests {
             .execute("undo", json!({}))
             .unwrap();
         app.sync();
-        let mut template = crate::startup::factory_document();
-        template.layout["zoom"] = json!(0.75);
+        let template = crate::startup::factory_document();
+        let mut layout = template.layout().clone();
+        layout["zoom"] = json!(0.75);
+        let template = template.with_layout(layout).unwrap();
         app.projects
             .as_ref()
             .unwrap()
@@ -12888,8 +13172,8 @@ mod project_workflow_tests {
             .unwrap()
             .unwrap();
         assert!(published.equivalent(&reviewed));
-        assert_eq!(published.patch.nodes[0].params["frequency"], 330.0);
-        assert_eq!(published.layout["zoom"], 0.75);
+        assert_eq!(published.patch().nodes[0].params["frequency"], 330.0);
+        assert_eq!(published.layout().clone()["zoom"], 0.75);
         assert_eq!(app.shared.lock().unwrap().snapshot(), live);
         assert_eq!(app.rack.layout(), layout);
         assert_eq!(app.active_file.as_deref(), Some("working.openpatch"));
@@ -12914,12 +13198,14 @@ mod project_workflow_tests {
     fn startup_view_keeps_early_mcp_edits_and_marks_them_dirty_against_prepared_baseline() {
         let dir = tempfile::tempdir().unwrap();
         let (mut session, startup) = crate::startup::prepare(dir.path(), None, false).unwrap();
-        let (_, clean) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        let (_, clean) =
+            OpenPatch::startup_view(&startup, session.project_document(), session.revision());
         assert!(!clean.dirty());
         session
             .execute("add_module", json!({"id":"early_mcp","kind":"constant"}))
             .unwrap();
-        let (rack, dirty) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        let (rack, dirty) =
+            OpenPatch::startup_view(&startup, session.project_document(), session.revision());
         assert!(session
             .patch()
             .nodes
@@ -12928,7 +13214,8 @@ mod project_workflow_tests {
         assert!(rack.layout()["positions"].get("early_mcp").is_some());
         assert!(dirty.dirty());
         session.execute("undo", json!({})).unwrap();
-        let (_, restored) = OpenPatch::startup_view(&startup, session.patch(), session.revision());
+        let (_, restored) =
+            OpenPatch::startup_view(&startup, session.project_document(), session.revision());
         assert!(!restored.dirty());
     }
 

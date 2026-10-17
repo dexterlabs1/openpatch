@@ -2,9 +2,19 @@
 mod cable_edits;
 mod capture;
 mod construction;
+mod document;
+#[cfg(test)]
+mod document_tests;
+mod rack_import;
+use crate::project_document::{
+    DocumentNode, ExecutionDisposition, PlaybackMode, ProjectDocument, ProjectLayout,
+};
+pub use document::{LayoutIntent, LayoutOrigin, ProjectDocumentSnapshot};
 mod host_lifecycle;
 #[cfg(test)]
 mod host_lifecycle_tests;
+#[cfg(test)]
+mod project_layout_tests;
 #[doc(hidden)]
 pub use host_lifecycle::{HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta};
 mod layout_history;
@@ -223,6 +233,18 @@ pub trait LiveModuleEvents: Send + Sync {
         Err("live Scope inspection is unsupported by this backend".into())
     }
     fn sync_patch(&self, _patch: &Patch, _revision: u64) {}
+    /// Imported documents need a fenced execution gate, independent of mute.
+    fn supports_document_execution(&self) -> bool {
+        false
+    }
+    /// Called before sync_patch at the same revision. Backends fence pending
+    /// and acknowledged plans; legacy backends accept native-only documents.
+    fn request_document_execution(
+        &self,
+        _revision: u64,
+        _disposition: crate::project_document::ExecutionDisposition,
+    ) {
+    }
     /// Retire explicit removals, including remove-and-readd in one transaction.
     fn retire_modules(&self, _ids: &[String]) {}
     /// Retire explicit cable removals, including reuse of an ID in one batch.
@@ -268,11 +290,19 @@ pub trait LiveModuleEvents: Send + Sync {
 }
 
 pub struct Session {
+    // Authoritative portable document; patch is its validated native state carrier.
+    document: ProjectDocument,
+    playback_mode: PlaybackMode,
+    document_execution: bool,
     patch: Patch,
     wave_preparation_cache: WavePreparationCache,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
     revision: u64,
     state_id: u64,
+    layout_host_attached: bool,
+    layout_generation: u64,
+    layout_pending: bool,
+    layout_origin: Option<LayoutOrigin>,
     workspace: PathBuf,
     undo: VecDeque<HistoryEntry>,
     redo: Vec<HistoryEntry>,
@@ -291,11 +321,18 @@ pub struct Session {
 impl Clone for Session {
     fn clone(&self) -> Self {
         Self {
+            document: self.document.clone(),
+            playback_mode: self.playback_mode,
+            document_execution: self.document_execution,
             patch: self.patch.clone(),
             wave_preparation_cache: self.wave_preparation_cache.clone(),
             prepared_wave_banks: self.prepared_wave_banks.clone(),
             revision: self.revision,
             state_id: self.state_id,
+            layout_host_attached: false,
+            layout_generation: self.layout_generation,
+            layout_pending: false,
+            layout_origin: self.layout_origin,
             workspace: self.workspace.clone(),
             undo: self.undo.clone(),
             redo: self.redo.clone(),
@@ -320,6 +357,9 @@ impl Drop for Session {
 
 #[derive(Clone)]
 struct HistoryEntry {
+    document: ProjectDocument,
+    layout_origin: Option<LayoutOrigin>,
+    playback_mode: PlaybackMode,
     patch: Patch,
     layout_rows: BTreeMap<String, u32>,
     prepared_wave_banks: std::sync::Weak<PreparedWaveBanks>,
@@ -421,6 +461,14 @@ pub(crate) fn execute_shared_authorized(
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     check_transport_authorization(authorization)?;
     live.reconcile_midi_cc_learn()?;
+    if name == "save_document" {
+        validate_arguments(&tools(), name, &args)?;
+        let captured = live.capture_project_document(expected_revision(&args)?)?;
+        let filename = string(&args, "filename")?;
+        let path = live.file(filename, ".json")?;
+        drop(live);
+        return document::write_document_snapshot(&path, filename, captured);
+    }
     match name {
         "export_visualizer"
         | "save_patch"
@@ -482,12 +530,20 @@ impl Session {
         let patch = Patch::new_v2();
         let wave_preparation_cache = WavePreparationCache::default();
         let prepared_wave_banks = patch.prepare_wave_banks(&wave_preparation_cache)?;
+        let document = ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?;
         Ok(Self {
+            document,
+            playback_mode: PlaybackMode::Exact,
+            document_execution: false,
             patch,
             wave_preparation_cache,
             prepared_wave_banks,
             revision: 0,
             state_id: 0,
+            layout_host_attached: false,
+            layout_generation: 0,
+            layout_pending: false,
+            layout_origin: None,
             undo: VecDeque::new(),
             redo: Vec::new(),
             history_group: None,
@@ -507,9 +563,13 @@ impl Session {
         &mut self,
         backend: Option<Arc<dyn LiveModuleEvents>>,
     ) -> Result<(), String> {
+        self.validate_document_backend(&self.document, self.playback_mode, backend.as_deref())?;
         self.reconcile_midi_cc_learn()?;
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if let Some(backend) = &backend {
+            if self.document_execution {
+                backend.request_document_execution(self.revision, self.execution_disposition());
+            }
             backend.sync_patch(&self.patch, self.revision);
         }
         self.live_module_events = backend;
@@ -519,6 +579,9 @@ impl Session {
 
     fn sync_live_module_events(&self) {
         if let Some(backend) = &self.live_module_events {
+            if self.document_execution {
+                backend.request_document_execution(self.revision, self.execution_disposition());
+            }
             backend.sync_patch(&self.patch, self.revision);
         }
     }
@@ -578,7 +641,15 @@ impl Session {
     }
 
     pub fn snapshot(&self) -> Value {
-        json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch.reference_view(),"history":self.history()})
+        let mut result = json!({"revision":self.revision,"state_id":self.state_id,"patch":self.patch.reference_view(),"history":self.history()});
+        if self.has_source_document() {
+            result["document"] = self.document.reference_view();
+            result["execution"] = self.document_execution_status();
+            result["patch_is_native_state_carrier"] = json!(true);
+            result["layout_generation"] = json!(self.layout_generation);
+            result["layout_pending"] = json!(self.layout_pending);
+        }
+        result
     }
 
     /// Replace the document through the same validation and revision boundary.
@@ -589,6 +660,7 @@ impl Session {
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
+        self.require_native_document()?;
         self.reconcile_midi_cc_learn()?;
         let retired = self.module_ids();
         let retired_cables = self.cable_ids();
@@ -605,7 +677,8 @@ impl Session {
         candidate: Patch,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        let revision = self.replace_patch(candidate, expected_revision)?;
+        let document = ProjectDocument::from_patch(candidate, ProjectLayout::default())?;
+        let revision = self.replace_project_document(document, expected_revision)?;
         self.undo.clear();
         self.redo.clear();
         self.history_group = None;
@@ -630,10 +703,21 @@ impl Session {
 
     fn commit(
         &mut self,
+        candidate: Patch,
+        expected_revision: Option<u64>,
+        group: Option<(String, String, String)>,
+        effects: &EditEffects,
+    ) -> Result<u64, String> {
+        self.commit_with_layout(candidate, expected_revision, group, effects, false)
+    }
+
+    fn commit_with_layout(
+        &mut self,
         mut candidate: Patch,
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
         effects: &EditEffects,
+        prepared_layout: bool,
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
@@ -641,6 +725,28 @@ impl Session {
         self.intern_candidate_assets(&mut candidate)?;
         let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
         candidate.compile_with_wave_banks(&prepared)?;
+        let document = self.document_after_edit(&candidate, effects)?;
+        let needs_layout = self.layout_host_attached
+            && !prepared_layout
+            && (self.layout_pending
+                || (!effects.retired.is_empty() && effects.replacement_document.is_some())
+                || document::geometry_changed(&self.document, &document));
+        let layout_generation = if prepared_layout
+            || needs_layout != self.layout_pending
+            || self.document.layout != document.layout
+        {
+            self.layout_generation
+                .checked_add(1)
+                .ok_or("layout generation exhausted")?
+        } else {
+            self.layout_generation
+        };
+        let playback_mode = effects.playback_mode.unwrap_or(self.playback_mode);
+        self.validate_document_backend(
+            &document,
+            playback_mode,
+            self.live_module_events.as_deref(),
+        )?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
         if !effects.learn_reconciliation {
             self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
@@ -680,6 +786,8 @@ impl Session {
             });
         if merge_group {
             self.patch = candidate;
+            self.document = document;
+            self.playback_mode = playback_mode;
             if let Some(entry) = self.undo.back_mut() {
                 entry.return_saved.extend(effects.after_saved.clone());
                 entry.return_lifecycle.append(&forward_lifecycle);
@@ -692,6 +800,9 @@ impl Session {
                 self.undo.pop_front();
             }
             self.undo.push_back(HistoryEntry {
+                document: std::mem::replace(&mut self.document, document),
+                layout_origin: self.layout_origin,
+                playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
                 patch: std::mem::replace(&mut self.patch, candidate),
                 layout_rows: self.layout_rows.clone(),
                 prepared_wave_banks: Arc::downgrade(&self.prepared_wave_banks),
@@ -706,7 +817,14 @@ impl Session {
             });
             self.state_id = revision;
         }
+        self.document_execution |=
+            self.has_source_document() || self.playback_mode == PlaybackMode::Partial;
         self.prepared_wave_banks = prepared;
+        self.layout_generation = layout_generation;
+        self.layout_pending = needs_layout;
+        if prepared_layout {
+            self.layout_origin = None;
+        }
         self.history_group = group;
         self.redo.clear();
         self.prune_history_assets();
@@ -794,7 +912,18 @@ impl Session {
                 unique.entry(id).or_insert_with(|| asset.decoded_bytes());
             }
         }
-        unique.values().sum()
+        let mut source_assets = BTreeMap::new();
+        for document in std::iter::once(&self.document)
+            .chain(self.undo.iter().map(|entry| &entry.document))
+            .chain(self.redo.iter().map(|entry| &entry.document))
+        {
+            for (id, asset) in &document.source_blobs {
+                source_assets
+                    .entry(id)
+                    .or_insert_with(|| asset.bytes().len());
+            }
+        }
+        unique.values().sum::<usize>() + source_assets.values().sum::<usize>()
     }
 
     fn prune_history_assets(&mut self) {
@@ -838,11 +967,32 @@ impl Session {
         }
         // History owns durable sample payloads, not every expensive derived
         // bank. Rebuild an expired ticket before any history/backend mutation.
-        let target = if redo {
-            self.redo.last().unwrap()
+        let mut target = if redo {
+            self.redo.last().unwrap().clone()
         } else {
-            self.undo.back().unwrap()
+            self.undo.back().unwrap().clone()
         };
+        let outgoing_capture = self.prepare_history_suspension(&mut target)?;
+        target.document.layout.zoom = self.document.layout.zoom;
+        target.document.layout.pan = self.document.layout.pan;
+        let needs_layout = self.layout_host_attached
+            && (self.layout_pending
+                || document::geometry_changed(&self.document, &target.document)
+                || target
+                    .document
+                    .graph
+                    .nodes
+                    .iter()
+                    .any(|node| !target.document.layout.positions.contains_key(node.id())));
+        let layout_generation = self
+            .layout_generation
+            .checked_add(1)
+            .ok_or("layout generation exhausted")?;
+        self.validate_document_backend(
+            &target.document,
+            target.playback_mode,
+            self.live_module_events.as_deref(),
+        )?;
         let prepared = match target.prepared_wave_banks.upgrade() {
             Some(prepared) => prepared,
             None => target
@@ -851,12 +1001,16 @@ impl Session {
         };
         target.patch.compile_with_wave_banks(&prepared)?;
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
-        let entry = if redo {
-            self.redo.pop().ok_or("nothing to redo")?
+        if redo {
+            self.redo.pop().ok_or("nothing to redo")?;
         } else {
-            self.undo.pop_back().ok_or("nothing to undo")?
-        };
-        let opposite = HistoryEntry {
+            self.undo.pop_back().ok_or("nothing to undo")?;
+        }
+        let entry = target;
+        let mut opposite = HistoryEntry {
+            document: std::mem::replace(&mut self.document, entry.document),
+            layout_origin: self.layout_origin,
+            playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
             prepared_wave_banks: Arc::downgrade(&std::mem::replace(
                 &mut self.prepared_wave_banks,
                 prepared,
@@ -872,6 +1026,13 @@ impl Session {
             restore_lifecycle: entry.return_lifecycle.clone(),
             return_lifecycle: entry.restore_lifecycle.clone(),
         };
+        if let Some(captured) = outgoing_capture {
+            opposite.patch = captured
+                .state_carrier()
+                .expect("preflight capture was validated")
+                .patch;
+            opposite.document = captured;
+        }
         self.restore_layout_placements(
             &opposite.patch,
             &opposite.layout_rows,
@@ -883,6 +1044,9 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        self.layout_generation = layout_generation;
+        self.layout_pending = needs_layout;
+        self.layout_origin = Some(entry.layout_origin.unwrap_or(LayoutOrigin::Authored));
         self.host_lifecycle.tail.append(&entry.restore_lifecycle);
         self.host_lifecycle.prune(&self.patch);
         self.construction.last_move = None;
@@ -1040,6 +1204,23 @@ impl Session {
         }
         let schemas = tools();
         validate_arguments(&schemas, name, &args)?;
+        if matches!(
+            name,
+            "render_audio"
+                | "render_arrangement"
+                | "benchmark"
+                | "analyze_signal"
+                | "capture_signal"
+                | "trigger_module"
+        ) {
+            self.require_document_execution()?;
+        }
+        if let Some(result) = self.rack_import_tool(name, &args) {
+            return result;
+        }
+        if let Some(result) = self.document_tool(name, &args) {
+            return result;
+        }
         match name {
             "start_construction" => {
                 return Err(
@@ -1339,7 +1520,7 @@ impl Session {
         self.check_revision(expected_revision)?;
         // A top-level empty clear is a validated no-op. Preserve redo and an
         // active history group; transactions retain their ordinary semantics.
-        if name == "clear_cables" && self.patch.cables.is_empty() {
+        if name == "clear_cables" && self.document.graph.cables.is_empty() {
             return Ok(self.snapshot());
         }
         if name == "randomize_modules"
@@ -1356,6 +1537,7 @@ impl Session {
         let mut effects = EditEffects::default();
         let mut group = None;
         if matches!(name, "replace_patch" | "load_patch") {
+            self.require_native_document()?;
             effects.retired = self.module_ids();
             effects.retired_cables = self.cable_ids();
         }
@@ -1438,9 +1620,15 @@ impl Session {
                     candidate.assign_missing_cable_ids()?;
                     let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
                     candidate.compile_with_wave_banks(&prepared)?;
-                    return Ok(
-                        json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate.reference_view(),"committed":false,"edit_count":edits.len()}),
-                    );
+                    let document = self.document_after_edit(&candidate, &effects)?;
+                    let mut preview = json!({"revision":self.revision,"changes":patch_changes(&self.patch, &candidate),"patch":candidate.reference_view(),"committed":false,"edit_count":edits.len()});
+                    if self.has_source_document() {
+                        preview["document"] = document.reference_view();
+                        preview["patch_is_native_state_carrier"] = json!(true);
+                        preview["execution"] =
+                            document::execution_status(&document, self.playback_mode);
+                    }
+                    return Ok(preview);
                 }
             }
             "undo" => return self.restore_history(false),
@@ -2352,6 +2540,14 @@ pub fn tools() -> Value {
         tool("export_wavetable","Write a new workspace .f32 (exact source samples) or .wav (PCM16, clipped to [-1,1]) from a wavetable module. Includes unused trailing source points. Never overwrites files or changes the patch.",json!({"id":s,"filename":s,"expected_revision":rev}),&["id","filename"],false),
         tool("inspect_wavetable","Read actual table geometry and asset metadata. Optional limit1..256 and offset return a small source-sample window. No preparation, full payload echo, or graph change.",json!({"id":s,"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":256},"expected_revision":rev}),&["id"],true),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
+        tool("import_vcv", "Import a .vcv file inside the workspace with pinned mappings, full original source/assets and recoverable unresolved dependencies. Never overwrites the original; loads in exact mode, suspended when unresolved modules remain.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("substitute_unresolved_module", "Explicit musical-role substitution for an unresolved Rack module, not source or physical equivalence. Map every incident source port key to a valid native port, supplying native params. Original source remains recoverable and this edit is undoable.", json!({"id":module_id,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"inputs":{"type":"object","additionalProperties":{"type":"string"}},"outputs":{"type":"object","additionalProperties":{"type":"string"}},"expected_revision":rev}), &["id","kind","inputs","outputs"], false),
+        tool("remove_unresolved_module", "Remove an unresolved placeholder and its incident routes in one undoable edit, retaining the immutable original source package/assets.", json!({"id":module_id,"expected_revision":rev}), &["id"], false),
+        tool("inspect_document", "Inspect the complete project boundary and explicit execution permission. Compact references omit source JSON/assets; include_source_data returns the portable document.", json!({"include_source_data":{"type":"boolean","default":false}}), &[], true),
+        tool("replace_document", "Explicitly replace the complete project, retaining original Rack records/assets and unresolved modules. Loads in exact mode; unresolved dependencies suspend playback. One undo step.", json!({"document":{"type":"object"},"expected_revision":rev}), &["document"], false),
+        tool("load_document", "Load a portable project JSON from workspace, preserving original source data. Migrates native legacy projects. Exact playback is the default.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("save_document", "Save a complete portable project inside workspace without overwriting. Preserves original Rack data and unresolved dependencies. Suspended saves use persisted state explicitly, never fabricated live observations.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("set_document_playback", "Explicitly choose exact or partial playback. Partial omits unresolved modules and incident routes and changes downstream normaling; inspect the omission report. Permission is undoable and never saved as an automatic load default.", json!({"mode":{"type":"string","enum":["exact","partial"]},"expected_revision":rev}), &["mode"], false),
         tool("inspect_patch","Read the session patch and revision with compact asset metadata. Set include_asset_data for the full portable payload. In desktop MCP mode this is the live patch shown in the native window.",json!({"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),

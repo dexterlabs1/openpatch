@@ -713,7 +713,12 @@ impl ModulePreview {
     }
 }
 
+include!("rack_import_panels.rs");
+
 pub struct Rack {
+    unresolved_panels: Vec<UnresolvedPanel>,
+    source_routes: Vec<Cable>,
+    dependency_focus: Option<String>,
     pub selected: Option<String>,
     selection: BTreeSet<String>,
     group_drag: Option<GroupDrag>,
@@ -782,6 +787,9 @@ pub struct Rack {
 impl Default for Rack {
     fn default() -> Self {
         Self {
+            unresolved_panels: Vec::new(),
+            source_routes: Vec::new(),
+            dependency_focus: None,
             selected: None,
             selection: BTreeSet::new(),
             group_drag: None,
@@ -5704,6 +5712,10 @@ impl Rack {
                 }
             }
         }
+        if mode.is_interactive() {
+            pointer_on_module |=
+                self.paint_unresolved_panels(ui, &painter, canvas, &mut inputs, &mut outputs);
+        }
         self.lighting.finish(&painter, lighting_start);
         if mode.is_interactive() {
             self.paint_knob_value_bubble(ui, canvas);
@@ -7153,8 +7165,10 @@ impl Rack {
 
     pub(crate) fn reconcile(&mut self, patch: &Patch, catalog: &Value) {
         let old_count = self.positions.len();
-        self.positions
-            .retain(|id, _| patch.nodes.iter().any(|node| &node.id == id));
+        self.positions.retain(|id, _| {
+            patch.nodes.iter().any(|node| &node.id == id)
+                || self.unresolved_panels.iter().any(|panel| &panel.id == id)
+        });
         if old_count != self.positions.len() {
             self.layout_revision = self.layout_revision.wrapping_add(1);
         }

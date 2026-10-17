@@ -373,11 +373,11 @@ fn shift_register_host_dirty_native_save_recovery_and_reopen_keep_volts_and_rng(
     session.set_live_module_events(Some(callback.performance.clone())).unwrap();
     let mut rack = Rack::default();
     rack.reconcile(session.patch(), &openpatch_core::catalog());
-    let mut dirty = DocumentState::new(session.patch(), session.revision(), &rack);
+    let mut dirty = DocumentState::new(session.project_document(), session.revision(), &rack);
     without_heap_activity(|| callback.render(&mut [0.0_f32; 1], 1));
     let initial = session.capture_project_running(None).unwrap();
     assert!(!dirty.observe_saved_runtime(
-        session.patch(),
+        session.project_document(),
         session.revision(),
         &rack,
         Some(initial.saved_states)
@@ -385,7 +385,7 @@ fn shift_register_host_dirty_native_save_recovery_and_reopen_keep_volts_and_rng(
     shift_register_host_trigger(&mut callback);
     let actual = session.capture_project_patch(None).unwrap();
     assert!(dirty.observe_saved_runtime(
-        session.patch(),
+        session.project_document(),
         session.revision(),
         &rack,
         Some(actual.saved_states.clone())
@@ -409,7 +409,7 @@ fn shift_register_host_dirty_native_save_recovery_and_reopen_keep_volts_and_rng(
     shift_register_host_trigger(&mut callback);
     let expected_next = shift_register_host_state(&callback, "random");
     for document in [loaded, recovered] {
-        let (mut reopened, _, _) = sequence_callback(&document.patch);
+        let (mut reopened, _, _) = sequence_callback(document.patch());
         without_heap_activity(|| reopened.render(&mut [0.0_f32; 2], 1));
         assert_eq!(shift_register_host_state(&reopened, "random"), state);
         shift_register_host_trigger(&mut reopened);
@@ -418,13 +418,13 @@ fn shift_register_host_dirty_native_save_recovery_and_reopen_keep_volts_and_rng(
             expected_next
         );
     }
-    assert!(dirty.observe_saved_runtime(session.patch(), session.revision(), &rack, None));
+    assert!(dirty.observe_saved_runtime(session.project_document(), session.revision(), &rack, None));
     assert!(
         dirty.dirty(),
         "unavailable state is never mistaken for saved state"
     );
     assert!(dirty.observe_saved_runtime(
-        session.patch(),
+        session.project_document(),
         session.revision(),
         &rack,
         Some(actual.saved_states)

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 fn layout() -> Value {
-    json!({"version":1,"zoom":0.8,"pan":[-92.0,37.0],"positions":{"dc":[128.0,380.0]}})
+    json!({"version":1,"zoom":0.8_f32,"pan":[-92.0,37.0],"positions":{"dc":[128.0,380.0]}})
 }
 fn patch(version: u32, value: f32) -> Patch {
     Patch {
@@ -57,13 +57,13 @@ fn native_single_file_roundtrip_and_save_existing_include_graph_and_layout() {
     let bytes = read(&directory, "voice.openpatch");
     let envelope: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["format"], "openpatch-project");
-    assert_eq!(envelope["version"], 1);
+    assert_eq!(envelope["version"], 2);
+    let decoded = openpatch::project_document::ProjectDocument::decode(&bytes).unwrap();
     assert_eq!(
-        envelope["patch"],
-        serde_json::to_value(&original.patch).unwrap()
+        serde_json::to_value(decoded).unwrap(),
+        serde_json::to_value(original.project()).unwrap(),
+        "typed graph/layout/source roundtrip preserves f32 values exactly"
     );
-    assert_eq!(envelope["layout"], original.layout);
-    assert_eq!(envelope.as_object().unwrap().len(), 4);
     let loaded = store.load("voice.openpatch").unwrap();
     assert!(!loaded.imported);
     assert!(loaded.token.is_some());
@@ -73,8 +73,10 @@ fn native_single_file_roundtrip_and_save_existing_include_graph_and_layout() {
         .join("voice.openpatch.layout.json")
         .exists());
 
-    let mut edited = document(-2.5);
-    edited.layout["pan"] = json!([19.0, -81.0]);
+    let edited = document(-2.5);
+    let mut layout = edited.layout().clone();
+    layout["pan"] = json!([19.0, -81.0]);
+    let edited = edited.with_layout(layout).unwrap();
     let second_token = store
         .save_existing("voice.openpatch", &edited, &token)
         .unwrap();
@@ -85,6 +87,53 @@ fn native_single_file_roundtrip_and_save_existing_include_graph_and_layout() {
         .save_existing("voice.openpatch", &original, &second_token)
         .unwrap();
     assert!(original.equivalent(&store.load("voice.openpatch").unwrap().document));
+}
+
+#[test]
+fn rack_import_is_read_only_and_first_native_save_preserves_full_unresolved_document() {
+    use crate::document_state::{apply_document, DocumentState};
+    use openpatch::{control::Session, project_document::ExecutionDisposition};
+    let (directory, store) = store();
+    let raw = serde_json::to_vec(&json!({
+        "version":"2.6.4", "opaque_global":{"retained":true},
+        "modules":[{"id":42,"plugin":"MissingVendor","model":"OpaqueVoice",
+            "version":"1.2.3","pos":[1,0],"data":{"opaque":[1,2,3]}}],
+        "cables":[]
+    }))
+    .unwrap();
+    fs::write(directory.path().join("source.vcv"), &raw).unwrap();
+    let imported = store.load("source.vcv").unwrap();
+    assert!(imported.imported && imported.token.is_none());
+    assert_eq!(imported.document.project().graph.nodes.len(), 1);
+    assert!(imported.document.patch().nodes.is_empty());
+    let shared = Session::new(directory.path()).unwrap().into_shared();
+    let applied = apply_document(&shared, 0, &imported.document).unwrap();
+    let live = shared.lock().unwrap();
+    assert_eq!(
+        live.execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    let mut state = DocumentState::new(live.project_document(), live.revision(), &applied.rack);
+    state.mark_unsaved();
+    assert!(state.dirty());
+    drop(live);
+    store
+        .save_new("converted.openpatch", &imported.document)
+        .unwrap();
+    let reopened = store.load("converted.openpatch").unwrap();
+    assert!(!reopened.imported && reopened.token.is_some());
+    assert_eq!(
+        reopened.document.encode().unwrap(),
+        imported.document.encode().unwrap()
+    );
+    assert_eq!(read(&directory, "source.vcv"), raw);
+    let path = directory.path().join("oversized.vcv");
+    fs::File::create(&path)
+        .unwrap()
+        .set_len(16 * 1_048_576 + 1)
+        .unwrap();
+    assert!(store.load("oversized.vcv").unwrap_err().contains("16 MiB"));
+    assert_eq!(fs::metadata(path).unwrap().len(), 16 * 1_048_576 + 1);
 }
 
 #[test]
@@ -156,13 +205,13 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
         let loaded = store.load(&name).unwrap();
         assert!(loaded.imported);
         assert!(loaded.token.is_none());
-        assert_eq!(loaded.document.patch.version, version);
+        assert_eq!(loaded.document.patch().version, version);
         original_patch.assign_missing_cable_ids().unwrap();
         assert_eq!(
-            serde_json::to_value(&loaded.document.patch).unwrap(),
+            serde_json::to_value(loaded.document.patch()).unwrap(),
             serde_json::to_value(&original_patch).unwrap()
         );
-        assert_eq!(loaded.document.layout, layout());
+        assert_eq!(loaded.document.layout(), &layout());
         assert_eq!(read(&directory, &name), graph_bytes);
         assert_eq!(read(&directory, &sidecar_name), layout_bytes);
         let native_name = format!("converted-{version}.openpatch");
@@ -179,7 +228,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
     .unwrap();
     let loaded = store.load("without-layout.json").unwrap();
     let mut rack = crate::rack::Rack::default();
-    rack.restore_layout(&loaded.document.layout).unwrap();
+    rack.restore_layout(loaded.document.layout()).unwrap();
     assert!(loaded.imported);
 }
 
@@ -207,21 +256,17 @@ fn conflicting_save_rejects_external_changes_and_tokens_cannot_target_another_fi
 #[test]
 fn invalid_document_save_and_non_file_targets_leave_existing_data_intact() {
     let (directory, store) = store();
-    let token = store.save_new("voice.openpatch", &document(1.0)).unwrap();
+    store.save_new("voice.openpatch", &document(1.0)).unwrap();
     let before = read(&directory, "voice.openpatch");
-    let mut invalid = document(2.0);
-    invalid.layout["zoom"] = json!(900.0);
-    assert!(store
-        .save_existing("voice.openpatch", &invalid, &token)
-        .is_err());
+    let invalid = document(2.0);
+    let mut layout = invalid.layout().clone();
+    layout["zoom"] = json!(900.0);
+    assert!(invalid.with_layout(layout).is_err());
     assert_eq!(read(&directory, "voice.openpatch"), before);
-    assert!(store.save_new("invalid.openpatch", &invalid).is_err());
     assert!(!directory.path().join("invalid.openpatch").exists());
-    invalid = document(2.0);
-    invalid.patch.output = Some("missing".into());
-    assert!(store
-        .save_existing("voice.openpatch", &invalid, &token)
-        .is_err());
+    let mut invalid = patch(2, 2.0);
+    invalid.output = Some("missing".into());
+    assert!(Document::new(invalid, self::layout()).is_err());
     assert_eq!(read(&directory, "voice.openpatch"), before);
     fs::create_dir(directory.path().join("directory.openpatch")).unwrap();
     assert!(store.load("directory.openpatch").is_err());
@@ -238,7 +283,7 @@ fn malformed_unknown_or_unsupported_document_and_layout_fields_are_rejected() {
     let mut variants = Vec::new();
     for (key, value) in [
         ("format", json!("another-app")),
-        ("version", json!(2)),
+        ("version", json!(99)),
         ("unknown", json!(true)),
         ("patch", json!({"version":99})),
         ("layout", Value::Null),
@@ -452,7 +497,12 @@ fn voltage_utility_parameters_cables_and_bypass_survive_native_and_recovery_roun
     let loaded = store.load("utilities.openpatch").unwrap().document;
     assert!(loaded.equivalent(&original));
     let encoded: Value = serde_json::from_slice(&read(&directory, "utilities.openpatch")).unwrap();
-    let nodes = encoded["patch"]["nodes"].as_array().unwrap();
+    let nodes = encoded["graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| &entry["node"])
+        .collect::<Vec<_>>();
     assert_eq!(
         nodes.iter().find(|n| n["id"] == "mutes").unwrap()["bypassed"],
         true
@@ -472,7 +522,7 @@ fn voltage_utility_parameters_cables_and_bypass_survive_native_and_recovery_roun
     let legacy = br#"{"version":2,"nodes":[{"id":"dc","kind":"constant"}]}"#;
     fs::write(directory.path().join("old.json"), legacy).unwrap();
     let imported = store.load("old.json").unwrap();
-    assert!(!imported.document.patch.nodes[0].bypassed);
+    assert!(!imported.document.patch().nodes[0].bypassed);
     assert_eq!(read(&directory, "old.json"), legacy);
 }
 
@@ -510,7 +560,8 @@ fn gate_shaping_settings_and_bypass_roundtrip_without_saved_manual_button_state(
     let loaded = store.load("gates.openpatch").unwrap().document;
     assert!(document.equivalent(&loaded));
     let value: Value = serde_json::from_slice(&document.encode().unwrap()).unwrap();
-    for node in value["patch"]["nodes"].as_array().unwrap() {
+    for entry in value["graph"]["nodes"].as_array().unwrap() {
+        let node = &entry["node"];
         assert!(node.get("pressed").is_none());
         assert!(node.get("manual").is_none());
         if node["kind"] == "logic" {
@@ -542,12 +593,12 @@ fn layered_stereo_morph_native_roundtrip_preserves_all_mixing_settings_and_named
     let loaded = store.load("morph.openpatch").unwrap().document;
     assert!(loaded.equivalent(&document));
     assert!(loaded
-        .patch
+        .patch()
         .cables
         .iter()
         .any(|c| c.from == "mix" && c.output == "out4" && c.to == "morph" && c.input == "b"));
     assert!(loaded
-        .patch
+        .patch()
         .cables
         .iter()
         .any(|c| c.from == "morph" && c.output == "complement" && c.input == "right"));
@@ -560,15 +611,15 @@ fn duplicated_group_native_roundtrip_preserves_fresh_ids_bypass_named_cables_and
     let patch:Patch=serde_json::from_value(json!({"version":2,"nodes":[{"id":"voltage","kind":"poly_constant","params":{"channels":2,"v1":1,"v2":2}},{"id":"split","kind":"poly_split","bypassed":true},{"id":"out","kind":"audio_out"}],"cables":[{"from":"voltage","to":"split","input":"signal"},{"from":"split","output":"out2","to":"out","input":"signal"}],"output":"out"})).unwrap();
     session.replace_patch(patch, None).unwrap();
     session.execute("duplicate_modules",json!({"modules":[{"id":"voltage","new_id":"voltage-copy"},{"id":"split","new_id":"split-copy"}],"cable_mode":"inputs"})).unwrap();
-    let layout = json!({"version":1,"zoom":0.8,"pan":[-100,12],"positions":{"voltage":[0,0],"split":[360,0],"voltage-copy":[660,0],"split-copy":[1020,0],"out":[0,420]}});
+    let layout = json!({"version":1,"zoom":0.8_f32,"pan":[-100,12],"positions":{"voltage":[0,0],"split":[360,0],"voltage-copy":[660,0],"split-copy":[1020,0],"out":[0,420]}});
     let document = Document::new(session.patch().clone(), layout).unwrap();
     store.save_new("copies.openpatch", &document).unwrap();
     let loaded = store.load("copies.openpatch").unwrap().document;
     assert!(loaded.equivalent(&document));
-    assert_eq!(loaded.patch.output.as_deref(), Some("out"));
+    assert_eq!(loaded.patch().output.as_deref(), Some("out"));
     assert!(
         loaded
-            .patch
+            .patch()
             .nodes
             .iter()
             .find(|n| n.id == "split-copy")
@@ -576,16 +627,19 @@ fn duplicated_group_native_roundtrip_preserves_fresh_ids_bypass_named_cables_and
             .bypassed
     );
     assert!(loaded
-        .patch
+        .patch()
         .cables
         .iter()
         .any(|c| c.from == "voltage-copy" && c.to == "split-copy"));
     assert!(!loaded
-        .patch
+        .patch()
         .cables
         .iter()
         .any(|c| c.from == "split-copy" && c.to == "out"));
-    assert_eq!(loaded.layout["positions"]["split-copy"], json!([1020, 0]));
+    assert_eq!(
+        loaded.layout()["positions"]["split-copy"],
+        json!([1020.0, 0.0])
+    );
 }
 
 #[test]
@@ -603,11 +657,10 @@ fn idless_project_migration_is_clean_and_preserves_original_disk_tokens() {
         rack.reconcile(&original, &openpatch_core::catalog());
         let layout = rack.layout();
         // Deliberately bypass Document::new to represent an actual older file.
-        let old_native = Document {
-            patch: original.clone(),
-            layout: layout.clone(),
-        }
-        .encode()
+        let old_native = serde_json::to_vec_pretty(&json!({
+            "format":"openpatch-project", "version":1,
+            "patch":original, "layout":layout
+        }))
         .unwrap();
         let old_json = serde_json::to_vec_pretty(&original).unwrap();
         fs::write(directory.path().join("old.openpatch"), &old_native).unwrap();
@@ -617,10 +670,15 @@ fn idless_project_migration_is_clean_and_preserves_original_disk_tokens() {
 
         for name in ["old.openpatch", "old.json"] {
             let loaded = store.load(name).unwrap();
-            assert_eq!(loaded.document.layout, layout);
+            assert_eq!(loaded.document.layout(), &layout);
             assert_eq!(loaded.imported, name.ends_with(".json"));
             assert_eq!(loaded.token.is_some(), name.ends_with(".openpatch"));
-            assert!(loaded.document.patch.cables.iter().all(|c| c.id.is_some()));
+            assert!(loaded
+                .document
+                .patch()
+                .cables
+                .iter()
+                .all(|c| c.id.is_some()));
             let shared = Session::new(directory.path()).unwrap().into_shared();
             let applied = apply_document(&shared, 0, &loaded.document).unwrap();
             assert_eq!(
@@ -629,10 +687,11 @@ fn idless_project_migration_is_clean_and_preserves_original_disk_tokens() {
             );
             assert_eq!(
                 serde_json::to_value(&applied.patch).unwrap(),
-                serde_json::to_value(&loaded.document.patch).unwrap()
+                serde_json::to_value(loaded.document.patch()).unwrap()
             );
             assert_eq!(applied.rack.layout(), layout);
-            let mut state = DocumentState::new(&applied.patch, applied.revision, &applied.rack);
+            let mut state =
+                DocumentState::new(loaded.document.project(), applied.revision, &applied.rack);
             state.mark_saved(&loaded.document);
             assert!(
                 !state.dirty(),
@@ -692,7 +751,7 @@ fn stacked_cable_ids_colors_order_and_multiplicity_survive_native_save_and_recov
     let original = Document::new(patch, layout()).unwrap();
     store.save_new("stack.openpatch", &original).unwrap();
     assert!(original.equivalent(&store.load("stack.openpatch").unwrap().document));
-    let mut engine = original.patch.compile().unwrap();
+    let mut engine = original.patch().compile().unwrap();
     let mut signal = [0.0; 8];
     engine.process_block(&mut signal);
     assert_eq!(signal[0], 0.0, "cables retain the one-sample delay");
@@ -706,7 +765,7 @@ fn stacked_cable_ids_colors_order_and_multiplicity_survive_native_save_and_recov
     assert!(original.equivalent(&recovered));
     assert_eq!(
         recovered
-            .patch
+            .patch()
             .cables
             .iter()
             .map(|c| c.id.as_deref().unwrap())
@@ -730,7 +789,7 @@ fn independent_plug_order_survives_native_template_export_recovery_and_dirty_tra
     let mut rack = crate::rack::Rack::default();
     rack.reconcile(&patch, &openpatch_core::catalog());
     let original = Document::new(patch.clone(), rack.layout()).unwrap();
-    let mut state = crate::document_state::DocumentState::new(&patch, 1, &rack);
+    let mut state = crate::document_state::DocumentState::new(original.project(), 1, &rack);
     assert!(!state.dirty());
     assert_eq!(
         cable_endpoint_order(&patch.cables, CableEndpoint::Input, "sum", "signal"),
@@ -753,15 +812,20 @@ fn independent_plug_order_survives_native_template_export_recovery_and_dirty_tra
         store.load("exported.json").unwrap().document,
     ] {
         assert_eq!(
-            serde_json::to_value(&loaded.patch).unwrap(),
+            serde_json::to_value(loaded.patch()).unwrap(),
             serde_json::to_value(&patch).unwrap()
         );
         assert_eq!(
-            cable_endpoint_order(&loaded.patch.cables, CableEndpoint::Input, "sum", "signal"),
+            cable_endpoint_order(
+                &loaded.patch().cables,
+                CableEndpoint::Input,
+                "sum",
+                "signal"
+            ),
             [1, 0]
         );
         assert_eq!(
-            cable_endpoint_order(&loaded.patch.cables, CableEndpoint::Output, "dc", "out"),
+            cable_endpoint_order(&loaded.patch().cables, CableEndpoint::Output, "dc", "out"),
             [0, 1]
         );
     }

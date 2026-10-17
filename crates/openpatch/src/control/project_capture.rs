@@ -109,6 +109,14 @@ impl Session {
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectPatchSnapshot, String> {
+        self.require_native_document()?;
+        self.capture_native_project_patch(expected_revision)
+    }
+
+    pub(super) fn capture_native_project_patch(
+        &self,
+        expected_revision: Option<u64>,
+    ) -> Result<ProjectPatchSnapshot, String> {
         let captured = self.capture_project_running(expected_revision)?;
         let mut patch = self.patch.clone();
         for node in &mut patch.nodes {

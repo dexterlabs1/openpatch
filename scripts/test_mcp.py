@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import math
 import os
 import queue
 import subprocess
 import struct
+import tarfile
 import tempfile
 import threading
 import time
@@ -281,6 +283,148 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"id": "osc", "parameter": "frequency", "value": 440,
              "expected_revision": revision},
         )
+
+    def test_import_vcv_repair_undo_and_document_roundtrip_preserve_source_assets_layout(self) -> None:
+        source = {
+            "version": "2.6.6", "zoom": 1.25, "gridOffset": [2, 1],
+            "future-global": {"retained": True},
+            "modules": [
+                {"id": 41, "plugin": "SyntheticMissing", "model": "Source", "version": "1.0.0",
+                 "pos": [2, 0], "data": {"asset": "modules/41/original.bin", "opaque": [None, True]}},
+                {"id": 42, "plugin": "SyntheticMissing", "model": "Processor", "version": "1.0.0",
+                 "pos": [10, 1], "data": {"future-control": 17}},
+            ],
+            "cables": [{"id": 7, "outputModuleId": 41, "outputId": 0,
+                        "inputModuleId": 42, "inputId": 0, "color": "#123456",
+                        "future-cable": {"retained": True}}],
+        }
+        original_json = (json.dumps(source, ensure_ascii=False, indent=2) + "\n").encode()
+        asset = b"\x00\xffsynthetic source asset\n"
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w", format=tarfile.USTAR_FORMAT) as container:
+            for name, data in [("patch.json", original_json), ("modules/41/original.bin", asset)]:
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                container.addfile(member, io.BytesIO(data))
+        raw = archive.getvalue()
+        # One standard Zstd frame with a raw final block avoids an external
+        # compressor dependency while exercising the actual .vcv archive path.
+        vcv_bytes = (b"\x28\xb5\x2f\xfd\xa0" + struct.pack("<I", len(raw))
+                     + ((len(raw) << 3) | 1).to_bytes(3, "little") + raw)
+        source_path = self.workspace / "synthetic.vcv"
+        source_path.write_bytes(vcv_bytes)
+        imported = self.payload(self.require_tool_success("import_vcv", {"filename": source_path.name}))
+        self.assertEqual(imported["report"]["unresolved_count"], 2)
+        self.assertEqual(imported["report"]["asset_count"], 1)
+        self.assertEqual(imported["execution"]["requested_disposition"], "suspended_unresolved")
+
+        def inspect() -> dict[str, Any]:
+            result = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))
+            assert result is not None
+            return result
+
+        original = inspect()["document"]
+        package_id = imported["report"]["package_id"]
+        package = original["sources"][package_id]
+        self.assertEqual(package["patch"], source)
+        self.assertEqual(base64.b64decode(original["source_blobs"][package["assets"]["patch.json"]]), original_json)
+        self.assertEqual(base64.b64decode(original["source_blobs"][package["assets"]["modules/41/original.bin"]]), asset)
+        self.assertEqual(original["layout"]["positions"], {"vcv_m_41": [30.0, 0.0], "vcv_m_42": [150.0, 420.0]})
+        self.assertEqual(original["layout"]["pan"], [-37.5, -525.0])
+        self.assertEqual(original["layout"]["zoom"], 1.25)
+
+        self.require_tool_success("substitute_unresolved_module", {
+            "id": "vcv_m_42", "kind": "gain", "params": {"gain": 0.5},
+            "inputs": {"vcv_in_0": "signal"}, "outputs": {},
+        })
+        substituted = inspect()
+        native = next(node for node in substituted["document"]["graph"]["nodes"] if node["type"] == "native")
+        self.assertEqual(native["node"]["kind"], "gain")
+        self.assertEqual(native["source"]["mapping"]["fidelity"], "user_substitution")
+        self.assertEqual(substituted["document"]["graph"]["cables"][0]["route"]["input"], "signal")
+        self.assertEqual(substituted["execution"]["unresolved_modules"], ["vcv_m_41"])
+        self.require_tool_success("remove_unresolved_module", {"id": "vcv_m_41"})
+        removed = inspect()
+        self.assertEqual(removed["document"]["graph"]["cables"], [])
+        self.assertNotIn("vcv_m_41", removed["document"]["layout"]["positions"])
+        self.assertEqual(removed["execution"]["requested_disposition"], "runnable_exact")
+        for key in ["sources", "source_blobs"]:
+            self.assertEqual(removed["document"][key], original[key])
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["document"], substituted["document"])
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["document"], original)
+
+        saved = self.payload(self.require_tool_success("save_document", {"filename": "imported.json"}))
+        self.assertEqual(saved["state_source"], "suspended_persisted")
+        self.assertEqual(json.loads((self.workspace / "imported.json").read_text()), original)
+        partial = self.payload(self.require_tool_success("set_document_playback", {"mode": "partial"}))
+        self.assertEqual(partial["execution"]["requested_disposition"], "runnable_partial")
+        reopened = self.payload(self.require_tool_success("load_document", {"filename": "imported.json"}))
+        self.assertEqual(reopened["execution"]["mode"], "exact")
+        self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(inspect()["document"], original)
+        self.assertEqual(source_path.read_bytes(), vcv_bytes)
+
+    def test_portable_source_document_history_save_and_explicit_partial_playback(self) -> None:
+        blob = b"\x00\xfforiginal sample"
+        blob_id = hashlib.sha256(blob).hexdigest()
+        package = {
+            "patch": json.loads(json.dumps({
+                "version": "2.6.4", "future-global": {"keep": True},
+                "modules": [{"id": 42, "plugin": "Unavailable", "model": "Resonator",
+                             "data": {"asset": "modules/42/raw.bin", "opaque": [None, True]}}],
+                "cables": [{"id": 12, "future-cable": "preserved"}],
+            }, sort_keys=True)),
+            "assets": {"modules/42/raw.bin": blob_id}, "missing_assets": [],
+        }
+        package_id = hashlib.sha256(json.dumps(package, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        document = {
+            "format": "openpatch-project", "version": 2,
+            "graph": {"version": 2, "sample_rate": 48000, "assets": {},
+                      "nodes": [
+                          {"type": "native", "node": {"id": "dc", "kind": "constant", "params": {"value": 2}}, "source": None},
+                          {"type": "unresolved", "id": "unknown", "source": {"package": package_id, "index": 0, "mapping": None},
+                           "ports": [{"direction": "input", "index": 0}]},
+                      ],
+                      "cables": [{"route": {"id": "route", "from": "dc", "to": "unknown", "input": "vcv_in_0"},
+                                  "source": {"package": package_id, "index": 0}}],
+                      "output": "dc", "output_port": "out"},
+            "layout": {"version": 1, "zoom": 1.0, "pan": [0.0, 0.0], "positions": {"unknown": [30.0, 380.0]}},
+            "sources": {package_id: package}, "source_blobs": {blob_id: base64.b64encode(blob).decode()},
+        }
+        initial = self.payload(self.require_tool_success("replace_document", {"document": document}))
+        self.assertTrue(initial["patch_is_native_state_carrier"])
+        self.assertEqual(initial["execution"]["requested_disposition"], "suspended_unresolved")
+        compact = self.payload(self.require_tool_success("inspect_document"))
+        self.assertEqual(compact["document"]["format"], "openpatch-project-reference")
+        self.require_tool_error("replace_document", {"document": compact["document"]})
+        self.require_tool_error("save_patch", {"filename": "lossy.json"})
+        self.require_tool_error("benchmark", {"seconds": 0.01})
+        self.assertFalse((self.workspace / "lossy.json").exists())
+        full = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+        self.assertEqual(full["sources"][package_id], package)
+        self.assertEqual(base64.b64decode(full["source_blobs"][blob_id]), blob)
+        self.require_tool_success("set_parameter", {"id": "dc", "parameter": "value", "value": 0.5})
+        edited = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+        self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"], full)
+        self.require_tool_success("redo")
+        saved = self.payload(self.require_tool_success("save_document", {"filename": "retained.json"}))
+        self.assertEqual(saved["state_source"], "suspended_persisted")
+        self.assertEqual(json.loads((self.workspace / "retained.json").read_text()), edited)
+        partial = self.payload(self.require_tool_success("set_document_playback", {"mode": "partial"}))
+        self.assertEqual(partial["execution"]["requested_disposition"], "runnable_partial")
+        self.assertEqual(len(partial["execution"]["omitted_routes"]), 1)
+        self.require_tool_success("benchmark", {"seconds": 0.01})
+        reopened = self.payload(self.require_tool_success("load_document", {"filename": "retained.json"}))
+        self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"], edited)
+        corrupt = json.loads(json.dumps(edited))
+        corrupt["sources"][package_id]["patch"]["future-global"]["keep"] = False
+        self.require_tool_error("replace_document", {"document": corrupt})
+        self.assertEqual(self.patch_snapshot(), reopened)
+        self.require_tool_error("save_document", {"filename": "retained.json"})
 
     def test_atomic_preview_commit_and_shared_history(self) -> None:
         before = self.patch_snapshot()
