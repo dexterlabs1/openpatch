@@ -313,7 +313,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("mix6", 0, 1, &[][..]),
         ("stock_mix", 0, 1, &[][..]),
         ("audio_stereo", 1, 0, &["dc_block"][..]),
-        ("score_sequencer", 2, 0, &["running"][..]),
+        ("score_sequencer", 0, 2, &["running"][..]),
         ("drum_voice", 0, 5, &["mode"][..]),
     ] {
         let module = catalog["modules"]

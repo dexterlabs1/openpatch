@@ -172,6 +172,14 @@ Stock Scope implementation is checkpointed while the design milestone proceeds. 
 
 The authoritative local evidence is `native-test-output/stock-scope/STATE.json` in the integration worktree. Full logs/traces stay outside chat and Git. Existing `scope` and user patches keep their separate behavior.
 
+### Score and Mid/Side continuation
+
+Score Sequencer and both Mid/Side modules extend the detailed native pass to **49 panels**. Score has larger tempo/swing knobs, exact readouts, an explicit INITIAL RUN choice and a four-track output matrix. Its typed-score overview is labelled AUTHORED: nonempty enabled steps fill cells, while rests and zero-probability events remain unfilled. It does not invent a live playhead. Notes and automation curves retain their existing MCP editing path; a native note editor is not part of this change.
+
+Mid/Side has larger encoder/decoder width knobs and readable equations. Legacy multiplicative CV with a 10 V normal stays distinct from Stock's additive CV with a 0 V normal and no upper width cap. Unpatched decoder inputs independently use their encoder outputs. Widths and every socket coordinate stay stable; the shared renderer supplies matching browser thumbnails and restrained room lighting.
+
+[Mid/Side panels](../design/reviews/signal-atlas-two-modules-v1/native-mid-side.png), [dim view](../design/reviews/signal-atlas-two-modules-v1/native-mid-side-dark.png), [Score](../design/reviews/signal-atlas-two-modules-v1/native-score.png), [dim view](../design/reviews/signal-atlas-two-modules-v1/native-score-dark.png). **21 focused checks passed**, covering actual Session successive gestures/undo, choices/precision entry, rotary MCP motion and discrete RUN cues, authored-data provenance, real shared rack/browser geometry and all affected captions/rims down to 25% zoom. Strict all-target desktop Clippy, formatting and diff checks passed. The preceding restrained-glow source `4022815` passed full Mac/visualizer CI. No DSP/reference changes, native-window/device qualification or installation. Installed 0.2.6 build 8 stays stable; PR #28 remains draft. Next: polyphonic and remaining utilities.
+
 ## Course to completion
 
 One focused Astra advisory reviewed the remaining scope and this execution policy. The user's subsequent priority puts the approved module redesign first. Resume the checkpointed Scope integration afterward, then prioritize making music with real imported patches. A blocking regression in the current instrument takes priority immediately.

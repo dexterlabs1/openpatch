@@ -99,6 +99,7 @@ fn known_slider_mapping_and_discrete_choice_have_honest_markers_and_missing_anch
         ),
         ("sh_asr", "range", 0.0, 5.0, false, "0..10 V → −1..1 V"),
         ("sh_asr", "random", 0.0, 1.0, false, "RND OFF → RND ON"),
+        ("score_sequencer", "running", 0.0, 1.0, false, "Off → On"),
         ("quantizer", "scale_mask", 4095.0, 1.0, false, ""),
     ] {
         let ctx = egui::Context::default();
@@ -1064,6 +1065,12 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
         ("stock_lfo", "rate", 0.0, 2.0),
         ("stock_vca_mix", "level1", 0.25, 1.0),
         ("gate", "duty", 0.2, 0.8),
+        ("score_sequencer", "tempo", 120.0, 180.0),
+        ("score_sequencer", "swing", 50.0, 65.0),
+        ("mid_side", "encode_width", 0.5, 1.5),
+        ("mid_side", "decode_width", 0.5, 1.5),
+        ("stock_mid_side", "encode_width", 0.5, 1.5),
+        ("stock_mid_side", "decode_width", 0.5, 1.5),
         ("analog_vco", "pulse_width", 0.2, 0.8),
     ] {
         let ctx = egui::Context::default();
