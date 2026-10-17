@@ -39,6 +39,7 @@ The upstream GPL source and separately obtained Rack SDK are behavioral/oracle r
 - Seven focused Core tests cover authored quantities, independent polyphonic ports, acquisition adoption, source initialize/recreation, bypass, bounded live rate changes and heap-free processing.
 - The 66 affected desktop checks include real Callback → Session inspection, shared publication limits, kind/incarnation fencing, retained acquisition across TIME/threshold/routing edits, initialize and same-ID recreation. Callback execution/adoption is checked for allocation and deallocation.
 - Panel checks cover physical-unit TIME entry and keyboard bounds, successive field/rotary moves with one undo/redo, stale entry rejection, native AUTO history separation, actual weak-signal measurements, bypass-held lamps and controls clearing jack targets at reduced zoom.
+- A real stdio MCP session verifies the eight-control catalog, saved raw TIME, save/load, initialize and undo/redo, atomic rejection of invalid batch edits and the honest unavailable-capture response without a live backend.
 - All 46 unchanged local safety inputs ran through the actual Engine: 12 finite updates accepted; 34 invalid/out-of-domain updates rejected atomically. These results carry no SDK-equivalence claim.
 - Workspace Clippy with warnings denied, formatting and the 81-kind shared default rack/browser drawing check passed. [Actual panel captures](../design/reviews/stock-scope-v1/README.md) document the disconnected default view in normal and dim rooms.
 

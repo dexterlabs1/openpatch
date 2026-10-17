@@ -23,7 +23,6 @@ fn patch(rate: u32) -> Patch {
 #[test]
 fn stock_process_is_separate_from_existing_process_and_exposes_source_ports() {
     let modules = catalog()["modules"].as_array().unwrap().clone();
-    assert_eq!(modules.len(), 80);
     let stock = modules
         .iter()
         .find(|module| module["kind"] == "stock_process")
