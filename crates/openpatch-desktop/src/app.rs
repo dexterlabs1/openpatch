@@ -406,7 +406,11 @@ pub struct OpenPatch {
     patch_engine: crate::patch_engine_ui::Panel,
     /// Title of the fresh document a Patch Engine build is waiting for (after any unsaved-changes prompt).
     patch_engine_wait: Option<String>,
+    /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
+    patch_engine_zoom: f32,
     construction: crate::construction_ui::Panel,
+    /// A Pause/Resume/Cancel pressed in the footer's construction status, applied next frame.
+    construction_footer_action: Option<crate::construction_ui::Action>,
     smoke_motion_origin: Option<Instant>,
     documents: DocumentState,
     projects: Option<Store>,
@@ -608,7 +612,9 @@ impl OpenPatch {
             mcp_session: crate::mcp_session_ui::Panel::new(mcp),
             patch_engine: Default::default(),
             patch_engine_wait: None,
+            patch_engine_zoom: 1.0,
             construction: crate::construction_ui::Panel::default(),
+            construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,
@@ -8246,7 +8252,7 @@ impl eframe::App for OpenPatch {
         self.service_manual_release(ctx);
         self.observe_document();
         self.toolbar(ctx);
-        if let Some(action) = self.construction.show(ctx) {
+        if let Some(action) = self.construction_footer_action.take() {
             self.status = match execute_shared(&self.shared, action.name, action.arguments) {
                 Ok(receipt) => format!(
                     "Construction {} · {} steps committed",
@@ -8408,13 +8414,14 @@ impl eframe::App for OpenPatch {
                         }
                     }
                 }
-                crate::patch_engine_ui::Request::ShowPatch => self.rack.reset_view(),
+                crate::patch_engine_ui::Request::ShowPatch => self.rack.show_origin(self.patch_engine_zoom),
                 crate::patch_engine_ui::Request::Prepare => {
                     // Start a fresh, empty document named after the song through the normal replace path, so
                     // unsaved work is protected (Save / Discard / Cancel) and title, file and recovery stay consistent.
                     if let Some(title) = self.patch_engine.prepared_title() {
                         let empty: Patch = serde_json::from_value(json!({"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}))
                             .expect("empty patch");
+                        self.patch_engine_zoom = self.rack.zoom();
                         self.request_action(PendingAction::Replace(empty, title.clone()));
                         self.patch_engine_wait = Some(title);
                     }
@@ -8537,7 +8544,7 @@ mod project_workflow_tests {
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
     }
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(any())] // hosted plugin tests live on the host branch
     mod hosted_save_app_tests {
         include!("hosted_save_app_tests.rs");
     }
@@ -8675,7 +8682,9 @@ mod project_workflow_tests {
             mcp_session: crate::mcp_session_ui::Panel::new(true),
             patch_engine: Default::default(),
             patch_engine_wait: None,
+            patch_engine_zoom: 1.0,
             construction: crate::construction_ui::Panel::default(),
+            construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,

@@ -105,3 +105,17 @@ fn sentences_read_naturally() {
     let r = Recipe::new("UK Garage", "Euphoric", "Pulsing", 1).unwrap();
     assert_eq!(r.sentence, "A euphoric UK Garage track that pulses and breathes.");
 }
+
+#[test]
+fn minecraft_mode_builds_quietly_and_in_key() {
+    for m in MOODS {
+        for t in TEXTURES {
+            let r = Recipe::new("Minecraft", m, t, 9).unwrap();
+            assert!(r.sentence.contains("Minecraft-style piece"));
+            apply_all(&r.edits()).unwrap_or_else(|e| panic!("Minecraft|{m}|{t}: {e}"));
+            let p = r.patch();
+            let drums = p["nodes"].as_array().unwrap().iter().find(|n| n["id"] == "seq_drums").unwrap();
+            assert!(drums["score"]["tracks"].as_array().unwrap().iter().all(|tr| tr["steps"].as_array().unwrap().is_empty()), "no drums");
+        }
+    }
+}

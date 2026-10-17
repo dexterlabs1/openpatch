@@ -9,6 +9,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const GENRE_KEYS: [egui::Key; 8] = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5, egui::Key::Num6, egui::Key::Num7, egui::Key::Num8];
 const MOOD_KEYS: [egui::Key; 8] = [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R, egui::Key::T, egui::Key::Y, egui::Key::U, egui::Key::I];
 const TEXTURE_KEYS: [egui::Key; 8] = [egui::Key::A, egui::Key::S, egui::Key::D, egui::Key::F, egui::Key::G, egui::Key::H, egui::Key::J, egui::Key::K];
+/// Genre index used for the Minecraft (C418-style) mode, after the eight genre words.
+const MINECRAFT: usize = 8;
+fn genre_name(i: usize) -> &'static str { if i == MINECRAFT { "Minecraft" } else { GENRES[i] } }
 const GENRE_COLOR: Color32 = Color32::from_rgb(232, 122, 82);
 const MOOD_COLOR: Color32 = Color32::from_rgb(122, 162, 255);
 const TEXTURE_COLOR: Color32 = Color32::from_rgb(86, 200, 150);
@@ -72,7 +75,8 @@ impl Demo {
         let words = std::env::var("OPENPATCH_PATCH_ENGINE_DEMO").ok().and_then(|v| {
             let p: Vec<&str> = v.split('|').collect();
             let find = |list: &[&str], w: &str| list.iter().position(|x| x.eq_ignore_ascii_case(w));
-            Some((find(&GENRES, p.first()?)?, find(&MOODS, p.get(1)?)?, find(&TEXTURES, p.get(2)?)?, p.get(3).and_then(|s| s.parse().ok()).unwrap_or(1)))
+            let genre = if p.first()?.eq_ignore_ascii_case("minecraft") { MINECRAFT } else { find(&GENRES, p.first()?)? };
+            Some((genre, find(&MOODS, p.get(1)?)?, find(&TEXTURES, p.get(2)?)?, p.get(3).and_then(|s| s.parse().ok()).unwrap_or(1)))
         });
         let captures: Vec<_> = std::env::var("OPENPATCH_CAPTURE").ok().map(|v| v.split(',').filter_map(|c| {
             let (path, t) = c.rsplit_once('@')?;
@@ -125,7 +129,7 @@ impl Panel {
 
     /// Document title for the next build; the app names the fresh document with it.
     pub(crate) fn prepared_title(&self) -> Option<String> {
-        self.armed.as_ref().map(|a| format!("{} {} · {}", MOODS[a.m], GENRES[a.g], TEXTURES[a.t]))
+        self.armed.as_ref().map(|a| format!("{} {} · {}", MOODS[a.m], genre_name(a.g), TEXTURES[a.t]))
     }
 
     /// The user cancelled the unsaved-changes prompt: forget the armed build.
@@ -169,7 +173,7 @@ impl Panel {
         self.pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
-                let r = Recipe::with_budget(GENRES[g], MOODS[m], TEXTURES[t], seed, budget)?;
+                let r = Recipe::with_budget(genre_name(g), MOODS[m], TEXTURES[t], seed, budget)?;
                 let title = format!("Patch Engine · {}", r.title);
                 let steps = match mode {
                     Mode::Instant => {
@@ -253,36 +257,35 @@ impl Panel {
 
     fn sentence(&self) -> LayoutJob {
         let mut job = LayoutJob::default();
-        let font = FontId::proportional(24.0);
+        let font = FontId::proportional(19.0);
         let plain = TextFormat { font_id: font.clone(), color: Color32::from_gray(225), ..Default::default() };
         let blank = TextFormat { font_id: font.clone(), color: Color32::from_gray(95), ..Default::default() };
         let colored = |c| TextFormat { font_id: font.clone(), color: c, ..Default::default() };
         job.append("A ", 0.0, plain.clone());
         match self.mood { Some(m) => job.append(&MOODS[m].to_lowercase(), 0.0, colored(MOOD_COLOR)), None => job.append("mood", 0.0, blank.clone()) }
         job.append(" ", 0.0, plain.clone());
-        match self.genre { Some(g) => job.append(genre_noun(GENRES[g]), 0.0, colored(GENRE_COLOR)), None => job.append("genre", 0.0, blank.clone()) }
+        match self.genre { Some(g) => job.append(genre_noun(genre_name(g)), 0.0, colored(GENRE_COLOR)), None => job.append("genre", 0.0, blank.clone()) }
         job.append(" ", 0.0, plain.clone());
         match self.texture { Some(t) => job.append(texture_phrase(TEXTURES[t]), 0.0, colored(TEXTURE_COLOR)), None => job.append("texture", 0.0, blank) }
         job.append(".", 0.0, plain);
         job
     }
 
-    fn word_row(ui: &mut egui::Ui, title: &str, keys: &str, words: &[&str], selected: &mut Option<usize>, color: Color32, focused: bool) {
-        ui.horizontal(|ui| {
-            let t = RichText::new(format!("{} {title}", if focused { ">" } else { " " })).monospace();
-            ui.label(if focused { t.color(color).strong() } else { t.weak() });
-            ui.label(RichText::new(keys).small().weak());
-        });
+    fn word_row(ui: &mut egui::Ui, title: &str, words: &[&str], selected: &mut Option<usize>, color: Color32, focused: bool, tips: Option<fn(&str) -> &'static str>) {
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+            let t = RichText::new(format!("{}{title}", if focused { "› " } else { "  " })).monospace().small();
+            ui.add_sized([62.0, 26.0], egui::Label::new(if focused { t.color(color).strong() } else { t.weak() }));
             for (i, w) in words.iter().enumerate() {
                 let on = *selected == Some(i);
-                let text = if on { RichText::new(*w).strong().size(15.0).color(Color32::BLACK) } else { RichText::new(*w).size(15.0) };
-                let mut b = egui::Button::new(text).corner_radius(14.0).min_size(egui::vec2(0.0, 34.0));
+                let text = if on { RichText::new(*w).strong().size(13.5).color(Color32::BLACK) } else { RichText::new(*w).size(13.5) };
+                let mut b = egui::Button::new(text).corner_radius(12.0).min_size(egui::vec2(0.0, 28.0));
                 if on { b = b.fill(color); }
-                if ui.add(b).clicked() { *selected = Some(i); }
+                let mut r = ui.add(b);
+                if let Some(tip) = tips { r = r.on_hover_text(tip(w)); }
+                if r.clicked() { *selected = Some(i); }
             }
         });
-        ui.add_space(4.0);
     }
 
     fn keyboard(&mut self, ctx: &egui::Context, session: &SharedSession) {
@@ -304,7 +307,7 @@ impl Panel {
     }
 
     fn surprise(&mut self, session: &SharedSession) {
-        self.genre = Some((next_seed(&mut self.rng) % 8) as usize);
+        self.genre = Some((next_seed(&mut self.rng) % 9) as usize);
         self.mood = Some((next_seed(&mut self.rng) % 8) as usize);
         self.texture = Some((next_seed(&mut self.rng) % 8) as usize);
         self.keep_seed = false;
@@ -360,67 +363,66 @@ impl Panel {
             .collapsible(true)
             .vscroll(true)
             .max_height(ctx.content_rect().height() - 80.0)
-            .default_width(560.0)
-            .anchor(egui::Align2::RIGHT_TOP, [-14.0, 62.0])
+            .default_width(470.0)
+            .anchor(egui::Align2::RIGHT_TOP, [-12.0, 58.0])
             .show(ctx, |ui| {
-                ui.set_width(560.0);
+                ui.set_width(470.0);
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 5.0);
                 ui.label(self.sentence());
-                ui.add_space(8.0);
+                // build row: actions + live timer/progress
                 ui.horizontal(|ui| {
-                    let build = ui.add_enabled(self.ready(), egui::Button::new(RichText::new("  Build it  ").strong().size(15.0)).min_size(egui::vec2(120.0, 32.0)));
+                    let build = ui.add_enabled(self.ready(), egui::Button::new(RichText::new("Build it").strong().size(14.0)).min_size(egui::vec2(92.0, 30.0)));
                     if build.clicked() { self.start(session); }
-                    if ui.add_enabled(!self.building && self.pending.is_none(), egui::Button::new(RichText::new("Surprise me").size(15.0)).min_size(egui::vec2(0.0, 32.0))).clicked() { self.surprise(session); }
-                    ui.checkbox(&mut self.keep_seed, if self.seed == 0 { "Keep seed".to_string() } else { format!("Keep seed {}", self.seed) })
-                        .on_hover_text("Every build composes a new song. Keep the seed to rebuild this one.");
+                    if ui.add_enabled(!self.building && self.pending.is_none() && self.armed.is_none(), egui::Button::new("Surprise").min_size(egui::vec2(0.0, 30.0))).clicked() { self.surprise(session); }
+                    let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
+                    ui.label(RichText::new(secs.map_or("–.–– s".to_string(), |d| format!("{:.2} s", d.as_secs_f32()))).monospace().size(15.0));
+                    let frac = if self.total == 0 { 0.0 } else { self.done as f32 / self.total as f32 };
+                    ui.add(egui::ProgressBar::new(frac).desired_width(ui.available_width()).desired_height(18.0).text(RichText::new(self.label.clone()).small()));
                 });
-                ui.horizontal(|ui| {
+                if let Some(e) = &self.error { ui.colored_label(Color32::from_rgb(240, 130, 90), RichText::new(e).small()); }
+                if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
+                // words
+                let mc = self.genre == Some(MINECRAFT);
+                ui.add_enabled_ui(!mc, |ui| Self::word_row(ui, "GENRE", &GENRES, &mut self.genre, GENRE_COLOR, self.cursor == 0, None));
+                Self::word_row(ui, "MOOD", &MOODS, &mut self.mood, MOOD_COLOR, self.cursor == 1, None);
+                Self::word_row(ui, "TEXTURE", &TEXTURES, &mut self.texture, TEXTURE_COLOR, self.cursor == 2, Some(texture_text));
+                // one slim options row
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(5.0, 3.0);
+                    let mc_button = egui::Button::new(RichText::new("C418 mode").small().color(if mc { Color32::BLACK } else { Color32::from_gray(200) }))
+                        .fill(if mc { Color32::from_rgb(120, 190, 110) } else { Color32::from_gray(45) }).corner_radius(10.0);
+                    if ui.add(mc_button).on_hover_text("Minecraft-style: gentle piano, slow drifting harmony and lots of space (original music in the spirit of C418)").clicked() {
+                        self.genre = if mc { None } else { Some(MINECRAFT) };
+                    }
                     for (m, label, tip) in [(Mode::Reveal, "Reveal", "Place the rack, then patch it section by section (~2 s)"),
-                                            (Mode::Showtime, "Showtime", "Modules arrive one by one (~5 s)"),
+                                            (Mode::Showtime, "Show", "Modules arrive one by one (~5 s)"),
                                             (Mode::Instant, "Instant", "Everything at once")] {
-                        if ui.selectable_label(self.mode == m, label).on_hover_text(tip).clicked() { self.mode = m; }
+                        if ui.selectable_label(self.mode == m, RichText::new(label).small()).on_hover_text(tip).clicked() { self.mode = m; }
                     }
                     if self.mode != Mode::Instant {
-                        ui.add(egui::Slider::new(&mut self.interval_ms, 100..=300).suffix(" ms").text("step"));
+                        ui.spacing_mut().slider_width = 60.0;
+                        ui.add(egui::Slider::new(&mut self.interval_ms, 100..=300).suffix(" ms").show_value(true));
                     }
-                    ui.checkbox(&mut self.autoplay, "Play");
-                    ui.checkbox(&mut self.light, "Light").on_hover_text("Keep the build within a Steam Deck's CPU: optional layers are left out when a song would be too heavy.");
+                    ui.checkbox(&mut self.autoplay, RichText::new("Play").small());
+                    ui.checkbox(&mut self.light, RichText::new("Light").small()).on_hover_text("Keep the build within a Steam Deck's CPU: optional layers are left out when a song would be too heavy.");
+                    ui.checkbox(&mut self.keep_seed, RichText::new(if self.seed == 0 { "Keep seed".to_string() } else { format!("Seed {}", self.seed) }).small())
+                        .on_hover_text("Every build composes a new song. Keep the seed to rebuild this one.");
                 });
-                let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(secs.map_or("–.–– s".to_string(), |d| format!("{:.2} s", d.as_secs_f32()))).monospace().size(22.0));
-                    let frac = if self.total == 0 { 0.0 } else { self.done as f32 / self.total as f32 };
-                    ui.add(egui::ProgressBar::new(frac).desired_width(300.0).text(self.label.clone()));
-                });
-                if let Some(e) = &self.error { ui.colored_label(Color32::from_rgb(240, 130, 90), e); }
-                if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
-                ui.separator();
-                Self::word_row(ui, "GENRE", "1–8", &GENRES, &mut self.genre, GENRE_COLOR, self.cursor == 0);
-                Self::word_row(ui, "MOOD", "Q–I", &MOODS, &mut self.mood, MOOD_COLOR, self.cursor == 1);
-                Self::word_row(ui, "TEXTURE", "A–K", &TEXTURES, &mut self.texture, TEXTURE_COLOR, self.cursor == 2);
-                if let Some(t) = self.texture { ui.label(RichText::new(texture_text(TEXTURES[t])).small().weak()); }
-                ui.separator();
                 if let Some(info) = &self.info {
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(info["title"].as_str().unwrap_or("")).strong().size(16.0));
-                    ui.horizontal_wrapped(|ui| {
-                        for fact in [format!("{} BPM", info["bpm"]), info["key"].as_str().unwrap_or("").to_string(), format!("swing {}%", info["swing"]),
-                                     format!("{} modules · {} cables", info["modules"], info["cables"]), format!("seed {}", info["seed"])] {
-                            ui.label(RichText::new(fact).monospace().small());
-                        }
+                    let head = format!("{} · {} BPM · {} · {}", info["title"].as_str().unwrap_or(""), info["bpm"], info["key"].as_str().unwrap_or(""),
+                                       info["chords"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect::<Vec<_>>().join(" "));
+                    egui::CollapsingHeader::new(RichText::new(head).small().strong()).id_salt("patch-engine-recipe").show(ui, |ui| {
+                        ui.label(RichText::new(info["description"].as_str().unwrap_or("")).small());
+                        let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
+                        ui.label(RichText::new(format!("{} · {} modules · {} cables · seed {}", notes.join(" · "), info["modules"], info["cables"], info["seed"])).small().weak());
                     });
-                    ui.horizontal_wrapped(|ui| {
-                        for c in info["chords"].as_array().into_iter().flatten() { ui.label(RichText::new(c.as_str().unwrap_or("")).strong()); }
-                    });
-                    ui.label(RichText::new(info["description"].as_str().unwrap_or("")).small());
-                    let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
-                    ui.label(RichText::new(notes.join(" · ")).small().weak());
                 }
                 if self.history.len() > 1 {
                     let mut replay = None;
                     egui::CollapsingHeader::new(RichText::new("Recent").small().weak()).id_salt("patch-engine-recent").show(ui, |ui| {
                         for (i, &(g, m, t, seed, secs)) in self.history.iter().enumerate().skip(1).take(5) {
-                            let text = format!("{} {} · {} · seed {}{}", MOODS[m], GENRES[g], TEXTURES[t], seed, if secs > 0.0 { format!(" · {secs:.2} s") } else { String::new() });
-                            if ui.button(text).on_hover_text("Select these words and seed").clicked() { replay = Some(i); }
+                            let text = format!("{} {} · {} · seed {}{}", MOODS[m], genre_name(g), TEXTURES[t], seed, if secs > 0.0 { format!(" · {secs:.2} s") } else { String::new() });
+                            if ui.small_button(text).on_hover_text("Select these words and seed").clicked() { replay = Some(i); }
                         }
                     });
                     if let Some(i) = replay {
@@ -428,15 +430,14 @@ impl Panel {
                         (self.genre, self.mood, self.texture, self.seed, self.keep_seed) = (Some(g), Some(m), Some(t), seed, true);
                     }
                 }
-                ui.add_space(4.0);
-                ui.label(RichText::new("Steam Deck: D-pad picks row/word · A build · X surprise · B close · F1 panel · PgUp/PgDn zoom · Home view · F11 full screen. Building replaces the rack; Undo brings it back.").small().weak());
+                ui.label(RichText::new("D-pad row/word · A build · X surprise · B close · F1 panel · PgUp/PgDn zoom · Home view · F11 full screen").small().weak());
             });
         self.open = open;
         let started = std::mem::take(&mut self.just_launched) || (was_idle && (self.building || self.pending.is_some()));
         let mut requests = vec![];
         if self.armed.is_some() && !self.prepare_sent { requests.push(Request::Prepare); self.prepare_sent = true; }
         if started && self.autoplay { requests.push(Request::StartPlayback); }
-        if started && ctx.content_rect().height() <= 900.0 { requests.push(Request::ShowPatch); }
+        if started { requests.push(Request::ShowPatch); }
         requests
     }
 }

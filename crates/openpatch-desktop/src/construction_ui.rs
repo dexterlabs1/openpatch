@@ -49,6 +49,61 @@ impl Panel {
         self.document_revision = revision;
     }
 
+    /// Compact construction status for the always-visible bottom bar (replaces the old full-width top strip).
+    pub fn footer(&mut self, ui: &mut egui::Ui) -> Option<Action> {
+        let plan_id = self.snapshot["plan_id"].as_u64()?;
+        if self.snapshot["base_revision"].as_u64().unwrap_or(0) < self.document_revision || self.dismissed == Some(plan_id) {
+            return None;
+        }
+        let status = self.snapshot["status"].as_str().unwrap_or("failed");
+        let (running, paused) = (status == "running", status == "paused");
+        let active = running || paused;
+        let completed = self.snapshot["completed_steps"].as_u64().unwrap_or(0);
+        let total = self.snapshot["total_steps"].as_u64().unwrap_or(0);
+        let title = self.snapshot["title"].as_str().unwrap_or("Patch construction");
+        let heading = match status { "running" => "Building", "paused" => "Paused", "completed" => "Built", "cancelled" => "Cancelled", "conflicted" => "Stopped", _ => "Stopped" };
+        let detail = if let Some(error) = self.snapshot["error"].as_str() { error.to_string() }
+            else { self.snapshot[if active { "next_label" } else { "last_label" }].as_str().map(|l| format!("{}: {l}", if active { "Next" } else { "Last step" })).unwrap_or_default() };
+        let help = format!("{title}\n{detail}\nEach completed step is one real patch edit and one shared Undo entry. Completed steps stay in the rack. Plan {plan_id}.");
+        let mut action = None;
+        let warn = status == "conflicted" || self.snapshot["error"].is_string();
+        ui.label(RichText::new(heading).size(10.0).strong().color(if warn { ui.visuals().warn_fg_color } else { ui.visuals().text_color() })).on_hover_text(&help);
+        ui.add(egui::ProgressBar::new(if total == 0 { 0.0 } else { completed as f32 / total as f32 })
+            .desired_width(70.0).desired_height(10.0).text(RichText::new(format!("{completed}/{total}")).size(9.0)))
+            .on_hover_text(&help);
+        if running && ui.small_button("Pause").clicked() {
+            action = Some(Action { name: "pause_construction", arguments: json!({"plan_id":plan_id}) });
+        }
+        if paused {
+            let revision = self.snapshot["current_revision"].as_u64();
+            let unchanged = revision.is_some() && revision == self.snapshot["expected_revision"].as_u64();
+            if ui.add_enabled(unchanged, egui::Button::new(RichText::new("Resume").size(10.0)).small()).clicked() {
+                action = Some(Action { name: "resume_construction", arguments: json!({"plan_id":plan_id,"expected_revision":revision.unwrap()}) });
+            }
+        }
+        if active && ui.small_button("Cancel").on_hover_text("Stop future steps and keep completed work.").clicked() {
+            action = Some(Action { name: "cancel_construction", arguments: json!({"plan_id":plan_id}) });
+        }
+        if !active && ui.small_button("Dismiss").clicked() {
+            self.dismissed = Some(plan_id);
+        }
+        let mut selected_mode = self.motion_mode;
+        egui::ComboBox::from_id_salt("construction-motion")
+            .selected_text(RichText::new(format!("Motion: {}", selected_mode.label())).size(10.0))
+            .width(92.0)
+            .show_ui(ui, |ui| {
+                for mode in [crate::construction_motion::MotionMode::Full, crate::construction_motion::MotionMode::Reduced, crate::construction_motion::MotionMode::Off] {
+                    ui.selectable_value(&mut selected_mode, mode, mode.label());
+                }
+            })
+            .response
+            .on_hover_text("How committed edits animate: Full adds short movement accents; Reduced uses static accents; Off settles immediately.");
+        self.set_motion_mode(selected_mode);
+        ui.separator();
+        action
+    }
+
+    #[allow(dead_code)] // the full-width strip is kept for tests and fixtures; the app uses `footer`
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
         let plan_id = self.snapshot["plan_id"].as_u64()?;
         if self.snapshot["base_revision"].as_u64().unwrap_or(0) < self.document_revision {

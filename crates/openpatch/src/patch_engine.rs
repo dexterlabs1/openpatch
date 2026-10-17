@@ -25,6 +25,7 @@ pub fn genre_noun(genre: &str) -> &'static str {
         "Lo-fi Hip Hop" => "Lo-fi Hip Hop beat",
         "Synthwave" => "Synthwave tune",
         "Downtempo" => "Downtempo groove",
+        "Minecraft" => "Minecraft-style piece",
         _ => "UK Garage track",
     }
 }
@@ -234,6 +235,11 @@ fn genre_def(g: &str) -> GenreDef {
             voices: &["keys", "pad_saw", "pluck", "organ"], rhythm: &["held", "stabs", "syncop", "restrike"],
             leads: &[("hook", 4.0), ("bells", 2.0), ("counter", 2.0), ("arp", 1.0), ("none", 1.0)], counter: 0.35, perc: 0.6, perc2: 0.35, pad: 0.35, pump: false,
             kick: (52.0, 0.42, 0.2, 0.3), hats: &["16", "shuffle", "euclid", "8"], ohat: &["half", "sparse", "none"] },
+        // C418-style mode: original music in that spirit (soft piano figures, slow drifting harmony, space)
+        "Minecraft" => GenreDef { bpm: (64, 80), swing: (50, 50), div: 2, drums: "none", bass: &["drone"],
+            voices: &["piano"], rhythm: &["broken"],
+            leads: &[("bells", 4.0), ("hook", 3.0), ("counter", 2.0), ("none", 1.0)], counter: 0.3, perc: 0.0, perc2: 0.0, pad: 0.6, pump: false,
+            kick: (44.0, 0.5, 0.0, 0.2), hats: &["none"], ohat: &["none"] },
         _ => GenreDef { bpm: (128, 134), swing: (60, 66), div: 1, drums: "twostep", bass: &["garage", "gen", "sub"],
             voices: &["organ", "stab", "keys", "pluck"], rhythm: &["stabs", "syncop"],
             leads: &[("hook", 4.0), ("none", 4.0), ("arp", 1.0)], counter: 0.2, perc: 0.5, perc2: 0.3, pad: 0.25, pump: true,
@@ -250,6 +256,7 @@ fn colorize(genre: &str, q: &'static str) -> &'static str {
         "Deep House" => match q { "maj9" | "maj7s11" | "dom9" => "maj7sh", "m7" | "m11" => "m7sh", _ => q },
         "UK Garage" => match q { "maj9" | "maj7s11" | "dom9" => "maj7sh", "m9" | "m11" | "m7" => "m7sh", _ => q },
         "Ambient" => match q { "maj9" | "maj7s11" => "add9", "dom9" => "maj7sh", _ => q },
+        "Minecraft" => match q { "dom9" => "maj7sh", "m11" | "m7" => "m9", _ => q },
         "Downtempo" => match q { "maj9" | "maj7s11" => "maj7sh", _ => q },
         _ => q,
     }
@@ -262,6 +269,7 @@ fn harmonic_rhythms(genre: &str) -> &'static [[usize; 4]] {
         "Techno" | "Dub Techno" => &[[0, 0, 0, 0]],
         "Deep House" | "UK Garage" => &[[0, 0, 1, 1], [0, 1, 0, 1]],
         "Ambient" => &[[0, 0, 1, 1]],
+        "Minecraft" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Downtempo" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Synthwave" => &[[0, 1, 2, 3]],
         _ => &[[0, 1, 2, 3]],
@@ -284,7 +292,7 @@ fn trim_db(name: &str) -> f64 {
 fn out_gain(genre: &str) -> f64 {
     match genre {
         "Deep House" => 1.05, "Dub Techno" => 1.2, "Techno" => 1.2, "Ambient" => 1.8, "Lo-fi Hip Hop" => 1.3,
-        "Synthwave" => 0.95, "Downtempo" => 1.25, _ => 1.15,
+        "Synthwave" => 0.95, "Downtempo" => 1.25, "Minecraft" => 0.85, _ => 1.15,
     }
 }
 
@@ -390,7 +398,7 @@ impl Recipe {
     }
 
     fn build(genre: &str, mood: &str, texture: &str, seed: u64, drop: usize) -> Result<Recipe, String> {
-        let genre = find(&GENRES, genre).ok_or("unknown genre")?;
+        let genre = if genre == "Minecraft" { "Minecraft" } else { find(&GENRES, genre).ok_or("unknown genre")? };
         let mood_name = find(&MOODS, mood).ok_or("unknown mood")?;
         let texture = find(&TEXTURES, texture).ok_or("unknown texture")?;
         let mut rng = Rng::new(&format!("{genre}|{mood_name}|{texture}|{seed}"));
@@ -405,7 +413,7 @@ impl Recipe {
         let bpm = (rng.int(g.bpm.0, g.bpm.1) + m.bpm).max(60);
         let swing = (rng.int(g.swing.0, g.swing.1) + if texture == "Dusty" { 4 } else { 0 }).clamp(50, 70);
         let bright = (m.bright + match texture { "Crisp" => 0.35, "Dusty" => -0.35, _ => 0.0 } + rng.uni(-0.15, 0.15)).clamp(-1.0, 1.0);
-        let space = (m.space + match texture { "Spacious" => 0.3, "Crisp" => -0.25, "Minimal" | "Echoing" => 0.1, _ => 0.0 } + rng.uni(-0.1, 0.1)).clamp(0.2, 1.0);
+        let space = (m.space + if genre == "Minecraft" { 0.25 } else { 0.0 } + match texture { "Spacious" => 0.3, "Crisp" => -0.25, "Minimal" | "Echoing" => 0.1, _ => 0.0 } + rng.uni(-0.1, 0.1)).clamp(0.2, 1.0);
         let minimal = texture == "Minimal";
         let lead = if minimal && rng.chance(0.6) { "none" } else { rng.weighted(g.leads) };
         let counter = !minimal && lead != "counter" && rng.chance(g.counter);
@@ -420,7 +428,7 @@ impl Recipe {
         let song_like = matches!(genre, "Synthwave" | "Lo-fi Hip Hop" | "Downtempo");
         let break_shift = if song_like { rng.pick(shifts) } else { 0 };
         let drop2_shift = if rng.chance(0.4) { break_shift } else { 0 };
-        let form = if matches!(genre, "Dub Techno" | "Techno" | "Ambient") { "four 16-bar sections, layers arrive one by one" } else { "intro · build · drop · breakdown · drop · outro" };
+        let form = if matches!(genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft") { "four 16-bar sections, layers arrive one by one" } else { "intro · build · drop · breakdown · drop · outro" };
         let dropped = |layer: &str| DROP_ORDER[..drop].contains(&layer);
         let perc2 = if dropped("second percussion") { None } else { perc2 };
         let counter = counter && !dropped("counter-line");
@@ -428,7 +436,7 @@ impl Recipe {
         let (perc, perc2) = if dropped("percussion") { (None, None) } else { (perc, perc2) };
         let mut c = Ctx {
             rng, genre, texture, tonic, chords, roots, bright, space, six: 60.0 / bpm as f64 / 4.0,
-            lead, counter, clap: !minimal && genre != "Ambient", perc, perc2, pad, voice, bass_style, form, g, m, ohat: !dropped("open hat"),
+            lead, counter, clap: !minimal && genre != "Ambient" && genre != "Minecraft", perc, perc2, pad, voice, bass_style, form, g, m, ohat: !dropped("open hat"),
             break_shift, drop2_shift, quals: prog.iter().map(|x| x.1).collect(), glue: !dropped("glue compressor"),
         };
         let key_name = format!("{} {}", NOTE[tonic as usize], c.m.mode);
@@ -509,6 +517,7 @@ impl Recipe {
                 for bar in 0..4 { for &s in if bar % 2 == 0 { a } else { b } { kick.push(hit(bar * 16 + s, if s == 0 { 1.0 } else { 0.8 })); } }
                 self.note(format!("{} kick", match c.g.drums { "boombap" => "boom-bap", "broken" => "broken-beat", _ => "2-step" }));
             }
+            "none" => {}
             "ambient" => {
                 let style = rng.pick(&["heartbeat", "pulse", "lone"]);
                 for bar in 0..4 {
@@ -533,7 +542,7 @@ impl Recipe {
             let rims: &[&[i64]] = &[&[6, 14], &[3, 10, 14], &[6, 11, 14], &[2, 8, 14], &[5, 10, 13]];
             let rim = rng.pick(rims);
             for bar in 0..4 { for (k, &s) in rim.iter().enumerate() { clap.push(st(bar * 16 + s, &[0], rng.pick(&[0.5, 0.6, 0.7]), 0.3, if k == 0 { 1.0 } else { 0.85 }, false)); } }
-        } else if c.g.drums != "ambient" {
+        } else if c.g.drums != "ambient" && c.g.drums != "none" {
             // backbeat by genre: techno keeps it to a quiet rim (or nothing), house a softer clap
             let backbeat = match c.genre { "Techno" => if rng.chance(0.5) { 0.0 } else { 0.5 }, "Deep House" => 0.8, _ => 0.95 };
             if backbeat > 0.0 { for bar in 0..4 { clap.push(hit(bar * 16 + 4, backbeat)); clap.push(hit(bar * 16 + 12, backbeat)); } }
@@ -579,6 +588,19 @@ impl Recipe {
                     else { chords.extend(held(o, spb * bpc, &ch[ci], 1.0, 0.95)); }
                 }
                 self.note(if rhythm == "held" { "held chords" } else { "chords re-strike every bar" });
+            }
+            "broken" => {
+                // broken chords, one note at a time across each two-bar chord (8th-note grid), piano-like
+                let figs: [&[(i64, usize)]; 4] = [&[(0, 0), (2, 1), (4, 2), (6, 3), (9, 2), (12, 1)], &[(0, 0), (3, 2), (6, 1), (8, 3), (11, 2)],
+                                                  &[(0, 1), (2, 2), (5, 3), (8, 0), (10, 2), (13, 1)], &[(0, 0), (4, 1), (6, 2), (8, 3), (12, 2)]];
+                let fig = figs[rng.idx(figs.len())];
+                let span = spb * bpc;
+                for ci in 0..4 {
+                    for &(s, v) in fig {
+                        chords.push(st(ci as i64 * span + s * span / 16, &[ch[ci][v.min(ch[ci].len() - 1)]], rng.pick(&[0.55, 0.7, 0.85]), 0.9, 1.0, false));
+                    }
+                }
+                self.note("broken-chord piano figure");
             }
             "pulse8" => {
                 for s in (0..64).step_by(2) { chords.push(st(s, &ch[chord_at(s)], if s % 4 == 0 { 0.9 } else { 0.65 }, 0.45, 1.0, false)); }
@@ -837,7 +859,7 @@ impl Recipe {
             let name = |n: i64| NOTE[(c.tonic + n).rem_euclid(12) as usize];
             self.note(format!("breakdown in {}{}", name(c.break_shift), if c.drop2_shift != 0 { ", second drop stays there" } else { "" }));
         }
-        let long_form = matches!(c.genre, "Dub Techno" | "Techno" | "Ambient");
+        let long_form = matches!(c.genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft");
         let (kick_l, bass_l, lead_l, perc_l, hats_l, sweep, riser, fill) = if long_form {
             // 16-bar sections: the groove holds, layers arrive one at a time and the filter opens over 48 bars
             (if ambient { h(&[(0.0, 0.0), (16.0, 6.0), (56.0, 0.0), (64.0, 0.0)]) } else { h(&[(0.0, 10.0), (64.0, 10.0)]) },
@@ -891,7 +913,7 @@ impl Recipe {
         let (sp, six) = (c.space, c.six);
         let names = self.chord_names.join(" | ");
         let voice_word = match c.voice {
-            "keys" => "soft electric-piano chords (triangle + sine)", "pluck" => "plucked saw chords", "organ" => "organ chords (stacked sines)",
+            "keys" => "soft electric-piano chords (triangle + sine)", "piano" => "soft piano broken chords", "pluck" => "plucked saw chords", "organ" => "organ chords (stacked sines)",
             "pad_saw" => "a detuned saw pad", "pad_square" => "a soft square pad", _ => "dub chord stabs (saw + square)",
         };
         let lead_word = match c.lead {
@@ -1002,11 +1024,11 @@ impl Recipe {
         let hl = self.lane_out("hats");
         self.con("lanes", &hl, "hats_vca", "cv");
         let pan = c.rng.pick(&[-0.2, 0.2]);
-        self.strip("hats", "hats_vca", "out", 2.0, pan, 500.0, 0.0, 0.08, -6.0);
+        self.strip("hats", "hats_vca", "out", 1.3, pan, 500.0, 0.0, 0.08, -8.0);
         if self.scores["seq_drums"]["tracks"][3]["steps"].as_array().is_some_and(|s| !s.is_empty()) {
-            self.module("ohat", "drum_voice", 2, json!({"mode": 2, "pitch": 2600, "decay": if crisp { 0.1 } else { 0.16 }, "tone": 0.2, "level": 0.9}), "Open hat");
+            self.module("ohat", "drum_voice", 2, json!({"mode": 2, "pitch": 2300, "decay": if crisp { 0.08 } else { 0.11 }, "tone": 0.12, "level": 0.9}), "Open hat");
             self.con("seq_drums", "gate4", "ohat", "trigger");
-            self.strip("open hat", "ohat", "out", 1.4, -0.15, 400.0, 0.0, 0.08, -6.0);
+            self.strip("open hat", "ohat", "out", 0.7, -0.15, 400.0, 0.0, 0.08, -9.0);
         }
         let pl = self.lane_out("perc");
         for (slot, kind) in [c.perc, c.perc2].into_iter().enumerate() {
@@ -1036,7 +1058,7 @@ impl Recipe {
         }
 
         // drum fill into each drop (seq_perc track 4, opened by the fill lane); long-form genres have none
-        if !matches!(genre, "Dub Techno" | "Techno" | "Ambient") {
+        if !matches!(genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft") {
             let fl = self.lane_out("fill");
             self.module("fill", "drum_voice", 2, json!({"mode": 1, "pitch": c.rng.int(900, 1300), "decay": 0.12, "tone": 0.3, "level": 1.3}), "Fill snare");
             self.con("seq_perc", "gate4", "fill", "trigger"); self.con("seq_perc", "velocity4", "fill", "accent");
@@ -1138,7 +1160,7 @@ impl Recipe {
             (("pump".to_string(), "left".to_string()), ("pump".to_string(), "right".to_string()))
         } else { (chord_src, ("pad_sum".to_string(), "out".to_string())) };
         let dub = genre == "Dub Techno" || tex == "Minimal" || tex == "Echoing";
-        let lvl = match c.voice { "pad_saw" | "pad_square" => 0.6, "keys" => 0.9, "organ" => 0.7, "pluck" => 0.8, _ => 0.9 } * 10f64.powf(trim_db(c.voice) / 20.0);
+        let lvl = match c.voice { "pad_saw" | "pad_square" => 0.6, "keys" | "piano" => 0.9, "organ" => 0.7, "pluck" => 0.8, _ => 0.9 } * 10f64.powf(trim_db(c.voice) / 20.0);
         self.strip("chords", &csrc.0, &csrc.1, lvl, 0.0, 150.0, if dub { 0.6 } else if c.voice.starts_with("pad") { 0.1 } else { 0.35 }, 0.25 + 0.2 * sp, -3.0);
         if c.pad { self.strip("pad", &psrc.0, &psrc.1, 0.22, 0.0, 150.0, 0.05, 0.35 + 0.2 * sp, -4.0); }
 
@@ -1158,6 +1180,7 @@ impl Recipe {
                     _ => (c.rng.pick(&["triangle", "triangle", "square", "sine"]), 1500.0, json!({"attack": 0.03, "decay": 0.4, "sustain": 0.7, "release": r3(0.35 * c.rng.uni(0.7, 1.4))}), 0.9),
                 };
                 let base = if osc_wave == "square" { base * 0.6 } else { base };
+                let env = if genre == "Minecraft" { json!({"attack": 0.005, "decay": r3(c.rng.uni(1.4, 2.2)), "sustain": 0.0, "release": 1.2}) } else { env };
                 let level = level * 10f64.powf((trim_db(&format!("lead:{}", c.lead)) + if genre == "Ambient" { 9.0 } else { 0.0 }) / 20.0);
                 self.mono_voice(c, "lead", "pitch3", "gate3", osc_wave, base, env, &ll);
                 let pan = c.rng.pick(&[-0.1, 0.1]);
@@ -1173,7 +1196,7 @@ impl Recipe {
         // row 6 · texture
         self.label(6, format!("ROW 6 · TEXTURE · {}\n\n{}{}", tex.to_uppercase(), texture_text(tex)[..1].to_uppercase(), &texture_text(tex)[1..]));
         // riser: pink noise through a rising high-pass into each drop (song-form lane drives cutoff and level)
-        let drops = !matches!(genre, "Dub Techno" | "Techno" | "Ambient");   // long-form genres have no risers or fills
+        let drops = !matches!(genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft");   // long-form genres have no risers or fills
         if tex == "Dusty" || tex == "Spacious" {
             self.module("noise", "colored_noise", 6, json!({"level": 1, "seed": self.seed % 100_000}), "Noise");
         }
@@ -1267,8 +1290,8 @@ impl Recipe {
                 self.con(&osc, "sine", &mix, "in1"); self.con(&b, "sine", &mix, "in2");
                 src = (mix, "out".into());
             }
-            "keys" => {
-                self.module(&osc, "multi_vco", row, json!({"frequency": 261.62558}), "Keys oscillator");
+            "keys" | "piano" => {
+                self.module(&osc, "multi_vco", row, json!({"frequency": 261.62558}), if kind == "piano" { "Piano oscillator" } else { "Keys oscillator" });
                 self.con(&pitch.0, &pitch.1, &osc, "pitch");
                 let mix = format!("{id}_mix");
                 self.module(&mix, "cv_mix", row, json!({"level1": 0.55, "level2": 0.45, "level3": 0.0}), "Triangle + sine");
@@ -1285,6 +1308,7 @@ impl Recipe {
             "pad_saw" | "pad_square" => (c.rng.uni(0.25, 0.8), 0.8, 0.85, c.rng.uni(0.8, 1.6)),
             "organ" => (0.005, 0.2, 1.0, 0.08),
             "keys" => (0.003, c.rng.uni(0.6, 1.2), 0.15, 0.4),
+            "piano" => (0.003, c.rng.uni(1.8, 3.0), 0.0, 1.6),
             "stab" => (0.003, c.rng.uni(0.15, 0.3), 0.0, 0.15),
             _ => (0.002, c.rng.uni(0.2, 0.45), 0.0, 0.25),
         };
@@ -1295,7 +1319,7 @@ impl Recipe {
         let pluck = kind == "pluck" || kind == "stab";
         let base = match kind { "pad_saw" => 800.0, "pad_square" => 700.0, "organ" => 2200.0, "keys" => 1800.0, "stab" => 900.0, _ => 600.0 };
         let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
-        if kind == "organ" || kind == "keys" {
+        if kind == "organ" || kind == "keys" || kind == "piano" {
             // sine/triangle voices are already mellow: no filter needed (saves a four-pole VCF per build)
         } else if id == "pad" {
             // the held pad layer sits underneath: two one-pole low-passes (12 dB/oct) cost a tenth of a swept VCF
@@ -1318,7 +1342,7 @@ impl Recipe {
             self.module(&vcf, "stock_vcf", row, json!({"frequency": vcf_knob(cutoff * 1.3), "resonance": 0.05, "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
             self.con(&src.0, &src.1, &vcf, "signal"); self.con(&fcv.0, &fcv.1, &vcf, "cutoff_cv");
         }
-        if kind != "organ" && kind != "keys" && id != "pad" { src = (vcf.clone(), "lowpass".into()); }
+        if kind != "organ" && kind != "keys" && kind != "piano" && id != "pad" { src = (vcf.clone(), "lowpass".into()); }
         let vca = format!("{id}_vca");
         self.module(&vca, "stock_vca", row, json!({"level": 1.0}), "VCA");
         self.con(&src.0, &src.1, &vca, "signal"); self.con(&env, "out", &vca, "cv");

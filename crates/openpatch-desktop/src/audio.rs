@@ -6122,7 +6122,7 @@ mod tests {
 mod profile;
 
 // Real child + callback driver for app workflow tests, without opening a device.
-#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[cfg(any())] // hosted plugin tests live on the host branch
 impl Audio {
     pub(crate) fn hosted_save_test_audio(
         patch: &Patch,

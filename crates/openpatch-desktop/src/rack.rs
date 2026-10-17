@@ -771,6 +771,10 @@ pub struct Rack {
     reveal_module_once: Option<String>,
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
+    // Eased, momentum-carrying camera motion for scroll and keys (trackpads, Steam Deck pads, arrow keys).
+    pan_pending: Vec2,
+    pan_velocity: Vec2,
+    key_velocity: Vec2,
     zoom: f32,
     viewport: Option<Rect>,
     // Center zoom may arrive from the toolbar before this frame measures the
@@ -847,6 +851,9 @@ impl Default for Rack {
             reveal_module_once: None,
             positions: BTreeMap::new(),
             pan: vec2(24.0, 12.0),
+            pan_pending: Vec2::ZERO,
+            pan_velocity: Vec2::ZERO,
+            key_velocity: Vec2::ZERO,
             zoom: 1.0,
             viewport: None,
             pending_center_zoom_ratio: 1.0,
@@ -1681,6 +1688,42 @@ impl Rack {
     pub fn zoom(&self) -> f32 {
         self.zoom
     }
+
+    /// Show the top-left of the rack at the given zoom (e.g. after a new patch is built), keeping the user's zoom.
+    pub fn show_origin(&mut self, zoom: f32) {
+        self.set_agent_follow(false);
+        self.agent_follow.promote_view();
+        self.pan = vec2(24.0, 12.0);
+        self.pan_pending = Vec2::ZERO;
+        self.pan_velocity = Vec2::ZERO;
+        self.zoom = zoom.clamp(0.25, 4.0);
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// Mac-like scroll smoothing: ease toward the scrolled distance, then glide with decaying momentum.
+    fn ease_camera(&mut self, ui: &egui::Ui) {
+        if ui.input(|i| i.pointer.any_down()) {
+            self.pan_velocity = Vec2::ZERO;
+        }
+        let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
+        if self.pan_pending.length() > 0.25 {
+            let step = self.pan_pending * (1.0 - (-dt * 18.0).exp());
+            self.pan_pending -= step;
+            self.pan += step;
+            self.pan_velocity = self.pan_velocity * 0.6 + (step / dt) * 0.4;
+            ui.ctx().request_repaint();
+        } else if self.pan_velocity.length() > 8.0 {
+            self.pan += self.pan_pending;
+            self.pan_pending = Vec2::ZERO;
+            self.pan += self.pan_velocity * dt;
+            self.pan_velocity *= (-dt * 5.5).exp();
+            ui.ctx().request_repaint();
+        } else {
+            self.pan += self.pan_pending;
+            self.pan_pending = Vec2::ZERO;
+            self.pan_velocity = Vec2::ZERO;
+        }
+    }
     /// Zoom about the latest rack viewport center. Before the first frame,
     /// preserve the origin because no viewport has been measured yet.
     pub fn set_zoom(&mut self, zoom: f32) {
@@ -2059,7 +2102,11 @@ impl Rack {
             && !popup_open_at_frame_start
             && navigation_idle_at_frame_start
             && self.navigation_idle();
-        if navigation_enabled
+        let scroll_enabled = interactive
+            && !popup_open_at_frame_start
+            && navigation_idle_at_frame_start
+            && self.navigation_idle();
+        if scroll_enabled
             && !ui.input(|i| i.pointer.any_down())
             && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
         {
@@ -2076,9 +2123,10 @@ impl Rack {
                     .unwrap_or(canvas.center());
                 self.set_zoom_at(self.zoom * zoom_delta, pointer - canvas.min);
             } else if !command {
-                self.pan += scroll;
+                self.pan_pending += scroll;
             }
         }
+        self.ease_camera(ui);
         if navigation_enabled
             && !ui.input(|i| {
                 i.pointer.primary_down()
@@ -2113,12 +2161,20 @@ impl Rack {
             self.pan += response.drag_delta();
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
-        if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
-            let delta = ui.input(keyboard_pan_delta);
-            if delta != Vec2::ZERO {
-                self.pan += delta;
-                ui.ctx().request_repaint();
-            }
+        // arrow keys accelerate and glide to a stop instead of starting and stopping instantly
+        let target = if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
+            let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.1));
+            ui.input(keyboard_pan_delta) / dt
+        } else {
+            Vec2::ZERO
+        };
+        if target != Vec2::ZERO || self.key_velocity.length() > 2.0 {
+            let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
+            self.key_velocity += (target - self.key_velocity) * (1.0 - (-dt * 10.0).exp());
+            self.pan += self.key_velocity * dt;
+            ui.ctx().request_repaint();
+        } else {
+            self.key_velocity = Vec2::ZERO;
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.set_signal_path_mode(false);

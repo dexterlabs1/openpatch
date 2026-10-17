@@ -135,7 +135,6 @@ fn organize_respects_dynamic_widths_source_routes_and_exact_requested_rows() {
         plugin: "Missing".into(),
         model: "Voice".into(),
         version: "1".into(),
-        hosted: false,
         ports: vec![],
     });
     rack.positions.insert("source".into(), pos2(0.0, ROW * 9.0));
