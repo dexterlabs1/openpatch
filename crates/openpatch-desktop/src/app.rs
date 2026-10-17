@@ -408,6 +408,8 @@ pub struct OpenPatch {
     patch_engine_wait: Option<String>,
     /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
     patch_engine_zoom: f32,
+    /// Title of the last document the Patch Engine generated (treated as scratch for the next build).
+    patch_engine_last: Option<String>,
     construction: crate::construction_ui::Panel,
     /// A Pause/Resume/Cancel pressed in the footer's construction status, applied next frame.
     construction_footer_action: Option<crate::construction_ui::Action>,
@@ -613,6 +615,7 @@ impl OpenPatch {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),
@@ -8320,6 +8323,62 @@ impl eframe::App for OpenPatch {
         }
         self.performance_keyboard(ctx);
         self.scope.service(&self.patch, self.audio.as_mut());
+        // Patch Engine is a docked side sheet: draw it before the rack takes the remaining space.
+        // Steam Deck friendly keys (map them to Deck buttons in Steam Input): F1 Patch Engine, PageUp/PageDown zoom,
+        // Home view, F11 full screen. They work with the Patch Engine open; text fields keep their keys.
+        if !ctx.wants_keyboard_input() {
+            let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
+            if pressed(egui::Key::F1) { self.patch_engine.toggle(); }
+            if pressed(egui::Key::PageUp) { self.rack.zoom_step(true); }
+            if pressed(egui::Key::PageDown) { self.rack.zoom_step(false); }
+            if pressed(egui::Key::Home) { self.rack.reset_view(); }
+            if pressed(egui::Key::F11) {
+                let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+            }
+        }
+        for request in self.patch_engine.show(ctx, &self.shared) {
+            match request {
+                crate::patch_engine_ui::Request::StartPlayback => {
+                    if let Some(audio) = &self.audio {
+                        if !audio.is_playing() {
+                            audio.set_playing(true);
+                            self.status = "Playing".into();
+                        }
+                    }
+                }
+                crate::patch_engine_ui::Request::ShowPatch => self.rack.show_origin(self.patch_engine_zoom),
+                crate::patch_engine_ui::Request::Prepare => {
+                    // Start a fresh, empty document named after the song through the normal replace path, so
+                    // unsaved work is protected (Save / Discard / Cancel) and title, file and recovery stay consistent.
+                    if let Some(title) = self.patch_engine.prepared_title() {
+                        let empty: Patch = serde_json::from_value(json!({"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}))
+                            .expect("empty patch");
+                        self.patch_engine_zoom = self.rack.zoom();
+                        // A song the Patch Engine just made is a scratch document: replace it without asking (Undo
+                        // still restores it). Only the user's own unsaved work gets the Save / Discard / Cancel prompt.
+                        let scratch = self.active_file.is_none() && self.patch_engine_last.as_deref() == Some(self.title.as_str());
+                        if scratch || !self.dirty() {
+                            self.replace_now(empty, &title);
+                        } else {
+                            self.request_action(PendingAction::Replace(empty, title.clone()));
+                        }
+                        self.patch_engine_wait = Some(title);
+                    }
+                }
+            }
+        }
+        if let Some(title) = self.patch_engine_wait.clone() {
+            if self.confirm_discard.is_none() && self.deferred_action.is_none() {
+                if self.title == title && self.patch.nodes.is_empty() {
+                    self.patch_engine_last = Some(title.clone());
+                    self.patch_engine.launch(&self.shared);
+                } else {
+                    self.patch_engine.cancel_armed();
+                }
+                self.patch_engine_wait = None;
+            }
+        }
         self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
             self.rack.set_port_lights(
@@ -8424,53 +8483,6 @@ impl eframe::App for OpenPatch {
         self.rack_workspace(ctx, library_action);
         self.mcp_session
             .show(ctx, &self.shared, Path::new(&self.workspace));
-        // Steam Deck friendly keys (map them to Deck buttons in Steam Input): F1 Patch Engine, PageUp/PageDown zoom,
-        // Home view, F11 full screen. They work with the Patch Engine open; text fields keep their keys.
-        if !ctx.wants_keyboard_input() {
-            let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
-            if pressed(egui::Key::F1) { self.patch_engine.toggle(); }
-            if pressed(egui::Key::PageUp) { self.rack.zoom_step(true); }
-            if pressed(egui::Key::PageDown) { self.rack.zoom_step(false); }
-            if pressed(egui::Key::Home) { self.rack.reset_view(); }
-            if pressed(egui::Key::F11) {
-                let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
-            }
-        }
-        for request in self.patch_engine.show(ctx, &self.shared) {
-            match request {
-                crate::patch_engine_ui::Request::StartPlayback => {
-                    if let Some(audio) = &self.audio {
-                        if !audio.is_playing() {
-                            audio.set_playing(true);
-                            self.status = "Playing".into();
-                        }
-                    }
-                }
-                crate::patch_engine_ui::Request::ShowPatch => self.rack.show_origin(self.patch_engine_zoom),
-                crate::patch_engine_ui::Request::Prepare => {
-                    // Start a fresh, empty document named after the song through the normal replace path, so
-                    // unsaved work is protected (Save / Discard / Cancel) and title, file and recovery stay consistent.
-                    if let Some(title) = self.patch_engine.prepared_title() {
-                        let empty: Patch = serde_json::from_value(json!({"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}))
-                            .expect("empty patch");
-                        self.patch_engine_zoom = self.rack.zoom();
-                        self.request_action(PendingAction::Replace(empty, title.clone()));
-                        self.patch_engine_wait = Some(title);
-                    }
-                }
-            }
-        }
-        if let Some(title) = self.patch_engine_wait.clone() {
-            if self.confirm_discard.is_none() && self.deferred_action.is_none() {
-                if self.title == title && self.patch.nodes.is_empty() {
-                    self.patch_engine.launch(&self.shared);
-                } else {
-                    self.patch_engine.cancel_armed();
-                }
-                self.patch_engine_wait = None;
-            }
-        }
         self.observe_document();
         self.files_window(ctx);
         self.preset_window(ctx);
@@ -8716,6 +8728,7 @@ mod project_workflow_tests {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),

@@ -12,9 +12,75 @@ const TEXTURE_KEYS: [egui::Key; 8] = [egui::Key::A, egui::Key::S, egui::Key::D, 
 /// Genre index used for the Minecraft (C418-style) mode, after the eight genre words.
 const MINECRAFT: usize = 8;
 fn genre_name(i: usize) -> &'static str { if i == MINECRAFT { "Minecraft" } else { GENRES[i] } }
-const GENRE_COLOR: Color32 = Color32::from_rgb(232, 122, 82);
-const MOOD_COLOR: Color32 = Color32::from_rgb(122, 162, 255);
-const TEXTURE_COLOR: Color32 = Color32::from_rgb(86, 200, 150);
+// Palette: the app's chrome, warm ivory and amber, with one muted hue per word list.
+const GENRE_COLOR: Color32 = Color32::from_rgb(222, 138, 94);
+const MOOD_COLOR: Color32 = Color32::from_rgb(134, 166, 218);
+const TEXTURE_COLOR: Color32 = Color32::from_rgb(134, 192, 152);
+const C418_COLOR: Color32 = Color32::from_rgb(150, 188, 112);
+const SHEET: Color32 = Color32::from_rgb(25, 27, 27);
+const WELL: Color32 = Color32::from_rgb(15, 16, 16);
+const RAISED: Color32 = Color32::from_rgb(39, 42, 42);
+const LINE: Color32 = Color32::from_rgb(55, 59, 57);
+const INK: Color32 = Color32::from_rgb(235, 233, 226);
+const DIM: Color32 = Color32::from_rgb(146, 149, 143);
+const AMBER: Color32 = Color32::from_rgb(229, 186, 106);
+const DARK_INK: Color32 = Color32::from_rgb(24, 24, 22);
+const IVORY: Color32 = Color32::from_rgb(231, 225, 209);
+const IVORY_INK: Color32 = Color32::from_rgb(40, 38, 33);
+const IVORY_LINE: Color32 = Color32::from_rgb(190, 183, 169);
+
+fn face(ui: &egui::Ui, size: f32) -> FontId { crate::panel_skin::heading_font(ui.ctx(), size) }
+
+/// A word chip: raised and quiet until chosen, then filled with its list's colour.
+fn chip(ui: &mut egui::Ui, text: &str, selected: bool, color: Color32, tip: Option<&str>) -> egui::Response {
+    let font = face(ui, 15.0);
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font, if selected { DARK_INK } else { INK });
+    let size = egui::vec2(galley.size().x + 18.0, 28.0);
+    let (rect, mut response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let hover = response.hovered();
+        let fill = if selected { color } else if hover { Color32::from_rgb(47, 51, 50) } else { RAISED };
+        let stroke = if selected { color } else if hover { color.gamma_multiply(0.7) } else { LINE };
+        ui.painter().rect(rect, 7.0_f32, fill, egui::Stroke::new(1.0_f32, stroke), egui::StrokeKind::Inside);
+        ui.painter().galley(rect.center() - galley.size() / 2.0, galley, INK);
+    }
+    if let Some(tip) = tip { response = response.on_hover_text(tip); }
+    response
+}
+
+/// A small segmented control; returns the newly chosen index.
+fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize, width: f32) -> Option<usize> {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::hover());
+    let painter = ui.painter();
+    painter.rect(rect, 6.0_f32, WELL, egui::Stroke::new(1.0_f32, LINE), egui::StrokeKind::Inside);
+    let w = rect.width() / labels.len() as f32;
+    let mut picked = None;
+    for (i, label) in labels.iter().enumerate() {
+        let r = egui::Rect::from_min_size(rect.min + egui::vec2(w * i as f32, 0.0), egui::vec2(w, rect.height())).shrink(2.0);
+        let response = ui.interact(r, ui.id().with(("seg", label, i)), egui::Sense::click());
+        let on = i == selected;
+        if on { ui.painter().rect_filled(r, 5.0_f32, Color32::from_rgb(58, 54, 44)); }
+        else if response.hovered() { ui.painter().rect_filled(r, 5.0_f32, RAISED); }
+        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, *label, face(ui, 13.0), if on { AMBER } else { DIM });
+        if response.clicked() { picked = Some(i); }
+    }
+    picked
+}
+
+/// A pill toggle with a small lamp.
+fn pill(ui: &mut egui::Ui, label: &str, on: &mut bool, tip: &str) {
+    let font = face(ui, 13.0);
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, if *on { INK } else { DIM });
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(galley.size().x + 30.0, 24.0), egui::Sense::click());
+    let response = response.on_hover_text(tip);
+    if response.clicked() { *on = !*on; }
+    let p = ui.painter();
+    p.rect(rect, 12.0_f32, if response.hovered() { RAISED } else { SHEET }, egui::Stroke::new(1.0_f32, if *on { AMBER.gamma_multiply(0.6) } else { LINE }), egui::StrokeKind::Inside);
+    let lamp = egui::pos2(rect.left() + 12.0, rect.center().y);
+    p.circle_filled(lamp, 3.5, if *on { AMBER } else { Color32::from_rgb(70, 74, 71) });
+    if *on { p.circle_filled(lamp, 6.0, AMBER.gamma_multiply(0.18)); }
+    p.galley(egui::pos2(rect.left() + 21.0, rect.center().y - galley.size().y / 2.0), galley, INK);
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode { Reveal, Showtime, Instant }
@@ -59,6 +125,7 @@ pub(crate) struct Panel {
     armed: Option<Armed>,
     prepare_sent: bool,
     just_launched: bool,
+    face_family: egui::FontFamily,
 }
 
 /// A build waiting for the app to start a fresh document (which asks about unsaved changes first).
@@ -98,7 +165,7 @@ impl Default for Panel {
             interval_ms: 120, autoplay: true, rng: now | 1, pending: None, started: None, elapsed: None, building: false,
             plan_steps: vec![], done: 0, total: 0, label: String::new(), remaining: None, info: None, error: None,
             history: vec![], last_poll: None, cursor: 0, demo: Demo::from_env(),
-            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false,
+            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false, face_family: egui::FontFamily::Proportional,
         }
     }
 }
@@ -257,7 +324,7 @@ impl Panel {
 
     fn sentence(&self) -> LayoutJob {
         let mut job = LayoutJob::default();
-        let font = FontId::proportional(19.0);
+        let font = FontId::new(24.0, self.face_family.clone());
         let plain = TextFormat { font_id: font.clone(), color: Color32::from_gray(225), ..Default::default() };
         let blank = TextFormat { font_id: font.clone(), color: Color32::from_gray(95), ..Default::default() };
         let colored = |c| TextFormat { font_id: font.clone(), color: c, ..Default::default() };
@@ -268,22 +335,23 @@ impl Panel {
         job.append(" ", 0.0, plain.clone());
         match self.texture { Some(t) => job.append(texture_phrase(TEXTURES[t]), 0.0, colored(TEXTURE_COLOR)), None => job.append("texture", 0.0, blank) }
         job.append(".", 0.0, plain);
+        job.wrap.max_width = f32::INFINITY;
         job
     }
 
-    fn word_row(ui: &mut egui::Ui, title: &str, words: &[&str], selected: &mut Option<usize>, color: Color32, focused: bool, tips: Option<fn(&str) -> &'static str>) {
+    fn section(ui: &mut egui::Ui, title: &str, keys: &str, color: Color32, focused: bool) {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
+        let p = ui.painter();
+        if focused { p.rect_filled(egui::Rect::from_min_size(rect.left_top() + egui::vec2(-14.0, 1.0), egui::vec2(3.0, 14.0)), 1.5_f32, color); }
+        p.text(rect.left_center(), egui::Align2::LEFT_CENTER, title, face(ui, 13.0), if focused { color } else { color.gamma_multiply(0.85) });
+        p.text(rect.right_center(), egui::Align2::RIGHT_CENTER, keys, face(ui, 12.0), Color32::from_rgb(96, 100, 96));
+    }
+
+    fn words(ui: &mut egui::Ui, words: &[&str], selected: &mut Option<usize>, color: Color32, tips: Option<fn(&str) -> &'static str>) {
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-            let t = RichText::new(format!("{}{title}", if focused { "› " } else { "  " })).monospace().small();
-            ui.add_sized([62.0, 26.0], egui::Label::new(if focused { t.color(color).strong() } else { t.weak() }));
+            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
             for (i, w) in words.iter().enumerate() {
-                let on = *selected == Some(i);
-                let text = if on { RichText::new(*w).strong().size(13.5).color(Color32::BLACK) } else { RichText::new(*w).size(13.5) };
-                let mut b = egui::Button::new(text).corner_radius(12.0).min_size(egui::vec2(0.0, 28.0));
-                if on { b = b.fill(color); }
-                let mut r = ui.add(b);
-                if let Some(tip) = tips { r = r.on_hover_text(tip(w)); }
-                if r.clicked() { *selected = Some(i); }
+                if chip(ui, w, *selected == Some(i), color, tips.map(|t| t(w))).clicked() { *selected = Some(i); }
             }
         });
     }
@@ -356,83 +424,160 @@ impl Panel {
         if !self.open { return vec![]; }
         if self.building || self.pending.is_some() { ctx.request_repaint_after(Duration::from_millis(50)); }
         self.keyboard(ctx, session);
-        let mut open = self.open;
-        egui::Window::new("Patch Engine")
-            .open(&mut open)
+        self.face_family = crate::panel_skin::heading_font(ctx, 1.0).family;
+        let narrow = ctx.content_rect().width() < 1400.0;
+        let mut close = false;
+        egui::SidePanel::right("patch-engine-sheet")
             .resizable(false)
-            .collapsible(true)
-            .vscroll(true)
-            .max_height(ctx.content_rect().height() - 80.0)
-            .default_width(470.0)
-            .anchor(egui::Align2::RIGHT_TOP, [-12.0, 58.0])
+            .exact_width(if narrow { 380.0 } else { 420.0 })
+            .frame(egui::Frame::new().fill(SHEET).inner_margin(egui::Margin { left: 16, right: 14, top: 12, bottom: 10 })
+                .stroke(egui::Stroke::new(1.0_f32, LINE)))
             .show(ctx, |ui| {
-                ui.set_width(470.0);
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 5.0);
-                ui.label(self.sentence());
-                // build row: actions + live timer/progress
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                // header
                 ui.horizontal(|ui| {
-                    let build = ui.add_enabled(self.ready(), egui::Button::new(RichText::new("Build it").strong().size(14.0)).min_size(egui::vec2(92.0, 30.0)));
-                    if build.clicked() { self.start(session); }
-                    if ui.add_enabled(!self.building && self.pending.is_none() && self.armed.is_none(), egui::Button::new("Surprise").min_size(egui::vec2(0.0, 30.0))).clicked() { self.surprise(session); }
-                    let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
-                    ui.label(RichText::new(secs.map_or("–.–– s".to_string(), |d| format!("{:.2} s", d.as_secs_f32()))).monospace().size(15.0));
-                    let frac = if self.total == 0 { 0.0 } else { self.done as f32 / self.total as f32 };
-                    ui.add(egui::ProgressBar::new(frac).desired_width(ui.available_width()).desired_height(18.0).text(RichText::new(self.label.clone()).small()));
-                });
-                if let Some(e) = &self.error { ui.colored_label(Color32::from_rgb(240, 130, 90), RichText::new(e).small()); }
-                if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
-                // words
-                let mc = self.genre == Some(MINECRAFT);
-                ui.add_enabled_ui(!mc, |ui| Self::word_row(ui, "GENRE", &GENRES, &mut self.genre, GENRE_COLOR, self.cursor == 0, None));
-                Self::word_row(ui, "MOOD", &MOODS, &mut self.mood, MOOD_COLOR, self.cursor == 1, None);
-                Self::word_row(ui, "TEXTURE", &TEXTURES, &mut self.texture, TEXTURE_COLOR, self.cursor == 2, Some(texture_text));
-                // one slim options row
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(5.0, 3.0);
-                    let mc_button = egui::Button::new(RichText::new("C418 mode").small().color(if mc { Color32::BLACK } else { Color32::from_gray(200) }))
-                        .fill(if mc { Color32::from_rgb(120, 190, 110) } else { Color32::from_gray(45) }).corner_radius(10.0);
-                    if ui.add(mc_button).on_hover_text("Minecraft-style: gentle piano, slow drifting harmony and lots of space (original music in the spirit of C418)").clicked() {
-                        self.genre = if mc { None } else { Some(MINECRAFT) };
-                    }
-                    for (m, label, tip) in [(Mode::Reveal, "Reveal", "Place the rack, then patch it section by section (~2 s)"),
-                                            (Mode::Showtime, "Show", "Modules arrive one by one (~5 s)"),
-                                            (Mode::Instant, "Instant", "Everything at once")] {
-                        if ui.selectable_label(self.mode == m, RichText::new(label).small()).on_hover_text(tip).clicked() { self.mode = m; }
-                    }
-                    if self.mode != Mode::Instant {
-                        ui.spacing_mut().slider_width = 60.0;
-                        ui.add(egui::Slider::new(&mut self.interval_ms, 100..=300).suffix(" ms").show_value(true));
-                    }
-                    ui.checkbox(&mut self.autoplay, RichText::new("Play").small());
-                    ui.checkbox(&mut self.light, RichText::new("Light").small()).on_hover_text("Keep the build within a Steam Deck's CPU: optional layers are left out when a song would be too heavy.");
-                    ui.checkbox(&mut self.keep_seed, RichText::new(if self.seed == 0 { "Keep seed".to_string() } else { format!("Seed {}", self.seed) }).small())
-                        .on_hover_text("Every build composes a new song. Keep the seed to rebuild this one.");
-                });
-                if let Some(info) = &self.info {
-                    let head = format!("{} · {} BPM · {} · {}", info["title"].as_str().unwrap_or(""), info["bpm"], info["key"].as_str().unwrap_or(""),
-                                       info["chords"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect::<Vec<_>>().join(" "));
-                    egui::CollapsingHeader::new(RichText::new(head).small().strong()).id_salt("patch-engine-recipe").show(ui, |ui| {
-                        ui.label(RichText::new(info["description"].as_str().unwrap_or("")).small());
-                        let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
-                        ui.label(RichText::new(format!("{} · {} modules · {} cables · seed {}", notes.join(" · "), info["modules"], info["cables"], info["seed"])).small().weak());
+                    let (bar, _) = ui.allocate_exact_size(egui::vec2(3.0, 16.0), egui::Sense::hover());
+                    ui.painter().rect_filled(bar, 1.5_f32, AMBER);
+                    ui.label(RichText::new("PATCH ENGINE").font(face(ui, 16.0)).color(INK));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (r, resp) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+                        let c = if resp.hovered() { INK } else { DIM };
+                        let k = r.shrink(7.0);
+                        ui.painter().line_segment([k.left_top(), k.right_bottom()], egui::Stroke::new(1.5_f32, c));
+                        ui.painter().line_segment([k.right_top(), k.left_bottom()], egui::Stroke::new(1.5_f32, c));
+                        if resp.on_hover_text("Close (F1 or B)").clicked() { close = true; }
+                        ui.label(RichText::new("F1").font(face(ui, 12.0)).color(Color32::from_rgb(96, 100, 96)));
                     });
+                });
+                // display: the sentence on a recessed screen
+                let width = ui.available_width();
+                let mut job = self.sentence();
+                job.wrap.max_width = width - 24.0;
+                let galley = ui.painter().layout_job(job);
+                let caption = match &self.info {
+                    Some(info) => format!("{} BPM · {} · {}", info["bpm"], info["key"].as_str().unwrap_or(""),
+                                          info["chords"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect::<Vec<_>>().join("  ")),
+                    None => "Choose a genre, a mood and a texture.".into(),
+                };
+                let height = galley.size().y + 42.0;
+                let (screen, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+                ui.painter().rect(screen, 9.0_f32, WELL, egui::Stroke::new(1.0_f32, Color32::from_rgb(44, 47, 46)), egui::StrokeKind::Inside);
+                ui.painter().galley(screen.left_top() + egui::vec2(12.0, 10.0), galley, INK);
+                ui.painter().text(screen.left_bottom() + egui::vec2(12.0, -10.0), egui::Align2::LEFT_BOTTOM, caption, face(ui, 13.0), DIM);
+                ui.add_space(2.0);
+                // primary action: the build bar doubles as the progress meter
+                let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
+                let busy = self.building || self.pending.is_some() || self.armed.is_some();
+                let (bar, bar_resp) = ui.allocate_exact_size(egui::vec2(width, 44.0), egui::Sense::click());
+                {
+                    let p = ui.painter();
+                    let ready = self.ready();
+                    let hover = bar_resp.hovered() && ready;
+                    if busy {
+                        p.rect(bar, 9.0_f32, RAISED, egui::Stroke::new(1.0_f32, AMBER.gamma_multiply(0.5)), egui::StrokeKind::Inside);
+                        let frac = if self.total == 0 { 0.04 } else { (self.done as f32 / self.total as f32).max(0.04) };
+                        let fill = egui::Rect::from_min_size(bar.min, egui::vec2(bar.width() * frac, bar.height()));
+                        p.rect_filled(fill, 9.0_f32, AMBER.gamma_multiply(0.85));
+                        p.text(bar.left_center() + egui::vec2(14.0, 0.0), egui::Align2::LEFT_CENTER, "BUILDING", face(ui, 19.0), DARK_INK);
+                        p.text(bar.right_center() - egui::vec2(14.0, 0.0), egui::Align2::RIGHT_CENTER,
+                               format!("{}  {:.2} s", self.label, secs.map_or(0.0, |d| d.as_secs_f32())), face(ui, 13.0), INK);
+                    } else {
+                        let fill = if !ready { RAISED } else if hover { Color32::from_rgb(240, 200, 125) } else { AMBER };
+                        p.rect_filled(bar, 9.0_f32, fill);
+                        let (title, ink) = if ready { (if self.history.is_empty() { "BUILD" } else { "BUILD AGAIN" }, DARK_INK) } else { ("PICK THREE WORDS", DIM) };
+                        p.text(bar.left_center() + egui::vec2(14.0, 0.0), egui::Align2::LEFT_CENTER, title, face(ui, 20.0), ink);
+                        let right = match secs { Some(d) if ready => format!("last build {:.2} s   A", d.as_secs_f32()), _ if ready => "A".into(), _ => String::new() };
+                        p.text(bar.right_center() - egui::vec2(14.0, 0.0), egui::Align2::RIGHT_CENTER, right, face(ui, 13.0), ink.gamma_multiply(0.75));
+                    }
                 }
-                if self.history.len() > 1 {
-                    let mut replay = None;
-                    egui::CollapsingHeader::new(RichText::new("Recent").small().weak()).id_salt("patch-engine-recent").show(ui, |ui| {
-                        for (i, &(g, m, t, seed, secs)) in self.history.iter().enumerate().skip(1).take(5) {
-                            let text = format!("{} {} · {} · seed {}{}", MOODS[m], genre_name(g), TEXTURES[t], seed, if secs > 0.0 { format!(" · {secs:.2} s") } else { String::new() });
-                            if ui.small_button(text).on_hover_text("Select these words and seed").clicked() { replay = Some(i); }
+                if bar_resp.clicked() && self.ready() { self.start(session); }
+                // secondary row: surprise · seed
+                ui.horizontal(|ui| {
+                    let half = (width - 6.0) / 2.0;
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(half, 30.0), egui::Sense::click());
+                    let enabled = !busy;
+                    ui.painter().rect(r, 8.0_f32, if resp.hovered() && enabled { RAISED } else { SHEET }, egui::Stroke::new(1.0_f32, LINE), egui::StrokeKind::Inside);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "SURPRISE ME   X", face(ui, 14.0), if enabled { INK } else { DIM });
+                    if resp.on_hover_text("Random words, new seed").clicked() && enabled { self.surprise(session); }
+                    let (r, resp) = ui.allocate_exact_size(egui::vec2(half, 30.0), egui::Sense::click());
+                    let kept = self.keep_seed;
+                    ui.painter().rect(r, 8.0_f32, if resp.hovered() { RAISED } else { SHEET }, egui::Stroke::new(1.0_f32, if kept { AMBER.gamma_multiply(0.6) } else { LINE }), egui::StrokeKind::Inside);
+                    let text = if self.seed == 0 { "NEW SONG EVERY BUILD".to_string() } else if kept { format!("KEEPING SEED {}", self.seed) } else { format!("SEED {}  ·  KEEP", self.seed) };
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, face(ui, 14.0), if kept { AMBER } else { DIM });
+                    if resp.on_hover_text("Every build composes a new song. Keep the seed to rebuild this one.").clicked() { self.keep_seed = !self.keep_seed; }
+                });
+                if let Some(e) = &self.error { ui.label(RichText::new(e).font(face(ui, 13.0)).color(Color32::from_rgb(232, 140, 100))); }
+                if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
+                ui.add_space(4.0);
+                // word lists
+                egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).max_height(ui.available_height() - 112.0).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    let mc = self.genre == Some(MINECRAFT);
+                    Self::section(ui, "GENRE", "1–8", GENRE_COLOR, self.cursor == 0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                        for (i, w) in GENRES.iter().enumerate() {
+                            if chip(ui, w, self.genre == Some(i), GENRE_COLOR, None).clicked() { self.genre = Some(i); }
+                        }
+                        if chip(ui, "C418 · Minecraft", mc, C418_COLOR, Some("Gentle piano, slow drifting harmony, lots of space: original music in the spirit of C418")).clicked() {
+                            self.genre = Some(MINECRAFT);
                         }
                     });
-                    if let Some(i) = replay {
-                        let (g, m, t, seed, _) = self.history[i];
-                        (self.genre, self.mood, self.texture, self.seed, self.keep_seed) = (Some(g), Some(m), Some(t), seed, true);
+                    ui.add_space(4.0);
+                    Self::section(ui, "MOOD", "Q–I", MOOD_COLOR, self.cursor == 1);
+                    Self::words(ui, &MOODS, &mut self.mood, MOOD_COLOR, None);
+                    ui.add_space(4.0);
+                    Self::section(ui, "TEXTURE", "A–K", TEXTURE_COLOR, self.cursor == 2);
+                    Self::words(ui, &TEXTURES, &mut self.texture, TEXTURE_COLOR, Some(texture_text));
+                    ui.add_space(6.0);
+                    // recipe card, styled like a rack module face
+                    if let Some(info) = &self.info {
+                        egui::Frame::new().fill(IVORY).corner_radius(8.0).stroke(egui::Stroke::new(1.0_f32, IVORY_LINE)).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+                            ui.label(RichText::new(info["title"].as_str().unwrap_or("").to_uppercase()).font(face(ui, 16.0)).color(IVORY_INK));
+                            ui.label(RichText::new(info["description"].as_str().unwrap_or("")).font(face(ui, 13.5)).color(IVORY_INK));
+                            let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
+                            ui.label(RichText::new(format!("{}  ·  {} modules  ·  {} cables  ·  seed {}", notes.join("  ·  "), info["modules"], info["cables"], info["seed"]))
+                                .font(face(ui, 12.0)).color(Color32::from_rgb(110, 104, 92)));
+                        });
                     }
-                }
-                ui.label(RichText::new("D-pad row/word · A build · X surprise · B close · F1 panel · PgUp/PgDn zoom · Home view · F11 full screen").small().weak());
+                    if self.history.len() > 1 {
+                        ui.add_space(4.0);
+                        Self::section(ui, "RECENT", "", DIM, false);
+                        let mut replay = None;
+                        for (i, &(g, m, t, seed, secs)) in self.history.iter().enumerate().skip(1).take(4) {
+                            let text = format!("{} {} · {}   seed {}{}", MOODS[m], genre_name(g), TEXTURES[t], seed, if secs > 0.0 { format!("   {secs:.2} s") } else { String::new() });
+                            let resp = ui.add(egui::Label::new(RichText::new(text).font(face(ui, 13.0)).color(DIM)).sense(egui::Sense::click()));
+                            if resp.on_hover_text("Choose these words and seed").clicked() { replay = Some(i); }
+                        }
+                        if let Some(i) = replay {
+                            let (g, m, t, seed, _) = self.history[i];
+                            (self.genre, self.mood, self.texture, self.seed, self.keep_seed) = (Some(g), Some(m), Some(t), seed, true);
+                        }
+                    }
+                });
+                // options, pinned to the bottom of the sheet
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    ui.label(RichText::new("D-PAD ROW / WORD   ·   A BUILD   ·   X SURPRISE   ·   B CLOSE   ·   PGUP/PGDN ZOOM   ·   F11 FULL SCREEN")
+                        .font(face(ui, 11.0)).color(Color32::from_rgb(92, 96, 92)));
+                    ui.horizontal(|ui| {
+                        pill(ui, "PLAY", &mut self.autoplay, "Start playback when a build begins");
+                        pill(ui, "LIGHT", &mut self.light, "Keep the build within a Steam Deck's CPU: optional layers are left out when a song would be too heavy");
+                        if self.mode != Mode::Instant {
+                            let speeds = [100u32, 150, 250];
+                            let cur = speeds.iter().position(|&v| v == self.interval_ms).unwrap_or(1);
+                            if let Some(i) = segmented(ui, &["FAST", "MEDIUM", "SLOW"], cur, ui.available_width()) { self.interval_ms = speeds[i]; }
+                        }
+                    });
+                    let modes = [Mode::Reveal, Mode::Showtime, Mode::Instant];
+                    let cur = modes.iter().position(|&m| m == self.mode).unwrap_or(0);
+                    if let Some(i) = segmented(ui, &["REVEAL", "SHOWTIME", "INSTANT"], cur, width) { self.mode = modes[i]; }
+                    ui.label(RichText::new("BUILD STYLE").font(face(ui, 12.0)).color(Color32::from_rgb(110, 114, 108)));
+                });
             });
-        self.open = open;
+        if close { self.open = false; }
         let started = std::mem::take(&mut self.just_launched) || (was_idle && (self.building || self.pending.is_some()));
         let mut requests = vec![];
         if self.armed.is_some() && !self.prepare_sent { requests.push(Request::Prepare); self.prepare_sent = true; }
