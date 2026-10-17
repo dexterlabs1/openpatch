@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="#patch-engine">Patch Engine</a> ·
   <a href="#get-started-on-macos">Get started</a> ·
   <a href="#play-the-rack">Controls</a> ·
   <a href="docs/MCP.md">Claude &amp; Codex</a> ·
@@ -23,6 +24,29 @@
 
 ![OpenPatch native rack with wavetable VCO and LFO, rotary filter and amplifier, envelope, and live signal scope](docs/images/openpatch-rack.png)
 <p align="center"><sub>OpenPatch 0.2.4 rotary panels and signal scope, rendered in native Linux/Mesa CI. macOS is the primary design target.</sub></p>
+
+## Patch Engine
+
+**Pick three words. Hear a new song in about two seconds.**
+
+Choose a **genre**, a **mood** and a **texture**, and the Patch Engine composes a new piece and builds it live in the rack: modules land in labelled rows, then cables arrive section by section while the music starts playing. Every build is a different song; keep the seed to rebuild one you love.
+
+![The Patch Engine panel beside a freshly built Dreamy Deep House patch](docs/images/patch-engine-built.png)
+
+| | |
+|---|---|
+| ![Cables arriving section by section during a Reveal build](docs/images/patch-engine-building.png) | ![The Patch Engine at Steam Deck resolution (1280×800) after a 1.2 s build](docs/images/patch-engine-steamdeck.png) |
+| *Reveal mode: the rack appears, then gets patched drums → bass → chords → melody.* | *At Steam Deck resolution (1280×800): touch-sized buttons and D-pad control.* |
+
+- **8 genres × 8 moods × 8 textures.** Deep House, Dub Techno, Techno, Ambient, Lo-fi Hip Hop, Synthwave, Downtempo, UK Garage · Dreamy, Dark, Euphoric, Melancholy, Hypnotic, Warm, Mysterious, Playful · Glitchy, Dusty, Spacious, Crisp, Liquid, Minimal, Echoing, Pulsing.
+- **A new composition every time.** The seed chooses the key, progression and voicing, drum, bass and chord patterns, a hook, arpeggio, riff, bells or counter-line, optional percussion and pad layers, and the song form.
+- **Musical by construction.** Clean subtractive voices (filtered saw, square, triangle, sine), rootless chord voicings with no clashing seconds, melodies built from chord tones, and levels calibrated from offline stem renders.
+- **Fast and visible.** **Reveal** (default, ~1.5–2 s), **Showtime** (modules arrive one by one, ~5 s) or **Instant**. Builds use the same construction pipeline as agent edits, so they are undoable and animate in the rack.
+- **Steam Deck friendly.** Touch-sized buttons. D-pad ▲▼ picks the row, ◀▶ picks the word, **A** builds, **X** surprises you, **B** closes.
+- **Scriptable.** `openpatch patch-engine "Deep House" Dreamy Liquid --seed 7 [--info|--reveal|--showtime]` prints the patch, its recipe card or its build plan.
+
+**Download the preview:** [Steam Deck / Linux x86_64 and macOS (Apple silicon)](https://github.com/dexterlabs1/openpatch/releases/tag/patch-engine-preview-1). On the Deck, extract the archive and run `install.sh`; full steps are in `STEAM-DECK.md`.
+
 
 - **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
