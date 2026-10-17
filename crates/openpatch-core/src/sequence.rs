@@ -63,6 +63,9 @@ pub const MODULE_ACTION_NAMES: &[&str] = &[
     "seq_gate7_release",
     "seq_gate8_press",
     "seq_gate8_release",
+    "tap_press",
+    "tap_release",
+    "release_tap",
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleAction {
@@ -91,6 +94,9 @@ pub enum ModuleAction {
     /// One-based Stock SEQ 3 gate button, valid only in1..=8.
     SeqGatePress(u8),
     SeqGateRelease(u8),
+    TapPress,
+    TapRelease,
+    ReleaseTap,
 }
 impl ModuleAction {
     /// Zero-based Stock SEQ 3 gate button and whether this is a press.
@@ -129,6 +135,9 @@ impl ModuleAction {
             Self::ClockRelease => 35,
             Self::RunPress => 36,
             Self::RunRelease => 37,
+            Self::TapPress => 54,
+            Self::TapRelease => 55,
+            Self::ReleaseTap => 56,
             action @ (Self::SeqGatePress(_) | Self::SeqGateRelease(_)) => {
                 let (button, press) = action.seq_gate_button()?;
                 38 + 2 * button + usize::from(!press)
@@ -176,6 +185,9 @@ impl<'de> Deserialize<'de> for ModuleAction {
             35 => Self::ClockRelease,
             36 => Self::RunPress,
             37 => Self::RunRelease,
+            54 => Self::TapPress,
+            55 => Self::TapRelease,
+            56 => Self::ReleaseTap,
             38..=53 => {
                 let n = ((index - 38) / 2 + 1) as u8;
                 if (index - 38) % 2 == 0 {

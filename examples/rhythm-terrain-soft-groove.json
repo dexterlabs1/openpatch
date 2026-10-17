@@ -1,0 +1,219 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "RHYTHM TERRAIN\nSOFT GROOVE\nX/Y explores drum maps.\nFILL sets each density.\nCHAOS varies each bar.\nAccents add to 6 V.\nLane 3 is a noise tick.\nTAP locks the tempo.\nRelease tap uses TEMPO."
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 3,
+        "level1": 0.65,
+        "level2": 0.5,
+        "level3": 0.4,
+        "pan1": 0,
+        "pan2": -0.2,
+        "pan3": 0.25,
+        "master": 0.7
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 1,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "terrain",
+      "kind": "rhythm_terrain",
+      "params": {
+        "tempo": 110,
+        "x": 0.35,
+        "y": 0.6,
+        "chaos": 0.12,
+        "fill1": 0.48,
+        "fill2": 0.42,
+        "fill3": 0.56,
+        "seed": 29
+      }
+    },
+    {
+      "id": "kick",
+      "kind": "drum_voice",
+      "params": {
+        "mode": 0,
+        "pitch": 55,
+        "decay": 0.28,
+        "level": 0.55,
+        "tone": 0.45,
+        "drive": 0.08
+      }
+    },
+    {
+      "id": "clap",
+      "kind": "drum_voice",
+      "params": {
+        "mode": 1,
+        "pitch": 180,
+        "decay": 0.1,
+        "level": 0.22,
+        "tone": 0.3
+      }
+    },
+    {
+      "id": "tick",
+      "kind": "drum_voice",
+      "params": {
+        "mode": 1,
+        "pitch": 220,
+        "decay": 0.025,
+        "level": 0.13,
+        "tone": 0
+      }
+    },
+    {
+      "id": "tick_filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 2600,
+        "resonance": 0.05,
+        "drive": 0.6
+      }
+    },
+    {
+      "id": "accent1",
+      "kind": "rescale",
+      "params": {
+        "gain": 0.8,
+        "offset": 6,
+        "min": 0,
+        "max": 10,
+        "multiplier": 1
+      }
+    },
+    {
+      "id": "accent2",
+      "kind": "rescale",
+      "params": {
+        "gain": 0.8,
+        "offset": 6,
+        "min": 0,
+        "max": 10,
+        "multiplier": 1
+      }
+    },
+    {
+      "id": "accent3",
+      "kind": "rescale",
+      "params": {
+        "gain": 0.8,
+        "offset": 6,
+        "min": 0,
+        "max": 10,
+        "multiplier": 1
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "terrain",
+      "output": "trig1",
+      "to": "kick",
+      "input": "trigger"
+    },
+    {
+      "from": "terrain",
+      "output": "aux1",
+      "to": "accent1",
+      "input": "signal"
+    },
+    {
+      "from": "accent1",
+      "output": "out",
+      "to": "kick",
+      "input": "accent"
+    },
+    {
+      "from": "kick",
+      "output": "out",
+      "to": "console",
+      "input": "in1"
+    },
+    {
+      "from": "terrain",
+      "output": "trig2",
+      "to": "clap",
+      "input": "trigger"
+    },
+    {
+      "from": "terrain",
+      "output": "aux2",
+      "to": "accent2",
+      "input": "signal"
+    },
+    {
+      "from": "accent2",
+      "output": "out",
+      "to": "clap",
+      "input": "accent"
+    },
+    {
+      "from": "clap",
+      "output": "out",
+      "to": "console",
+      "input": "in2"
+    },
+    {
+      "from": "terrain",
+      "output": "trig3",
+      "to": "tick",
+      "input": "trigger"
+    },
+    {
+      "from": "terrain",
+      "output": "aux3",
+      "to": "accent3",
+      "input": "signal"
+    },
+    {
+      "from": "accent3",
+      "output": "out",
+      "to": "tick",
+      "input": "accent"
+    },
+    {
+      "from": "tick",
+      "output": "out",
+      "to": "tick_filter",
+      "input": "signal"
+    },
+    {
+      "from": "tick_filter",
+      "output": "out",
+      "to": "console",
+      "input": "in3"
+    },
+    {
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

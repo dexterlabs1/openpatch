@@ -63,7 +63,7 @@ impl ManualReleaseTicket {
         !control.entries.get(&self.id).is_some_and(|entry|entry.token==self.token && entry.action_epoch==self.action_epoch && !entry.bypassed)
     }
 }
-fn stock_click_mask(release:ModuleAction)->u16 {match release {ModuleAction::ClockRelease=>1,ModuleAction::RunRelease=>2,ModuleAction::ResetRelease=>4,action=>action.seq_gate_button().map_or(0,|(index,_)|1_u16<<(index+3))}}
+fn stock_click_mask(release:ModuleAction)->u16 {match release {ModuleAction::TapRelease=>1,ModuleAction::ClockRelease=>1,ModuleAction::RunRelease=>2,ModuleAction::ResetRelease=>4,action=>action.seq_gate_button().map_or(0,|(index,_)|1_u16<<(index+3))}}
 impl Performance {
     pub(super) fn press_gate_with_ticket(
         self: &Arc<Self>,
@@ -76,12 +76,13 @@ impl Performance {
             (ModuleAction::PushPress,ModuleAction::PushRelease)
             | (ModuleAction::ClockPress,ModuleAction::ClockRelease)
             | (ModuleAction::RunPress,ModuleAction::RunRelease)
-            | (ModuleAction::ResetPress,ModuleAction::ResetRelease))
+            | (ModuleAction::ResetPress,ModuleAction::ResetRelease)
+            | (ModuleAction::TapPress,ModuleAction::TapRelease))
             || matches!((press.seq_gate_button(),release.seq_gate_button()), (Some((a,true)),Some((b,false))) if a==b);
         if !valid_pair {return Err("Unsupported manual button pair".into());}
         {
             let mut control=self.control.lock().map_err(|_|"Module event registry poisoned")?;
-            if let Some(entry)=control.entries.get(id).copied().filter(|entry|entry.kind==ModuleKind::StockSeq3) {
+            if let Some(entry)=control.entries.get(id).copied().filter(|entry|matches!(entry.kind,ModuleKind::StockSeq3|ModuleKind::RhythmTerrain)) {
                 if let Some(fence)=control.stock_click_releases.get(id).filter(|fence|fence.token==entry.token && fence.action_epoch==entry.action_epoch) {
                     let sampled=fence.sequence.is_none_or(|sequence|self.shared.sampled_sequence.load(Ordering::Acquire)>=sequence)
                         && self.shared.meters[entry.slot].read(entry,0).is_some_and(|packet|packet.frame>fence.frame && packet.controls.is_some_and(|controls|controls.pressed_mask & fence.mask==0));
@@ -92,7 +93,9 @@ impl Performance {
         }
         let (receipt,entry)=self.enqueue_guarded(id,press,None)?;
         Ok(ManualReleaseTicket { backend:self.clone(),id:id.into(),token:entry.token,action_epoch:entry.action_epoch,release,
-            sampled_sequence:(entry.kind==ModuleKind::StockSeq3).then(||receipt["sequence"].as_u64().expect("accepted press sequence")),
+            // One host sample captures Rhythm HIGH in its ordered FIFO even
+            // when the 8 kHz source scan has not consumed that edge yet.
+            sampled_sequence:matches!(entry.kind,ModuleKind::StockSeq3|ModuleKind::RhythmTerrain).then(||receipt["sequence"].as_u64().expect("accepted press sequence")),
             deadline:self.shared.frame.load(Ordering::Acquire).saturating_add(u64::from(self.rate)*FUTURE_SECONDS),
             release_posted:false,release_sequence:None,release_frame:0,
         })

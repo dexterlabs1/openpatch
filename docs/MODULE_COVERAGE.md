@@ -400,3 +400,16 @@ Completion of this inventory would establish a bounded set of Rust functional eq
 ## Event Fork development candidate
 
 Distinct `event_fork`: pinned Branches decision/ADC kernel, two mono routers, normalled second input, shared seeded PRNG, independent toggle/latch history and explicit native scan/voltage/lifecycle policies. Shared Signal Atlas rack/browser surface and Custom plus functional discovery are included. [Contract, exact source/Engine bounds and example](EVENT_FORK.md); [actual normal/dim panels](../design/reviews/event-fork-v1/README.md). This is the fourth new creative candidate and the 90th development kind, not complete VCV parity or an installed release. Family macOS CI remains pending.
+
+
+## Rhythm Terrain development candidate
+
+Distinct `rhythm_terrain`: pinned Grids drum-map and Euclidean pattern/clock
+kernels, accents, swing, explicit source reset behavior, seeded perturbation,
+clock resolution, and transient tap tempo authority. Its sixteen ports and
+shared rack/browser panel retain original OpenPatch identity and Custom plus
+functional discovery. [Contract and genuine source/Engine bounds](RHYTHM_TERRAIN.md);
+[actual normal/dim panel review](../design/reviews/rhythm-terrain-v1/README.md).
+This is the fifth new creative candidate and 91st development kind, not VCV
+binary compatibility or physical hardware qualification. Family macOS CI and
+installation remain pending.

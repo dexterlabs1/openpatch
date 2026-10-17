@@ -67,6 +67,7 @@ include!("tidal_functions_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
 include!("event_fork_panel.rs");
+include!("rhythm_terrain_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -109,9 +110,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "seq3" => 1.20,
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
-        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork" => {
-            REDESIGNED_PORT_SCALE
-        }
+        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork"
+        | "rhythm_terrain" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -198,7 +198,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
-        ("event_fork", _, _) => Above(25.0),
+        ("event_fork" | "rhythm_terrain", _, _) => Above(25.0),
         ("frame_scene", _, _) => Above(25.0),
         ("segment_garden", _, _) => Above(24.0),
         ("tidal_functions", _, false) => Above(21.0),
@@ -345,7 +345,10 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
-        || matches!(kind, "tidal_functions" | "segment_garden" | "event_fork")
+        || matches!(
+            kind,
+            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+        )
         || matches!(
             kind,
             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -3864,6 +3867,13 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "rhythm_terrain" {
+                if let Some(edit) =
+                    self.rhythm_terrain_panel(ui, node, module, rect, revision, interactive)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "event_fork" {
                 if let Some(edit) =
                     self.event_fork_panel(ui, node, patch, module, rect, revision, interactive)
@@ -3884,7 +3894,8 @@ impl Rack {
                 }
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if (node.kind == "event_fork" && !name.starts_with("probability"))
+                if (node.kind == "rhythm_terrain" && !RHYTHM_TERRAIN_KNOBS.contains(name))
+                    || (node.kind == "event_fork" && !name.starts_with("probability"))
                     || (node.kind == "segment_garden"
                         && !name.starts_with("level")
                         && !name.starts_with("shape"))
@@ -4333,7 +4344,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "event_fork" {
+                let (knob_position, radius) = if node.kind == "rhythm_terrain" {
+                    rhythm_terrain_control(name)
+                } else if node.kind == "event_fork" {
                     event_fork_control(name)
                 } else if node.kind == "segment_garden" {
                     segment_garden_control(name)
@@ -4441,7 +4454,7 @@ impl Rack {
                     || ((atlas_voice(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "tidal_functions" | "segment_garden" | "event_fork"
+                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
                         ))
                         && logarithmic
                         && min > 0.0);
@@ -4657,7 +4670,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "event_fork" {
+                let value_center = if node.kind == "rhythm_terrain" {
+                    let local = rhythm_terrain_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "event_fork" {
                     let local = event_fork_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "segment_garden" {
@@ -4740,7 +4756,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "event_fork" {
+                let readout_width = if node.kind == "rhythm_terrain" {
+                    84.0
+                } else if node.kind == "event_fork" {
                     100.0
                 } else if node.kind == "segment_garden" {
                     82.0
@@ -5109,7 +5127,7 @@ impl Rack {
                         || atlas_creative_kind(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "tidal_functions" | "segment_garden" | "event_fork"
+                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
                         )
                         || matches!(
                             node.kind.as_str(),
@@ -5203,6 +5221,8 @@ impl Rack {
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "rhythm_terrain" {
+                    paint_rhythm_terrain_control_print(&painter, rect, node, name, self.zoom);
                 } else if node.kind == "event_fork" {
                     paint_event_fork_control_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "segment_garden" {
@@ -5292,7 +5312,7 @@ impl Rack {
                     || atlas_creative_kind(&node.kind)
                     || matches!(
                         node.kind.as_str(),
-                        "tidal_functions" | "segment_garden" | "event_fork"
+                        "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
                     )
                     || matches!(
                         node.kind.as_str(),
@@ -5451,7 +5471,9 @@ impl Rack {
                         location,
                         &node.kind,
                         port,
-                        if node.kind == "audio_stereo" {
+                        if node.kind == "rhythm_terrain" {
+                            rhythm_terrain_port_label(node, port, true)
+                        } else if node.kind == "audio_stereo" {
                             atlas_audio_port_label(port)
                         } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
@@ -5499,7 +5521,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "audio_stereo" {
+                    if node.kind == "rhythm_terrain" {
+                        rhythm_terrain_port_label(node, port, true)
+                    } else if node.kind == "audio_stereo" {
                         atlas_audio_port_label(port)
                     } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -5663,7 +5687,9 @@ impl Rack {
                         output_point,
                         &node.kind,
                         port,
-                        if node.kind == "audio_stereo" {
+                        if node.kind == "rhythm_terrain" {
+                            rhythm_terrain_port_label(node, port, false)
+                        } else if node.kind == "audio_stereo" {
                             atlas_audio_port_label(port)
                         } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
@@ -5721,7 +5747,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("output", &node.id, port)),
-                    if node.kind == "audio_stereo" {
+                    if node.kind == "rhythm_terrain" {
+                        rhythm_terrain_port_label(node, port, false)
+                    } else if node.kind == "audio_stereo" {
                         atlas_audio_port_label(port)
                     } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -5948,7 +5976,7 @@ impl Rack {
         port_index: usize,
         output_point: Pos2,
     ) {
-        if node.kind == "event_fork" {
+        if matches!(node.kind.as_str(), "event_fork" | "rhythm_terrain") {
             let strength = event_fork_lamp(self.module_lights.get(&node.id), port_index);
             let center = output_point + vec2(24.0, -1.0) * self.zoom;
             painter.circle_filled(center, 3.0 * self.zoom, Color32::from_gray(78));
@@ -8922,6 +8950,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "rhythm_terrain" => return rhythm_terrain_port(input, index),
         "event_fork" => return event_fork_port(input, index),
         "frame_scene" => return frame_scene_port(input, index),
         "segment_garden" => return segment_garden_port(input, index),
@@ -9927,6 +9956,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "rhythm_terrain" => HP * 48.0,
         "event_fork" => HP * 20.0,
         "frame_scene" => HP * 36.0,
         "segment_garden" => HP * 48.0,
@@ -9982,6 +10012,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "rhythm_terrain" => "RHYTHM TERRAIN",
         "event_fork" => "EVENT FORK",
         "frame_scene" => "FRAME SCENE",
         "segment_garden" => "SEGMENT GARDEN",
@@ -10194,6 +10225,22 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "rhythm_terrain" => &[
+            "x",
+            "y",
+            "chaos",
+            "fill1",
+            "fill2",
+            "fill3",
+            "tempo",
+            "mode",
+            "resolution",
+            "gate_mode",
+            "alternate",
+            "swing",
+            "tap_tempo",
+            "seed",
+        ],
         "event_fork" => &[
             "probability1",
             "probability2",
@@ -10841,6 +10888,7 @@ fn paint_panel(
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10950,6 +10998,7 @@ fn paint_panel(
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -11212,6 +11261,7 @@ fn paint_jack(
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -12248,7 +12298,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            90,
+            91,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19132,6 +19182,11 @@ mod tests {
         include!("frame_scene_ui_tests.rs");
     }
 
+    mod rhythm_terrain_ui_tests {
+        include!("rhythm_terrain_ui_tests.rs");
+    }
+
+    #[cfg(test)]
     mod event_fork_ui_tests {
         include!("event_fork_ui_tests.rs");
     }

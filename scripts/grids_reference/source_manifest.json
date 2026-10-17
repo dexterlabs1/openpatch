@@ -1,0 +1,94 @@
+{
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "avrlib": {
+      "url": "https://github.com/pichenettes/avril",
+      "commit": "276b2887e4110ca913294fcbb313163dfb28a448"
+    }
+  },
+  "files": {
+    "avrlib/resources_manager.h": {
+      "repository": "avrlib",
+      "path": "resources_manager.h",
+      "sha256": "6fed0dbdbda9f939842ba587ccbd911850ae993d8949daa14053e7f8caef6989"
+    },
+    "grids/resources.h": {
+      "repository": "eurorack",
+      "path": "grids/resources.h",
+      "sha256": "6e8336201289594f1cea40e09c87ae960151465ef79dcdd5d72bd3ac66995b0b"
+    },
+    "avrlib/random.h": {
+      "repository": "avrlib",
+      "path": "random.h",
+      "sha256": "47cc6565b946db35d584ccb2c043213dda61731b09c866aad9551de5d20cdfa9"
+    },
+    "grids/pattern_generator.h": {
+      "repository": "eurorack",
+      "path": "grids/pattern_generator.h",
+      "sha256": "d0a2038d01289a2a554658e8832d099e2c47459ee26d31a61ab92c9f92a3d3ef"
+    },
+    "grids/resources.cc": {
+      "repository": "eurorack",
+      "path": "grids/resources.cc",
+      "sha256": "02c4911d1ee940f921d50207c25a39d911c3f6af9ace87869e7e667954c63265"
+    },
+    "grids/hardware_config.h": {
+      "repository": "eurorack",
+      "path": "grids/hardware_config.h",
+      "sha256": "2ba5a056eef40dec41c3b152862a4d6489b67d71376128cd8e1ea6ca5f788f68"
+    },
+    "grids/clock.cc": {
+      "repository": "eurorack",
+      "path": "grids/clock.cc",
+      "sha256": "5946a4783395a2d7d61883053c6a54b0ced66364450dc37f14d57e2269d57161"
+    },
+    "avrlib/base.h": {
+      "repository": "avrlib",
+      "path": "base.h",
+      "sha256": "ee975faeba1cb18fa8ed1ecfdec6918e59748a7c550cf12ae57d0ba03ed76db7"
+    },
+    "avrlib/random.cc": {
+      "repository": "avrlib",
+      "path": "random.cc",
+      "sha256": "cfe12d9809de961d3b9aa32080dea5f231a713568a736f83c95cfa77aa571ef0"
+    },
+    "avrlib/op.h": {
+      "repository": "avrlib",
+      "path": "op.h",
+      "sha256": "23f810d4673744c2a81ffa986d53e4005898543fe2829cf3bfa25a9f4c7cb275"
+    },
+    "grids/clock.h": {
+      "repository": "eurorack",
+      "path": "grids/clock.h",
+      "sha256": "030afe75799bea95917585bb9ae5ea68ba52222342be33304ff5a201f2be7042"
+    },
+    "grids/grids.cc": {
+      "repository": "eurorack",
+      "path": "grids/grids.cc",
+      "sha256": "e187b5156c1735a9f2ed7698ed0af5645c483b7a4cc7b190b327f9ad2472de10"
+    },
+    "grids/pattern_generator.cc": {
+      "repository": "eurorack",
+      "path": "grids/pattern_generator.cc",
+      "sha256": "33bea2b5233a6becf86a70b455dfba5ffa4a831dd7fdcd3a8ebaac61a722ddd5"
+    },
+    "grids/makefile": {
+      "repository": "eurorack",
+      "path": "grids/makefile",
+      "sha256": "0abc218b186ad855a2d4f61e296afd4f1e647e067fe6639792a553cb3fc2baae"
+    },
+    "avrlib/makefile.mk": {
+      "repository": "avrlib",
+      "path": "makefile.mk",
+      "sha256": "dbd57dbb2f8f408a451be9636987cb83bed88e32d2d4df0ae364b03a23badaee"
+    }
+  },
+  "table_little_endian_sha256": {
+    "e": "d280f5590320a436cc4013742ecf4f96f1d037db6b609abdca78f02b0feb8607",
+    "t": "ff2ae2c2609dfddc5f716b55a27b776e5fe0e3a43a25b63173865d6e242786fb",
+    "n": "7083d76d0f3605dce540cb1bc4c68b72311a53fc1d2b2e17659bbe2b2de92a51"
+  }
+}
