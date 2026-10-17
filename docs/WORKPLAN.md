@@ -27,8 +27,8 @@ one undoable graph-aware layout with Auto or 1–8 rows, including retained sour
 panels. These changes are not installed; keep 0.2.7 build 9 stable.
 
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
-with independent contracts rather than renamed existing kinds. **Tidal Functions
-and Frame Scene are implemented development candidates; eighteen remain.** Tidal
+with independent contracts rather than renamed existing kinds. **Tidal Functions,
+Frame Scene and Segment Garden are implemented development candidates; seventeen remain.** Tidal
 Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
 bit for bit, including nonzero amplitude scans, while preserving the original
 frame-zero clock failure as a negative and explicitly adapting native startup.
@@ -39,8 +39,14 @@ Frame Scene adds 64 persistent stable-ID scenes, source-integer keyframing,
 explicit ideal VCA normaling, real UI telemetry and shared revision/history/MCP
 editing. Its 25 source cases match 163,013 integer records and pass an independent
 UBSan/bounds audit; source-undefined endpoints have explicit native extensions.
-[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md). Next implement Segment Garden; run
-family-level Mac CI once the three-instrument candidate settles. Source fidelity, shared UI/MCP/history, Custom plus functional
+[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md).
+Segment Garden adds six persistent source kernels, physical-gate grouping, all standard
+segment modes, source-clock buffering and ordered edge capture. Its shared panel, real
+telemetry, seeded controls, MCP/presets/reopen and callback no-heap paths have focused Mac
+evidence; raw source qualification covers 952,896 records across 69 cases, with guarded
+endpoints and the internal zero-division boundary kept separate.
+[Contract and source bounds](SEGMENT_GARDEN.md), [shared panel review](../design/reviews/segment-garden-v1/README.md).
+Next run one family-level Mac regression/PR for the three-instrument candidate. Source fidelity, shared UI/MCP/history, Custom plus functional
 tags for original instruments and Mac validation remain done requirements. Binary-host
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.

@@ -1,0 +1,161 @@
+{
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec"
+    }
+  },
+  "files": {
+    "stages/segment_generator.cc": {
+      "repository": "eurorack",
+      "path": "stages/segment_generator.cc",
+      "sha256": "d797186d20bc69f0d757ed36d5b2dd8c9ee43843bccc214ef96db82cb9e3f558"
+    },
+    "stages/segment_generator.h": {
+      "repository": "eurorack",
+      "path": "stages/segment_generator.h",
+      "sha256": "bc54f7d503e13eda7cd984046df3cfa69cf64ab71583c1196a9c12b8c3f19b3c"
+    },
+    "stages/resources.h": {
+      "repository": "eurorack",
+      "path": "stages/resources.h",
+      "sha256": "a8a133c13ee8ab8fbfefc14f1e37f1fbe994852fe191b2cd4d80b45a9c027c0b"
+    },
+    "stages/resources.cc": {
+      "repository": "eurorack",
+      "path": "stages/resources.cc",
+      "sha256": "c652edf70526983ddb36e7d626682b18199df0062748627333840b5e7bc31515"
+    },
+    "stages/stages.cc": {
+      "repository": "eurorack",
+      "path": "stages/stages.cc",
+      "sha256": "ea912b0484eae597dfcc067b50b224cd46e4aa188f7c572e23e1e57e0d2de61b"
+    },
+    "stages/settings.h": {
+      "repository": "eurorack",
+      "path": "stages/settings.h",
+      "sha256": "1a42707989ffa149a63b605cf1fcd6c902be428ba6d5583a62157642eed4d171"
+    },
+    "stmlib/dsp/dsp.h": {
+      "repository": "stmlib",
+      "path": "dsp/dsp.h",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "repository": "stmlib",
+      "path": "dsp/parameter_interpolator.h",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/units.h": {
+      "repository": "stmlib",
+      "path": "dsp/units.h",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/utils/random.h": {
+      "repository": "stmlib",
+      "path": "utils/random.h",
+      "sha256": "423f01e905fa279864878f34e42136ad1eb37a33dad58739affaaab06b793e5d"
+    },
+    "stmlib/dsp/delay_line.h": {
+      "repository": "stmlib",
+      "path": "dsp/delay_line.h",
+      "sha256": "d6d1bb8e33dedf80bfca976ca1d544fc6ef01bcb1d71a45f3946a0682fd68dcb"
+    },
+    "stmlib/dsp/hysteresis_quantizer.h": {
+      "repository": "stmlib",
+      "path": "dsp/hysteresis_quantizer.h",
+      "sha256": "06032c1ec2e21cb7e904544f839a2a59b4c4a9f3f391918e6adfac7f68ecc243"
+    },
+    "stmlib/utils/gate_flags.h": {
+      "repository": "stmlib",
+      "path": "utils/gate_flags.h",
+      "sha256": "548608ba37ee125903db4ba36507a678d1cdcdecddad30b11998b19d6ad00ca3"
+    },
+    "tides2/ramp/ramp_extractor.h": {
+      "repository": "eurorack",
+      "path": "tides2/ramp/ramp_extractor.h",
+      "sha256": "b38a438bd37749a000e9e391bf758a20694a3bb7e7768120dddcb950f9ff412c"
+    },
+    "stages/delay_line_16_bits.h": {
+      "repository": "eurorack",
+      "path": "stages/delay_line_16_bits.h",
+      "sha256": "0f7158e3c82a64ae783544c0eba303e7b0b1e025ec04d1c7311a32063a57ec85"
+    },
+    "stages/variable_shape_oscillator.h": {
+      "repository": "eurorack",
+      "path": "stages/variable_shape_oscillator.h",
+      "sha256": "3b8454c6649def7cb970163a5fd11c35ef492045a07584fa1ee3a0b80ff23d19"
+    },
+    "stmlib/stmlib.h": {
+      "repository": "stmlib",
+      "path": "stmlib.h",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "tides2/ramp/ratio.h": {
+      "repository": "eurorack",
+      "path": "tides2/ramp/ratio.h",
+      "sha256": "c0432a65de17f2ae5ec65e3ffa0bff3110f4d2d5a4e4c58dc65f2692c2325f93"
+    },
+    "stmlib/dsp/polyblep.h": {
+      "repository": "stmlib",
+      "path": "dsp/polyblep.h",
+      "sha256": "b36025a8a9b2e9a37156e45cfdee937451f788529089b51b9f490da1a5b0063b"
+    },
+    "stages/chain_state.h": {
+      "repository": "eurorack",
+      "path": "stages/chain_state.h",
+      "sha256": "eada1ce74a447b779951547ca13e15b7bc79ea538d2ae5a02719f5bfb2a6988d"
+    },
+    "stages/chain_state.cc": {
+      "repository": "eurorack",
+      "path": "stages/chain_state.cc",
+      "sha256": "8dbbba5dcd2fdf4cd3b773d0d5a64f902296f3c412b232ce975c0d5bd3e39874"
+    },
+    "stages/cv_reader.cc": {
+      "repository": "eurorack",
+      "path": "stages/cv_reader.cc",
+      "sha256": "8b4513ad3de1d995ff736142d77c497cce19f5614c04eed36c0addc6dd70e979"
+    },
+    "stages/settings.cc": {
+      "repository": "eurorack",
+      "path": "stages/settings.cc",
+      "sha256": "eb01a7870496c0990ebed96790d702c0f075173d3b4ea1c4168eb108534d006b"
+    },
+    "stmlib/dsp/units.cc": {
+      "repository": "stmlib",
+      "path": "dsp/units.cc",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/utils/random.cc": {
+      "repository": "stmlib",
+      "path": "utils/random.cc",
+      "sha256": "145c4d7a30e373d001fd664ce6f97a475458f7dc8286252d24ca6f592e0cdb93"
+    },
+    "tides2/ramp/ramp_extractor.cc": {
+      "repository": "eurorack",
+      "path": "tides2/ramp/ramp_extractor.cc",
+      "sha256": "6c4ea0aa136f073ef18428cb76e4f9c67b414a5b3845e85ffca48e29f728929b"
+    },
+    "plaits/dsp/oscillator/oscillator.h": {
+      "repository": "eurorack",
+      "path": "plaits/dsp/oscillator/oscillator.h",
+      "sha256": "635fa2d1b53b9ea789f4022f2c7865d9d5b6908a5ab4be68ae20842d74a02d15"
+    },
+    "stages/io_buffer.h": {
+      "repository": "eurorack",
+      "path": "stages/io_buffer.h",
+      "sha256": "cfe16c86822cbaad2aee55cded113797d8eadffafa41a2d0f559f72e6a85268e"
+    }
+  },
+  "compile_sources": [
+    "stages/segment_generator.cc",
+    "stages/resources.cc",
+    "tides2/ramp/ramp_extractor.cc",
+    "stmlib/dsp/units.cc",
+    "stmlib/utils/random.cc"
+  ]
+}

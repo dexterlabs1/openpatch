@@ -956,3 +956,7 @@ have been licensed under extremely permissive terms.
 ------------------------------------------------------------------------------
 
 Copyright notices are retained in src/* files where relevant.
+
+Segment Garden adapts the MIT-licensed Stages standard segment generator and
+resources with stmlib/Tides dependencies. See Stages-algorithms.txt for full
+notices and the separately declared native bridge/voltage scope.

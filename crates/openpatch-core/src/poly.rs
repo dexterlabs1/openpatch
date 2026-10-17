@@ -28,6 +28,7 @@ use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
+use crate::segment_garden::{self, SegmentGarden};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
@@ -149,6 +150,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_lfo"
                 | "tidal_functions"
                 | "frame_scene"
+                | "segment_garden"
                 | "random_values"
                 | "random"
                 | "sh_asr"
@@ -217,6 +219,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_vco" | "rack264_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "frame_scene" => frame_scene::INPUTS.iter().position(|port| *port == name),
+        "segment_garden" => segment_garden::INPUTS.iter().position(|port| *port == name),
         "tidal_functions" => tidal_functions::INPUTS
             .iter()
             .position(|port| *port == name),
@@ -345,6 +348,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "segment_garden" {
+        segment_garden::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "frame_scene" {
         frame_scene::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "tidal_functions" {
@@ -578,6 +585,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "segment_garden" {
+        segment_garden::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "frame_scene" {
         frame_scene::OUTPUTS
             .iter()
@@ -814,6 +826,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
+    if kind == "segment_garden" {
+        segment_garden::annotate(module);
+    }
     if kind == "multi_vco" {
         multi_vco::annotate(module);
     }
@@ -928,6 +943,7 @@ enum Model {
     StockLfo(Box<StockLfo>),
     TidalFunctions(Box<TidalFunctions>),
     FrameScene(Box<FrameScene>),
+    SegmentGarden(Box<SegmentGarden>),
     StockVco(Box<StockVco>),
     Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
@@ -1093,6 +1109,11 @@ impl Model {
         }
         if node.kind == "rack264_vco" {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
+        }
+        if node.kind == "segment_garden" {
+            return Ok(Self::SegmentGarden(Box::new(SegmentGarden::build(
+                node, rate,
+            )?)));
         }
         if node.kind == "frame_scene" {
             return Ok(Self::FrameScene(Box::new(FrameScene::build(node, rate)?)));
@@ -2058,6 +2079,7 @@ impl PolyEngine {
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::TidalFunctions(s)) => Some(s.lights()),
             Some(Model::FrameScene(s)) => Some(s.lights()),
+            Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
@@ -2554,6 +2576,7 @@ impl PolyEngine {
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::TidalFunctions(tidal) => tidal.initialize_state(),
             Model::FrameScene(scene) => scene.initialize_state(),
+            Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
@@ -2790,6 +2813,7 @@ impl PolyEngine {
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "tidal_functions" => tidal_functions::OUTPUTS.len(),
                     "frame_scene" => frame_scene::OUTPUTS.len(),
+                    "segment_garden" => segment_garden::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
@@ -3711,6 +3735,21 @@ impl PolyEngine {
                             [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
+                Model::SegmentGarden(garden) => {
+                    let mut inputs = [PortFrame::default(); 12];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    garden.process(
+                        &inputs,
+                        node.physical_input_mask,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + segment_garden::OUTPUTS.len()],
+                    );
+                }
                 Model::FrameScene(scene) => {
                     let mut inputs = [PortFrame::default(); 6];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4359,6 +4398,7 @@ impl PolyEngine {
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::TidalFunctions(s), Model::TidalFunctions(old)) => s.adopt(old),
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
+                (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::Rack264Vco(s), Model::Rack264Vco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),

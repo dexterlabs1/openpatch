@@ -2072,3 +2072,58 @@ fn frame_scene_first_callbacks_sixty_four_keys_initialize_and_replacement_use_no
         .flatten()
         .all(|s| s.active && s.value.is_finite()));
 }
+
+#[test]
+fn segment_garden_clock_bridge_repatch_initialize_and_adopt_use_no_heap() {
+    let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {
+        let mut p = patch(
+            vec![
+                node("clock", "stock_lfo", &[("rate", 7.0), ("pulse_width", 0.1)]),
+                node("cv", "poly_constant", &[("channels", 16.0), ("v1", 0.2)]),
+                node(
+                    "garden",
+                    "segment_garden",
+                    &[
+                        ("type1", 2.0),
+                        ("type2", 1.0),
+                        ("type3", 1.0),
+                        ("loop1", 0.0),
+                    ],
+                ),
+            ],
+            vec![
+                cable("clock", "square", "garden", "gate1"),
+                cable("clock", "square", "garden", "gate4"),
+                cable("cv", "out", "garden", "cv1"),
+            ],
+            "garden",
+        );
+        p.sample_rate = rate;
+        p.output_port = "out1".into();
+        let old = p.compile().unwrap();
+        p.cables[1].input = "gate2".into();
+        p.nodes[2].params.insert("seed".into(), 123.0);
+        let replacement = p.compile().unwrap();
+        let handle = replacement.resolve_module_lights("garden").unwrap();
+        (old, replacement, handle)
+    });
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, handle) in &mut engines {
+        for count in [0, 1, 3, 64, 129] {
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*handle);
+            initialized |= replacement.initialize_module_state(*handle);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.channels == 1 && frame.values[0].is_finite()));
+}

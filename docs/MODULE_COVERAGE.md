@@ -1,5 +1,12 @@
 # Rust module coverage
 
+Segment Garden is the 89th development catalog kind: six STANDARD3 Stages-derived
+kernels with physical-gate grouping, loops, quantized/unquantized sequencing, source
+slave contours and separate activity outputs. It retains a fixed source clock with
+explicit native edge/voltage policies. Focused qualification is separate from full
+firmware/analog/VCV compatibility and installation. [Contract](SEGMENT_GARDEN.md).
+
+
 Development addition (not installed): [Frame Scene](FRAME_SCENE.md) is the 88th
 catalog kind and second of the twenty new creative instruments. It combines
 sanitizer-audited source-integer keyframing with an explicitly ideal native

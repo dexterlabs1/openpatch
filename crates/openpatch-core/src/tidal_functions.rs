@@ -1,7 +1,7 @@
 //! Native six-frame host adapter for the pinned Tides 2018 portable kernels.
 //! Source arithmetic lives in kernel/extractor; voltage scaling, block timing,
 //! Schmitt thresholds and safe clock startup are explicit native policies.
-mod extractor;
+pub(crate) mod extractor;
 mod kernel;
 
 use crate::{parameter, ModuleLightState, Node, PortFrame};

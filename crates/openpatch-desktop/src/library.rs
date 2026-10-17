@@ -91,7 +91,9 @@ impl Category {
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
-            | "random_values" | "sh_asr" | "tidal_functions" | "frame_scene" => Self::Modulation,
+            | "random_values" | "sh_asr" | "tidal_functions" | "frame_scene" | "segment_garden" => {
+                Self::Modulation
+            }
             "gain"
             | "mixer"
             | "analog_vca"
@@ -2585,5 +2587,30 @@ mod frame_scene_category_tests {
             assert!(category.matches_module(module));
         }
         assert!(ModuleLibrary::default().matches(module, "frame"));
+    }
+}
+
+#[cfg(test)]
+mod segment_garden_category_tests {
+    use super::*;
+    #[test]
+    fn segment_garden_is_reachable_by_modulation_envelopes_sequencers_and_custom() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == "segment_garden")
+            .unwrap();
+        assert_eq!(Category::of_kind("segment_garden"), Category::Modulation);
+        for category in [
+            Category::Modulation,
+            Category::Envelopes,
+            Category::Sequencers,
+            Category::Custom,
+        ] {
+            assert!(category.matches_module(module));
+        }
+        assert!(ModuleLibrary::default().matches(module, "segment"));
     }
 }

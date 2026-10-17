@@ -1,0 +1,259 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "SEGMENT GARDEN \u00b7 EVOLVING VOICE\nSix independent Ramp/Step/Hold functions.\nGarden output1 slowly morphs Tidal smoothness.\nTidal scans the stored Frame Scene gains.\nScene controls a soft ladder-filtered voice.\nPatch GATE inputs to form linked groups.\nEach gate starts a group until the next gate.\nGrouped OUTs show stage progress; ACTIVE is separate.\nControls, presets and MCP share one history.\nRequires the three-instrument development family."
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 1,
+        "level1": 0.8,
+        "master": 0.7
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 1.0,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "motion",
+      "kind": "tidal_functions",
+      "params": {
+        "frequency": 0.08,
+        "output_mode": 2,
+        "slope": 0.6,
+        "smoothness": 0.4,
+        "shift": 0.6
+      }
+    },
+    {
+      "id": "garden",
+      "kind": "segment_garden",
+      "params": {
+        "seed": 17,
+        "type1": 0,
+        "loop1": 1,
+        "level1": 0.25,
+        "shape1": 0.4,
+        "type2": 1,
+        "loop2": 0,
+        "level2": 0.2,
+        "shape2": 0.3,
+        "type3": 2,
+        "loop3": 0,
+        "level3": 0.45,
+        "shape3": 0.4,
+        "type4": 0,
+        "loop4": 1,
+        "level4": 0.4,
+        "shape4": 0.65,
+        "type5": 1,
+        "loop5": 0,
+        "level5": 0.6,
+        "shape5": 0.2,
+        "type6": 2,
+        "loop6": 0,
+        "level6": 0.25,
+        "shape6": 0.6
+      }
+    },
+    {
+      "id": "scene",
+      "kind": "frame_scene",
+      "params": {
+        "frame": 0.5,
+        "modulation": 1,
+        "offset": 10,
+        "easing1": 4,
+        "easing2": 4
+      },
+      "content": {
+        "type": "frame_scene",
+        "next_id": 4,
+        "keyframes": [
+          {
+            "id": 0,
+            "timestamp": 0,
+            "values": [
+              12000,
+              4000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 1,
+            "timestamp": 20000,
+            "values": [
+              47000,
+              18000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 2,
+            "timestamp": 43000,
+            "values": [
+              26000,
+              7000,
+              0,
+              0
+            ]
+          },
+          {
+            "id": 3,
+            "timestamp": 65535,
+            "values": [
+              52000,
+              14000,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "vco",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 98
+      }
+    },
+    {
+      "id": "filter",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 180,
+        "resonance": 0.15,
+        "drive": 0.8
+      }
+    },
+    {
+      "id": "vca",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.8
+      }
+    }
+  ],
+  "cables": [
+    {
+      "id": "scene-0",
+      "from": "motion",
+      "output": "out1",
+      "to": "scene",
+      "input": "frame_cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-1",
+      "from": "scene",
+      "output": "out1",
+      "to": "vca",
+      "input": "cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-2",
+      "from": "scene",
+      "output": "out2",
+      "to": "filter",
+      "input": "cutoff_cv",
+      "color": [
+        66,
+        182,
+        172
+      ]
+    },
+    {
+      "id": "scene-3",
+      "from": "vco",
+      "output": "out",
+      "to": "filter",
+      "input": "signal",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-4",
+      "from": "filter",
+      "output": "out",
+      "to": "vca",
+      "input": "signal",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-5",
+      "from": "vca",
+      "output": "out",
+      "to": "console",
+      "input": "in1",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-6",
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "scene-7",
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right",
+      "color": [
+        206,
+        143,
+        70
+      ]
+    },
+    {
+      "id": "garden-morph",
+      "from": "garden",
+      "output": "out1",
+      "to": "motion",
+      "input": "smoothness_cv"
+    }
+  ],
+  "output": "out"
+}

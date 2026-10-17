@@ -1,6 +1,6 @@
 # Twenty creative module contracts
 
-Research/design checkpoint: 2026-10-17. **Tidal Functions and Frame Scene are implemented with focused local Mac qualification; eighteen entries remain proposed.** This is an implementation backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. The [Tidal Functions](TIDAL_FUNCTIONS.md) and [Frame Scene](FRAME_SCENE.md) development candidates are not installed; family-level macOS CI remains pending. Keep installed OpenPatch 0.2.7 build 9 stable until an authorized upgrade.
+Research/design checkpoint: 2026-10-17. **Tidal Functions, Frame Scene and Segment Garden are implemented development candidates; seventeen entries remain proposed.** This is an implementation backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. The [Tidal Functions](TIDAL_FUNCTIONS.md), [Frame Scene](FRAME_SCENE.md) and [Segment Garden](SEGMENT_GARDEN.md) development candidates are not installed; family-level macOS CI remains pending. Keep installed OpenPatch 0.2.7 build 9 stable until an authorized upgrade.
 
 ## Scope and existing instruments
 
