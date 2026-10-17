@@ -120,11 +120,11 @@ impl Default for RoomLighting {
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
         // Keep the light concentrated in its lens, even with the room off.
-        0.12 + 0.30 * (1.0 - self.amount).powf(1.5)
+        0.08 + 0.18 * (1.0 - self.amount).powf(1.5)
     }
 
     fn bloom_diffusion(&self) -> f32 {
-        0.18 + 0.08 * (1.0 - self.amount).powf(1.5)
+        0.12 + 0.04 * (1.0 - self.amount).powf(1.5)
     }
 
     /// Static display illumination, distinct from signal-driven lamps. The
@@ -137,8 +137,8 @@ impl RoomLighting {
             painter,
             rect,
             Color32::from_rgb(104, 155, 119),
-            0.006 + 0.030 * dark,
-            (0.6 + 0.5 * dark) * zoom / corner,
+            0.004 + 0.016 * dark,
+            (0.45 + 0.25 * dark) * zoom / corner,
         );
         self.preserve(painter, start);
     }
@@ -494,13 +494,13 @@ mod tests {
             })
             .unwrap();
         assert!(
-            mesh.calc_bounds().width() <= 40.0,
-            "spill must stay local on a dense 40-point lamp grid"
+            mesh.calc_bounds().width() <= 25.0,
+            "spill must stay close to the lens on a dense lamp grid"
         );
         assert!(
             mesh.vertices
                 .iter()
-                .all(|v| v.color.r().max(v.color.g()).max(v.color.b()) <= 85),
+                .all(|v| v.color.r().max(v.color.g()).max(v.color.b()) <= 40),
             "halo must leave headroom instead of clipping into a neon cloud"
         );
     }
