@@ -25,16 +25,18 @@ const ATLAS_SCOPE_Y_RANGE_CHOICES: [&str; 9] = [
 ];
 
 fn scope_control_rect(index: usize) -> Rect {
+    // Leave the real 18-screen-point jack targets clear at 35% zoom. Moving
+    // this row and its rotaries together preserves their separate hit areas.
     let (column, y, width) = match index {
         0 => (0, 48.0, 110.0),
         1 => (1, 48.0, 110.0),
         3 => (2, 48.0, 110.0),
         7 => (3, 48.0, 110.0),
         8 => (4, 48.0, 110.0),
-        2 => (0, 314.0, 130.0),
-        4 => (1, 314.0, 130.0),
-        5 => (2, 314.0, 130.0),
-        6 => (3, 314.0, 130.0),
+        2 => (0, 311.0, 130.0),
+        4 => (1, 311.0, 130.0),
+        5 => (2, 311.0, 130.0),
+        6 => (3, 311.0, 130.0),
         _ => unreachable!("unknown scope control"),
     };
     Rect::from_min_size(
@@ -54,7 +56,7 @@ fn scope_knob_center(index: usize) -> Pos2 {
         6 => 3,
         _ => unreachable!("scope choice has no rotary"),
     };
-    pos2(95.0 + 145.0 * column as f32, 292.0)
+    pos2(95.0 + 145.0 * column as f32, 289.0)
 }
 
 impl Rack {
@@ -65,6 +67,18 @@ impl Rack {
         module: Option<&Value>,
         rect: Rect,
     ) -> Option<RackAction> {
+        let stock = node.kind == "stock_scope";
+        if stock {
+            if let Some(token) = self.scope_identities.get(&node.id).copied() {
+                let view = self
+                    .stock_scope_views
+                    .entry(node.id.clone())
+                    .or_insert_with(|| StockScopeView::new(token));
+                if view.token != token {
+                    *view = StockScopeView::new(token);
+                }
+            }
+        }
         let zoom = self.zoom;
         let painter = ui.painter().clone();
         let point = |x, y| rect.min + vec2(x, y) * zoom;
@@ -100,17 +114,35 @@ impl Rack {
         }
         let trace = painter.with_clip_rect(plot.shrink(1.0));
         if let Some(state) = self.scope_states.get(&node.id) {
-            let auto_range = scope_auto_range_enabled(node);
+            let auto_range = if stock {
+                self.stock_scope_views
+                    .get(&node.id)
+                    .is_none_or(|view| view.automatic)
+            } else {
+                scope_auto_range_enabled(node)
+            };
             let range_id = ui.id().with(("scope-auto-range", &node.id));
-            let previous = ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id));
+            let previous = if stock {
+                self.stock_scope_views
+                    .get(&node.id)
+                    .and_then(|view| view.fitted)
+            } else {
+                ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id))
+            };
             let ranges = scope_display_ranges(state, auto_range, previous);
-            ui.data_mut(|data| {
-                if auto_range {
-                    data.insert_temp(range_id, ranges);
-                } else {
-                    data.remove::<[ScopeDisplayRange; 2]>(range_id);
+            if stock {
+                if let Some(view) = self.stock_scope_views.get_mut(&node.id) {
+                    view.fitted = auto_range.then_some(ranges);
                 }
-            });
+            } else {
+                ui.data_mut(|data| {
+                    if auto_range {
+                        data.insert_temp(range_id, ranges);
+                    } else {
+                        data.remove::<[ScopeDisplayRange; 2]>(range_id);
+                    }
+                });
+            }
             let colors = [
                 Color32::from_rgb(86, 215, 222),
                 Color32::from_rgb(250, 185, 80),
@@ -164,7 +196,11 @@ impl Rack {
                     );
                 }
             }
-            if scope_x_trigger_guide(state) {
+            if if stock {
+                stock_scope_x_trigger_guide(state)
+            } else {
+                scope_x_trigger_guide(state)
+            } {
                 let trigger_y = voltage_y(state.threshold, ranges[0]);
                 if plot.y_range().contains(trigger_y) {
                     trace.line_segment(
@@ -196,7 +232,11 @@ impl Rack {
             painter.text(
                 point(40.0, 89.0),
                 Align2::LEFT_TOP,
-                scope_range_label(auto_range, ranges),
+                if stock {
+                    stock_scope_range_label(auto_range, ranges)
+                } else {
+                    scope_range_label(auto_range, ranges)
+                },
                 crate::panel_skin::print_font(painter.ctx(), 9.5 * zoom),
                 Color32::from_gray(180),
             );
@@ -283,7 +323,11 @@ impl Rack {
                     state.x_channels,
                     state.y_channels,
                     if state.xy { "XY" } else { "TIME" },
-                    scope_trigger_status(state)
+                    if stock {
+                        stock_scope_trigger_status(state)
+                    } else {
+                        scope_trigger_status(state)
+                    }
                 ),
                 crate::panel_skin::print_font(painter.ctx(), 9.5 * zoom),
                 Color32::from_gray(216),
@@ -299,6 +343,10 @@ impl Rack {
         }
         if self.scope_states.contains_key(&node.id) {
             self.lighting.preserve(&painter, screen_start);
+        }
+        if stock {
+            self.paint_stock_scope_lamps(ui, node, rect);
+            return self.stock_scope_controls(ui, node, module, rect);
         }
         let mut action = None;
         for (index, (name, label, suffix)) in SCOPE_CONTROLS.iter().enumerate() {
@@ -387,8 +435,13 @@ impl Rack {
         let max = spec["max"].as_f64().unwrap_or(1.0) as f32;
         let default = spec["default"].as_f64().unwrap_or(0.0) as f32;
         let value = node.params.get(name).copied().unwrap_or(default);
+        let stock_time = node.kind == "stock_scope" && name == "time";
         let geometric = name == "time" && min > 0.0 && max > min;
-        let normalized = if geometric {
+        // Stock stores log2 inverse seconds. Rotary travel follows physical
+        // screen duration while every emitted value remains the raw control.
+        let normalized = if stock_time {
+            1.0 - normalize(value, min, max, false)
+        } else if geometric {
             normalize_geometric(value, min, max)
         } else {
             normalize(value, min, max, false)
@@ -402,7 +455,16 @@ impl Rack {
         knob.widget_info(|| {
             egui::WidgetInfo::slider(enabled, f64::from(value), format!("{} {name}", node.id))
         });
-        let display = |raw: f32| format!("{}{suffix}", scope_measurement_number(f64::from(raw)));
+        let display = |raw: f32| {
+            if stock_time {
+                format!(
+                    "{} ms/screen",
+                    scope_measurement_number(stock_scope_nominal_ms(raw))
+                )
+            } else {
+                format!("{}{suffix}", scope_measurement_number(f64::from(raw)))
+            }
+        };
         let input = self.parameter_knob_input(ui, &knob, normalized, enabled, &display(value));
         if enabled
             && ((knob.is_pointer_button_down_on() && ui.input(|i| i.pointer.any_pressed()))
@@ -412,7 +474,9 @@ impl Rack {
             self.select_primary(node.id.clone());
         }
         let from_normalized = |n: f32| {
-            if geometric {
+            if stock_time {
+                denormalize(1.0 - n, min, max, false)
+            } else if geometric {
                 denormalize_geometric(n, min, max)
             } else {
                 denormalize(n, min, max, false)
@@ -433,7 +497,13 @@ impl Rack {
         let next = if input.reset {
             Some(default)
         } else if let Some(high) = input.boundary {
-            Some(if high { max } else { min })
+            Some(if stock_time {
+                from_normalized(if high { 1.0 } else { 0.0 })
+            } else if high {
+                max
+            } else {
+                min
+            })
         } else if input.nudge != 0 {
             Some(from_normalized(normalized + fine * input.nudge as f32))
         } else {
@@ -451,7 +521,9 @@ impl Rack {
             .parameter(&node.id, &node.kind, name)
         {
             let normalize = |raw| {
-                if geometric {
+                if stock_time {
+                    1.0 - normalize(raw, min, max, false)
+                } else if geometric {
                     normalize_geometric(raw, min, max)
                 } else {
                     normalize(raw, min, max, false)

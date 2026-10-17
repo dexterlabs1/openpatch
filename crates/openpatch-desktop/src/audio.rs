@@ -14,7 +14,7 @@ mod audio_diagnostics;
 pub use audio_diagnostics::Snapshot as AudioTimingSnapshot;
 #[path = "performance.rs"]
 mod performance;
-pub(crate) use performance::ManualReleaseTicket;
+pub(crate) use performance::{rack_scope_kind, ManualReleaseTicket};
 use performance::{EventReader, ModulePlan, Performance, EVENT_CAPACITY};
 #[path = "scope_stream.rs"]
 mod scope_stream;
@@ -773,8 +773,16 @@ impl Audio {
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
     }
-    pub fn module_scope(&self, id: &str) -> Option<Arc<openpatch_core::ScopeSnapshot>> {
-        self.performance.scope_frame(id).map(|frame| frame.snapshot)
+    /// A coherent live capture with its graph incarnation and publication
+    /// identity. Stock Scope view caches must use the token, not just node ID.
+    pub(crate) fn module_scope_frame(
+        &self,
+        id: &str,
+    ) -> Option<crate::scope_transport::ScopeFrame> {
+        self.performance.scope_frame(id)
+    }
+    pub(crate) fn module_scope_identity(&self, id: &str) -> Option<(&'static str, u64)> {
+        self.performance.scope_identity(id)
     }
     /// Actual active-graph endpoint state; unavailable before acquisition, for a
     /// pending revision, or 250ms after the reader last observed a new packet.
@@ -4893,6 +4901,7 @@ mod tests {
     include!("split_audio_tests.rs");
     include!("viz_audio_tests.rs");
     include!("rack_scope_audio_tests.rs");
+    include!("stock_scope_audio_tests.rs");
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

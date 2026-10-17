@@ -34,6 +34,7 @@ include!("atlas_vca_mix_panel.rs");
 include!("atlas_endpoint_panels.rs");
 include!("atlas_view_panels.rs");
 include!("atlas_scope_panel.rs");
+include!("stock_scope_panel.rs");
 include!("atlas_legacy_utility_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
@@ -105,8 +106,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "audio_stereo" | "poly_viz" | "scope" | "constant" | "octave" | "vca_mix" | "mixer"
-        | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
+        "audio_stereo" | "poly_viz" | "scope" | "stock_scope" | "constant" | "octave"
+        | "vca_mix" | "mixer" | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
         "attenuverter8" => 1.10,
         "cv_mix" => REDESIGNED_PORT_SCALE,
         "logic"
@@ -151,7 +152,7 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
-        ("scope" | "poly_viz", _, _) => Right(40.0),
+        ("scope" | "stock_scope" | "poly_viz", _, _) => Right(40.0),
         ("audio_stereo", _, false) => Right(32.0),
         ("audio_stereo", _, true) => Right(40.0),
         ("mixer" | "output" | "audio_out", _, true) => Right(36.0),
@@ -756,6 +757,8 @@ pub struct Rack {
     gesture: u64,
     layout_revision: u64,
     scope_states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
+    scope_identities: BTreeMap<String, u64>,
+    stock_scope_views: BTreeMap<String, StockScopeView>,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     stock_seq3_states: BTreeMap<String, Value>,
     stock_quantizer_states: BTreeMap<String, u16>,
@@ -820,6 +823,8 @@ impl Default for Rack {
             gesture: 0,
             layout_revision: 0,
             scope_states: BTreeMap::new(),
+            scope_identities: BTreeMap::new(),
+            stock_scope_views: BTreeMap::new(),
             sequence_states: BTreeMap::new(),
             stock_seq3_states: BTreeMap::new(),
             stock_quantizer_states: BTreeMap::new(),
@@ -1481,6 +1486,14 @@ impl Rack {
         states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
     ) {
         self.scope_states = states;
+    }
+
+    /// A plan-time token keeps a native view preference attached to one module
+    /// incarnation even before its first capture becomes available.
+    pub(crate) fn set_scope_identities(&mut self, identities: BTreeMap<String, u64>) {
+        self.stock_scope_views
+            .retain(|id, view| identities.get(id).is_some_and(|token| *token == view.token));
+        self.scope_identities = identities;
     }
 
     pub fn set_sequence_states(
@@ -3075,7 +3088,9 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                        if atlas_voice(&node.kind)
+                            || matches!(node.kind.as_str(), "scope" | "stock_scope")
+                        {
                             43.0
                         } else {
                             69.0
@@ -3179,7 +3194,9 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                        if atlas_voice(&node.kind)
+                            || matches!(node.kind.as_str(), "scope" | "stock_scope")
+                        {
                             43.0
                         } else {
                             69.0
@@ -3366,7 +3383,7 @@ impl Rack {
                     .unwrap_or("mono");
                 header_response.on_hover_text(format!("{} · {description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows.", node.id));
             }
-            if node.kind == "scope" {
+            if matches!(node.kind.as_str(), "scope" | "stock_scope") {
                 if let Some(edit) = self.scope_panel(ui, node, module, rect) {
                     action = Some(edit);
                 }
@@ -3773,7 +3790,7 @@ impl Rack {
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if (node.kind == "random" && *name == "seed")
-                    || node.kind == "scope"
+                    || matches!(node.kind.as_str(), "scope" | "stock_scope")
                     || node.kind == "modal_resonator"
                     || node.kind == "colored_noise"
                     || node.kind == "random_values"
@@ -5871,7 +5888,11 @@ impl Rack {
                 rect.min,
                 vec2(
                     header_width,
-                    if node.kind == "scope" { 43.0 } else { 65.0 } * self.zoom,
+                    if matches!(node.kind.as_str(), "scope" | "stock_scope") {
+                        43.0
+                    } else {
+                        65.0
+                    } * self.zoom,
                 ),
             );
             if header_keyboard
@@ -8706,7 +8727,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 363.0,
             )
         }
-        "scope" => {
+        "scope" | "stock_scope" => {
             return pos2(
                 if input {
                     [70.0, 170.0, 285.0][index]
@@ -9629,7 +9650,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
-        "scope" => HP * 42.0,
+        "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
@@ -9678,6 +9699,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
         "scope" => "SCOPE",
+        "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
         "stereo_reverb" => "SPACE",
@@ -11342,6 +11364,21 @@ struct ScopeDisplayRange {
     span: f64,
     offset: f64,
 }
+#[derive(Clone, Copy, Debug)]
+struct StockScopeView {
+    token: u64,
+    automatic: bool,
+    fitted: Option<[ScopeDisplayRange; 2]>,
+}
+impl StockScopeView {
+    fn new(token: u64) -> Self {
+        Self {
+            token,
+            automatic: true,
+            fitted: None,
+        }
+    }
+}
 fn scope_auto_range_enabled(node: &Node) -> bool {
     node.params.get("auto_range").copied().unwrap_or(1.0) >= 0.5
 }
@@ -11456,14 +11493,38 @@ fn scope_calibrated_voltage(volts: f64) -> String {
     format!("{} {unit}", scope_measurement_number(value))
 }
 fn scope_range_label(automatic: bool, ranges: [ScopeDisplayRange; 2]) -> String {
+    scope_range_label_named(if automatic { "AUTO" } else { "MANUAL" }, ranges)
+}
+fn stock_scope_range_label(automatic: bool, ranges: [ScopeDisplayRange; 2]) -> String {
+    scope_range_label_named(
+        if automatic {
+            "AUTO · NATIVE VIEW"
+        } else {
+            "MANUAL · SOURCE RANGE"
+        },
+        ranges,
+    )
+}
+fn scope_range_label_named(prefix: &str, ranges: [ScopeDisplayRange; 2]) -> String {
     format!(
         "{} X {}/screen offset {}  |  Y {}/screen offset {}",
-        if automatic { "AUTO" } else { "MANUAL" },
+        prefix,
         scope_calibrated_voltage(ranges[0].span),
         scope_calibrated_voltage(ranges[0].offset),
         scope_calibrated_voltage(ranges[1].span),
         scope_calibrated_voltage(ranges[1].offset),
     )
+}
+fn stock_scope_parameter_action(action: RackAction, revision: u64) -> RackAction {
+    match action {
+        RackAction::Command("set_parameter", mut args) => {
+            if args.get("expected_revision").is_none() {
+                args["expected_revision"] = json!(revision);
+            }
+            RackAction::Command("set_parameter", args)
+        }
+        other => other,
+    }
 }
 fn scope_parameter_action(node: &Node, action: RackAction, revision: u64) -> RackAction {
     match action {
@@ -11498,6 +11559,37 @@ fn scope_parameter_action(node: &Node, action: RackAction, revision: u64) -> Rac
 }
 fn scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
     state.trigger_enabled && !state.xy && state.trigger_input_channels == 0 && state.x_channels > 0
+}
+fn stock_scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
+    state
+        .stock
+        .is_some_and(|stock| f32::from_bits(stock.parameter_bits[5]) == 0.0)
+        && scope_x_trigger_guide(state)
+}
+fn stock_scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
+    let Some(stock) = state.stock else {
+        return "SOURCE STATE UNAVAILABLE".into();
+    };
+    if f32::from_bits(stock.parameter_bits[5]) != 0.0 {
+        if state.xy {
+            "XY · CONTINUOUS · SOURCE TRIGGER BYPASSED".into()
+        } else {
+            "TIME DISPLAY · SOURCE XY CAPTURE · TRIGGER BYPASSED".into()
+        }
+    } else if !state.trigger_enabled {
+        "FREE RUN · SOURCE TRIGGER DISABLED".into()
+    } else {
+        format!(
+            "{} SOURCE TRIGGER · {} V{}",
+            if state.trigger_input_channels > 0 {
+                "EXT"
+            } else {
+                "X"
+            },
+            scope_measurement_number(f64::from(state.threshold)),
+            if state.waiting { " · WAITING" } else { "" },
+        )
+    }
 }
 fn scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
     if state.xy {
@@ -11558,6 +11650,22 @@ const SCOPE_CONTROLS: [(&str, &str, &str); 9] = [
     ("trigger_enabled", "TRIGGER", ""),
     ("auto_range", "AUTO RANGE", ""),
 ];
+const STOCK_SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
+    ("x_scale", "X RANGE", ""),
+    ("y_scale", "Y RANGE", ""),
+    ("time", "TIME · NOMINAL", ""),
+    ("xy", "DISPLAY", ""),
+    ("x_offset", "X OFFSET", " V"),
+    ("y_offset", "Y OFFSET", " V"),
+    ("threshold", "TRIGGER LEVEL", " V"),
+    ("trigger_disabled", "TRIGGER", ""),
+];
+fn stock_scope_nominal_ms(raw: f32) -> f64 {
+    1000.0 * 2.0_f64.powf(-f64::from(raw))
+}
+fn stock_scope_time_raw(millis: f64) -> f32 {
+    -(millis / 1000.0).log2() as f32
+}
 fn scope_voice_color(base: Color32, voice: usize) -> Color32 {
     let factor = 0.55 + 0.45 * (voice % 4) as f32 / 3.0;
     let mix = (voice / 4) as u8 * 18;
@@ -11590,6 +11698,9 @@ mod tests {
     }
     mod scope_visibility_tests {
         include!("scope_visibility_tests.rs");
+    }
+    mod stock_scope_panel_tests {
+        include!("stock_scope_panel_tests.rs");
     }
     mod viz_ui_tests {
         include!("viz_ui_tests.rs");
@@ -11788,7 +11899,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            80,
+            81,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules

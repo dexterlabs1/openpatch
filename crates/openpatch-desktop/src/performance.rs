@@ -17,6 +17,9 @@ use std::sync::{
 
 pub(super) const EVENT_CAPACITY: usize = 512;
 const FUTURE_SECONDS: u64 = 2;
+pub(crate) fn rack_scope_kind(kind: &str) -> bool {
+    matches!(kind, "scope" | "stock_scope")
+}
 #[derive(Clone, Copy)]
 struct Event {
     slot: usize,
@@ -61,6 +64,7 @@ enum ModuleKind {
     StockLfo,
     StockOctave,
     StockVco,
+    StockScope,
     WavetableVco,
     WavetableLfo,
 }
@@ -98,6 +102,7 @@ impl ModuleKind {
             "stock_lfo" => Some(Self::StockLfo),
             "stock_octave" => Some(Self::StockOctave),
             "stock_vco" => Some(Self::StockVco),
+            "stock_scope" => Some(Self::StockScope),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
             _ => None,
@@ -136,6 +141,7 @@ impl ModuleKind {
             Self::StockLfo => "stock_lfo",
             Self::StockOctave => "stock_octave",
             Self::StockVco => "stock_vco",
+            Self::StockScope => "stock_scope",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
         }
@@ -1197,11 +1203,15 @@ impl Performance {
         }
         self.plan_midi_learns(&control, patch, engine, &mut plan)?;
         plan.scope_interval = u64::from(self.rate).div_ceil(30);
-        for node in patch.nodes.iter().filter(|node| node.kind == "scope") {
+        for node in patch
+            .nodes
+            .iter()
+            .filter(|node| rack_scope_kind(&node.kind))
+        {
             let Some(entry) = control
                 .state_entries
                 .get(&node.id)
-                .filter(|entry| entry.kind == "scope" && revision >= entry.born_revision)
+                .filter(|entry| entry.kind == node.kind && revision >= entry.born_revision)
             else {
                 continue;
             };
@@ -1229,11 +1239,28 @@ impl Performance {
         let entry = control
             .state_entries
             .get(id)
-            .filter(|entry| entry.kind == "scope")?;
+            .filter(|entry| rack_scope_kind(&entry.kind))?;
         control
             .scope_readers
             .get(id)?
             .read(entry.token, control.revision)
+            .filter(|frame| frame.snapshot.stock.is_some() == (entry.kind == "stock_scope"))
+    }
+    /// Control-side identity is available before the first audio publication.
+    /// It changes on retirement or same-ID kind replacement, but survives
+    /// ordinary parameter revisions of the same module incarnation.
+    pub(crate) fn scope_identity(&self, id: &str) -> Option<(&'static str, u64)> {
+        let control = self.control.lock().ok()?;
+        if self.shared.closed.load(Ordering::Acquire) {
+            return None;
+        }
+        let entry = control.state_entries.get(id)?;
+        let kind = match entry.kind.as_str() {
+            "scope" => "scope",
+            "stock_scope" => "stock_scope",
+            _ => return None,
+        };
+        (control.revision >= entry.born_revision).then_some((kind, entry.token))
     }
     pub(super) fn sequence_state(&self, id: &str) -> Option<ModuleTelemetry> {
         let control = self.control.lock().ok()?;
@@ -1460,13 +1487,14 @@ impl LiveModuleEvents for Performance {
                     })
                     .collect()
             };
-        Ok(json!({"available":true,"source":"live_rack_scope","id":id,
+        let acquisition_rate = s.stock.map_or(self.rate, |stock| stock.sample_rate);
+        let mut result = json!({"available":true,"source":"live_rack_scope","id":id,
             "revision":frame.revision,"instance":frame.token,"frame":frame.frame,"sequence":frame.sequence,
-            "sample_rate":self.rate,"channel":channel+1,"x_channels":s.x_channels,"y_channels":s.y_channels,
+            "sample_rate":acquisition_rate,"channel":channel+1,"x_channels":s.x_channels,"y_channels":s.y_channels,
             "x_active":channel<usize::from(s.x_channels),"y_active":channel<usize::from(s.y_channels),
             "buffer_index":s.buffer_index,"samples_per_bin":s.samples_per_bin,"sample_index":s.sample_index,
             "waiting":s.waiting,"xy":s.xy,"requested_seconds":s.time,
-            "window_seconds":f64::from(s.samples_per_bin)*256.0/f64::from(self.rate),
+            "window_seconds":f64::from(s.samples_per_bin)*256.0/f64::from(acquisition_rate),
             "x_scale":s.x_scale,"y_scale":s.y_scale,"x_offset":s.x_offset,"y_offset":s.y_offset,
             "trigger_enabled":s.trigger_enabled,"threshold":s.threshold,"units":"V",
             "trigger_input_channels":s.trigger_input_channels,
@@ -1477,7 +1505,29 @@ impl LiveModuleEvents for Performance {
                 "selected_voice":measurements(s.voice_measurements(channel)),
                 "all_active_voices":measurements(s.measurements())},
             "publication":{"maximum_hz":30,"budget":"one Scope snapshot per device callback, round-robin; busy racks reduce refresh cadence"},
-            "x":bins(&s.x),"y":bins(&s.y)}))
+            "x":bins(&s.x),"y":bins(&s.y)});
+        if let Some(stock) = s.stock {
+            let raw = stock.parameter_bits.map(f32::from_bits);
+            result["model"] = json!("stock_scope");
+            result["stock"] = json!({
+                "raw_controls":{
+                    "x_scale":raw[0],"x_offset":raw[1],"y_scale":raw[2],"y_offset":raw[3],
+                    "time":raw[4],"xy":raw[5],"threshold":raw[6],"trigger_disabled":raw[7]
+                },
+                "parameter_bits":stock.parameter_bits,
+                "light_bits":stock.light_bits,
+                "light_levels":stock.light_bits.map(f32::from_bits),
+                "acquisition_sample_rate":stock.sample_rate,
+                "sample_time_bits":stock.sample_time_bits,
+                "trigger_input_connected":stock.trigger_input_connected,
+                "nominal_screen_seconds":stock.nominal_screen_seconds,
+                "next_bin_samples":stock.next_bin_samples,
+                "next_bin_seconds":f64::from(stock.next_bin_samples)/f64::from(stock.sample_rate),
+                "time_semantics":"TIME is a raw log2 inverse-seconds control; displayed duration is nominal for the next full sweep, not a timestamped interval for stored bins",
+                "view_policy":"Native UI AUTO/MANUAL fitting is temporary view state and is not included in this capture"
+            });
+        }
+        Ok(result)
     }
     fn load_module_running(&self, states: &BTreeMap<String, bool>) {
         self.load_saved_states(
@@ -1618,12 +1668,22 @@ impl LiveModuleEvents for Performance {
                 .iter()
                 .any(|node| node.id == *id && node.kind == entry.kind)
         });
-        control.scope_readers.retain(|id, _| {
-            patch
-                .nodes
-                .iter()
-                .any(|node| node.id == *id && node.kind == "scope")
-        });
+        {
+            let Control {
+                scope_readers,
+                state_entries,
+                ..
+            } = &mut *control;
+            scope_readers.retain(|id, _| {
+                state_entries.get(id).is_some_and(|entry| {
+                    rack_scope_kind(&entry.kind)
+                        && patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == *id && node.kind == entry.kind)
+                })
+            });
+        }
         let mut state_used = [false; MAX_NODES];
         for entry in control.state_entries.values() {
             state_used[entry.slot] = true;

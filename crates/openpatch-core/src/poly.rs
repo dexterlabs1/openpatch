@@ -35,6 +35,7 @@ use crate::stock_noise::{self, StockNoise, StockNoiseSnapshot};
 use crate::stock_octave::{self, StockOctave, StockOctaveSnapshot};
 use crate::stock_process::{self, StockProcess, StockProcessSnapshot, StockProcessSnapshotBits};
 use crate::stock_quantizer::{self, StockQuantizer};
+use crate::stock_scope::{self, StockScope, StockScopeDiagnosticBits};
 use crate::stock_seq3::{self, StockSeq3};
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vca_mix::{self, StockVcaMix, StockVcaMixSnapshot};
@@ -111,6 +112,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_mix"
                 | "stock_octave"
                 | "stock_process"
+                | "stock_scope"
                 | "stock_vca_mix"
                 | "poly_split"
                 | "poly_merge"
@@ -188,6 +190,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_mix" => stock_mix::INPUTS.iter().position(|port| *port == name),
         "stock_octave" => stock_octave::INPUTS.iter().position(|port| *port == name),
         "stock_process" => stock_process::INPUTS.iter().position(|port| *port == name),
+        "stock_scope" => stock_scope::INPUTS.iter().position(|port| *port == name),
         "stock_vca_mix" => stock_vca_mix::INPUTS.iter().position(|port| *port == name),
         "stock_quantizer" => stock_quantizer::INPUTS
             .iter()
@@ -297,6 +300,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         stock_mix::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_octave" {
         stock_octave::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_scope" {
+        stock_scope::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_process" {
         stock_process::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_vca_mix" {
@@ -495,6 +500,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "stock_octave" {
         stock_octave::OUTPUTS
+            .iter()
+            .map(|port| (*port).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "stock_scope" {
+        stock_scope::OUTPUTS
             .iter()
             .map(|port| (*port).to_owned())
             .collect::<Vec<_>>()
@@ -773,6 +783,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_process" {
         stock_process::annotate(module);
     }
+    if kind == "stock_scope" {
+        stock_scope::annotate(module);
+    }
     if kind == "stock_vca_mix" {
         stock_vca_mix::annotate(module);
     }
@@ -846,6 +859,7 @@ enum Model {
     RandomValues(Box<RandomValues>),
     Random(Box<Random>),
     Scope(Box<Scope>),
+    StockScope(Box<StockScope>),
     Gates(Box<Gates>),
     Switch(SequentialSwitch),
     UtilityBank(UtilityBank),
@@ -905,6 +919,9 @@ impl Model {
         }
         if node.kind == "gates" {
             return Ok(Self::Gates(Box::new(Gates::build(node, rate)?)));
+        }
+        if node.kind == "stock_scope" {
+            return Ok(Self::StockScope(Box::new(StockScope::build(node, rate)?)));
         }
         if node.kind == "scope" {
             return Ok(Self::Scope(Box::new(Scope::build(node, rate)?)));
@@ -1053,6 +1070,7 @@ impl Model {
                 | Self::StockMix(_)
                 | Self::StockOctave(_)
                 | Self::StockProcess(_)
+                | Self::StockScope(_)
                 | Self::StockVcaMix(_)
                 | Self::StockNoise(_)
         )
@@ -1176,6 +1194,74 @@ impl PolyEngine {
             Model::StockOctave(model) => Some(model.snapshot()),
             _ => None,
         }
+    }
+    pub(crate) fn stock_scope_diagnostic_bits(
+        &self,
+        index: usize,
+    ) -> Option<StockScopeDiagnosticBits> {
+        match &self.nodes.get(index)?.model {
+            Model::StockScope(scope) => Some(scope.diagnostic_bits()),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_stock_scope_parameter_raw(
+        &mut self,
+        index: usize,
+        parameter: usize,
+        value: f32,
+    ) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::StockScope(scope)) => scope.set_parameter_raw(parameter, value),
+            _ => false,
+        }
+    }
+    pub(crate) fn stock_scope_legacy_data(&self, index: usize) -> Option<Value> {
+        match &self.nodes.get(index)?.model {
+            Model::StockScope(scope) => Some(scope.legacy_data()),
+            _ => None,
+        }
+    }
+    pub(crate) fn load_stock_scope_legacy_data(&mut self, index: usize, value: &Value) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::StockScope(scope)) => {
+                scope.load_legacy_data(value);
+                true
+            }
+            _ => false,
+        }
+    }
+    pub(crate) fn stock_scope_preserves_initialize_history(&self, index: usize) -> bool {
+        matches!(
+            self.nodes.get(index).map(|node| &node.model),
+            Some(Model::StockScope(_))
+        )
+    }
+    // Scope has no source sample-rate callback. This bounded host event changes
+    // actual timing without rebuilding source, sink, cables or acquisition. A
+    // general graph rebuild at a different rate retains its existing cold policy.
+    pub(crate) fn stock_scope_sample_rate_event(&mut self, rate: u32) -> bool {
+        if !(8_000..=192_000).contains(&rate) {
+            return false;
+        }
+        let mut scope_index = None;
+        for (index, node) in self.nodes.iter().enumerate() {
+            match node.kind.as_str() {
+                "stock_scope" if scope_index.is_none() => scope_index = Some(index),
+                "poly_constant" | "mult" => {}
+                _ => return false,
+            }
+        }
+        let Some(index) = scope_index else {
+            return false;
+        };
+        let Model::StockScope(scope) = &mut self.nodes[index].model else {
+            return false;
+        };
+        if scope.set_sample_rate(rate).is_err() {
+            return false;
+        }
+        self.rate = rate;
+        true
     }
     pub(crate) fn stock_process_snapshot(&self, index: usize) -> Option<StockProcessSnapshot> {
         match &self.nodes.get(index)?.model {
@@ -1682,6 +1768,7 @@ impl PolyEngine {
     pub(crate) fn module_scope(&self, index: usize) -> Option<&crate::ScopeSnapshot> {
         match self.nodes.get(index).map(|n| &n.model) {
             Some(Model::Scope(s)) => Some(&s.snapshot),
+            Some(Model::StockScope(s)) => Some(s.scope_snapshot()),
             _ => None,
         }
     }
@@ -1737,6 +1824,7 @@ impl PolyEngine {
                 ..ModuleLightState::default()
             }),
             Some(Model::StockProcess(p)) => Some(p.lights()),
+            Some(Model::StockScope(s)) => Some(s.lights()),
             Some(Model::StockVcaMix(m)) => Some(m.lights()),
             Some(Model::StudioMixer(m)) => Some(m.lights()),
             Some(Model::StockSeq3(seq)) => Some(seq.lights()),
@@ -1965,16 +2053,25 @@ impl PolyEngine {
             noise.initialize_state();
             return true;
         }
-        if let Model::StockProcess(process) = &mut node.model {
-            process.recreate();
-            let count = stock_process::OUTPUTS.len();
+        if matches!(&node.model, Model::StockProcess(_) | Model::StockScope(_)) {
+            let (input_count, count) = match &mut node.model {
+                Model::StockProcess(process) => {
+                    process.recreate();
+                    (stock_process::INPUTS.len(), stock_process::OUTPUTS.len())
+                }
+                Model::StockScope(scope) => {
+                    scope.recreate();
+                    (stock_scope::INPUTS.len(), stock_scope::OUTPUTS.len())
+                }
+                _ => unreachable!(),
+            };
             for (edge, frame) in self.edges.iter().zip(&mut self.edge_frames) {
                 if edge.source_node == index || edge.destination_node == index {
                     *frame = PortFrame::default();
                 }
             }
             if let Some(host) = &mut self.host {
-                for port in 0..stock_process::INPUTS.len() {
+                for port in 0..input_count {
                     host.inputs[index][port] = HostPortSnapshot {
                         channels: u8::from(node.physical_input_mask & (1 << port) != 0),
                         ..HostPortSnapshot::default()
@@ -2142,6 +2239,7 @@ impl PolyEngine {
             Model::ShiftRegister(p) => p.initialize_state(),
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
+            Model::StockScope(s) => s.source_reset(),
             Model::Merge(m) => m.initialize_state(),
             Model::ModalResonator(s) => s.reset_state(),
             Model::MacroVoice(s) => s.reset_state(),
@@ -2328,6 +2426,7 @@ impl PolyEngine {
                     "stock_mix" => stock_mix::OUTPUTS.len(),
                     "stock_octave" => stock_octave::OUTPUTS.len(),
                     "stock_process" => stock_process::OUTPUTS.len(),
+                    "stock_scope" => stock_scope::OUTPUTS.len(),
                     "stock_vca_mix" => stock_vca_mix::OUTPUTS.len(),
                     "multi_vco" => multi_vco::OUTPUTS.len(),
                     "seq3" => sequence::OUTPUTS.len(),
@@ -2633,6 +2732,11 @@ impl PolyEngine {
                             host.contexts[node_index].input_presence,
                             outputs,
                         ),
+                        Model::StockScope(model) => model.process(
+                            &host.inputs[node_index],
+                            host.contexts[node_index].input_presence,
+                            outputs,
+                        ),
                         Model::StockNoise(model) => model.process(outputs),
                         _ => unreachable!("native predicate validated model"),
                     }
@@ -2696,6 +2800,7 @@ impl PolyEngine {
                 | Model::StockMix(_)
                 | Model::StockOctave(_)
                 | Model::StockProcess(_)
+                | Model::StockScope(_)
                 | Model::StockVcaMix(_)
                 | Model::StockNoise(_) => {
                     unreachable!("native model processed above")
@@ -3540,6 +3645,7 @@ impl PolyEngine {
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),
                 (Model::StockOctave(o), Model::StockOctave(old)) => o.adopt(old),
                 (Model::StockProcess(p), Model::StockProcess(old)) => p.adopt(old),
+                (Model::StockScope(scope), Model::StockScope(old)) => scope.adopt(old),
                 (Model::StockVcaMix(m), Model::StockVcaMix(old)) => m.adopt(old),
                 (Model::StockSeq3(seq), Model::StockSeq3(old)) => {
                     seq.adopt(old);

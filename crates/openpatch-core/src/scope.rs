@@ -15,6 +15,26 @@ impl Default for ScopePoint {
         }
     }
 }
+
+/// Fixed-size provenance for the separate pinned Fundamental Scope model.
+/// The ordinary `scope` kind has no stock metadata. This block is copied with
+/// the existing completed-bin snapshot and never allocates on publication.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StockScopeMetadata {
+    /// Raw source Params in X gain/offset, Y gain/offset, TIME, XY, threshold,
+    /// trigger-disabled order. Bits preserve signed zero and diagnostic values.
+    pub parameter_bits: [u32; 8],
+    /// Last source-executed XY and trigger lamp brightnesses. Bypass holds them.
+    pub light_bits: [u32; 2],
+    pub sample_rate: u32,
+    pub sample_time_bits: u32,
+    /// Last processed physical trigger connection, even when it had zero lanes.
+    pub trigger_input_connected: bool,
+    /// Requested duration from the current raw TIME control, for display only.
+    pub nominal_screen_seconds: f32,
+    /// Effective width calculated for the next recording bin at this rate/TIME.
+    pub next_bin_samples: u32,
+}
 #[derive(Clone, Debug)]
 pub struct ScopeSnapshot {
     pub x: [[ScopePoint; SCOPE_BINS]; 16],
@@ -35,6 +55,7 @@ pub struct ScopeSnapshot {
     pub time: f32,
     pub trigger_enabled: bool,
     pub threshold: f32,
+    pub stock: Option<StockScopeMetadata>,
 }
 impl Default for ScopeSnapshot {
     fn default() -> Self {
@@ -56,6 +77,7 @@ impl Default for ScopeSnapshot {
             time: 0.5,
             trigger_enabled: false,
             threshold: 0.0,
+            stock: None,
         }
     }
 }
@@ -136,6 +158,7 @@ impl Scope {
                 time,
                 trigger_enabled: integer("trigger_enabled", 0.0, 0.0, 1.0)? != 0.0,
                 threshold: parameter(node, "threshold", 0.0, -10.0, 10.0)?,
+                stock: None,
             }),
             detector: [0; 16],
             current: [[ScopePoint::default(); 16]; 2],

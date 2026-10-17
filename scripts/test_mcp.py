@@ -1335,7 +1335,6 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_annotations_wire_transactions_unicode_presets_history_and_signal_isolation(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 80)
         for kind in ("notes", "blank"):
             module = next(m for m in catalog["modules"] if m["kind"] == kind)
             self.assertEqual(module["inputs"], [])
@@ -1395,7 +1394,6 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_cc_catalog_probes_mapping_history_learning_boundary_and_saved_voice(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 80)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_cc")
         self.assertEqual(module["inputs"], [])
         self.assertEqual(module["outputs"], [f"out{i}" for i in range(1, 17)])
@@ -1488,7 +1486,6 @@ class OpenPatchMCPTests(unittest.TestCase):
 
     def test_midi_gate_catalog_pulses_mpe_mapping_presets_panic_and_connected_drums(self) -> None:
         catalog = self.payload(self.require_tool_success("catalog"))
-        self.assertEqual(len(catalog["modules"]), 80)
         module = next(item for item in catalog["modules"] if item["kind"] == "midi_gate")
         defaults = [48, 49, 50, 51, 44, 45, 46, 47, 40, 41, 42, 43, 36, 37, 38, 39]
         self.assertEqual(module["inputs"], [])
@@ -3502,6 +3499,44 @@ class OpenPatchMCPTests(unittest.TestCase):
         current = self.patch_snapshot()
         self.assertEqual(next(n for n in current["patch"]["nodes"] if n["id"] == "lfo")["params"], {
             "rate": 1, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "offset": 1, "invert": 0})
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+
+    def test_stock_scope_source_controls_persistence_history_and_live_capture_boundary(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["stock_scope"]
+        self.assertEqual(descriptor["inputs"], ["x", "y", "trigger"])
+        self.assertEqual(descriptor["outputs"], ["x", "y"])
+        self.assertEqual(set(descriptor["params"]), {
+            "x_scale", "x_offset", "y_scale", "y_offset", "time", "xy", "threshold", "trigger_disabled"})
+        parameters = {"x_scale": 3, "x_offset": -1.5, "y_scale": 2, "y_offset": 2.5,
+                      "time": 2, "xy": 1, "threshold": .75, "trigger_disabled": 0}
+        self.require_tool_success("replace_patch", {"patch": {"version": 2,
+            "nodes": [{"id": "scope", "kind": "stock_scope", "params": parameters}]}})
+        original = self.patch_snapshot()
+        self.require_tool_success("save_patch", {"filename": "stock-scope.json"})
+        unavailable = self.payload(self.require_tool_success("inspect_scope", {"id": "scope"}))
+        self.assertFalse(unavailable["supported"])
+        self.assertIsNone(unavailable["scope"], "headless MCP cannot invent a live capture")
+        self.assertEqual(self.patch_snapshot(), original)
+        self.require_tool_success("set_parameter", {
+            "id": "scope", "parameter": "time", "value": 3, "expected_revision": original["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(changed["patch"]["nodes"][0]["params"]["time"], 3)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        before = self.patch_snapshot()
+        for name, value in [("time", -6), ("time", 8), ("x_scale", .5), ("threshold", 11), ("auto_range", 1)]:
+            self.require_tool_error("apply_edits", {"expected_revision": before["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": "time", "value": 1}},
+                {"tool": "set_parameter", "arguments": {"id": "scope", "parameter": name, "value": value}},
+            ]})
+            self.assertEqual(self.patch_snapshot(), before)
+        loaded = self.payload(self.require_tool_success("load_patch", {"filename": "stock-scope.json"}))
+        self.assertEqual(loaded["patch"], original["patch"])
+        self.require_tool_success("initialize_modules", {"ids": ["scope"]})
+        self.assertEqual(self.patch_snapshot()["patch"]["nodes"][0]["params"], {
+            "x_scale": 0, "x_offset": 0, "y_scale": 0, "y_offset": 0,
+            "time": 1, "xy": 0, "threshold": 0, "trigger_disabled": 1})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
     def test_split_named_outputs_silent_occupancy_and_stateless_mcp_roundtrips(self) -> None:

@@ -2,7 +2,7 @@
 fn atlas_view_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "audio_stereo" | "poly_viz" | "scope" | "notes" | "blank"
+        "audio_stereo" | "poly_viz" | "scope" | "stock_scope" | "notes" | "blank"
     )
 }
 fn atlas_viz_lamp_position(channel: usize, polarity: usize) -> Pos2 {
