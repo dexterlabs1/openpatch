@@ -4,7 +4,7 @@ pub(crate) struct HostedSave;
 
 impl OpenPatch {
     fn hosted_save_pending(&self) -> bool {
-        self.hosted_save.is_some()
+        false
     }
 
     fn begin_hosted_save(&mut self, _name: &str, _new_file: bool) -> Result<bool, String> {
