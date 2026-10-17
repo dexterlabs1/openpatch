@@ -72,6 +72,8 @@ impl Rack {
         interactive: bool,
     ) -> Option<RackAction> {
         let z = self.zoom;
+        let surface = ui.id();
+        let scoped = |id: egui::Id| if interactive { id } else { surface.with(id) };
         let p = |x: f32, y: f32| rect.min + vec2(x, y) * z;
         let screen = |r: Rect| Rect::from_min_max(p(r.min.x, r.min.y), p(r.max.x, r.max.y));
         let painter = ui.painter().clone();
@@ -81,7 +83,10 @@ impl Rack {
             .then_some(raw as i32);
         let mut action = None;
         let construction_cue = interactive
-            .then(|| self.construction_animation.parameter(&node.id, &node.kind, "octaves"))
+            .then(|| {
+                self.construction_animation
+                    .parameter(&node.id, &node.kind, "octaves")
+            })
             .flatten()
             .map(|cue| (cue.old, cue.new));
         let keyboard_enabled = interactive
@@ -92,10 +97,54 @@ impl Rack {
             && ui.input(|input| input.focused)
             && !egui::Popup::is_any_open(ui.ctx());
 
-        painter.text(p(90.0, 88.0), Align2::CENTER_CENTER, "SHIFT (OCTAVES)", font(11.0), INK);
+        // The actual integer shift is added to pitch volts, one volt per octave.
+        painter.text(
+            p(90.0, 55.0),
+            Align2::CENTER_CENTER,
+            "ROUNDED SHIFT",
+            font(7.5),
+            INK,
+        );
+        painter.text(
+            p(32.0, 70.0),
+            Align2::CENTER_CENTER,
+            "PITCH",
+            font(8.0),
+            INK,
+        );
+        painter.text(p(147.0, 70.0), Align2::CENTER_CENTER, "OUT", font(8.0), INK);
+        painter.circle_stroke(p(90.0, 70.0), 6.0 * z, Stroke::new(z, INK));
+        painter.text(p(90.0, 70.0), Align2::CENTER_CENTER, "+", font(10.0), INK);
+        for (from, to) in [
+            (p(49.0, 70.0), p(84.0, 70.0)),
+            (p(96.0, 70.0), p(132.0, 70.0)),
+            (p(90.0, 61.0), p(90.0, 64.0)),
+        ] {
+            painter.line_segment([from, to], Stroke::new(z, INK));
+            let d = (to - from).normalized();
+            let side = vec2(-d.y, d.x);
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    to,
+                    to - d * 3.0 * z + side * 1.6 * z,
+                    to - d * 3.0 * z - side * 1.6 * z,
+                ],
+                INK,
+                Stroke::NONE,
+            ));
+        }
+        ui.interact(screen(Rect::from_min_max(pos2(19.0,49.0),pos2(161.0,77.0))),ui.id().with(("stock-octave-routing",&node.id)),Sense::hover())
+            .on_hover_text("Pitch volts plus the effective integer octave shift produces OUT. The engine rounds the saved knob and shift CV in source order; the effective shift display reports actual channel 1 state and holds during bypass. The selector/value controls are authored settings, not measured voltage.");
+        painter.text(
+            p(90.0, 88.0),
+            Align2::CENTER_CENTER,
+            "SHIFT (OCTAVES)",
+            font(11.0),
+            INK,
+        );
         for value in -4..=4 {
             let button_rect = screen(stock_octave_selector_rect(value));
-            let id = egui::Id::new(("stock-octave", &node.id, value));
+            let id = scoped(egui::Id::new(("stock-octave", &node.id, value)));
             let response = ui.interact(button_rect, id, Sense::click());
             response.widget_info(|| {
                 egui::WidgetInfo::selected(
@@ -152,9 +201,9 @@ impl Rack {
             let fill = if is_selected {
                 Color32::from_rgb(40, 82, 63)
             } else if focused_value {
-                Color32::from_rgb(226, 223, 210)
+                Color32::from_rgb(72, 77, 64)
             } else {
-                Color32::from_rgb(202, 199, 188)
+                Color32::from_rgb(44, 48, 41)
             };
             painter.rect_filled(button_rect, 3.0 * z, fill);
             painter.rect_stroke(
@@ -192,7 +241,7 @@ impl Rack {
                 if is_selected {
                     Color32::from_rgb(177, 239, 203)
                 } else {
-                    INK
+                    Color32::from_rgb(229, 225, 204)
                 },
             );
             if let Some(start) = selection_start {
@@ -208,13 +257,16 @@ impl Rack {
                     json!({"id":node.id,"parameter":"octaves","value":value,"expected_revision":revision}),
                 ));
             }
-            response.on_hover_text(format!("Set authored pitch shift to {value:+} octave{}", if value.abs() == 1 { "" } else { "s" }));
+            response.on_hover_text(format!(
+                "Set authored pitch shift to {value:+} octave{}",
+                if value.abs() == 1 { "" } else { "s" }
+            ));
         }
         if let Some((old, new)) = construction_cue {
-            let selector_group = screen(stock_octave_selector_rect(-4))
-                .union(screen(stock_octave_selector_rect(4)));
+            let selector_group =
+                screen(stock_octave_selector_rect(-4)).union(screen(stock_octave_selector_rect(4)));
             let ids = (-4..=4)
-                .map(|value| egui::Id::new(("stock-octave", &node.id, value)))
+                .map(|value| scoped(egui::Id::new(("stock-octave", &node.id, value))))
                 .collect::<Vec<_>>();
             self.register_construction_anchor(
                 ui,
@@ -233,17 +285,34 @@ impl Rack {
         let value_rect = screen(stock_octave_value_rect());
         let value_response = ui.interact(
             value_rect,
-            egui::Id::new(("value", &node.id, "octaves")),
+            scoped(egui::Id::new(("value", &node.id, "octaves"))),
             Sense::click(),
         );
-        painter.text(p(90.0, 263.0), Align2::CENTER_CENTER, "SHIFT VALUE", font(8.5), MUTED);
+        painter.text(
+            p(90.0, 263.0),
+            Align2::CENTER_CENTER,
+            "SHIFT VALUE",
+            font(8.5),
+            MUTED,
+        );
+        painter.rect_filled(value_rect, 2.0 * z, Color32::from_rgb(222, 212, 184));
+        painter.rect_stroke(
+            value_rect,
+            2.0 * z,
+            Stroke::new(0.6 * z, Color32::from_rgb(177, 168, 140)),
+            egui::StrokeKind::Inside,
+        );
         let authored_text = stock_octave_authored_label(raw);
         painter.text(
             value_rect.center(),
             Align2::CENTER_CENTER,
             authored_text,
             font(16.0),
-            if selected.is_some() { INK } else { Color32::from_rgb(164, 72, 46) },
+            if selected.is_some() {
+                INK
+            } else {
+                Color32::from_rgb(164, 72, 46)
+            },
         );
         if selected.is_none() {
             let status = if raw.is_finite() && (-4.0..=4.0).contains(&raw) {
@@ -251,14 +320,28 @@ impl Rack {
             } else {
                 "OUTSIDE ±4 · SELECT A SHIFT"
             };
-            painter.text(p(90.0, 296.0), Align2::CENTER_CENTER, status, font(7.0), Color32::from_rgb(145, 59, 38));
+            painter.text(
+                p(90.0, 296.0),
+                Align2::CENTER_CENTER,
+                status,
+                font(7.0),
+                Color32::from_rgb(145, 59, 38),
+            );
         } else {
-            painter.text(p(90.0, 296.0), Align2::CENTER_CENTER, "CLICK VALUE TO TYPE", font(7.0), MUTED);
+            painter.text(
+                p(90.0, 296.0),
+                Align2::CENTER_CENTER,
+                "CLICK VALUE TO TYPE",
+                font(7.0),
+                MUTED,
+            );
         }
         if self.precision_collects(node) {
             self.register_precision_control(stock_octave_edit(node, revision), value_rect);
         }
-        if interactive && (value_response.clicked() || self.take_precision_request(&node.id, "octaves")) {
+        if interactive
+            && (value_response.clicked() || self.take_precision_request(&node.id, "octaves"))
+        {
             consume_parameter_activation(ui.ctx());
             self.open_precision_editor(stock_octave_edit(node, revision), value_rect);
         }
@@ -267,19 +350,56 @@ impl Rack {
         }
         value_response.on_hover_text(format!("Saved raw octaves parameter: {raw:?}. Selectors edit integer octaves; exact entry accepts finite values from −4 through +4."));
 
-        painter.line_segment([p(17.0, 303.0), p(163.0, 303.0)], Stroke::new(0.8 * z, Color32::from_gray(161)));
-        painter.text(p(90.0, 314.0), Align2::CENTER_CENTER, "EFFECTIVE SHIFT", font(9.0), INK);
-        match self.module_lights.get(&node.id).and_then(|state| state.octave_shift) {
+        painter.line_segment(
+            [p(17.0, 303.0), p(163.0, 303.0)],
+            Stroke::new(0.8 * z, Color32::from_gray(161)),
+        );
+        painter.text(
+            p(90.0, 314.0),
+            Align2::CENTER_CENTER,
+            "EFFECTIVE SHIFT",
+            font(9.0),
+            INK,
+        );
+        match self
+            .module_lights
+            .get(&node.id)
+            .and_then(|state| state.octave_shift)
+        {
             Some(offset) => {
                 let actual_start = crate::lighting::next(&painter);
-                painter.text(p(90.0, 332.0), Align2::CENTER_CENTER, format!("{offset:+} oct"), font(18.0), Color32::from_rgb(71, 136, 97));
+                painter.text(
+                    p(90.0, 332.0),
+                    Align2::CENTER_CENTER,
+                    format!("{offset:+} oct"),
+                    font(18.0),
+                    Color32::from_rgb(71, 136, 97),
+                );
                 // Actual channel telemetry stays legible in the dark room; unavailable state does not glow.
                 self.lighting.preserve(&painter, actual_start);
-                painter.text(p(90.0, 347.0), Align2::CENTER_CENTER, "CH 1 · HOLDS IN BYPASS", font(6.5), MUTED);
+                painter.text(
+                    p(90.0, 347.0),
+                    Align2::CENTER_CENTER,
+                    "CH 1 · HOLDS IN BYPASS",
+                    font(6.5),
+                    MUTED,
+                );
             }
             None => {
-                painter.text(p(90.0, 332.0), Align2::CENTER_CENTER, "—", font(18.0), MUTED);
-                painter.text(p(90.0, 347.0), Align2::CENTER_CENTER, "TELEMETRY UNAVAILABLE", font(6.5), MUTED);
+                painter.text(
+                    p(90.0, 332.0),
+                    Align2::CENTER_CENTER,
+                    "—",
+                    font(18.0),
+                    MUTED,
+                );
+                painter.text(
+                    p(90.0, 347.0),
+                    Align2::CENTER_CENTER,
+                    "TELEMETRY UNAVAILABLE",
+                    font(6.5),
+                    MUTED,
+                );
             }
         }
         action

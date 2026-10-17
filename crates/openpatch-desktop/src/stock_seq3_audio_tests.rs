@@ -526,7 +526,7 @@ fn stock_seq3_fast_click_tickets_wait_for_source_sampling_for_all_eleven_buttons
             + if index < 3 {
                 egui::vec2(47.5 + index as f32 * 60.0, 290.5)
             } else {
-                egui::vec2(238.0 + (index - 3) as f32 * 67.0, 83.0)
+                egui::vec2(238.0 + (index - 3) as f32 * 67.0, 73.0)
             };
         let mut ui_action = None;
         for frame in 0..3 {

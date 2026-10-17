@@ -97,13 +97,13 @@ fn stock_vca_mix_factory_loads_the_reviewed_voice_and_actual_meter_snapshots() {
             "CHANNEL CV  LIN",
             "MIX CV  LIN",
             "VU LIVE",
-            "LEVEL",
+            "CH 1",
             "IN × L² × c",
-            "MIX LEVEL",
+            "MASTER",
             "Σ",
             "× MIX LEVEL",
             "× h",
-            "h = max(V/10, 0) · 1 unpatched",
+            "h=max(V/10,0)",
         ] {
             preset_text(&output, label);
         }

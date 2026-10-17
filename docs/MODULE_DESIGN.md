@@ -5,7 +5,7 @@ module concepts: warm ivory, strong ink typography, large dark rotary knobs,
 large patch sockets and purposeful signal-flow graphics. The concept's fictional
 CONTOUR face is a visual reference, not an implemented module or a DSP contract.
 The reference images and prompts are retained in
-`design/concepts/module-panels-20261016-v1/` in the design worktree.
+[concept folder](../design/concepts/module-panels-20261016-v1/).
 
 ## Every marking needs a meaning
 
@@ -45,6 +45,27 @@ remain part of the control contract.
 
 Dark-room emission follows the existing actual signal and lamp observations.
 It must preserve legibility and avoid implying a new DSP measurement.
+
+## Current development candidate
+
+The 80-kind catalog now has 76 detailed Signal Atlas conversions, the retained
+bespoke Studio Mixer, and three explicitly deferred MIDI panels. The non-MIDI
+inventory/design audit is complete. [Actual panel captures and audit evidence](../design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit)
+show the shared rack/browser renderer, physical controls, source-backed guides,
+readable values and restrained local lighting.
+
+Accepted MCP edits use real control anchors: angular knob cursors, moving fader
+cursors and saved-switch caps. A human press takes over immediately. Hidden or
+context-only controls use named header cues rather than invented visible targets.
+Scope preserves calibrated traces and weak-signal AUTO; configuring a diagram
+never invents measured activity. Notes and narrow Blank panels retain editing,
+resize behavior and physically bounded mounting details.
+
+The installed 0.2.6 build 8 remains the earlier 34-panel checkpoint with stronger
+glow. The newer source is awaiting final Mac workspace/MCP CI and has not been
+installed. This is a macOS/non-MIDI design milestone, not complete Rack parity or
+native audio-device qualification. The sections below retain earlier rollout
+records; their historical platform gates do not add new qualification claims.
 
 ## First implementation
 

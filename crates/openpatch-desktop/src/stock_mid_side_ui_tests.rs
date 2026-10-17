@@ -210,7 +210,8 @@ fn stock_mid_side_shared_renderer_preserves_named_jacks_labels_and_preview_geome
                 "STOCK MID/SIDE",
                 "ENCODER",
                 "DECODER",
-                "L/R  >  M/S  >  L/R",
+                "M = (L + R) / 2",
+                "R = M − S × D",
             ] {
                 assert!(
                     text.iter().any(|(label, _)| label == required),

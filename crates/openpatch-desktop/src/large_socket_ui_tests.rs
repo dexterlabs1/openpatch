@@ -1,9 +1,12 @@
 use super::*;
 
-const KINDS: [&str; 16] = [
+const KINDS: [&str; 37] = [
     "analog_vco", "ladder_vcf", "fade", "compare", "process", "rescale", "gate",
     "attenuverter", "white_noise", "oscillator", "multi_vco", "multi_lfo",
     "wavetable_vco", "wavetable_lfo", "stock_vcf", "stock_vca",
+    "lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter",
+    "stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay",
+    "crossfade", "quantizer", "stock_quantizer", "poly_sum", "mid_side", "stock_mid_side", "mix6", "stock_mix", "modal_resonator",
 ];
 
 #[derive(Clone, Copy)]
@@ -34,19 +37,47 @@ impl SocketSpec {
 }
 
 // Independent saved-panel port contracts. The new presentation may move a
-// caption, but must never move a cable endpoint, rename a port, or widen a face.
+// caption, but must preserve port identity and panel width. The approved ADSR
+// and Ladder review places all three sockets on a common row. Effect outputs move
+// up from y382 to y374 so their larger rims fit inside the bottom rack rail.
 fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
     use SocketSpec as S;
     match kind {
+        "crossfade" => (180.0, vec![S::input("a", "A", 60.0, 332.0), S::input("b", "B", 120.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
+        "quantizer" => (240.0, vec![S::input("pitch", "V/OCT", 80.0, 332.0), S::input("offset_cv", "OFFSET", 160.0, 332.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "stock_quantizer" => (300.0, vec![S::input("pitch", "V/OCT", 85.0, 376.0), S::output("pitch", "V/OCT", 215.0, 376.0)]),
+        "poly_sum" => (150.0, vec![S::input("signal", "IN", 45.0, 367.0), S::output("out", "OUT", 105.0, 367.0)]),
+        "mix6" | "stock_mix" => (240.0, vec![S::input("in1", "IN1", 60.0, 270.0), S::input("in2", "IN2", 120.0, 270.0), S::input("in3", "IN3", 180.0, 270.0), S::input("in4", "IN4", 60.0, 322.0), S::input("in5", "IN5", 120.0, 322.0), S::input("in6", "IN6", 180.0, 322.0), S::output("out", "OUT", 120.0, 374.0)]),
+        "mid_side" | "stock_mid_side" => {
+            let inputs = if kind == "stock_mid_side" {
+                vec![S::input("encode_cv", "WIDTH CV", 75.0, 305.0), S::input("left", "LEFT", 45.0, 245.0), S::input("right", "RIGHT", 105.0, 245.0), S::input("decode_cv", "WIDTH CV", 225.0, 305.0), S::input("mid", "MID", 195.0, 245.0), S::input("side", "SIDE", 255.0, 245.0)]
+            } else {
+                vec![S::input("left", "LEFT", 45.0, 245.0), S::input("right", "RIGHT", 105.0, 245.0), S::input("mid", "MID", 195.0, 245.0), S::input("side", "SIDE", 255.0, 245.0), S::input("encode_cv", "WIDTH CV", 75.0, 305.0), S::input("decode_cv", "WIDTH CV", 225.0, 305.0)]
+            };
+            (300.0, inputs.into_iter().chain([S::output("mid", "MID", 45.0, 374.0), S::output("side", "SIDE", 105.0, 374.0), S::output("left", "LEFT", 195.0, 374.0), S::output("right", "RIGHT", 255.0, 374.0)]).collect())
+        },
+        "modal_resonator" => (480.0, vec![S::input("pitch", "V/OCT", 60.0, 363.0), S::input("strike", "STRIKE", 155.0, 363.0), S::input("excite", "EXCITE", 250.0, 363.0), S::output("out", "OUT", 410.0, 363.0)]),
+        "stock_delay" => (360.0, vec![S::input("time_cv", "TIME CV", 46.0, 344.0), S::input("feedback_cv", "FDBK CV", 132.0, 344.0), S::input("tone_cv", "TONE CV", 218.0, 344.0), S::input("mix_cv", "MIX CV", 304.0, 344.0), S::input("signal", "IN", 46.0, 380.0), S::input("clock", "CLK", 132.0, 380.0), S::output("mix", "MIX", 218.0, 380.0), S::output("wet", "WET", 304.0, 380.0)]),
+        "macro_voice" => (300.0, vec![S::input("pitch", "V/OCT", 37.5, 337.0), S::input("trigger", "TRIG", 75.0, 337.0), S::input("harmonics", "HARM", 112.5, 337.0), S::input("timbre", "TIMBRE", 150.0, 337.0), S::input("morph", "MORPH", 187.5, 337.0), S::input("fm", "FM", 225.0, 337.0), S::input("level", "LEVEL", 262.5, 337.0), S::output("out", "OUT", 100.0, 378.0), S::output("aux", "AUX", 200.0, 378.0)]),
+        "stereo_delay" => (420.0, vec![S::input("left", "LEFT", 140.0, 342.0), S::input("right", "RIGHT", 280.0, 342.0), S::output("left", "LEFT", 140.0, 374.0), S::output("right", "RIGHT", 280.0, 374.0)]),
+        "stereo_reverb" => (360.0, vec![S::input("left", "LEFT", 120.0, 342.0), S::input("right", "RIGHT", 240.0, 342.0), S::output("left", "LEFT", 120.0, 374.0), S::output("right", "RIGHT", 240.0, 374.0)]),
+        "sidechain_compressor" => (420.0, vec![S::input("left", "LEFT", 105.0, 342.0), S::input("right", "RIGHT", 210.0, 342.0), S::input("sidechain", "SIDECHAIN", 315.0, 342.0), S::output("left", "LEFT", 105.0, 374.0), S::output("right", "RIGHT", 210.0, 374.0), S::output("gain", "GAIN", 315.0, 374.0)]),
+        "drum_voice" => (360.0, vec![S::input("trigger", "TRIG", 120.0, 342.0), S::input("accent", "ACCENT", 240.0, 342.0), S::output("out", "OUT", 180.0, 374.0)]),
+        "lfo" => (180.0, vec![S::input("fm", "FM", 45.0, 335.5), S::output("out", "OUT", 135.0, 335.5)]),
+        "lowpass" => (180.0, vec![S::input("signal", "IN", 45.0, 335.5), S::output("out", "OUT", 135.0, 335.5)]),
+        "analog_vca" => (150.0, vec![S::input("signal", "IN", 31.071428, 335.5), S::input("cv", "CV", 75.0, 335.5), S::output("out", "OUT", 118.92857, 335.5)]),
+        "gain" => (150.0, vec![S::input("signal", "IN", 31.071428, 335.5), S::input("cv", "CV", 75.0, 335.5), S::output("out", "OUT", 118.92857, 335.5)]),
+        "adsr" => (240.0, vec![S::input("gate", "GATE", 49.714287, 335.5), S::input("retrigger", "RETRIG", 120.0, 335.5), S::output("out", "ENV", 190.28572, 335.5)]),
+        "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "FREQ CV", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
         "analog_vco" => (210.0, vec![
-            S::input("pitch", "V/OCT", 70.0, 332.0),
-            S::input("fm", "FM", 140.0, 332.0),
-            S::output("out", "OUT", 105.0, 374.0),
+            S::input("pitch", "V/OCT", 43.5, 335.5),
+            S::input("fm", "FM", 105.0, 335.5),
+            S::output("out", "OUT", 166.5, 335.5),
         ]),
         "ladder_vcf" => (210.0, vec![
-            S::input("signal", "IN", 70.0, 332.0),
-            S::input("cutoff_cv", "V/OCT", 140.0, 332.0),
-            S::output("out", "OUT", 105.0, 374.0),
+            S::input("signal", "IN", 43.5, 335.5),
+            S::input("cutoff_cv", "V/OCT", 105.0, 335.5),
+            S::output("out", "OUT", 166.5, 335.5),
         ]),
         "fade" => (240.0, vec![
             S::input("a", "A", 45.0, 330.0),
@@ -163,7 +194,7 @@ fn collect(shape: &egui::Shape, painted: &mut Painted) {
             text.galley.text().into(), text.galley.rect.translate(text.pos.to_vec2()),
         )),
         egui::Shape::Rect(rect) if rect.fill == crate::panel_skin::INK => painted.plates.push(rect.rect),
-        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(47, 55, 48) => painted.wells.push(rect.rect),
+        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(47, 55, 48) || rect.fill == Color32::from_rgb(222, 212, 184) => painted.wells.push(rect.rect),
         _ => {}
     }
 }
@@ -178,7 +209,7 @@ fn rendered(kind: &str, value_case: &str, zoom: f32, browser: bool) -> Painted {
         .find(|module| module["kind"] == kind).unwrap();
     let (width, sockets) = contract(kind);
     assert_eq!(panel_width(kind), width, "{kind}: saved face width");
-    assert_eq!(port_material_scale(kind), 1.30, "{kind}: material scale");
+    assert_eq!(port_material_scale(kind), match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" | "analog_vco" | "analog_vca" | "lfo" | "lowpass" | "gain" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 }, "{kind}: material scale");
     let mut preview = ModulePreview::new(module);
     preview.patch.nodes[0].id = "subject".into();
     preview.renderer.positions.clear();
@@ -269,6 +300,8 @@ fn separated_from_ring(rect: Rect, center: Pos2, radius: f32, margin: f32) -> bo
 
 fn assert_large_socket_kind(kind: &str) {
     let catalog = openpatch_core::catalog();
+    let approved_voice = matches!(kind, "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" | "lfo" | "lowpass" | "gain");
+    let material_scale = match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" | "analog_vco" | "analog_vca" | "lfo" | "lowpass" | "gain" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 };
         let (width, sockets) = contract(kind);
         let module = catalog["modules"].as_array().unwrap().iter()
             .find(|module| module["kind"] == kind).unwrap();
@@ -285,7 +318,7 @@ fn assert_large_socket_kind(kind: &str) {
                 } else {
                     input_names.iter().position(|name| *name == socket.name).unwrap()
                 }, if socket.output { output_names.len() } else { input_names.len() }, width);
-            assert_eq!(actual, pos2(socket.x, socket.y), "{kind}.{} endpoint", socket.name);
+            assert!(actual.distance(pos2(socket.x, socket.y)) < 0.001, "{kind}.{} endpoint {actual:?}", socket.name);
         }
         for zoom in [0.25, 0.35, 0.5, 1.0] {
             let bounds = Rect::from_min_size(pos2(24.0, 12.0), vec2(width, PANEL_HEIGHT) * zoom);
@@ -297,8 +330,8 @@ fn assert_large_socket_kind(kind: &str) {
                 for (socket, target) in &rack.targets {
                     let center = socket_center(bounds, zoom, *socket);
                     assert!(target.contains(center), "{context}.{}: target misses anchor", socket.name);
-                    let expected_width = (29.0 * 1.30 * zoom).max(18.0);
-                    let expected_height = (if kind == "stock_vcf" { 36.0 } else { 29.0 * 1.30 }
+                    let expected_width = (29.0 * material_scale * zoom).max(18.0);
+                    let expected_height = (if kind == "stock_vcf" { 36.0 } else { 29.0 * material_scale }
                         * zoom).max(18.0);
                     assert!((target.width() - expected_width).abs() < 0.01
                         && (target.height() - expected_height).abs() < 0.01,
@@ -308,11 +341,11 @@ fn assert_large_socket_kind(kind: &str) {
                         assert!(!control.contains(center),
                             "{context}.{}: control owns exact jack center", socket.name);
                     }
-                    let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                    let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
-                    let rim_color = if socket.output { crate::panel_skin::INK }
+                    let rim_color = if approved_voice || ((atlas_legacy_utility_kind(kind) || matches!(kind, "fade" | "compare" | "process" | "gate" | "poly_sum" | "mid_side" | "stock_mid_side" | "attenuverter" | "crossfade" | "rescale" | "quantizer" | "stock_quantizer" | "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "macro_voice" | "drum_voice" | "svf_filter" | "modal_resonator" | "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo")) && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
                         else { Color32::from_rgb(190, 191, 182) };
                     assert!(rack.rings.iter().any(|(painted, radius, color)|
                         painted.distance(center) < 0.02
@@ -344,7 +377,7 @@ fn assert_large_socket_kind(kind: &str) {
                             "{context}.{}: output caption plate leaves face", socket.name);
                         for other in &sockets {
                             let other_center = socket_center(bounds, zoom, *other);
-                            let other_rim = if other.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                            let other_rim = if other.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                             assert!(separated_from_ring(*plate, other_center, other_rim, 0.0),
                                 "{context}.{}: plate crosses {} surround", socket.name, other.name);
                         }
@@ -353,7 +386,7 @@ fn assert_large_socket_kind(kind: &str) {
                 for well in &rack.wells {
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                        let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*well, center, rim, 0.0),
                             "{context}: numeric well crosses {} enlarged surround", socket.name);
                     }
@@ -363,7 +396,7 @@ fn assert_large_socket_kind(kind: &str) {
                         "{context}: print {text:?} leaves original face: {rect:?}");
                     for socket in &sockets {
                         let center = socket_center(bounds, zoom, *socket);
-                        let rim = if socket.output { 13.0 } else { 10.3 } * 1.30 * zoom;
+                        let rim = if socket.output && !approved_voice { 13.0 } else { 10.3 } * material_scale * zoom;
                         assert!(separated_from_ring(*rect, center, rim, 0.0),
                             "{context}: print {text:?} crosses {} enlarged surround", socket.name);
                     }
@@ -1044,4 +1077,30 @@ fn narrow_vca_adjacent_target_overlap_preserves_first_input_and_occupied_menu() 
                 "occupied CV primary pick chose neighboring signal input");
         }
     }
+}
+
+#[test]
+fn signal_atlas_voice_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["lfo", "lowpass", "gain", "analog_vca", "adsr", "svf_filter"] {
+        assert_large_socket_kind(kind);
+    }
+}
+
+#[test]
+fn signal_atlas_effect_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["stereo_delay", "stereo_reverb", "sidechain_compressor", "drum_voice", "macro_voice", "stock_delay"] {
+        assert_large_socket_kind(kind);
+    }
+}
+
+#[test]
+fn signal_atlas_utility_socket_captions_and_controls_clear_enlarged_rims() {
+    for kind in ["crossfade", "quantizer", "stock_quantizer", "poly_sum", "mid_side", "stock_mid_side", "mix6", "stock_mix", "modal_resonator"] {
+        assert_large_socket_kind(kind);
+    }
+}
+
+#[test]
+fn signal_atlas_signal_utilities_preserve_enlarged_hardware_and_caption_clearance() {
+    for kind in ["fade","compare","process","gate"] { assert_large_socket_kind(kind); }
 }

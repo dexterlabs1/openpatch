@@ -85,8 +85,8 @@ fn saved_mode_labels_stay_single_line_inside_their_scaled_controls() {
         let _ = paint(0.0);
         let output = paint(0.1);
         for (node_index, x, y, label) in [
-            (0, 20.0, 279.0, "LFM"),
-            (0, 155.0, 279.0, "SOFT"),
+            (0, 20.0, 279.0, "Linear FM"),
+            (0, 155.0, 279.0, "Soft sync"),
             (1, 20.0, 279.0, "±5 V"),
             (1, 155.0, 279.0, "Invert"),
             (2, 20.0, 199.0, "Average"),

@@ -97,7 +97,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "THREE-ROW STOCK SEQUENCE\n\nRow 1: pitch in V/oct\nRow 2: filter cutoff\nRow 3: resonance accent\nTrigger: ADSR gate\n\nClick a voltage to type it.\nGate buttons mute steps.\nClick Clock to advance;\nRun pauses; Reset returns.\n\nTry Gate / Passthrough\nand Rotate left / right.\n\nScope X: filtered audio\nScope Y: sequence pitch"
+        "text": "THREE-ROW STOCK SEQUENCE\nRow 1: pitch in V/oct\nRow 2: filter cutoff\nRow 3: resonance accent\nTrigger: ADSR gate\nClick a voltage to type it.\nGate buttons mute steps.\nClick Clock to advance;\nRun pauses; Reset returns.\nTry Gate/Passthrough; Rotate\nScope X: filtered audio\nScope Y: sequence pitch"
       }
     }
   ],

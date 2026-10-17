@@ -4,9 +4,10 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 
 ## Delivery and focus
 
-- Keep the installed 0.2.5 build 7 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
+- Keep the installed 0.2.6 build 8 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
 - Validate macOS ARM only by default. Linux/Windows and throughput benchmarks are deferred to an explicitly requested full-platform milestone. MIDI and live performance remain last.
-- Work on one product milestone at a time. The user's next priority is extending the approved Signal Atlas module design across the remaining catalog, with matching browser thumbnails. Keep Stock Scope checkpointed; it must not delay this design milestone. Feature implementation remains paused during the current workflow/planning task.
+- Work on one product milestone at a time. Extend the approved ADSR/Ladder Signal Atlas design across the catalog: seventy-six panels now have detailed layouts; [family review notes](design/reviews/signal-atlas-two-modules-v1/README.md) retain the evidence. The non-MIDI rollout now includes visualizer/audio-host and Notes/Blank panels; the inventory/design audit passed; finish one Mac candidate qualification next. Studio Mixer keeps its existing bespoke layout, and the three MIDI panels remain deferred. Preserve real units/routing, editing/MCP behavior and shared rack/browser rendering. Keep Stock Scope checkpointed until this design milestone is delivered; do not install automatically.
+- Lighting should use restrained, local halos. The user rejected broad, bright neon clouds; keep readable lenses, soft falloff and visible signal differences without washing the panel in light.
 - Each work item needs one user-visible outcome and a short done checklist. Avoid expanding acceptance into unrelated cleanup or exhaustive internal equivalence. Preserve existing frozen references and honest fidelity claims.
 - Do not touch user patches/settings or replace a running app. Preserve existing computer-use restrictions; headless validation does not establish a native device test.
 
@@ -21,7 +22,7 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 ## Validation proportional to the change
 
 - Fix compiler/type errors with cargo check or the focused test target before broad suites. A useful test targets a user behavior, state/lifecycle invariant, numerical contract or realtime property; avoid tests that only repeat implementation structure.
-- UI-only changes: focused headless interaction/geometry checks and review affected views. No DSP oracle rerun without relevant production DSP changes. Documentation-only changes: links/diff checks; no app build.
+- UI-only changes: focused headless interaction/geometry checks, the inexpensive shared default rack/browser drawing check, and review affected views. When label/font changes affect app fixtures or factory content, include those workflow checks; rack-only cases do not cover their selector/copy assumptions. No DSP oracle rerun without relevant production DSP changes. Documentation-only changes: links/diff checks; no app build.
 - DSP changes: focused numerical/lifecycle and allocation/deallocation checks, plus the relevant existing frozen reference when its production inputs change. Do not regenerate or weaken an oracle to obtain a pass.
 - Run the complete macOS workspace/MCP regression once at a milestone candidate, after focused fixes settle. Repeat only checks affected by subsequent changes; preserve logs of failures.
 - Reuse an unchanged built binary and its source/toolchain hashes for existing evidence. Test/doc/view changes do not justify repeating unrelated numerical comparisons. If a relevant source/toolchain changes, requalify the affected result explicitly.

@@ -154,7 +154,7 @@ impl Fixture {
     }
 }
 #[test]
-fn stock_seq3_all_twenty_eight_faders_have_real_pointer_edits_and_revision_guards() {
+fn stock_seq3_all_twenty_eight_rotaries_have_real_pointer_edits_and_revision_guards() {
     let first = Fixture::new();
     assert_eq!(first.knobs.len(), 28);
     assert_eq!(first.values.len(), 28);
@@ -171,9 +171,9 @@ fn stock_seq3_all_twenty_eight_faders_have_real_pointer_edits_and_revision_guard
         };
         let action = f
             .draw(vec![egui::Event::PointerMoved(
-                at + vec2(0.0, 9.0 * direction),
+                at + vec2(0.0, 15.0 * direction),
             )])
-            .expect("Real fader drag");
+            .expect("Real rotary drag");
         let RackAction::Command("set_parameter", args) = action else {
             panic!("Expected parameter edit")
         };
@@ -361,7 +361,7 @@ fn stock_seq3_all_twenty_one_named_jacks_are_accessible() {
     }
 }
 #[test]
-fn stock_seq3_shared_preview_and_rack_keep_all_text_faders_lamps_and_sockets_separate() {
+fn stock_seq3_shared_preview_and_rack_keep_all_text_rotaries_lamps_and_sockets_separate() {
     assert_eq!(title("stock_seq3"), "STOCK SEQ3");
     assert_eq!(title("seq3"), "SEQUENCE 3");
     let catalog = openpatch_core::catalog();
@@ -472,10 +472,10 @@ fn stock_seq3_shared_preview_and_rack_keep_all_text_faders_lamps_and_sockets_sep
             }
             for column in 0..8 {
                 for dx in [-8.0, 8.0] {
-                    let center = fitted.min + vec2(238.0 + column as f32 * 67.0 + dx, 306.0) * zoom;
+                    let center = fitted.min + vec2(238.0 + column as f32 * 67.0 + dx, 54.0) * zoom;
                     let lamp = Rect::from_center_size(
                         center,
-                        Vec2::splat(crate::lighting::lamp_radius(2.4 * zoom) * 2.0),
+                        Vec2::splat(crate::lighting::lamp_radius(3.2 * zoom) * 2.0),
                     );
                     for (label, rect) in &text {
                         assert!(
@@ -510,7 +510,10 @@ fn stock_seq3_twenty_seven_actual_lamps_emit_in_darkness_and_unavailable_preview
         let mut lamps = vec![];
         for shape in &f.output.shapes {
             if let egui::Shape::Circle(c) = &shape.shape {
-                if (c.radius - 5.04).abs() < 0.01 && (c.fill.g() > 150 || c.fill.r() > 200) {
+                let measured_lens = [3.0, 3.2].iter().any(|radius| {
+                    (c.radius - crate::lighting::lamp_radius(radius * f.rack.zoom)).abs() < 0.01
+                });
+                if measured_lens && (c.fill.g() > 150 || c.fill.r() > 200) {
                     lamps.push((c.center, c.fill));
                 }
             }
@@ -587,7 +590,7 @@ fn stock_seq3_fast_click_pairs_actions_and_gate_mode_retains_opening_revision() 
     assert_eq!(f.session.snapshot(), before);
 }
 #[test]
-fn stock_seq3_tempo_fader_retains_fine_keyboard_adjustment() {
+fn stock_seq3_tempo_rotary_retains_fine_keyboard_adjustment() {
     let mut coarse = Fixture::new();
     let at = coarse.knobs["tempo"].center();
     coarse.click(at);

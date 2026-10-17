@@ -130,7 +130,7 @@ impl Rack {
         painter.text(
             point(20.0, 83.0),
             Align2::LEFT_CENTER,
-            "SCALE",
+            "ENABLED NOTES",
             crate::panel_skin::print_font(ui.ctx(), 11.0 * zoom),
             INK,
         );
@@ -148,7 +148,13 @@ impl Rack {
         // Keep the printed port row clear of both socket surrounds, including
         // raster-rounded glyph heights in small shared browser previews.
         for (x, output) in [(85.0, false), (215.0, true)] {
-            crate::panel_skin::port_label(&painter, point(x, 352.0), "V/OCT", output, zoom);
+            paint_enlarged_port_label(
+                &painter,
+                point(if output { x + 36.0 } else { x - 34.0 }, 376.0),
+                "V/OCT",
+                output,
+                zoom,
+            );
         }
         let allowed = interactive
             && ui.is_enabled()
@@ -183,9 +189,9 @@ impl Rack {
                 bounds,
                 1.0 * zoom,
                 match (black, enabled) {
-                    (false, true) => Color32::from_rgb(187, 209, 194),
+                    (false, true) => Color32::from_rgb(225, 203, 152),
                     (false, false) => Color32::from_rgb(237, 233, 220),
-                    (true, true) => Color32::from_rgb(49, 106, 112),
+                    (true, true) => Color32::from_rgb(137, 103, 54),
                     (true, false) => Color32::from_rgb(37, 43, 43),
                 },
             );
@@ -307,7 +313,7 @@ impl Rack {
         painter.text(
             point(150.0, 212.0),
             Align2::CENTER_CENTER,
-            "COLORED: ENABLED  ·  CYAN: PLAYED",
+            "AMBER: ENABLED  ·  CYAN: PLAYED",
             crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
             MUTED,
         );

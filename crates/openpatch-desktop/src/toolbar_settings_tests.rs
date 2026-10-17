@@ -172,6 +172,7 @@ fn toolbar_reserves_essential_controls_and_settings_scrolls_in_small_viewports()
         let size = egui::vec2(width, 320.0);
         settle(&ctx, &mut app, size, 0.0);
         let controls = [
+            rect(&ctx, "toolbar-project-rect"),
             rect(&ctx, "toolbar-save-rect"),
             rect(&ctx, "toolbar-play-rect"),
             rect(&ctx, "toolbar-mcp-rect"),
@@ -269,14 +270,20 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
             .map(|name| rect(ctx, &format!("toolbar-{name}-rect")))
             .collect();
         for control in &controls {
-            assert!(control.left() >= 0.0 && control.right() <= width,
-                "{width}: {names:?} clipped: {controls:?}");
+            assert!(
+                control.left() >= 0.0 && control.right() <= width,
+                "{width}: {names:?} clipped: {controls:?}"
+            );
         }
         for pair in controls.windows(2) {
-            assert!(pair[0].right() <= pair[1].left(),
-                "{width}: {names:?} must read left to right: {controls:?}");
-            assert!((pair[0].center().y - pair[1].center().y).abs() < 1.0,
-                "{width}: {names:?} must stay in one row: {controls:?}");
+            assert!(
+                pair[0].right() <= pair[1].left(),
+                "{width}: {names:?} must read left to right: {controls:?}"
+            );
+            assert!(
+                (pair[0].center().y - pair[1].center().y).abs() < 1.0,
+                "{width}: {names:?} must stay in one row: {controls:?}"
+            );
         }
     }
 
@@ -295,22 +302,29 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
         }
         if width >= 1140.0 {
             ordered(&ctx, width, &["play", "volume"]);
-            assert!((rect(&ctx, "toolbar-library-rect").center().y
-                - gear(&ctx).center().y).abs() < 1.0);
+            assert!(
+                (rect(&ctx, "toolbar-library-rect").center().y - gear(&ctx).center().y).abs() < 1.0
+            );
         } else {
-            assert!(rect(&ctx, "toolbar-library-rect").top() > gear(&ctx).bottom(),
-                "{width}: compact view controls must remain on the second band");
+            assert!(
+                rect(&ctx, "toolbar-library-rect").top() > gear(&ctx).bottom(),
+                "{width}: compact view controls must remain on the second band"
+            );
         }
         // Bounded child allocations must also preserve separation of groups.
-        let mut visible = vec!["save", "play", "library", "scope", "visuals", "minus", "zoom", "plus"];
+        let mut visible = vec![
+            "save", "play", "library", "scope", "visuals", "minus", "zoom", "plus",
+        ];
         if width >= 850.0 {
             visible.extend(["undo", "redo", "volume"]);
         }
         for (index, name) in visible.iter().enumerate() {
             let target = rect(&ctx, &format!("toolbar-{name}-rect"));
             for other in &visible[index + 1..] {
-                assert!(!target.intersects(rect(&ctx, &format!("toolbar-{other}-rect"))),
-                    "{width}: {name} overlaps {other}");
+                assert!(
+                    !target.intersects(rect(&ctx, &format!("toolbar-{other}-rect"))),
+                    "{width}: {name} overlaps {other}"
+                );
             }
         }
         if width < 850.0 {
@@ -319,6 +333,61 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
             click(&ctx, &mut app, size, more, 1.1);
             settle(&ctx, &mut app, size, 1.3);
             ordered(&ctx, width, &["undo", "redo"]);
+        }
+    }
+}
+
+#[test]
+#[ignore = "writes CPU toolbar review PNGs to OPENPATCH_UX_PREVIEW_DIR"]
+fn export_toolbar_ux_review() {
+    let destination = std::path::PathBuf::from(std::env::var("OPENPATCH_UX_PREVIEW_DIR").unwrap());
+    for width in [700.0, 850.0, 1100.0, 1140.0, 1440.0] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        let size = egui::vec2(width, 240.0);
+        let mut capture = crate::headless_review::CpuCapture::default();
+        let mut last = None;
+        for time in [0.0, 0.1, 0.2] {
+            let output = frame(&ctx, &mut app, size, time, vec![]);
+            capture.observe(&output);
+            last = Some(output);
+        }
+        eprintln!(
+            "width {width}: canvas {:?}, library {:?}, settings {:?}",
+            rect(&ctx, "toolbar-test-canvas"),
+            rect(&ctx, "toolbar-library-rect"),
+            gear(&ctx)
+        );
+        capture.save(
+            &ctx,
+            last.take().unwrap(),
+            size,
+            destination.join(format!("toolbar-{width:.0}.png")),
+        );
+        if width == 1440.0 {
+            let size = egui::vec2(width, 700.0);
+            let at = gear(&ctx).center();
+            for (time, events) in [
+                (
+                    1.0,
+                    vec![egui::Event::PointerMoved(at), pointer_event(at, true)],
+                ),
+                (1.1, vec![pointer_event(at, false)]),
+                (1.3, vec![]),
+            ] {
+                let output = frame(&ctx, &mut app, size, time, events);
+                capture.observe(&output);
+                last = Some(output);
+            }
+            assert!(app.settings_open);
+            capture.save(
+                &ctx,
+                last.take().unwrap(),
+                size,
+                destination.join("toolbar-settings-dropdown.png"),
+            );
         }
     }
 }

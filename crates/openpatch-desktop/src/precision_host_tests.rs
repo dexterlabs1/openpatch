@@ -267,3 +267,129 @@ fn precision_navigation_uses_session_accepted_revision_when_gui_lags_and_continu
     assert!(!visible.contains("Waiting for"));
     assert!(!visible.contains("Patch changed"));
 }
+
+#[test]
+fn focused_knob_history_shortcuts_undo_release_and_keyboard_edits_and_redo() {
+    for control in [false, true] {
+        for same_frame_release in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut app = host(dir.path());
+            assert!(app.command(
+                "replace_patch",
+                json!({"patch":{"version":2,"nodes":[
+                    {"id":"tone","kind":"stock_vca","params":{"level":0.5}}
+                ]}})
+            ));
+            let mut layout = app.rack.layout();
+            layout["zoom"] = json!(1.0);
+            layout["pan"] = json!([24.0, 12.0]);
+            layout["positions"] = json!({"tone":[0.0,0.0]});
+            app.rack.restore_layout(&layout).unwrap();
+            app.rack.select_only("tone".into());
+            app.observe_document();
+            let ctx = egui::Context::default();
+            frame(&ctx, &mut app, 0.0, vec![]);
+            let at = egui::pos2(114.0, 118.0);
+            let end = at - egui::vec2(0.0, 30.0);
+            let value = |app: &OpenPatch| app.patch.nodes[0].params["level"];
+            let pointer = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            frame(
+                &ctx,
+                &mut app,
+                1.0,
+                vec![egui::Event::PointerMoved(at), pointer(at, true)],
+            );
+            frame(&ctx, &mut app, 1.1, vec![egui::Event::PointerMoved(end)]);
+            let edited = value(&app);
+            assert!(edited > 0.5, "real knob drag must edit");
+            assert!(app.rack.parameter_keyboard_active(&ctx));
+            let modifier = egui::Modifiers {
+                command: !control,
+                ctrl: control,
+                ..Default::default()
+            };
+            let key = |key, modifiers| egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            };
+            let mut undo = vec![key(egui::Key::Z, modifier)];
+            if same_frame_release {
+                undo.insert(0, pointer(end, false));
+            } else {
+                frame(&ctx, &mut app, 1.2, vec![pointer(end, false)]);
+            }
+            frame(&ctx, &mut app, 1.3, undo);
+            assert!(
+                (value(&app) - 0.5).abs() < 1e-6,
+                "release must not replay the old cached value"
+            );
+            let redo = egui::Modifiers {
+                shift: true,
+                ..modifier
+            };
+            frame(&ctx, &mut app, 1.4, vec![key(egui::Key::Z, redo)]);
+            assert!((value(&app) - edited).abs() < 1e-6);
+            assert!(app.rack.parameter_keyboard_active(&ctx));
+            frame(
+                &ctx,
+                &mut app,
+                1.5,
+                vec![key(egui::Key::ArrowUp, egui::Modifiers::NONE)],
+            );
+            assert!(
+                value(&app) > edited,
+                "arrow editing stays available after redo"
+            );
+            frame(&ctx, &mut app, 1.6, vec![key(egui::Key::Z, modifier)]);
+            assert!(
+                (value(&app) - edited).abs() < 1e-6,
+                "immediate undo of arrow edit"
+            );
+        }
+    }
+}
+
+#[test]
+fn real_text_editor_retains_patch_history_when_handling_undo() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = host(dir.path());
+    assert!(app.command(
+        "set_parameter",
+        json!({"id":"tone","parameter":"frequency","value":330.0})
+    ));
+    let before = app.shared.lock().unwrap().snapshot();
+    let ctx = egui::Context::default();
+    let mut text = String::from("Patch name");
+    for time in [0.0, 0.1] {
+        let _ = ctx.run(
+            egui::RawInput {
+                time: Some(time),
+                focused: true,
+                modifiers: egui::Modifiers::COMMAND,
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Z,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                }],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.text_edit_singleline(&mut text).request_focus();
+                });
+                app.global_shortcuts(ctx);
+            },
+        );
+    }
+    assert_eq!(app.shared.lock().unwrap().snapshot(), before);
+}

@@ -136,6 +136,7 @@ fn panels(output: &egui::FullOutput) -> Vec<(Rect, Rect)> {
                 if [
                     Color32::from_rgb(139, 140, 133),
                     Color32::from_rgb(66, 67, 64),
+                    Color32::from_rgb(108, 108, 92),
                 ]
                 .contains(&rect.fill) =>
             {

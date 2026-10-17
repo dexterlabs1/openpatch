@@ -43,7 +43,7 @@ pub(crate) fn port_lamp_radius(zoom: f32) -> f32 {
 /// One bounded additive mesh, with a continuous falloff to transparent black.
 /// Rounded rectangles use the same profile as circular LEDs, so meters and
 /// plugs belong to one lighting system. No blur render target or DSP work.
-fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32) {
+fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32, diffusion: f32) {
     if intensity <= 0.001 {
         return;
     }
@@ -68,7 +68,7 @@ fn bloom(painter: &egui::Painter, rect: Rect, color: Color32, intensity: f32) {
     let half = rect.size() * 0.5;
     let corner = half.x.min(half.y);
     let straight = half - vec2(corner, corner);
-    let spread = corner.max(1.0);
+    let spread = corner.max(1.0) * diffusion;
     let mut mesh = egui::Mesh::default();
     mesh.vertices.reserve(SEGMENTS * PROFILE.len());
     mesh.indices.reserve(SEGMENTS * (PROFILE.len() - 1) * 6);
@@ -119,7 +119,32 @@ impl Default for RoomLighting {
 
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
-        0.38 + 0.62 * (1.0 - self.amount).powf(1.5)
+        // Darkness reveals a little spill; the lens remains the brightest part.
+        0.20 + 0.45 * (1.0 - self.amount).powf(1.5)
+    }
+
+    fn bloom_diffusion(&self) -> f32 {
+        0.24 + 0.12 * (1.0 - self.amount).powf(1.5)
+    }
+
+    /// Static display illumination, distinct from signal-driven lamps. The
+    /// halo is bounded in screen points, so wide displays do not wash out a rack.
+    pub(crate) fn screen_glow(&self, painter: &egui::Painter, rect: Rect, zoom: f32) {
+        let start = next(painter);
+        let corner = (rect.width().min(rect.height()) * 0.5).max(1.0);
+        let dark = (1.0 - self.amount).powf(1.5);
+        bloom(
+            painter,
+            rect,
+            Color32::from_rgb(104, 155, 119),
+            0.012 + 0.048 * dark,
+            (0.8 + 0.8 * dark) * zoom / corner,
+        );
+        self.preserve(painter, start);
+    }
+
+    pub(crate) fn setting_glow(&self, color: Color32, strength: f32) -> Color32 {
+        additive(color, strength * self.bloom_amount())
     }
 
     pub(crate) fn amount(&self) -> f32 {
@@ -220,10 +245,11 @@ impl RoomLighting {
             Rect::from_center_size(center, vec2(radius, radius) * 2.0),
             emitter,
             glow,
+            self.bloom_diffusion(),
         );
         painter.circle_filled(center, radius, self.lens_color(original, strength, floor));
         if strength > 0.001 {
-            painter.circle_filled(center, radius * 0.58, additive(emitter, glow * 0.5));
+            painter.circle_filled(center, radius * 0.58, additive(emitter, glow * 0.25));
         }
         self.preserve(painter, start);
     }
@@ -240,12 +266,13 @@ impl RoomLighting {
             Rect::from_center_size(center, vec2(radius, radius) * 2.0),
             color,
             self.bloom_amount(),
+            self.bloom_diffusion(),
         );
         painter.circle_filled(center, radius, color);
         painter.circle_filled(
             center,
             radius * 0.58,
-            additive(color, self.bloom_amount() * 0.5),
+            additive(color, self.bloom_amount() * 0.25),
         );
         self.preserve(painter, start);
     }
@@ -280,6 +307,7 @@ impl RoomLighting {
                 )
             },
             strength.sqrt() * self.bloom_amount(),
+            self.bloom_diffusion(),
         );
         // A zero-floor meter already encodes its measured value in its filled
         // geometry and supplies an unscaled accent, rather than a dimmed lens.
@@ -315,6 +343,7 @@ mod tests {
                 Rect::from_center_size(Pos2::ZERO, vec2(2.2, 2.2)),
                 Color32::GREEN,
                 1.0,
+                1.0,
             );
         });
         let mesh = output
@@ -339,6 +368,144 @@ mod tests {
     }
 
     #[test]
+    fn dark_room_reveals_wider_brighter_spill_for_leds_ports_and_meters() {
+        let mut room_energy = Vec::new();
+        let mut room_extent = Vec::new();
+        for amount in [1.0, 0.5, 0.0] {
+            let ctx = egui::Context::default();
+            let mut lighting = RoomLighting::default();
+            lighting.set(amount);
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                let painter = ctx.layer_painter(egui::LayerId::background());
+                lighting.circle(
+                    &painter,
+                    Pos2::ZERO,
+                    2.0,
+                    Color32::GREEN.gamma_multiply(0.12 + 0.88 * 0.01),
+                    0.01,
+                    0.12,
+                );
+                lighting.port(
+                    &painter,
+                    Pos2::new(100.0, 0.0),
+                    1.0,
+                    Color32::from_rgb_additive(0, 90, 0),
+                );
+                lighting.rect(
+                    &painter,
+                    Rect::from_center_size(Pos2::new(200.0, 0.0), vec2(3.0, 12.0)),
+                    1.0,
+                    Color32::GREEN,
+                    0.4,
+                    0.0,
+                );
+            });
+            let meshes: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Mesh(mesh) => Some(mesh),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(meshes.len(), 3);
+            room_energy.push(
+                meshes
+                    .iter()
+                    .map(|mesh| {
+                        mesh.vertices
+                            .iter()
+                            .map(|v| u32::from(v.color.g()))
+                            .sum::<u32>()
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            room_extent.push(
+                meshes
+                    .iter()
+                    .map(|mesh| mesh.calc_bounds().width())
+                    .collect::<Vec<_>>(),
+            );
+            assert!(meshes.iter().all(|mesh| mesh.vertices.len() == 120));
+        }
+        for light in 0..3 {
+            assert!(room_energy[2][light] > room_energy[1][light]);
+            assert!(room_energy[1][light] > room_energy[0][light]);
+            assert!(room_extent[2][light] > room_extent[1][light]);
+            assert!(room_extent[1][light] > room_extent[0][light]);
+        }
+    }
+
+    #[test]
+    fn screen_spill_is_bounded_preserved_and_stronger_in_a_dark_room() {
+        for size in [vec2(290.0, 49.0), vec2(100.0, 240.0), vec2(250.0, 25.0)] {
+            let mut energy = Vec::new();
+            for room in [1.0, 0.0] {
+                let ctx = egui::Context::default();
+                let mut lighting = RoomLighting::default();
+                lighting.set(room);
+                let rect = Rect::from_min_size(Pos2::ZERO, size);
+                let output = ctx.run(egui::RawInput::default(), |ctx| {
+                    let painter = ctx.layer_painter(egui::LayerId::background());
+                    let start = lighting.begin(&painter);
+                    lighting.screen_glow(&painter, rect, 1.0);
+                    lighting.finish(&painter, start);
+                });
+                let egui::Shape::Mesh(mesh) = &output.shapes[0].shape else {
+                    panic!("display halo must be one bounded mesh")
+                };
+                assert_eq!(mesh.vertices.len(), 120);
+                assert!(mesh.vertices.iter().all(|v| v.color.a() == 0));
+                let bounds = mesh.calc_bounds();
+                assert!(bounds.width() <= size.x + 16.7);
+                assert!(bounds.height() <= size.y + 16.7);
+                energy.push(
+                    mesh.vertices
+                        .iter()
+                        .map(|v| u32::from(v.color.g()))
+                        .sum::<u32>(),
+                );
+            }
+            assert!(
+                energy[1] > energy[0] * 4,
+                "room-off screen spill must stay visible"
+            );
+        }
+    }
+
+    #[test]
+    fn dark_room_led_spill_stays_local_and_keeps_additive_headroom() {
+        let ctx = egui::Context::default();
+        let mut lighting = RoomLighting::default();
+        lighting.set(0.0);
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            lighting.circle(&painter, Pos2::ZERO, 3.2, Color32::GREEN, 1.0, 0.12);
+        });
+        let mesh = output
+            .shapes
+            .iter()
+            .find_map(|s| {
+                if let egui::Shape::Mesh(m) = &s.shape {
+                    Some(m)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert!(
+            mesh.calc_bounds().width() <= 40.0,
+            "spill must stay local on a dense 40-point lamp grid"
+        );
+        assert!(
+            mesh.vertices
+                .iter()
+                .all(|v| v.color.r().max(v.color.g()).max(v.color.b()) <= 85),
+            "halo must leave headroom instead of clipping into a neon cloud"
+        );
+    }
+
+    #[test]
     fn missing_or_zero_signal_never_creates_bloom() {
         for strength in [0.0, -1.0, f32::NAN, f32::NEG_INFINITY, f32::INFINITY] {
             let ctx = egui::Context::default();
@@ -347,6 +514,7 @@ mod tests {
             let output = ctx.run(egui::RawInput::default(), |ctx| {
                 let painter = ctx.layer_painter(egui::LayerId::background());
                 lighting.circle(&painter, Pos2::ZERO, 2.0, Color32::GREEN, strength, 0.12);
+                lighting.port(&painter, Pos2::ZERO, 1.0, Color32::TRANSPARENT);
                 lighting.rect(
                     &painter,
                     Rect::from_center_size(Pos2::ZERO, vec2(3.0, 20.0)),

@@ -424,3 +424,100 @@ fn shift_register_seed_rejects_invalid_or_stale_edits_and_preserves_actual_reado
         assert_eq!(rack.shift_register_states["shift"], state);
     }
 }
+
+#[test]
+fn shift_register_committed_controls_anchor_without_synthesizing_register_values() {
+    use crate::construction_motion::MotionMode;
+    use std::time::{Duration, Instant};
+
+    for zoom in [0.42, 0.85, 1.0] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack {
+            zoom,
+            ..Rack::default()
+        };
+        let before = patch();
+        let mut after = before.clone();
+        after.nodes[0].params.extend([
+            ("random".into(), 1.0),
+            ("range".into(), 5.0),
+            ("seed".into(), 16_777_215.0),
+        ]);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let receipt = json!({"plan_id":13,"completed_steps":1,"last_revision":10,"current_revision":10,
+        "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":13,"step_index":0,
+        "before_revision":9,"revision":10,"label":"Set shift controls","new_modules":[],"new_cables":[],
+        "parameter_changes":[
+            {"id":"shift","kind":"sh_asr","parameter":"random","old_effective":0.0,"new_effective":1.0},
+            {"id":"shift","kind":"sh_asr","parameter":"range","old_effective":0.0,"new_effective":5.0},
+            {"id":"shift","kind":"sh_asr","parameter":"seed","old_effective":1.0,"new_effective":16777215.0}
+        ]}});
+        let now = Instant::now();
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
+        let (action, output) =
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+        assert!(action.is_none());
+        assert!(rack.shift_register_states.is_empty());
+        assert_eq!(rack.construction_anchors.len(), 3);
+        for (parameter, local, old, new) in [
+            ("random", shift_register_random_rect(), "RND OFF", "RND ON"),
+            ("range", shift_register_range_rect(), "0..10 V", "−1..1 V"),
+            ("seed", shift_register_seed_rect(), "1", "16777215"),
+        ] {
+            let anchor = &rack.construction_anchors[&("shift".into(), parameter.into())];
+            let expected = (local * zoom).translate(vec2(24.0, 12.0));
+            assert!(
+                anchor.rect.min.distance(expected.min) < 0.001
+                    && anchor.rect.max.distance(expected.max) < 0.001
+            );
+            assert!(anchor.marker.is_none());
+            assert_eq!(
+                (anchor.old_text.as_str(), anchor.new_text.as_str()),
+                (old, new)
+            );
+        }
+        assert_eq!(
+            texts(&output)
+                .iter()
+                .filter(|(text, _)| text == "UNAVAILABLE")
+                .count(),
+            8
+        );
+    }
+}
+
+#[test]
+fn shift_register_saved_voltage_screens_fit_the_actual_limits_at_thumbnail_scales() {
+    for zoom in [0.42, 0.85, 1.0] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack {
+            zoom,
+            ..Rack::default()
+        };
+        let snapshot =
+            json!({"values":[-1000000.0,1000000.0,-0.001,0.001,-10.0,10.0,-0.0,0.0],"rng_state":1});
+        rack.set_shift_register_states(BTreeMap::from([("shift".into(), snapshot.clone())]));
+        let output = texts(&frame_output(&ctx, &mut rack, &patch(), 0.0, vec![]).1);
+        for index in 0..8 {
+            let expected = format!("{:+.3} V", snapshot["values"][index].as_f64().unwrap());
+            let display = (shift_register_readout_rect(index) * zoom).translate(vec2(24.0, 12.0));
+            assert!(
+                output.iter().any(|(text, bounds)| text == &expected
+                    && display.expand(0.5).contains_rect(*bounds)),
+                "{expected} at {zoom}"
+            );
+        }
+        for legend in ["CLOCK", "OLD → NEXT"] {
+            assert!(output.iter().any(|(text, _)| text == legend));
+        }
+    }
+}

@@ -28,8 +28,7 @@ fn open_value(index: usize) -> (egui::Context, Rack, Patch) {
     let mut rack = Rack::default();
     let patch = patch();
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-    let radius = if index == 8 { 10.0 } else { 14.0 };
-    let position = random_parameter_position(index) + vec2(24.0, 12.0 + radius + 9.0);
+    let position = random_value_center(index) + vec2(24.0, 12.0);
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -185,7 +184,7 @@ fn random_numeric_rate_bounds_notes_and_percent_limits_reject_invalid_or_stale_e
 }
 
 #[test]
-fn random_faders_and_polarity_accept_keyboard_edits_through_the_live_controls() {
+fn random_rotaries_and_polarity_accept_keyboard_edits_through_the_live_controls() {
     for (index, &name) in PARAMS.iter().enumerate() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();

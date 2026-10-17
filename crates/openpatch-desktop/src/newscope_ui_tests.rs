@@ -310,7 +310,7 @@ fn scope_text_bounds(shape: &egui::Shape, texts: &mut Vec<(String, Rect)>) {
 #[test]
 fn scope_range_choices_show_exact_volts_and_emit_native_selection() {
     for axis in ["x_scale", "y_scale"] {
-        for (index, choice) in SCOPE_SCALE_CHOICES.iter().enumerate() {
+        for (index, choice) in (if axis=="x_scale" {&ATLAS_SCOPE_X_RANGE_CHOICES} else {&ATLAS_SCOPE_Y_RANGE_CHOICES}).iter().enumerate() {
             let ctx = egui::Context::default();
             let mut rack = Rack::default();
             let old = if index == 0 { 8 } else { 0 };

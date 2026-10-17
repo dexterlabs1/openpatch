@@ -78,12 +78,12 @@ fn retired_viz_voice_keeps_its_release_tail_but_dims_number() {
             _ => None,
         }).expect("voice lens")
     };
-    let tail = lens(&painted, pos2(159.0,300.0));
+    let tail = lens(&painted, pos2(157.0,300.0));
     assert!(tail.g() > tail.r() && tail.g() > tail.b(), "positive release tail stays green");
     assert_eq!(texts.iter().find(|(label,_,_)|label=="16").unwrap().2,Color32::from_gray(155));
     state.brightness[15] = [0.0; 2];
     rack.module_lights.insert("viz".into(),state);
     let zero = frame_revision_state(&ctx,&mut rack,&patch,1.1,vec![],true,true,7).1;
-    assert!(tail.g() > lens(&zero, pos2(159.0,300.0)).g(), "the tail requires measured voltage");
-    assert_eq!(lens(&painted, pos2(169.0,300.0)), lens(&zero, pos2(169.0,300.0)), "negative brightness must not invent a red tail");
+    assert!(tail.g() > lens(&zero, pos2(157.0,300.0)).g(), "the tail requires measured voltage");
+    assert_eq!(lens(&painted, pos2(171.0,300.0)), lens(&zero, pos2(171.0,300.0)), "negative brightness must not invent a red tail");
 }

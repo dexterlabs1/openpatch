@@ -475,3 +475,68 @@ fn random_values_readouts_use_only_complete_actual_engine_snapshots() {
         assert!(rack.random_values_states.is_empty());
     }
 }
+
+#[test]
+fn random_values_committed_edits_anchor_the_actual_controls_without_drawing_values() {
+    use crate::construction_motion::MotionMode;
+    use std::time::{Duration, Instant};
+
+    for zoom in [0.42, 0.85, 1.0] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack {
+            zoom,
+            ..Rack::default()
+        };
+        let before = random_patch();
+        let mut after = before.clone();
+        after.nodes[0].params.insert("range".into(), 5.0);
+        after.nodes[0].params.insert("seed".into(), 16_777_215.0);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let receipt = json!({"plan_id":13,"completed_steps":1,"last_revision":10,"current_revision":10,
+        "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":13,"step_index":0,
+        "before_revision":9,"revision":10,"label":"Set random draw controls","new_modules":[],"new_cables":[],
+        "parameter_changes":[
+            {"id":"random","kind":"random_values","parameter":"range","old_effective":0.0,"new_effective":5.0},
+            {"id":"random","kind":"random_values","parameter":"seed","old_effective":1.0,"new_effective":16777215.0}
+        ]}});
+        let now = Instant::now();
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
+        let (action, output) =
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+        assert!(action.is_none());
+        assert!(
+            rack.random_values_states.is_empty(),
+            "an edit cue cannot synthesize a held draw"
+        );
+        assert_eq!(rack.construction_anchors.len(), 2);
+        for (parameter, local) in [
+            ("range", random_values_range_rect()),
+            ("seed", random_values_seed_rect()),
+        ] {
+            let anchor = &rack.construction_anchors[&("random".into(), parameter.into())];
+            assert_eq!(anchor.rect, (local * zoom).translate(vec2(24.0, 12.0)));
+            assert!(anchor.marker.is_none());
+        }
+        let seed = &rack.construction_anchors[&("random".into(), "seed".into())];
+        assert_eq!(
+            (seed.old_text.as_str(), seed.new_text.as_str()),
+            ("1", "16777215")
+        );
+        assert_eq!(
+            texts(&output)
+                .iter()
+                .filter(|(text, _)| text == "UNAVAILABLE")
+                .count(),
+            7
+        );
+    }
+}

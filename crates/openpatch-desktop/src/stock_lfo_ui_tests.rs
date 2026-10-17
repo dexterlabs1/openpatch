@@ -586,7 +586,7 @@ fn primitive(shape: &egui::Shape, out: &mut Vec<String>) {
 #[test]
 fn stock_lfo_shared_rack_browser_geometry_keeps_controls_labels_and_jacks_separate() {
     assert_eq!(title("stock_lfo"), "STOCK LFO");
-    assert_eq!(title("multi_lfo"), "LFO");
+    assert_eq!(title("multi_lfo"), "MULTI LFO");
     let catalog = openpatch_core::catalog();
     let module = catalog["modules"]
         .as_array()
@@ -708,7 +708,8 @@ fn stock_lfo_shared_rack_browser_geometry_keeps_controls_labels_and_jacks_separa
 #[test]
 fn stock_lfo_runtime_phase_and_mode_lamps_emit_in_darkness_without_invented_preview_values() {
     let mut f = Fixture::new(Some(4.0));
-    let lamp_centers = [180.0, 38.0, 322.0].map(|x| f.rack.pan.to_pos2() + vec2(x, 279.0));
+    let lamp_centers = [pos2(180.0, 285.0), pos2(132.0, 216.0), pos2(132.0, 244.0)]
+        .map(|p| f.rack.pan.to_pos2() + p.to_vec2());
     let state = f.rack.module_lights.get_mut("lfo").unwrap();
     state.brightness[2][0] = 1.0;
     state.brightness[3][0] = 1.0;
@@ -732,14 +733,18 @@ fn stock_lfo_runtime_phase_and_mode_lamps_emit_in_darkness_without_invented_prev
         let mut emitting = vec![];
         for shape in &f.output.shapes {
             if let egui::Shape::Circle(circle) = &shape.shape {
-                if circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200 {
+                // Compare measured lens faces, not the additive hot core whose
+                // brightness intentionally increases as the room darkens.
+                if circle.fill.a() > 0
+                    && (circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200)
+                {
                     emitting.push((circle.center, circle.radius, circle.fill));
                 }
             }
         }
         // Only compare known measured lamp centers, excluding reflective sockets.
         emitting.retain(|(center, _, _)| lamp_centers.iter().any(|p| center.distance(*p) < 0.1));
-        assert!(!emitting.is_empty());
+        assert_eq!(emitting.len(), 3, "phase and both measured mode lenses");
         signatures.push(emitting);
         assert!(drawn(&f.output)
             .iter()
@@ -755,35 +760,144 @@ fn stock_lfo_runtime_phase_and_mode_lamps_emit_in_darkness_without_invented_prev
 }
 
 #[test]
-fn stock_lfo_rotaries_preserve_four_column_geometry_and_show_the_actual_rate_law() {
+fn stock_lfo_rotaries_match_the_stock_oscillator_layout_and_modulation_law() {
     let f = Fixture::new(None);
-    for (index, parameter) in ["rate", "pulse_width", "fm_amount", "pwm_amount"]
-        .iter()
-        .enumerate()
-    {
-        let target = f.knobs[*parameter];
-        assert_eq!(target.size(), vec2(68.0, 68.0));
-        assert_eq!(
-            target.center(),
-            f.rack.pan.to_pos2() + vec2(45.0 + index as f32 * 90.0, 196.0)
-        );
-        assert!(!target.intersects(f.values[*parameter]));
+    for (parameter, center, half) in [
+        ("rate", pos2(72.0, 120.0), 38.0),
+        ("pulse_width", pos2(288.0, 120.0), 38.0),
+        ("fm_amount", pos2(66.0, 239.0), 30.0),
+        ("pwm_amount", pos2(294.0, 239.0), 30.0),
+    ] {
+        let target = f.knobs[parameter];
+        assert_eq!(target.size(), Vec2::splat(half * 2.0));
+        assert_eq!(target.center(), f.rack.pan.to_pos2() + center.to_vec2());
+        assert!(!target.intersects(f.values[parameter]));
     }
     let labels = drawn(&f.output);
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "fCLK (Hz)/2 × 2^(RATE + FM×DEPTH) → RATE"));
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "fCLK = measured Hz · starts at 2 Hz until clocked"));
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "PWM/10×DEPTH→SQUARE WIDTH · RESET→PHASE · OFFSET→RANGE"));
-    for port in ["fm", "pwm", "reset", "clock"] {
-        assert!((f.jacks[&format!("in:{port}")].width() - 37.7).abs() < 0.01);
+    for label in [
+        "CONFIGURED 0–10 V",
+        "FM × A → OCT",
+        "PWM/10 × A → PW",
+        "1/256 Hz",
+        "1024 Hz",
+    ] {
+        assert!(
+            labels.iter().any(|(text, _, _)| text == label),
+            "missing {label}"
+        );
     }
-    for port in ["sine", "triangle", "saw", "square"] {
-        assert!((f.jacks[&format!("out:{port}")].width() - 37.7).abs() < 0.01);
+    for (direction, ports) in [
+        ("in", ["fm", "pwm", "reset", "clock"]),
+        ("out", ["sine", "triangle", "saw", "square"]),
+    ] {
+        for port in ports {
+            assert!((f.jacks[&format!("{direction}:{port}")].width() - 37.7).abs() < 0.01);
+        }
     }
     assert_stock_lfo_port_clearance(&f);
+}
+
+#[test]
+fn stock_lfo_configured_shapes_match_real_engine_modes_and_widths() {
+    for offset in [0.0, 1.0] {
+        for invert in [0.0, 1.0] {
+            for width in [0.01, 0.37, 0.99] {
+                let mut node = patch().nodes.remove(0);
+                node.params.extend([
+                    ("rate".into(), 10.0),
+                    ("offset".into(), offset),
+                    ("invert".into(), invert),
+                    ("pulse_width".into(), width),
+                ]);
+                let mut probe = openpatch_core::StockLfoProbe::new(&node, 48000).unwrap();
+                for _ in 0..256 {
+                    let out = probe.step(&[openpatch_core::PortFrame::default(); 4], 15);
+                    let phase = probe.snapshot().phases[0];
+                    for (wave, output) in out.iter().enumerate() {
+                        assert!(
+                            (output.values[0] - stock_lfo_guide_sample(&node, wave, phase)).abs()
+                                < 1e-6,
+                            "wave{wave} phase{phase}, offset{offset} invert{invert} width{width}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn stock_lfo_mcp_motion_follows_repositioned_controls_and_clock_units() {
+    use crate::construction_motion::{Marker, MotionMode};
+    for (parameter, old, new) in [
+        ("rate", 1.0, 2.0),
+        ("pulse_width", 0.5, 0.75),
+        ("fm_amount", 0.0, 0.5),
+        ("pwm_amount", 0.0, 0.5),
+        ("offset", 1.0, 0.0),
+        ("invert", 0.0, 1.0),
+    ] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch();
+        let mut after = before.clone();
+        after.nodes[0].params.insert(parameter.into(), new);
+        let mut lights = ModuleLightState {
+            count: 5,
+            ..Default::default()
+        };
+        lights.clock_frequency = Some(4.0);
+        rack.set_module_states(BTreeMap::from([("lfo".into(), lights)]), BTreeMap::new());
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let now = std::time::Instant::now();
+        let receipt = json!({"plan_id":19,"completed_steps":1,"last_revision":10,"current_revision":10,
+            "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":19,"step_index":0,"before_revision":9,"revision":10,
+            "label":"Shape modulation","new_modules":[],"new_cables":[],"parameter_changes":[{"id":"lfo","kind":"stock_lfo","parameter":parameter,"old_effective":old,"new_effective":new}]}});
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+        assert!(
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10)
+                .0
+                .is_none()
+        );
+        let anchor = &rack.construction_anchors[&("lfo".into(), parameter.into())];
+        let origin = rack.viewport.unwrap().min + rack.pan + rack.positions["lfo"].to_vec2();
+        if matches!(parameter, "offset" | "invert") {
+            assert_eq!(
+                anchor.rect,
+                stock_vco_mode_rect(parameter).translate(origin.to_vec2())
+            );
+            assert!(anchor.marker.is_none());
+        } else {
+            let Some(Marker::Rotary {
+                center,
+                radius,
+                old: from,
+                new: to,
+            }) = anchor.marker.as_ref()
+            else {
+                panic!("{parameter}: missing angular cue")
+            };
+            let (local, body) = stock_vco_control(parameter);
+            assert!(center.distance(origin + local.to_vec2()) < 0.001);
+            assert!((*radius - (body + 3.0)).abs() < 0.001);
+            assert!(from < to);
+            assert_eq!(
+                anchor.old_text,
+                stock_lfo_parameter_value(parameter, old, Some(4.0))
+            );
+            assert_eq!(
+                anchor.new_text,
+                stock_lfo_parameter_value(parameter, new, Some(4.0))
+            );
+        }
+    }
 }

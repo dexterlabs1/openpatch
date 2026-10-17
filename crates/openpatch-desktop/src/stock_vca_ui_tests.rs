@@ -167,8 +167,12 @@ fn stock_vca_actual_pointer_drag_and_mode_click_use_observed_revision() {
         true,
         true,
         29,
-    ).0;
-    assert!(pressed.is_none(), "pressing a saved level knob must not jump");
+    )
+    .0;
+    assert!(
+        pressed.is_none(),
+        "pressing a saved level knob must not jump"
+    );
     let end = start - vec2(0.0, 30.0);
     let action = frame_revision_state(
         &ctx,
@@ -240,38 +244,108 @@ fn stock_vca_rotary_fine_drag_returns_to_normal_speed_without_a_jump() {
     patch.nodes[0].params.insert("level".into(), 0.5);
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
     let center = at(stock_vca_knob_rect().center());
-    let fine = egui::Modifiers { ctrl: true, ..Default::default() };
-    let pressed = frame_revision_state(&ctx, &mut rack, &patch, 1.0,
-        vec![egui::Event::PointerMoved(center), egui::Event::PointerButton {
-            pos:center, button:PointerButton::Primary, pressed:true, modifiers:fine,
-        }], true, true, 29).0;
+    let fine = egui::Modifiers {
+        ctrl: true,
+        ..Default::default()
+    };
+    let pressed = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![
+            egui::Event::PointerMoved(center),
+            egui::Event::PointerButton {
+                pos: center,
+                button: PointerButton::Primary,
+                pressed: true,
+                modifiers: fine,
+            },
+        ],
+        true,
+        true,
+        29,
+    )
+    .0;
     assert!(pressed.is_none());
-    let carrier = |modifiers| egui::Event::Key { key:egui::Key::F12,
-        physical_key:None, pressed:false, repeat:false, modifiers };
+    let carrier = |modifiers| egui::Event::Key {
+        key: egui::Key::F12,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers,
+    };
     let fine_end = center - vec2(0.0, 15.0);
-    let fine_edit = frame_revision_state(&ctx, &mut rack, &patch, 1.1,
-        vec![egui::Event::PointerMoved(fine_end), carrier(fine)], true, true, 29).0;
+    let fine_edit = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![egui::Event::PointerMoved(fine_end), carrier(fine)],
+        true,
+        true,
+        29,
+    )
+    .0;
     let Some(RackAction::Command("set_parameter", args)) = fine_edit else {
         panic!("fine rotary drag must edit level")
     };
     assert!((args["value"].as_f64().unwrap() - 0.51).abs() < 1e-6);
     let group = args["history_group"].clone();
     assert!(group.is_string());
-    patch.nodes[0].params.insert("level".into(), args["value"].as_f64().unwrap() as f32);
-    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.2,
-        vec![egui::Event::PointerMoved(fine_end), carrier(egui::Modifiers::NONE)],
-        true, true, 29).0.is_none(), "stationary modifier release cannot jump");
+    patch.nodes[0]
+        .params
+        .insert("level".into(), args["value"].as_f64().unwrap() as f32);
+    assert!(
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![
+                egui::Event::PointerMoved(fine_end),
+                carrier(egui::Modifiers::NONE)
+            ],
+            true,
+            true,
+            29
+        )
+        .0
+        .is_none(),
+        "stationary modifier release cannot jump"
+    );
     let normal_end = fine_end - vec2(0.0, 15.0);
-    let resumed = frame_revision_state(&ctx, &mut rack, &patch, 1.3,
-        vec![egui::Event::PointerMoved(normal_end)], true, true, 29).0;
+    let resumed = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.3,
+        vec![egui::Event::PointerMoved(normal_end)],
+        true,
+        true,
+        29,
+    )
+    .0;
     let Some(RackAction::Command("set_parameter", args)) = resumed else {
         panic!("normal motion must continue the same gesture")
     };
     assert!((args["value"].as_f64().unwrap() - 0.61).abs() < 1e-6);
     assert_eq!(args["history_group"], group);
-    patch.nodes[0].params.insert("level".into(), args["value"].as_f64().unwrap() as f32);
-    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.4,
-        vec![button(normal_end, false)], true, true, 29).0.is_none());
+    patch.nodes[0]
+        .params
+        .insert("level".into(), args["value"].as_f64().unwrap() as f32);
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.4,
+        vec![button(normal_end, false)],
+        true,
+        true,
+        29
+    )
+    .0
+    .is_none());
 }
 
 #[test]
@@ -284,9 +358,19 @@ fn stock_vca_rotary_double_click_restores_full_saved_level() {
     let center = at(stock_vca_knob_rect().center());
     let mut actions = vec![];
     for (time, pressed) in [(1.0, true), (1.1, false), (1.2, true), (1.3, false)] {
-        actions.push(frame_revision_state(&ctx, &mut rack, &patch, time,
-            vec![egui::Event::PointerMoved(center), button(center, pressed)],
-            true, true, 29).0);
+        actions.push(
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &patch,
+                time,
+                vec![egui::Event::PointerMoved(center), button(center, pressed)],
+                true,
+                true,
+                29,
+            )
+            .0,
+        );
     }
     assert!(actions[..3].iter().all(Option::is_none));
     let Some(RackAction::Command("set_parameter", args)) = actions.pop().unwrap() else {
@@ -304,19 +388,47 @@ fn stock_vca_rotary_drag_is_one_real_session_undo_and_redo() {
     let mut initial = patch();
     initial.nodes[0].params.insert("level".into(), 0.5);
     session.replace_patch(initial, Some(0)).unwrap();
-    let baseline = session.snapshot()["history"]["undo_steps"].as_u64().unwrap();
+    let baseline = session.snapshot()["history"]["undo_steps"]
+        .as_u64()
+        .unwrap();
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
-    frame_revision_state(&ctx, &mut rack, session.patch(), 0.0, vec![], true, true, session.revision());
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        0.0,
+        vec![],
+        true,
+        true,
+        session.revision(),
+    );
     let center = at(stock_vca_knob_rect().center());
-    assert!(frame_revision_state(&ctx, &mut rack, session.patch(), 1.0,
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.0,
         vec![egui::Event::PointerMoved(center), button(center, true)],
-        true, true, session.revision()).0.is_none());
+        true,
+        true,
+        session.revision()
+    )
+    .0
+    .is_none());
     let mut group = None;
     for (time, pixels) in [(1.1, 15.0), (1.2, 30.0)] {
-        let action = frame_revision_state(&ctx, &mut rack, session.patch(), time,
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            session.patch(),
+            time,
             vec![egui::Event::PointerMoved(center - vec2(0.0, pixels))],
-            true, true, session.revision()).0;
+            true,
+            true,
+            session.revision(),
+        )
+        .0;
         let Some(RackAction::Command("set_parameter", args)) = action else {
             panic!("each rotary movement must emit an edit")
         };
@@ -329,10 +441,21 @@ fn stock_vca_rotary_drag_is_one_real_session_undo_and_redo() {
         }
         session.execute("set_parameter", args).unwrap();
     }
-    frame_revision_state(&ctx, &mut rack, session.patch(), 1.3,
-        vec![button(center - vec2(0.0, 30.0), false)], true, true, session.revision());
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.3,
+        vec![button(center - vec2(0.0, 30.0), false)],
+        true,
+        true,
+        session.revision(),
+    );
     assert!((session.patch().nodes[0].params["level"] - 0.7).abs() < 1e-6);
-    assert_eq!(session.snapshot()["history"]["undo_steps"].as_u64(), Some(baseline + 1));
+    assert_eq!(
+        session.snapshot()["history"]["undo_steps"].as_u64(),
+        Some(baseline + 1)
+    );
     session.execute("undo", json!({})).unwrap();
     assert_eq!(session.patch().nodes[0].params["level"], 0.5);
     session.execute("redo", json!({})).unwrap();
@@ -355,23 +478,45 @@ fn stock_vca_accepted_level_edit_animates_angular_setting_beside_real_meter() {
         "step_index":0,"before_revision":9,"revision":10,"label":"Set level",
         "new_modules":[],"new_cables":[],"parameter_changes":[{"id":"amplifier",
         "kind":"stock_vca","parameter":"level","old_effective":0.25,"new_effective":0.75}]}});
-    rack.observe_construction_transition_at(&before, &after, 9, 10, &receipt, MotionMode::Full, now);
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
     rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
-    let (action, output) = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
     assert!(action.is_none());
     let anchor = &rack.construction_anchors[&("amplifier".into(), "level".into())];
     assert_eq!((&*anchor.old_text, &*anchor.new_text), ("25%", "75%"));
-    let Some(Marker::Rotary { center, radius, old, new }) = anchor.marker.as_ref() else {
+    let Some(Marker::Rotary {
+        center,
+        radius,
+        old,
+        new,
+    }) = anchor.marker.as_ref()
+    else {
         panic!("accepted level edit needs angular cue")
     };
     assert!(center.distance(at(stock_vca_knob_rect().center())) < 0.001);
-    assert!((*radius - 30.0 * rack.zoom).abs() < 0.001);
+    assert!((*radius - 38.0 * rack.zoom).abs() < 0.001);
     assert_eq!((*old, *new), (0.25, 0.75));
     let mut labels = vec![];
-    for shape in &output.shapes { texts(&shape.shape, &mut labels); }
+    for shape in &output.shapes {
+        texts(&shape.shape, &mut labels);
+    }
     assert!(labels.iter().any(|(label, _)| label == "75%"));
-    assert!(labels.iter().any(|(label, _)| label == "— TELEMETRY OFFLINE"));
-    assert!(!rack.module_lights.contains_key("amplifier"), "cue cannot fabricate gain telemetry");
+    assert!(labels
+        .iter()
+        .any(|(label, _)| label == "— TELEMETRY OFFLINE"));
+    assert!(
+        !rack.module_lights.contains_key("amplifier"),
+        "cue cannot fabricate gain telemetry"
+    );
 }
 #[test]
 fn stock_vca_controls_lanes_and_ports_fit_without_overlap() {
@@ -526,12 +671,23 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
                 fn count_faces(shape: &egui::Shape) -> usize {
                     match shape {
                         egui::Shape::Vec(shapes) => shapes.iter().map(count_faces).sum(),
-                        egui::Shape::Circle(circle) if circle.fill == Color32::from_rgb(56, 59, 57) => 1,
+                        egui::Shape::Circle(circle)
+                            if circle.fill == Color32::from_rgb(56, 59, 57) =>
+                        {
+                            1
+                        }
                         _ => 0,
                     }
                 }
-                let rotary_faces: usize = output.shapes.iter().map(|shape| count_faces(&shape.shape)).sum();
-                assert_eq!(rotary_faces, 1, "{scale} browser={browser}: actual level rotary face");
+                let rotary_faces: usize = output
+                    .shapes
+                    .iter()
+                    .map(|shape| count_faces(&shape.shape))
+                    .sum();
+                assert_eq!(
+                    rotary_faces, 1,
+                    "{scale} browser={browser}: actual level rotary face"
+                );
                 for s in output.shapes {
                     texts(&s.shape, &mut drawn);
                     primitives_in(&s.shape, &mut primitives);
@@ -541,8 +697,7 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
                 "VCA",
                 "LEVEL",
                 "0–100%",
-                "GAIN / VOICE",
-                "0 — 100%",
+                "GAIN / VOICE · 0–100%",
                 "100%",
                 "EXP",
                 "LIN",
@@ -562,8 +717,10 @@ fn stock_vca_rack_browser_fit_and_shared_primitive_parity_at_all_scales() {
                 fitted.min + local.max.to_vec2() * fitted_scale,
             );
             for (label, text_rect) in &drawn {
-                assert!(!hit.intersects(*text_rect),
-                    "{scale} browser={browser}: {label:?} overlaps saved level rotary target");
+                assert!(
+                    !hit.intersects(*text_rect),
+                    "{scale} browser={browser}: {label:?} overlaps saved level rotary target"
+                );
             }
             for (i, (text, a)) in drawn.iter().enumerate() {
                 assert!(
@@ -928,7 +1085,10 @@ fn stock_vca_rotary_keeps_focus_for_repeated_arrow_edits() {
         29,
     )
     .0;
-    assert!(action.is_none(), "center click cannot jump the level rotary");
+    assert!(
+        action.is_none(),
+        "center click cannot jump the level rotary"
+    );
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -1075,7 +1235,10 @@ fn stock_vca_focused_arrow_edits_do_not_pan_and_idle_arrows_still_pan() {
             true,
             31 + index as u64,
         );
-        assert_eq!(rack.pan, held_pan, "releasing the arrow moved the rack camera");
+        assert_eq!(
+            rack.pan, held_pan,
+            "releasing the arrow moved the rack camera"
+        );
     }
     ctx.memory_mut(|memory| memory.surrender_focus(knob_id));
     frame_revision_state(&ctx, &mut rack, &patch, 4.0, vec![], true, true, 32);
@@ -1091,5 +1254,93 @@ fn stock_vca_focused_arrow_edits_do_not_pan_and_idle_arrows_still_pan() {
         true,
         32,
     );
-    assert!(rack.pan.x < idle_pan.x, "idle right arrow must still pan the rack");
+    assert!(
+        rack.pan.x < idle_pan.x,
+        "idle right arrow must still pan the rack"
+    );
+}
+
+#[test]
+fn stock_vca_response_mode_has_its_own_visible_mcp_anchor() {
+    use crate::construction_motion::MotionMode;
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let before = patch();
+    let mut after = before.clone();
+    after.nodes[0].params.insert("response".into(), 0.0);
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+    let now = std::time::Instant::now();
+    let receipt = json!({"plan_id":19,"completed_steps":1,"last_revision":10,"current_revision":10,"last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":19,"step_index":0,"before_revision":9,"revision":10,"label":"Shape VCA response","new_modules":[],"new_cables":[],"parameter_changes":[{"id":"amplifier","kind":"stock_vca","parameter":"response","old_effective":1.0,"new_effective":0.0}]}});
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
+    rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+    assert!(
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10)
+            .0
+            .is_none()
+    );
+    let anchor = &rack.construction_anchors[&("amplifier".into(), "response".into())];
+    assert_eq!((&*anchor.old_text, &*anchor.new_text), ("LIN", "EXP"));
+    assert!(anchor.marker.is_none());
+    assert_eq!(
+        anchor.rect,
+        stock_vca_mode_rect().translate(vec2(24.0, 12.0))
+    );
+}
+
+#[test]
+fn stock_utility_preview_instances_keep_widget_identity_separate() {
+    let catalog = openpatch_core::catalog();
+    for kind in ["stock_vca", "stock_process", "stock_octave"] {
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == kind)
+            .unwrap();
+        let ctx = egui::Context::default();
+        crate::panel_skin::install_fonts(&ctx);
+        let mut preview = ModulePreview::new(module);
+        for _ in 0..2 {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1000.0, 600.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        for (salt, scale, x) in [("detail", 1.0, 24.0), ("thumbnail", 0.42, 400.0)]
+                        {
+                            ui.push_id(salt, |ui| {
+                                preview.show(
+                                    ui,
+                                    Rect::from_min_size(pos2(x, 12.0), preview.size() * scale),
+                                    &catalog,
+                                )
+                            });
+                        }
+                    });
+                },
+            );
+            let mut labels = vec![];
+            for shape in output.shapes {
+                texts(&shape.shape, &mut labels);
+            }
+            assert!(
+                labels
+                    .iter()
+                    .all(|(text, _)| !text.contains("use of widget ID")),
+                "{kind}: preview IDs must be isolated"
+            );
+            assert!(preview.renderer.editing.is_none());
+            assert!(preview.renderer.held_manual.is_none());
+        }
+    }
 }

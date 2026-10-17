@@ -66,7 +66,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "FILTER VOICE\n\nSaw → VCF LP → VCA → out\nClock → ADSR → cutoff\nEnvelope opens the VCA.\n\nScope X: low-pass\nScope Y: high-pass\n\nCutoff: Hz or note entry\nDrive 100% = nominal\nCV depths are bipolar\n\nVCF has no lamps.\nScope shows real audio."
+        "text": "FILTER VOICE\n\nSaw → VCF LP → VCA → out\nClock → ADSR → cutoff\nEnvelope opens the VCA.\nScope X: low-pass\nScope Y: high-pass\nCutoff: Hz or note entry\nDrive 100% = nominal\nCV depths are bipolar\nVCF has no lamps.\nScope shows real audio."
       }
     }
   ],

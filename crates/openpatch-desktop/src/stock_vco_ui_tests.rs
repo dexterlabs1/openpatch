@@ -630,7 +630,8 @@ fn stock_vco_shared_rack_browser_geometry_keeps_controls_labels_and_jacks_separa
 #[test]
 fn stock_vco_actual_rgb_and_mode_lamps_emit_in_darkness_without_preview_invention() {
     let mut f = Fixture::new();
-    let lamp_centers = [180.0, 38.0, 322.0].map(|x| f.rack.pan.to_pos2() + vec2(x, 279.0));
+    let lamp_centers = [pos2(180.0, 285.0), pos2(132.0, 216.0), pos2(132.0, 244.0)]
+        .map(|p| f.rack.pan.to_pos2() + p.to_vec2());
     let mut lights = ModuleLightState {
         count: 5,
         ..Default::default()
@@ -660,13 +661,17 @@ fn stock_vco_actual_rgb_and_mode_lamps_emit_in_darkness_without_preview_inventio
         let mut emitting = vec![];
         for shape in &f.output.shapes {
             if let egui::Shape::Circle(circle) = &shape.shape {
-                if circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200 {
+                // Compare measured lens faces, not the additive hot core whose
+                // brightness intentionally increases as the room darkens.
+                if circle.fill.a() > 0
+                    && (circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200)
+                {
                     emitting.push((circle.center, circle.radius, circle.fill));
                 }
             }
         }
         emitting.retain(|(center, _, _)| lamp_centers.iter().any(|p| center.distance(*p) < 0.1));
-        assert!(!emitting.is_empty());
+        assert_eq!(emitting.len(), 3, "phase and both measured mode lenses");
         signatures.push(emitting);
         assert!(drawn(&f.output)
             .iter()
@@ -684,35 +689,146 @@ fn stock_vco_actual_rgb_and_mode_lamps_emit_in_darkness_without_preview_inventio
 }
 
 #[test]
-fn stock_vco_rotaries_are_large_separate_targets_and_both_fm_laws_are_printed() {
+fn stock_vco_rotaries_are_large_separate_targets_with_source_routing() {
     let f = Fixture::new();
-    for (index, parameter) in ["frequency", "pulse_width", "fm_amount", "pwm_amount"]
-        .iter()
-        .enumerate()
-    {
-        let target = f.knobs[*parameter];
-        assert_eq!(target.size(), vec2(68.0, 68.0));
-        assert_eq!(
-            target.center(),
-            f.rack.pan.to_pos2() + vec2(45.0 + index as f32 * 90.0, 196.0)
-        );
-        assert!(!target.intersects(f.values[*parameter]));
+    for (parameter, center, half) in [
+        ("frequency", pos2(72.0, 120.0), 38.0),
+        ("pulse_width", pos2(288.0, 120.0), 38.0),
+        ("fm_amount", pos2(66.0, 239.0), 30.0),
+        ("pwm_amount", pos2(294.0, 239.0), 30.0),
+    ] {
+        let target = f.knobs[parameter];
+        assert_eq!(target.size(), Vec2::splat(2.0 * half));
+        assert_eq!(target.center(), f.rack.pan.to_pos2() + center.to_vec2());
+        assert!(!target.intersects(f.values[parameter]));
     }
     let labels = drawn(&f.output);
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "EXP target: C4·2^(T/12+V+F·A)"));
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "LIN target: C4·2^(T/12+V)+C4·F·A"));
-    assert!(labels
-        .iter()
-        .any(|(text, _, _)| text == "PWM/10×DEPTH→SQUARE WIDTH · SYNC→PHASE"));
-    for port in ["pitch", "fm", "sync", "pwm"] {
-        assert!((f.jacks[&format!("in:{port}")].width() - 37.7).abs() < 0.01);
+    for label in [
+        "NOMINAL ±5 V",
+        "FM × A → f",
+        "PWM/10 × A → PW",
+        "C4",
+        "−76 st",
+        "+76 st",
+    ] {
+        assert!(
+            labels.iter().any(|(text, _, _)| text == label),
+            "Missing {label}"
+        );
     }
-    for port in ["sine", "triangle", "saw", "square"] {
-        assert!((f.jacks[&format!("out:{port}")].width() - 37.7).abs() < 0.01);
+    for direction in ["in", "out"] {
+        let ports = if direction == "in" {
+            ["pitch", "fm", "sync", "pwm"]
+        } else {
+            ["sine", "triangle", "saw", "square"]
+        };
+        for port in ports {
+            assert!((f.jacks[&format!("{direction}:{port}")].width() - 37.7).abs() < 0.01);
+        }
     }
     assert_stock_vco_port_clearance(&f);
+}
+
+#[test]
+fn stock_vco_width_changes_configured_square_without_inventing_runtime_lights() {
+    let mut f = Fixture::new();
+    let before = f.output.shapes.clone();
+    f.session
+        .execute(
+            "set_parameter",
+            json!({"id":"vco","parameter":"pulse_width","value":0.1}),
+        )
+        .unwrap();
+    f.draw(vec![]);
+    let after = &f.output.shapes;
+    let guide = Rect::from_min_max(
+        f.rack.pan.to_pos2() + vec2(156.0, 166.0),
+        f.rack.pan.to_pos2() + vec2(221.0, 184.0),
+    );
+    let trace = |shapes: &[egui::epaint::ClippedShape]| {
+        shapes
+            .iter()
+            .filter_map(|s| {
+                if let egui::Shape::Path(p) = &s.shape {
+                    (p.points.len() > 64 && p.points.iter().all(|p| guide.contains(*p)))
+                        .then(|| p.points.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let a = trace(&before);
+    let b = trace(after);
+    assert_eq!(a.len(), 1);
+    assert_eq!(b.len(), 1);
+    assert_ne!(a, b);
+    assert!(f.rack.module_lights.is_empty());
+    assert!(drawn(&f.output)
+        .iter()
+        .any(|(text, _, _)| text == "TELEMETRY —"));
+}
+
+#[test]
+fn stock_vco_mcp_motion_tracks_repositioned_knobs_and_mode_buttons() {
+    use crate::construction_motion::{Marker, MotionMode};
+    for (parameter, old, new) in [
+        ("frequency", 0.0, 12.0),
+        ("pulse_width", 0.5, 0.75),
+        ("fm_amount", 0.0, 0.5),
+        ("pwm_amount", 0.0, 0.5),
+        ("linear_fm", 0.0, 1.0),
+        ("soft_sync", 0.0, 1.0),
+    ] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch();
+        let mut after = before.clone();
+        after.nodes[0].params.insert(parameter.into(), new);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let now = std::time::Instant::now();
+        let receipt = json!({"plan_id":19,"completed_steps":1,"last_revision":10,"current_revision":10,
+            "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":19,
+            "step_index":0,"before_revision":9,"revision":10,"label":"Shape oscillator",
+            "new_modules":[],"new_cables":[],"parameter_changes":[{"id":"vco","kind":"stock_vco","parameter":parameter,"old_effective":old,"new_effective":new}]}});
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+        assert!(
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10)
+                .0
+                .is_none()
+        );
+        let anchor = &rack.construction_anchors[&("vco".into(), parameter.into())];
+        let origin = rack.viewport.unwrap().min + rack.pan + rack.positions["vco"].to_vec2();
+        if matches!(parameter, "linear_fm" | "soft_sync") {
+            let expected = stock_vco_mode_rect(parameter).translate(origin.to_vec2());
+            assert_eq!(anchor.rect, expected);
+            assert!(anchor.marker.is_none());
+        } else {
+            let Some(Marker::Rotary {
+                center,
+                radius,
+                old: from,
+                new: to,
+            }) = anchor.marker.as_ref()
+            else {
+                panic!("{parameter}: missing angular cue")
+            };
+            let (local, body) = stock_vco_control(parameter);
+            assert!(center.distance(origin + local.to_vec2()) < 0.001);
+            // Construction halo follows the outside of the enlarged knob target.
+            assert!((*radius - (body + 3.0)).abs() < 0.001);
+            assert!(from < to);
+            assert_eq!(anchor.old_text, stock_vco_parameter_value(parameter, old));
+            assert_eq!(anchor.new_text, stock_vco_parameter_value(parameter, new));
+        }
+    }
 }

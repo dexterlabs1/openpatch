@@ -1,10 +1,10 @@
 # Current work plan
 
-Updated 2026-10-16. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
 ## Stable release
 
-**OpenPatch 0.2.5 build 7 stays installed.** It includes the Signal Atlas knob/socket rollout, Ferrofluid and the Studio Mixer with FX sends. PR25 merged at `ab3b2a280e9affdd55015ba5fd0a4664a32df6aa`. Do not create another release for routine development changes. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last.
+**OpenPatch 0.2.6 build 8 is installed at `~/Applications/OpenPatch.app`.** The user explicitly requested this upgrade. It includes the 34-panel detailed Signal Atlas pass, stronger lights-off glow, value bubbles, undo/toolbar fixes, Ferrofluid and Studio Mixer. The optimized ARM64 desktop/CLI bundle is locally ad-hoc signed, with installed hashes/signature verified; 0.2.5 build 7 was removed. Keep this build stable during continued development. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last. No native-window/audio-device qualification is claimed.
 
 ## Execution changes
 
@@ -12,20 +12,21 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## Next product milestone: finish the approved module design
+## Active milestone: complete the approved module design
 
-The user wants the new module design soon. Extend the approved **01 Signal Atlas** direction across the remaining catalog before adding more DSP modules or patch-import features. Sixteen module types already use the new rotary controls; this is a rollout of that direction, not another round of concepts.
+Follow the approved [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png), [two-panel study](../design/reviews/signal-atlas-two-modules-v1/index.html) and detailed native ADSR/Ladder implementation. **76 panels now have detailed native layouts.** Studio Mixer retains its existing bespoke panel; the three MIDI panels remain deferred. The non-MIDI design inventory has been audited, with final Mac candidate qualification pending; this count does not establish VCV parity. [Family previews and validation notes](../design/reviews/signal-atlas-two-modules-v1/README.md) retain the historical checkpoints instead of duplicating them here.
 
-- Warm ivory panels, black rotary knobs and larger ports; prominent top-left titles in the selected Rajdhani SemiBold font. No OpenPatch module branding, descriptions or colored header bands.
-- Markings describe actual ranges, units, routing and control behavior. Preserve meaningful differences between modules without decorative pseudo-circuitry or invented signal displays.
-- Rack panels and browser thumbnails share the same renderer. Keep titles, controls and jack labels legible at working zoom levels; retain useful weak-signal displays and genuine signal lights, including dark-room behavior.
-- Preserve numeric entry, fine adjustment, keyboard access, undo, cable hit areas and existing parameter behavior. Keep Ferrofluid, Studio Mixer FX sends/dynamic channels and Custom tags intact.
-- **Delivery:** inventory the remaining panels, apply shared controls first, then convert coherent layout families on one milestone branch. Review a representative changed panel early; avoid waiting for every catalog detail before making the design reviewable. Use focused UI/geometry checks and one Mac regression for the release candidate; unchanged DSP references do not need repeating.
-- **Done:** remaining supported catalog panels follow the approved design, browser previews match them, controls/labels remain usable, affected checks pass and the candidate is ready for one installation. Keep 0.2.5 installed during development.
+Preserve larger tactile knobs, readable titles/values, meaningful source-backed markings and identical shared rack/browser geometry. Keep existing widths, named sockets, editing, undo and MCP construction behavior. Configured diagrams remain explicitly separate from live measurements. The user rejected broad neon glow: use restrained local halos, readable lenses and honest zero/unavailable state.
+
+Latest: **Scope, Stereo Audio, Poly Viz, Notes and Blank**. Scope retains calibrated acquisition/AUTO behavior with four new rotaries and inline exact entry. Stereo Audio exposes its true polyphonic sum, right-input normal and two-channel output. Poly Viz uses separated polarity lenses and measured channel state; Notes/Blank preserve editing and resizing. [Native family](../design/reviews/signal-atlas-two-modules-v1/native-views.png) · [dim-room snapshots](../design/reviews/signal-atlas-two-modules-v1/native-views-dark.png).
+
+**Validation:** 75 focused checks passed across actual Session edits/undo, scope calibration/AUTO/weak signals, annotation Unicode/resize/history, rotary/inline precision entry, visible MCP motion and human interruption, restrained lighting, all-catalog default rack/browser drawing equality, and overview text/socket/mount clearance. Strict desktop Clippy/formatting passed; actual light/dim CPU meshes were reviewed. Source `2dbb1f6` passed the preceding full Mac/visualizer CI. No DSP/frozen-reference changes, package/install or native-window/audio-device qualification.
+
+Keep [PR #28](https://github.com/dexterlabs1/openpatch/pull/28) draft and the installed app stable. The final inventory audit accounts for all 77 non-MIDI panels, including Studio Mixer’s existing console. Its knobs, faders and saved switches now have actual MCP control cues, fixing the audit’s remaining gap. Thirty-two focused audit checks passed; its 1–16-channel workflow, stereo FX returns and Custom/Mixing categories remain intact. [Audit evidence](../design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit). Final CI `7784f53` found three stale caption fixtures and a real Notes guide clipping regression. The fixture targets are corrected; all 14 shipped guides now fit the selected larger font at five zoom levels, with graph/parameter/asset data unchanged. All 211 affected workflow checks, strict desktop Clippy/formatting and actual guide captures passed before one new full run. Next: pass full workspace/MCP CI, then inspect/reuse its Mac bundle artifact for the milestone candidate. The three MIDI panels and live performance remain last. Stock Scope remains checkpointed until that design milestone is ready.
 
 ## Checkpointed: Stock Scope integration
 
-Feature implementation is paused. The current branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
+Stock Scope implementation is checkpointed while the design milestone proceeds. Its branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
 
 - **Proven:** the optimized actual Core probe matched all 4,242 frozen genuine-Rack snapshots across 1,056 cases, including full 50-second sweeps at three rates. The reference declaration remains unchanged. This establishes the bounded source/host numerical result, not complete application or hardware qualification.
 - **Written, not yet qualified:** the shared stock panel, native AUTO view, real callback/MCP transport, seven Core lifecycle/realtime tests, panel tests and separate 46-record safety probe.
@@ -41,7 +42,7 @@ One focused Astra advisory reviewed the remaining scope and this execution polic
 
 | Milestone | User-visible exit |
 |---|---|
-| 1. Signal Atlas module design | Complete the approved catalog rollout with larger knobs/ports, meaningful markings, readable titles and identical rack/browser rendering. Review representative panels early; qualify one Mac release candidate. |
+| 1. Signal Atlas module design | Complete the approved non-MIDI catalog rollout with larger knobs/ports, meaningful markings, readable titles and identical rack/browser rendering. Review representative panels early; qualify one Mac release candidate. |
 | 2. Scope integration | Connect, adjust and inspect Stock Scope reliably, including successive TIME drags, native AUTO view and real Callback → MCP publication. Focused safety/lifecycle/realtime and one Mac regression pass. |
 | 3. Real Rack patch workflows | Open, repair, play, save and reopen a declared collection of actual `.vcv` patches with routing, parameters, layout and assets preserved. Unsupported modules remain explicit, recoverable placeholders. Publish the supported mapping. |
 | 4. Complete non-MIDI Mac instrument | Close module gaps in coherent families, including hidden VCA-2/Unity compatibility; complete editing/history, project recovery, audio configuration and Audio 2/8/16 requirements. Qualify shared physical audio paths once at the host milestone. |

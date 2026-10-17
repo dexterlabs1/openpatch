@@ -49,16 +49,26 @@ fn stock_vca_mix_compact_geometry_preserves_native_port_order_and_fits() {
         module["inputs"],
         json!(["mix_cv", "in1", "in2", "in3", "in4", "cv1", "cv2", "cv3", "cv4"])
     );
-    assert_eq!(module["outputs"], json!(["mix", "out1", "out2", "out3", "out4"]));
+    assert_eq!(
+        module["outputs"],
+        json!(["mix", "out1", "out2", "out3", "out4"])
+    );
     assert_eq!(
         (0..5).map(stock_vca_mix_column).collect::<Vec<_>>(),
         [35.0, 85.0, 135.0, 185.0, 235.0]
     );
     let knobs = (0..5).map(stock_vca_mix_knob_rect).collect::<Vec<_>>();
-    assert!(knobs.iter().all(|knob| knob.width() == 44.0 && knob.height() == 44.0));
+    assert!(knobs
+        .iter()
+        .all(|knob| knob.width() == 48.0 && knob.height() == 48.0));
+    assert_eq!(knobs[0].center(), pos2(35.0, 154.0));
+    assert_eq!(stock_vca_mix_value_rect(0).center(), pos2(35.0, 192.0));
     for (index, knob) in knobs.iter().enumerate() {
         assert!(Rect::from_min_size(Pos2::ZERO, vec2(270.0, PANEL_HEIGHT)).contains_rect(*knob));
-        assert!(knobs.iter().skip(index + 1).all(|other| !knob.intersects(*other)));
+        assert!(knobs
+            .iter()
+            .skip(index + 1)
+            .all(|other| !knob.intersects(*other)));
     }
     let bounds = Rect::from_min_size(Pos2::ZERO, vec2(panel_width("stock_vca_mix"), PANEL_HEIGHT));
     let inputs = (0..9)
@@ -79,7 +89,10 @@ fn stock_vca_mix_compact_geometry_preserves_native_port_order_and_fits() {
     assert_eq!(STOCK_VCA_MIX_PORT_SCALE, 1.07);
     for (index, point) in inputs.iter().chain(&outputs).enumerate() {
         for other in inputs.iter().chain(&outputs).skip(index + 1) {
-            assert!(point.distance(*other) >= 36.0, "jack centers must remain distinct");
+            assert!(
+                point.distance(*other) >= 36.0,
+                "jack centers must remain distinct"
+            );
         }
     }
 }
@@ -91,15 +104,21 @@ fn stock_vca_mix_print_never_covers_the_enlarged_socket_rings() {
     let mut rack = Rack::default();
     let patch = stock_vca_mix_patch(1.0);
     let (_, output) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 1);
-    let ports = (0..9).map(|index| port_position("stock_vca_mix", true, index, 9, 270.0))
+    let ports = (0..9)
+        .map(|index| port_position("stock_vca_mix", true, index, 9, 270.0))
         .chain((0..5).map(|index| port_position("stock_vca_mix", false, index, 5, 270.0)))
-        .map(local).collect::<Vec<_>>();
+        .map(local)
+        .collect::<Vec<_>>();
     for (label, bounds) in text_shapes(&output) {
         for center in &ports {
-            let nearest = pos2(center.x.clamp(bounds.left(), bounds.right()),
-                center.y.clamp(bounds.top(), bounds.bottom()));
-            assert!(nearest.distance(*center) > 13.0 * STOCK_VCA_MIX_PORT_SCALE,
-                "{label:?} {bounds:?} covers the socket centered at {center:?}");
+            let nearest = pos2(
+                center.x.clamp(bounds.left(), bounds.right()),
+                center.y.clamp(bounds.top(), bounds.bottom()),
+            );
+            assert!(
+                nearest.distance(*center) > 13.0 * STOCK_VCA_MIX_PORT_SCALE,
+                "{label:?} {bounds:?} covers the socket centered at {center:?}"
+            );
         }
     }
 }
@@ -109,7 +128,10 @@ fn stock_vca_mix_raw_values_remain_visible_while_precision_commits_are_bounded()
     let patch = stock_vca_mix_patch(2.75);
     let edit = stock_vca_mix_edit(&patch.nodes[0], "level1", 41);
     assert_eq!(edit.text, "2.75");
-    assert!(edit.display_unit.is_empty(), "the raw strip setting is not the squared DSP gain");
+    assert!(
+        edit.display_unit.is_empty(),
+        "the raw strip setting is not the squared DSP gain"
+    );
     assert_eq!(edit.min, 0.0);
     assert_eq!(edit.max, std::f32::consts::SQRT_2);
     assert!(stock_vca_mix_raw_label(2.75).len() < 12);
@@ -143,7 +165,10 @@ fn stock_vca_mix_inline_modes_and_rotary_edits_use_the_observed_revision() {
         &mut rack,
         &patch,
         1.0,
-        vec![egui::Event::PointerMoved(channel_mode), button(channel_mode, true)],
+        vec![
+            egui::Event::PointerMoved(channel_mode),
+            button(channel_mode, true),
+        ],
         true,
         true,
         41,
@@ -173,12 +198,19 @@ fn stock_vca_mix_inline_modes_and_rotary_edits_use_the_observed_revision() {
         &mut rack,
         &patch,
         2.0,
-        vec![egui::Event::PointerMoved(knob_center), button(knob_center, true)],
+        vec![
+            egui::Event::PointerMoved(knob_center),
+            button(knob_center, true),
+        ],
         true,
         true,
         42,
-    ).0;
-    assert!(click.is_none(), "pressing a rotary control must not change its value");
+    )
+    .0;
+    assert!(
+        click.is_none(),
+        "pressing a rotary control must not change its value"
+    );
     let click = frame_revision_state(
         &ctx,
         &mut rack,
@@ -190,9 +222,21 @@ fn stock_vca_mix_inline_modes_and_rotary_edits_use_the_observed_revision() {
         42,
     )
     .0;
-    assert!(click.is_none(), "a center click focuses without jumping to half travel");
-    let action = frame_revision_state(&ctx, &mut rack, &patch, 2.2,
-        vec![stock_vca_mix_key(egui::Key::End)], true, true, 42).0;
+    assert!(
+        click.is_none(),
+        "a center click focuses without jumping to half travel"
+    );
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        2.2,
+        vec![stock_vca_mix_key(egui::Key::End)],
+        true,
+        true,
+        42,
+    )
+    .0;
     let Some(RackAction::Command("set_parameter", args)) = action else {
         panic!("focused rotary End key must select its maximum")
     };
@@ -202,8 +246,13 @@ fn stock_vca_mix_inline_modes_and_rotary_edits_use_the_observed_revision() {
 }
 
 fn stock_vca_mix_key(key: egui::Key) -> egui::Event {
-    egui::Event::Key { key, physical_key: None, pressed: true, repeat: false,
-        modifiers: egui::Modifiers::NONE }
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
 }
 
 #[test]
@@ -213,28 +262,96 @@ fn stock_vca_mix_rotary_drag_is_relative_and_modal_owners_block_edits() {
     let patch = stock_vca_mix_patch(0.5);
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
     let center = local(stock_vca_mix_knob_center(0));
-    assert!(frame_revision_state(&ctx, &mut rack, &patch, 1.0,
-        vec![egui::Event::PointerMoved(center), button(center, true)], true, true, 17).0.is_none());
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![egui::Event::PointerMoved(center), button(center, true)],
+        true,
+        true,
+        17
+    )
+    .0
+    .is_none());
     let moved = center - vec2(0.0, 15.0);
-    let action = frame_revision_state(&ctx, &mut rack, &patch, 1.1,
-        vec![egui::Event::PointerMoved(moved)], true, true, 17).0;
-    let Some(RackAction::Command("set_parameter", args)) = action else { panic!("relative knob drag") };
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![egui::Event::PointerMoved(moved)],
+        true,
+        true,
+        17,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", args)) = action else {
+        panic!("relative knob drag")
+    };
     let actual = args["value"].as_f64().unwrap() as f32;
-    assert!((actual - (0.5 + std::f32::consts::SQRT_2 * 0.1)).abs() < 1e-6,
-        "15 pixels adds one tenth of travel from the grabbed value");
+    assert!(
+        (actual - (0.5 + std::f32::consts::SQRT_2 * 0.1)).abs() < 1e-6,
+        "15 pixels adds one tenth of travel from the grabbed value"
+    );
     assert!(args["history_group"].as_str().is_some());
-    frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![button(moved, false)], true, true, 17);
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.2,
+        vec![button(moved, false)],
+        true,
+        true,
+        17,
+    );
     rack.set_shortcuts_enabled(false);
-    for (index, key) in [egui::Key::ArrowUp, egui::Key::Home, egui::Key::End].into_iter().enumerate() {
-        let action = frame_revision_state(&ctx, &mut rack, &patch, 2.0 + index as f64 * 0.1,
-            vec![stock_vca_mix_key(key)], true, true, 17).0;
-        assert!(action.is_none(), "a modal owner must suppress focused-knob {key:?}");
+    for (index, key) in [egui::Key::ArrowUp, egui::Key::Home, egui::Key::End]
+        .into_iter()
+        .enumerate()
+    {
+        let action = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0 + index as f64 * 0.1,
+            vec![stock_vca_mix_key(key)],
+            true,
+            true,
+            17,
+        )
+        .0;
+        assert!(
+            action.is_none(),
+            "a modal owner must suppress focused-knob {key:?}"
+        );
     }
     let mode = local(pos2(79.0, 73.0));
-    frame_revision_state(&ctx, &mut rack, &patch, 3.0,
-        vec![egui::Event::PointerMoved(mode), button(mode, true)], true, true, 17);
-    assert!(frame_revision_state(&ctx, &mut rack, &patch, 3.1,
-        vec![button(mode, false)], true, true, 17).0.is_none(), "modal ownership also suppresses mode clicks");
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        3.0,
+        vec![egui::Event::PointerMoved(mode), button(mode, true)],
+        true,
+        true,
+        17,
+    );
+    assert!(
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            3.1,
+            vec![button(mode, false)],
+            true,
+            true,
+            17
+        )
+        .0
+        .is_none(),
+        "modal ownership also suppresses mode clicks"
+    );
 }
 
 #[test]
@@ -256,15 +373,20 @@ fn stock_vca_mix_exact_readout_opens_and_registers_mcp_precision_targets() {
             .iter()
             .map(|control| control.edit.parameter.as_str())
             .collect::<Vec<_>>(),
-        ["channel_exp", "mix_exp", "level1", "level2", "level3", "level4", "mix_level"]
+        [
+            "channel_exp",
+            "mix_exp",
+            "level1",
+            "level2",
+            "level3",
+            "level4",
+            "mix_level"
+        ]
     );
     assert_eq!(
         rack.precision_anchor,
         Some(
-            Rect::from_center_size(
-                pos2(35.0, STOCK_VCA_MIX_VALUE_Y),
-                vec2(48.0, 17.0),
-            )
+            Rect::from_center_size(pos2(35.0, STOCK_VCA_MIX_VALUE_Y), vec2(48.0, 17.0),)
                 .translate(vec2(24.0, 12.0))
         )
     );
@@ -275,22 +397,27 @@ fn stock_vca_mix_parameter_cues_anchor_the_actual_control_and_meter_offline_is_e
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let patch = stock_vca_mix_patch(0.5);
-    rack.construction_animation.parameters.push(crate::construction_motion::ParameterCue {
-        id: "mix".into(),
-        kind: "stock_vca_mix".into(),
-        parameter: "level1".into(),
-        old: 0.25,
-        new: 0.5,
-        started: std::time::Instant::now(),
-    });
+    rack.construction_animation
+        .parameters
+        .push(crate::construction_motion::ParameterCue {
+            id: "mix".into(),
+            kind: "stock_vca_mix".into(),
+            parameter: "level1".into(),
+            old: 0.25,
+            new: 0.5,
+            started: std::time::Instant::now(),
+        });
     let (_, offline) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
     let offline_text = text_shapes(&offline)
         .into_iter()
         .map(|(text, _)| text)
         .collect::<Vec<_>>();
     assert!(offline_text.iter().any(|text| text == "VU OFFLINE"));
-    assert!(offline_text.iter().any(|text| text == "h = max(V/10, 0) · 1 unpatched"));
-    assert!(rack.construction_anchors.contains_key(&("mix".into(), "level1".into())));
+    assert!(offline_text.iter().any(|text| text == "c=max(CV/10,0)"));
+    assert!(offline_text.iter().any(|text| text == "h=max(V/10,0)"));
+    assert!(rack
+        .construction_anchors
+        .contains_key(&("mix".into(), "level1".into())));
 
     let mut lights = ModuleLightState {
         count: 4,
@@ -314,14 +441,21 @@ fn stock_vca_mix_out_of_range_saved_level_is_flagged_without_rewriting_or_callin
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let patch = stock_vca_mix_patch(2.75);
-    let (action, output) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
-    assert!(action.is_none(), "drawing a saved value must remain read-only");
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
+    assert!(
+        action.is_none(),
+        "drawing a saved value must remain read-only"
+    );
     assert_eq!(patch.nodes[0].params["level1"], 2.75);
     let rendered = text_shapes(&output)
         .into_iter()
         .map(|(text, _)| text)
         .collect::<Vec<_>>();
-    assert!(rendered.iter().any(|text| text == "!"), "out-of-range travel has an explicit warning marker");
+    assert!(
+        rendered.iter().any(|text| text == "!"),
+        "out-of-range travel has an explicit warning marker"
+    );
     assert!(rendered.iter().any(|text| text == "2.750"));
     assert!(!rendered.iter().any(|text| text == "2.750×"));
 }
@@ -359,7 +493,7 @@ fn stock_vca_mix_browser_preview_and_rack_use_the_same_faceplate_geometry() {
         .iter()
         .find(|module| module["kind"] == "stock_vca_mix")
         .unwrap();
-    for scale in [0.42, 0.85, 1.0] {
+    for scale in [0.25, 0.42, 0.85, 1.0] {
         let mut surfaces = Vec::new();
         for browser in [false, true] {
             let ctx = egui::Context::default();
@@ -388,7 +522,8 @@ fn stock_vca_mix_browser_preview_and_rack_use_the_same_faceplate_geometry() {
                             if browser {
                                 preview.show(ui, bounds, &catalog);
                             } else {
-                                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(fitted));
+                                let mut child =
+                                    ui.new_child(egui::UiBuilder::new().max_rect(fitted));
                                 child.set_clip_rect(ui.clip_rect().intersect(bounds));
                                 rack.render_modules(
                                     &mut child,
@@ -405,6 +540,57 @@ fn stock_vca_mix_browser_preview_and_rack_use_the_same_faceplate_geometry() {
             );
             surfaces.push(text_shapes(&output));
         }
-        assert_eq!(surfaces[0], surfaces[1], "browser/rack face mismatch at {scale}");
+        assert_eq!(
+            surfaces[0], surfaces[1],
+            "browser/rack face mismatch at {scale}"
+        );
+    }
+}
+
+#[test]
+fn stock_vca_mix_all_mcp_cues_follow_the_relocated_controls() {
+    use crate::construction_motion::MotionMode;
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut before = stock_vca_mix_patch(0.5);
+    for parameter in STOCK_VCA_MIX_ALL_PARAMS {
+        before.nodes[0].params.insert(
+            parameter.into(),
+            if parameter.ends_with("exp") { 0.0 } else { 0.5 },
+        );
+    }
+    let mut after = before.clone();
+    let changes: Vec<_> = STOCK_VCA_MIX_ALL_PARAMS.iter().map(|parameter| {
+        let old = before.nodes[0].params[*parameter];
+        after.nodes[0].params.insert((*parameter).into(), 1.0);
+        json!({"id":"mix","kind":"stock_vca_mix","parameter":parameter,"old_effective":old,"new_effective":1.0})
+    }).collect();
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+    let now = std::time::Instant::now();
+    let receipt = json!({"plan_id":22,"completed_steps":1,"last_revision":10,"current_revision":10,"last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":22,"step_index":0,"before_revision":9,"revision":10,"label":"Mix voice","new_modules":[],"new_cables":[],"parameter_changes":changes}});
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &receipt,
+        MotionMode::Full,
+        now,
+    );
+    rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+    assert!(
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10)
+            .0
+            .is_none()
+    );
+    for (i, parameter) in STOCK_VCA_MIX_ALL_PARAMS.iter().enumerate() {
+        let anchor = &rack.construction_anchors[&("mix".into(), (*parameter).into())];
+        let expected = match *parameter {
+            "channel_exp" => pos2(79.0, 71.5),
+            "mix_exp" => pos2(207.0, 71.5),
+            _ => pos2(35.0 + 50.0 * i as f32, 154.0),
+        };
+        assert_eq!(anchor.rect.center(), local(expected));
+        assert_eq!(anchor.marker.is_some(), i < 5);
     }
 }
