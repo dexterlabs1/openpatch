@@ -1180,6 +1180,7 @@ struct HostInputObservation {
 pub(crate) struct PolyEngine {
     rate: u32,
     nodes: Vec<PolyNode>,
+    sequence_ownership: crate::sequence_ownership::SequenceOwnership,
     node_lookup: BTreeMap<String, usize>,
     edges: Vec<Edge>,
     // Hot publication reads only source indices, not route strings/identities.
@@ -2377,6 +2378,18 @@ impl PolyEngine {
             return false;
         };
         sequence.reload_data();
+        self.sequence_ownership.claim(index);
+        true
+    }
+
+    pub(crate) fn claim_rackmcp_sequence_targets(&mut self, index: usize) -> bool {
+        if !matches!(
+            self.nodes.get(index).map(|node| &node.model),
+            Some(Model::RackMcpSequencer(_))
+        ) {
+            return false;
+        }
+        self.sequence_ownership.claim(index);
         true
     }
 
@@ -2641,11 +2654,15 @@ impl PolyEngine {
         let mut route_counts = BTreeMap::<EdgeKey, usize>::new();
         let mut unique_legacy_routes = BTreeMap::<EdgeKey, Option<usize>>::new();
         let mut cable_lookup = BTreeMap::new();
-        for node in &mut nodes {
+        let mut sequence_ownership =
+            crate::sequence_ownership::SequenceOwnership::new(&patch.nodes);
+        for (node_index, node) in nodes.iter_mut().enumerate() {
             if let Model::RackMcpSequencer(sequence) = &mut node.model {
                 let mut targets = [None; 8];
                 for (lane, source) in sequence.source_targets().into_iter().enumerate() {
                     let Some(source) = source else { continue };
+                    sequence_ownership.slots[node_index][lane] =
+                        sequence_ownership.slot(&source.module, &source.parameter);
                     let Some(&destination) = node_lookup.get(&source.module) else {
                         continue;
                     };
@@ -2672,6 +2689,7 @@ impl PolyEngine {
                     });
                 }
                 sequence.bind_targets(targets);
+                sequence_ownership.claim(node_index);
             }
         }
         let mut group_lookup = BTreeMap::<(usize, usize), usize>::new();
@@ -2820,6 +2838,7 @@ impl PolyEngine {
             port_lights,
             rate: patch.sample_rate,
             nodes,
+            sequence_ownership,
             node_lookup,
             edges,
             edge_source_ports,
@@ -3503,16 +3522,19 @@ impl PolyEngine {
                     self.outputs[node.output_start] = s.process(a);
                 }
             }
-            // Process-time writes follow native node order. Later nodes see
+            // Only the exclusive owner may assign or acknowledge a lane.
+            // Process-time visibility follows native node order. Later nodes see
             // the new parameter this sample, earlier nodes the next sample.
             // Port routing retains the native synchronous delayed contract.
             if let Some(parameter_writes) = parameter_writes {
                 for write in parameter_writes.into_iter().flatten() {
-                    if self.set_parameter_value(
-                        write.target.node,
-                        write.target.parameter,
-                        write.value,
-                    ) {
+                    if self.sequence_ownership.owns(node_index, write.lane)
+                        && self.set_parameter_value(
+                            write.target.node,
+                            write.target.parameter,
+                            write.value,
+                        )
+                    {
                         if let Model::RackMcpSequencer(sequence) = &mut self.nodes[node_index].model
                         {
                             sequence.acknowledge_write(write.lane, write.value);
@@ -3787,19 +3809,31 @@ impl PolyEngine {
         copy_delay: bool,
     ) {
         self.host_context_dirty = true;
-        // The source has no rate-change reset. Preserve bounded transport and
-        // detectors while the receiver retains compiled data and parameters.
+        // Ownership survives topology/rate changes by native target and writer
+        // identity. Fresh or changed writers acquire only after donor claims
+        // (including vacant tombstones) have been restored.
+        self.sequence_ownership.acquire.fill(false);
         for (id, &index) in &self.node_lookup {
+            let Model::RackMcpSequencer(sequence) = &mut self.nodes[index].model else {
+                continue;
+            };
+            self.sequence_ownership.acquire[index] = true;
             if excluded[index] {
                 continue;
             }
             let Some(&previous) = old.node_lookup.get(id) else {
                 continue;
             };
-            if let (Model::RackMcpSequencer(sequence), Model::RackMcpSequencer(previous)) =
-                (&mut self.nodes[index].model, &old.nodes[previous].model)
-            {
+            if let Model::RackMcpSequencer(previous) = &old.nodes[previous].model {
+                self.sequence_ownership.acquire[index] = !sequence.claims_match(previous);
                 sequence.adopt(previous);
+            }
+        }
+        self.sequence_ownership
+            .restore(&old.sequence_ownership, &self.node_lookup, excluded);
+        for index in 0..self.nodes.len() {
+            if self.sequence_ownership.acquire[index] {
+                self.sequence_ownership.claim(index);
             }
         }
         if self.rate != old.rate {

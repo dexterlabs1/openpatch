@@ -11,7 +11,7 @@ use openpatch_core::{
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     Arc, Mutex,
@@ -262,6 +262,12 @@ struct Entry {
     action_epoch: u64,
     parameter_epochs: [u64; MAX_PUBLISHED_PARAMETERS],
 }
+/// Ordered document events remain comparable across skipped graph revisions.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+struct SequenceLoadEpoch {
+    revision: u64,
+    order: usize,
+}
 struct StateEntry {
     slot: usize,
     token: u64,
@@ -273,7 +279,7 @@ struct StateEntry {
     saved_revision: u64,
     desired_state: Option<SavedModuleState>,
     stock_field_generations: [u64; 10],
-    sequence_load_epoch: u64,
+    sequence_load_epoch: SequenceLoadEpoch,
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -874,8 +880,8 @@ pub(super) struct StateBinding {
     applied_saved: u64,
     desired_state: Option<SavedModuleState>,
     stock_field_generations: [u64; 10],
-    sequence_load_epoch: Option<u64>,
-    applied_sequence_load_epoch: u64,
+    sequence_load_epoch: Option<SequenceLoadEpoch>,
+    applied_sequence_load_epoch: SequenceLoadEpoch,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -901,6 +907,8 @@ pub(super) struct ModulePlan {
     // a maximum-capacity ParameterHandle array on the callback stack.
     parameter_assignments: Box<[ParameterHandle]>,
     pub states: Box<[Option<StateBinding>; MAX_NODES]>,
+    // Sorted by persistent event order on the control thread.
+    sequence_load_order: Box<[usize]>,
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
     // Compile/control owns these fixed-capacity allocations. Queued graph
     // moves carry pointers; retired graphs free them back on the control side.
@@ -930,6 +938,7 @@ impl Default for ModulePlan {
                 .try_into()
                 .ok()
                 .expect("fixed state binding capacity"),
+            sequence_load_order: Box::default(),
             fresh_states: [None; MAX_NODES],
             cables: vec![None; MAX_CABLES]
                 .into_boxed_slice()
@@ -1101,11 +1110,10 @@ impl ModulePlan {
             &self.parameter_assignments[..assigned_count],
         );
     }
-    /// Replay explicit source data loads only after this exact incarnation's
-    /// DSP runtime has been adopted. Fresh/excluded adapters already loaded
-    /// their receiving data during construction, including first-load selection.
-    /// Requested epochs are frozen; the applied fence follows the live donor.
-    /// The callback never reads the registry.
+    /// Consume frozen load requests in document event order after DSP adoption.
+    /// Constructors and changed-data adoption already load source state; their
+    /// explicit event only claims ownership, preserving first-load selection.
+    /// Applied fences follow the donor so late prepared plans cannot reclaim.
     pub(super) fn reload_sequences_with_host_exclusions(
         &mut self,
         engine: &mut Engine,
@@ -1113,28 +1121,30 @@ impl ModulePlan {
         old_engine: &Engine,
         host_resets: &[ModuleHandle],
     ) {
-        for (slot, binding) in self.states.iter_mut().enumerate() {
-            let Some(binding) = binding else { continue };
-            let Some(epoch) = binding.sequence_load_epoch else {
-                continue;
-            };
-            let Some(old) = previous.states[slot]
-                .filter(|old| old.token == binding.token && old.sequence_load_epoch.is_some())
-            else {
-                // Construction already consumed this fresh incarnation's load.
-                continue;
-            };
-            // The requested epoch stays frozen in this plan. The applied high
-            // water mark follows the live incarnation, so an older prepared
-            // graph cannot replay a load or make the next graph replay one.
-            binding.applied_sequence_load_epoch = old.applied_sequence_load_epoch.max(epoch);
-            if host_resets.contains(&binding.handle) || epoch <= old.applied_sequence_load_epoch {
+        for &slot in &self.sequence_load_order {
+            let binding = self.states[slot]
+                .as_mut()
+                .expect("compiled sequence binding");
+            let epoch = binding
+                .sequence_load_epoch
+                .expect("compiled sequence epoch");
+            let old = previous.states[slot]
+                .filter(|old| old.token == binding.token && old.sequence_load_epoch.is_some());
+            let applied = old.map_or(SequenceLoadEpoch::default(), |old| {
+                old.applied_sequence_load_epoch
+            });
+            binding.applied_sequence_load_epoch = applied.max(epoch);
+            if epoch <= applied {
                 continue;
             }
-            // Changed source data was loaded by adapter adoption already. An
-            // equal-data lifecycle is the event ordinary DSP adoption omits.
-            if engine.rackmcp_sequence_data_matches(binding.handle, old_engine, old.handle) {
+            let equal_adopted_data = !host_resets.contains(&binding.handle)
+                && old.is_some_and(|old| {
+                    engine.rackmcp_sequence_data_matches(binding.handle, old_engine, old.handle)
+                });
+            if equal_adopted_data {
                 engine.reload_rackmcp_sequence_data(binding.handle);
+            } else {
+                engine.claim_rackmcp_sequence_targets(binding.handle);
             }
         }
     }
@@ -1420,15 +1430,27 @@ impl Performance {
                     stock_field_generations: entry.stock_field_generations,
                     sequence_load_epoch: (node.kind == "rackmcp_sequencer")
                         .then_some(entry.sequence_load_epoch),
-                    // A constructor loads receiving data once. Adoption from
-                    // the same incarnation replaces this with the donor's
-                    // applied fence before testing the frozen request above.
-                    applied_sequence_load_epoch: entry.sequence_load_epoch,
+                    // Only the callback consumes explicit ordered events.
+                    applied_sequence_load_epoch: SequenceLoadEpoch::default(),
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
             }
         }
+        let mut sequence_load_order: Vec<_> = plan
+            .states
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, binding)| {
+                binding.and_then(|binding| binding.sequence_load_epoch.map(|epoch| (epoch, slot)))
+            })
+            .collect();
+        sequence_load_order.sort_unstable_by_key(|&(epoch, _)| epoch);
+        plan.sequence_load_order = sequence_load_order
+            .into_iter()
+            .map(|(_, slot)| slot)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         if patch.version == 2 {
             for (index, cable) in patch.cables.iter().enumerate() {
                 let Some(id) = cable.id.as_ref() else {
@@ -1538,7 +1560,7 @@ impl Performance {
         patch: &Patch,
         revision: u64,
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
-        sequence_loads: &BTreeSet<String>,
+        sequence_loads: &[String],
     ) {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
@@ -1571,7 +1593,11 @@ impl Performance {
                 );
             }
         }
-        for id in sequence_loads {
+        for (index, id) in sequence_loads.iter().enumerate() {
+            assert!(
+                !sequence_loads[..index].contains(id),
+                "duplicate sequence load target"
+            );
             assert!(
                 patch.version == 2
                     && patch
@@ -1589,7 +1615,7 @@ impl Performance {
                     .checked_add(1)
                     .expect("parameter assignment epoch exhausted")
             });
-        let sequence_load_epoch = (!sequence_loads.is_empty()).then(|| {
+        let sequence_load_revision = (!sequence_loads.is_empty()).then(|| {
             revision
                 .checked_add(1)
                 .expect("sequence load epoch exhausted")
@@ -1679,16 +1705,19 @@ impl Performance {
                     saved_revision: revision,
                     desired_state: SavedModuleState::from_node(node),
                     stock_field_generations: [0; 10],
-                    sequence_load_epoch: 0,
+                    sequence_load_epoch: SequenceLoadEpoch::default(),
                 },
             );
         }
-        for id in sequence_loads {
-            control
+        for (order, id) in sequence_loads.iter().enumerate() {
+            let entry = control
                 .state_entries
                 .get_mut(id)
-                .expect("sequence load target has no state entry")
-                .sequence_load_epoch = sequence_load_epoch.expect("nonempty sequence load");
+                .expect("sequence load target has no state entry");
+            entry.sequence_load_epoch = entry.sequence_load_epoch.max(SequenceLoadEpoch {
+                revision: sequence_load_revision.expect("nonempty sequence load"),
+                order: order + 1,
+            });
         }
         control.entries.retain(|id, entry| {
             let retained = patch.version == 2
@@ -2204,7 +2233,7 @@ impl LiveModuleEvents for Performance {
         }
     }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
-        self.sync_patch_intents(patch, revision, &BTreeMap::new(), &BTreeSet::new());
+        self.sync_patch_intents(patch, revision, &BTreeMap::new(), &[]);
     }
     fn sync_patch_with_parameters(
         &self,
@@ -2212,14 +2241,14 @@ impl LiveModuleEvents for Performance {
         revision: u64,
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
     ) {
-        self.sync_patch_intents(patch, revision, assignments, &BTreeSet::new());
+        self.sync_patch_intents(patch, revision, assignments, &[]);
     }
     fn sync_patch_with_intents(
         &self,
         patch: &Patch,
         revision: u64,
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
-        sequence_loads: &BTreeSet<String>,
+        sequence_loads: &[String],
     ) {
         self.sync_patch_intents(patch, revision, assignments, sequence_loads);
     }
@@ -2599,7 +2628,7 @@ mod tests {
         performance.sync_patch(&patch, 1);
         let original = performance.plan(&patch, &engine, 1).unwrap();
         assert!(original.bindings.iter().all(Option::is_none));
-        let loads = BTreeSet::from(["seq".into()]);
+        let loads = ["seq".into()];
         performance.sync_patch_with_intents(&patch, 2, &BTreeMap::new(), &loads);
         let assigned = performance.plan(&patch, &engine, 2).unwrap();
         performance.sync_patch(&patch, 2);
@@ -2607,9 +2636,18 @@ mod tests {
         let repeated = performance.plan(&patch, &engine, 2).unwrap();
         performance.sync_patch(&patch, 3);
         let unrelated = performance.plan(&patch, &engine, 3).unwrap();
-        assert_eq!(original.states[0].unwrap().sequence_load_epoch, Some(0));
+        assert_eq!(
+            original.states[0].unwrap().sequence_load_epoch,
+            Some(SequenceLoadEpoch::default())
+        );
         for plan in [&assigned, &repeated, &unrelated] {
-            assert_eq!(plan.states[0].unwrap().sequence_load_epoch, Some(3));
+            assert_eq!(
+                plan.states[0].unwrap().sequence_load_epoch,
+                Some(SequenceLoadEpoch {
+                    revision: 3,
+                    order: 1
+                })
+            );
             assert_eq!(
                 plan.states[0].unwrap().token,
                 original.states[0].unwrap().token
@@ -2622,7 +2660,10 @@ mod tests {
         performance.sync_patch(&Patch::new_v2(), 4);
         performance.sync_patch(&patch, 5);
         let fresh = performance.plan(&patch, &engine, 5).unwrap();
-        assert_eq!(fresh.states[0].unwrap().sequence_load_epoch, Some(0));
+        assert_eq!(
+            fresh.states[0].unwrap().sequence_load_epoch,
+            Some(SequenceLoadEpoch::default())
+        );
         assert_ne!(
             fresh.states[0].unwrap().token,
             original.states[0].unwrap().token
@@ -2641,12 +2682,7 @@ mod tests {
             BTreeMap::from([("vca1".into(), BTreeMap::from([("level".into(), 1.0)]))]);
         for id in ["missing", "vca1"] {
             assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                performance.sync_patch_with_intents(
-                    &patch,
-                    2,
-                    &assignments,
-                    &BTreeSet::from([id.into()]),
-                );
+                performance.sync_patch_with_intents(&patch, 2, &assignments, &[id.into()]);
             }))
             .is_err());
             let control = performance

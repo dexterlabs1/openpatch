@@ -258,12 +258,13 @@ pub trait LiveModuleEvents: Send + Sync {
     /// Atomically publish authored state with parameter assignments and explicit
     /// RackMCP sequence-data load events. Equal data still counts as a load;
     /// prepared graph plans must freeze its meaning before later edits arrive.
+    /// IDs are unique and ordered by their final load within the transaction.
     fn sync_patch_with_intents(
         &self,
         patch: &Patch,
         revision: u64,
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
-        _sequence_loads: &BTreeSet<String>,
+        _sequence_loads: &[String],
     ) {
         self.sync_patch_with_parameters(patch, revision, assignments);
     }
@@ -391,7 +392,7 @@ impl Drop for Session {
 
 #[derive(Clone)]
 struct HistoryEntry {
-    sequence_loads: BTreeSet<String>,
+    sequence_loads: Vec<String>,
     restore_parameters: parameters::ParameterValues,
     return_parameters: parameters::ParameterValues,
     document: ProjectDocument,
@@ -618,7 +619,7 @@ impl Session {
     fn sync_live_intents(
         &self,
         assignments: &parameters::ParameterValues,
-        sequence_loads: &BTreeSet<String>,
+        sequence_loads: &[String],
     ) {
         if let Some(backend) = &self.live_module_events {
             if self.document_execution {
@@ -633,7 +634,7 @@ impl Session {
                         .any(|node| node.id == **id && node.kind == "rackmcp_sequencer")
                 })
                 .cloned()
-                .collect();
+                .collect::<Vec<_>>();
             backend.sync_patch_with_intents(
                 &self.patch,
                 self.revision,
@@ -868,7 +869,7 @@ impl Session {
                 self.undo.pop_front();
             }
             self.undo.push_back(HistoryEntry {
-                sequence_loads: effects.sequence_loads.clone(),
+                sequence_loads: effects.sequence_loads.iter().rev().cloned().collect(),
                 restore_parameters: parameter_effects.before.clone(),
                 return_parameters: parameter_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
@@ -1085,7 +1086,7 @@ impl Session {
         }
         let entry = target;
         let mut opposite = HistoryEntry {
-            sequence_loads: entry.sequence_loads.clone(),
+            sequence_loads: entry.sequence_loads.iter().rev().cloned().collect(),
             restore_parameters: entry.return_parameters.clone(),
             return_parameters: entry.restore_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),

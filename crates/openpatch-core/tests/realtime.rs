@@ -786,3 +786,70 @@ fn rackmcp_native_automation_render_and_graph_handoff_use_no_heap() {
         .iter()
         .all(|frame| frame.values[0].is_finite() && frame.values[0] > 0.0));
 }
+
+#[test]
+fn rackmcp_exclusive_claims_vacancies_and_missing_target_handoff_use_no_heap() {
+    use openpatch_core::{Patch, PortFrame};
+    use serde_json::json;
+    let sequence = |id: &str, value: f32| {
+        json!({
+        "id":id,"kind":"rackmcp_sequencer","params":{"running":1},
+        "rackmcp_sequence":{"data":{"patterns":[{"name":"A","length":16}],
+            "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":value}]}]},
+            "targets":[{"source_module_id":"42","source_param_id":0,
+                "module":"vca","parameter":"level"}]}})
+    };
+    let mut patch: Patch = serde_json::from_value(json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[sequence("A",0.25),sequence("B",0.75),
+            {"id":"vca","kind":"stock_vca","params":{"level":0.9}}],
+        "output":"A","output_port":"pitch1"}))
+    .unwrap();
+    let mut original = patch.compile().unwrap();
+    let a = original.resolve_module_state("A").unwrap();
+    let b = original.resolve_module_state("B").unwrap();
+    let gain = original.resolve_parameter("vca", "level").unwrap();
+    patch.nodes.swap(0, 1);
+    patch.sample_rate = 96000;
+    let mut reordered = patch.compile().unwrap();
+    let reordered_b = reordered.resolve_module_state("B").unwrap();
+    patch.nodes.retain(|node| node.id != "B");
+    let mut deleted_winner = patch.compile().unwrap();
+    let missing_target = patch.nodes.pop().unwrap();
+    let mut missing = patch.compile().unwrap();
+    patch.nodes.push(missing_target);
+    let mut recreated = patch.compile().unwrap();
+    let recreated_a = recreated.resolve_module_state("A").unwrap();
+    let recreated_gain = recreated.resolve_parameter("vca", "level").unwrap();
+    let mut output = [PortFrame::default(); 32];
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    original.process_poly_block(&mut output);
+    original.set_parameter_value(gain, 0.6);
+    original.claim_rackmcp_sequence_targets(a);
+    original.process_poly_block(&mut output);
+    original.reload_rackmcp_sequence_data(b);
+    original.process_poly_block(&mut output);
+    reordered.handoff_state_from_excluding_routes(&mut original, &[], &[]);
+    reordered.inherit_parameter_values(&original, &[], &[]);
+    reordered.reload_rackmcp_sequence_data(reordered_b);
+    reordered.process_poly_block(&mut output);
+    deleted_winner.adopt_state_from(&reordered);
+    deleted_winner.inherit_parameter_values(&reordered, &[], &[]);
+    deleted_winner.process_poly_block(&mut output);
+    missing.adopt_state_from(&deleted_winner);
+    missing.process_poly_block(&mut output);
+    recreated.adopt_state_from(&missing);
+    recreated.process_poly_block(&mut output);
+    let vacant_value = recreated.parameter_value(recreated_gain);
+    recreated.claim_rackmcp_sequence_targets(recreated_a);
+    recreated.reload_rackmcp_sequence_data(recreated_a);
+    recreated.process_poly_block(&mut output);
+    let claimed_value = recreated.parameter_value(recreated_gain);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(vacant_value, Some(0.9));
+    assert_eq!(claimed_value, Some(0.25));
+}

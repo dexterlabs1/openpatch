@@ -94,7 +94,7 @@ fn rackmcp_data_on_other_kinds_and_invalid_batches_are_atomic_rejections() {
 }
 
 #[derive(Default)]
-struct SequenceLoadObserver(Mutex<Vec<(u64, BTreeSet<String>)>>);
+struct SequenceLoadObserver(Mutex<Vec<(u64, Vec<String>)>>);
 impl LiveModuleEvents for SequenceLoadObserver {
     fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
         Err("not used by this control-only observer".into())
@@ -107,9 +107,9 @@ impl LiveModuleEvents for SequenceLoadObserver {
         _: &Patch,
         revision: u64,
         _: &BTreeMap<String, BTreeMap<String, f32>>,
-        loads: &BTreeSet<String>,
+        loads: &[String],
     ) {
-        self.0.lock().unwrap().push((revision, loads.clone()));
+        self.0.lock().unwrap().push((revision, loads.to_vec()));
     }
 }
 
@@ -153,9 +153,9 @@ fn explicit_equal_sequence_loads_and_history_emit_intent_without_unrelated_reloa
         assert_eq!(
             loads,
             &if load {
-                BTreeSet::from(["seq".into()])
+                vec!["seq".to_owned()]
             } else {
-                BTreeSet::new()
+                Vec::new()
             }
         );
     }
@@ -203,7 +203,7 @@ fn sequence_preset_intent_depends_on_explicit_data_and_batches_commit_one_final_
         .unwrap();
     assert_eq!(
         backend.0.lock().unwrap().last().unwrap().1,
-        BTreeSet::from(["seq".into()])
+        vec!["seq".to_owned()]
     );
     let before = backend.0.lock().unwrap().len();
     let mut final_state = state();
@@ -225,7 +225,7 @@ fn sequence_preset_intent_depends_on_explicit_data_and_batches_commit_one_final_
     );
     assert_eq!(
         backend.0.lock().unwrap().last().unwrap().1,
-        BTreeSet::from(["seq".into()])
+        vec!["seq".to_owned()]
     );
     let before = session.snapshot();
     assert!(session
@@ -235,4 +235,81 @@ fn sequence_preset_intent_depends_on_explicit_data_and_batches_commit_one_final_
         )
         .is_err());
     assert_eq!(session.snapshot(), before);
+}
+
+#[test]
+fn sequence_load_order_tracks_last_action_and_reverses_with_history() {
+    let mut session = Session::new(&std::env::temp_dir()).unwrap();
+    for id in ["z", "a"] {
+        session
+            .execute(
+                "add_module",
+                json!({"id":id,"kind":"rackmcp_sequencer","rackmcp_sequence":state()}),
+            )
+            .unwrap();
+    }
+    let backend = Arc::new(SequenceLoadObserver::default());
+    session
+        .set_live_module_events(Some(backend.clone()))
+        .unwrap();
+    session
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"set_rackmcp_sequence","arguments":{"id":"z","rackmcp_sequence":state()}},
+                {"tool":"set_rackmcp_sequence","arguments":{"id":"a","rackmcp_sequence":state()}},
+                {"tool":"set_rackmcp_sequence","arguments":{"id":"z","rackmcp_sequence":state()}}
+            ]}),
+        )
+        .unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["a", "z"]);
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["z", "a"]);
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["a", "z"]);
+    session
+        .execute(
+            "apply_edits",
+            json!({"edits":[
+                {"tool":"set_rackmcp_sequence","arguments":{"id":"a","rackmcp_sequence":state()}},
+                {"tool":"remove_module","arguments":{"id":"a"}},
+                {"tool":"set_rackmcp_sequence","arguments":{"id":"z","rackmcp_sequence":state()}}
+            ]}),
+        )
+        .unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["z"]);
+}
+
+#[test]
+fn creation_and_duplication_loads_preserve_final_order_without_undo_ghosts() {
+    let mut session = Session::new(&std::env::temp_dir()).unwrap();
+    let backend = Arc::new(SequenceLoadObserver::default());
+    session
+        .set_live_module_events(Some(backend.clone()))
+        .unwrap();
+    session.execute("apply_edits", json!({"edits":[
+        {"tool":"add_module","arguments":{"id":"z","kind":"rackmcp_sequencer","rackmcp_sequence":state()}},
+        {"tool":"add_module","arguments":{"id":"a","kind":"rackmcp_sequencer"}},
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"z","rackmcp_sequence":state()}}
+    ]})).unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["a", "z"]);
+    session.execute("undo", json!({})).unwrap();
+    assert!(backend.0.lock().unwrap().last().unwrap().1.is_empty());
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(backend.0.lock().unwrap().last().unwrap().1, ["a", "z"]);
+    session.execute("apply_edits", json!({"edits":[
+        {"tool":"duplicate_modules","arguments":{"modules":[{"id":"z","new_id":"copy_z"},{"id":"a","new_id":"copy_a"}]}},
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"copy_z","rackmcp_sequence":state()}}
+    ]})).unwrap();
+    assert_eq!(
+        backend.0.lock().unwrap().last().unwrap().1,
+        ["copy_a", "copy_z"]
+    );
+    session.execute("undo", json!({})).unwrap();
+    assert!(backend.0.lock().unwrap().last().unwrap().1.is_empty());
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(
+        backend.0.lock().unwrap().last().unwrap().1,
+        ["copy_a", "copy_z"]
+    );
 }

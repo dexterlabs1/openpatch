@@ -14,7 +14,7 @@ fn sync_sequence_load(callback: &Callback, patch: &Patch, revision: u64) {
         patch,
         revision,
         &std::collections::BTreeMap::new(),
-        &std::collections::BTreeSet::from(["automation".into()]),
+        &["automation".into()],
     );
 }
 
@@ -271,4 +271,464 @@ fn sequence_load_shared_equal_preset_undo_redo_rearm_constant_lane() {
         render_sequence_lane(&mut callback, 0.25);
         while retired.pop().is_ok() {}
     }
+}
+
+fn competing_sequence_load_patch() -> Patch {
+    let mut patch = sequence_load_patch();
+    let mut other = serde_json::to_value(&patch.nodes[0]).unwrap();
+    other["id"] = serde_json::json!("automation_b");
+    other["rackmcp_sequence"]["data"]["lanes"][0]["points"][0]["value"] = serde_json::json!(0.75);
+    patch
+        .nodes
+        .insert(1, serde_json::from_value(other).unwrap());
+    patch
+}
+
+fn sync_ordered_sequence_loads(callback: &Callback, patch: &Patch, revision: u64, ids: &[&str]) {
+    let ids: Vec<String> = ids.iter().map(|id| (*id).into()).collect();
+    callback.performance.sync_patch_with_intents(
+        patch,
+        revision,
+        &std::collections::BTreeMap::new(),
+        &ids,
+    );
+}
+
+#[test]
+fn sequence_load_competing_target_owner_follows_event_order_for_equal_fresh_and_changed_models() {
+    for reverse_nodes in [false, true] {
+        for lifecycle in ["equal", "fresh", "changed", "host_reset"] {
+            for (ids, expected) in [
+                (["automation", "automation_b"], 0.75),
+                (["automation_b", "automation"], 0.25),
+            ] {
+                let mut patch = competing_sequence_load_patch();
+                if reverse_nodes {
+                    patch.nodes.swap(0, 1);
+                }
+                let (mut callback, mut updates, _retired) = sequence_callback(&patch);
+                without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+                if lifecycle == "fresh" {
+                    callback
+                        .performance
+                        .retire_modules(&["automation".into(), "automation_b".into()]);
+                }
+                if lifecycle == "changed" {
+                    for node in &mut patch.nodes {
+                        if node.kind == "rackmcp_sequencer" {
+                            let mut value = serde_json::to_value(&*node).unwrap();
+                            value["rackmcp_sequence"]["data"]["patterns"][0]["length"] =
+                                serde_json::json!(8);
+                            *node = serde_json::from_value(value).unwrap();
+                        }
+                    }
+                }
+                sync_ordered_sequence_loads(&callback, &patch, 2, &ids);
+                let mut graph = sequence_graph(&callback, &patch, 2);
+                if lifecycle == "host_reset" {
+                    let mut delta = HostLifecycleDelta::default();
+                    for id in ids {
+                        delta.modules.entry(id.into()).or_default().reset = true;
+                    }
+                    graph.host_lifecycle =
+                        PreparedHostLifecycle::prepare(&graph.engine, delta).unwrap();
+                }
+                assert!(updates.push(graph).is_ok());
+                render_sequence_lane(&mut callback, expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_load_competing_target_skipped_revisions_keep_persistent_order() {
+    let patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    sync_ordered_sequence_loads(&callback, &patch, 2, &["automation_b"]);
+    sync_ordered_sequence_loads(&callback, &patch, 3, &["automation"]);
+    callback.performance.sync_patch(&patch, 4);
+    assert!(updates.push(sequence_graph(&callback, &patch, 4)).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    sync_ordered_sequence_loads(&callback, &patch, 5, &["automation"]);
+    sync_ordered_sequence_loads(&callback, &patch, 6, &["automation_b"]);
+    callback.performance.sync_patch(&patch, 7);
+    assert!(updates.push(sequence_graph(&callback, &patch, 7)).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+}
+
+#[test]
+fn sequence_load_competing_target_late_frozen_plan_never_reclaims() {
+    let patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    sync_ordered_sequence_loads(&callback, &patch, 2, &["automation"]);
+    let older = sequence_graph(&callback, &patch, 2);
+    sync_ordered_sequence_loads(&callback, &patch, 3, &["automation_b"]);
+    assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    while retired.pop().is_ok() {}
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    assert!(updates.push(older).is_ok());
+    render_sequence_lane(&mut callback, 0.6);
+    while retired.pop().is_ok() {}
+    callback.performance.sync_patch(&patch, 4);
+    assert!(updates.push(sequence_graph(&callback, &patch, 4)).is_ok());
+    render_sequence_lane(&mut callback, 0.6);
+}
+
+#[test]
+fn sequence_load_competing_owner_survives_graph_reorder_rate_and_winner_deletion() {
+    let mut patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    sync_ordered_sequence_loads(&callback, &patch, 2, &["automation_b", "automation"]);
+    assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    patch.nodes.swap(0, 1);
+    patch.nodes[0].params.insert("bpm".into(), 128.0);
+    patch.nodes.push(
+        serde_json::from_value(serde_json::json!({
+            "id":"unrelated","kind":"constant","params":{"value":0}
+        }))
+        .unwrap(),
+    );
+    callback.performance.sync_patch(&patch, 3);
+    let mut graph = prepare_graph(&patch, 96_000, None, 3, true).unwrap();
+    graph.modules = callback.performance.plan(&patch, &graph.engine, 3).unwrap();
+    graph.revision = 3;
+    assert!(updates.push(graph).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    patch.nodes.retain(|node| node.id != "automation");
+    callback.performance.sync_patch(&patch, 4);
+    assert!(updates.push(sequence_graph(&callback, &patch, 4)).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    render_sequence_lane(&mut callback, 0.6);
+}
+
+#[test]
+fn sequence_load_shared_competing_equal_presets_batch_undo_redo_follow_action_order() {
+    let patch = competing_sequence_load_patch();
+    let preset_a = openpatch::presets::capture(&patch.nodes[0], None).unwrap();
+    let preset_b = openpatch::presets::capture(&patch.nodes[1], None).unwrap();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    session.replace_patch(patch, Some(0)).unwrap();
+    session
+        .set_live_module_events(Some(callback.performance.clone()))
+        .unwrap();
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    for (tool, arguments, expected) in [
+        (
+            "apply_edits",
+            serde_json::json!({"edits":[
+                {"tool":"apply_module_preset","arguments":{"id":"automation","preset":preset_a}},
+                {"tool":"apply_module_preset","arguments":{"id":"automation_b","preset":preset_b}}
+            ]}),
+            0.75,
+        ),
+        ("undo", serde_json::json!({}), 0.25),
+        ("redo", serde_json::json!({}), 0.75),
+    ] {
+        set_live_parameter(&mut callback, "vca", "level", 0.6);
+        session.execute(tool, arguments).unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        render_sequence_lane(&mut callback, expected);
+        while retired.pop().is_ok() {}
+    }
+}
+
+fn change_sequence_lane_value(patch: &mut Patch, id: &str, value: f32) {
+    let node = patch.nodes.iter_mut().find(|node| node.id == id).unwrap();
+    let mut encoded = serde_json::to_value(&*node).unwrap();
+    encoded["rackmcp_sequence"]["data"]["lanes"][0]["points"][0]["value"] =
+        serde_json::json!(value);
+    *node = serde_json::from_value(encoded).unwrap();
+}
+
+#[test]
+fn sequence_load_changed_data_frozen_plans_allow_forward_order_and_reject_rollback() {
+    for newest_first in [false, true] {
+        let patch = competing_sequence_load_patch();
+        let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+        let mut older_patch = patch.clone();
+        change_sequence_lane_value(&mut older_patch, "automation", 0.9);
+        sync_ordered_sequence_loads(&callback, &older_patch, 2, &["automation"]);
+        let older = sequence_graph(&callback, &older_patch, 2);
+        sync_ordered_sequence_loads(&callback, &patch, 3, &["automation_b"]);
+        let newer = sequence_graph(&callback, &patch, 3);
+        if newest_first {
+            assert!(updates.push(newer).is_ok());
+            render_sequence_lane(&mut callback, 0.75);
+            while retired.pop().is_ok() {}
+            assert!(updates.push(older).is_ok());
+            render_sequence_lane(&mut callback, 0.75);
+            assert_eq!(callback.graphs.active.revision, 3);
+            assert!(callback.graphs.previous.is_none());
+        } else {
+            // Preparation predates the newer registry event, but the frozen
+            // graph remains valid while the active document is still older.
+            assert!(updates.push(older).is_ok());
+            render_sequence_lane(&mut callback, 0.9);
+            assert_eq!(callback.graphs.active.revision, 2);
+            while retired.pop().is_ok() {}
+            assert!(updates.push(newer).is_ok());
+            render_sequence_lane(&mut callback, 0.75);
+            assert_eq!(callback.graphs.active.revision, 3);
+        }
+    }
+}
+
+#[test]
+fn sequence_load_stale_graph_cannot_remove_the_current_winner() {
+    let patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    let mut older_patch = patch.clone();
+    older_patch.nodes.retain(|node| node.id != "automation");
+    callback.performance.sync_patch(&older_patch, 2);
+    let older = sequence_graph(&callback, &older_patch, 2);
+    sync_ordered_sequence_loads(&callback, &patch, 3, &["automation"]);
+    assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    assert!(updates.push(older).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    assert_eq!(callback.graphs.active.revision, 3);
+    assert!(callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("automation")
+        .is_ok());
+}
+
+#[test]
+fn sequence_load_stale_new_incarnation_cannot_reappear_after_all_sequences_are_removed() {
+    let patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    callback.performance.retire_modules(&["automation".into()]);
+    sync_ordered_sequence_loads(&callback, &patch, 2, &["automation"]);
+    let older = sequence_graph(&callback, &patch, 2);
+    let mut removed = patch.clone();
+    removed
+        .nodes
+        .retain(|node| node.kind != "rackmcp_sequencer");
+    callback.performance.sync_patch(&removed, 3);
+    assert!(updates.push(sequence_graph(&callback, &removed, 3)).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    while retired.pop().is_ok() {}
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    assert!(updates.push(older).is_ok());
+    render_sequence_lane(&mut callback, 0.6);
+    assert_eq!(callback.graphs.active.revision, 3);
+    assert!(callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("automation")
+        .is_err());
+    assert!(callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("automation_b")
+        .is_err());
+}
+
+#[test]
+fn sequence_load_rejected_graph_retirement_backpressure_retains_every_engine_without_heap() {
+    let patch = competing_sequence_load_patch();
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    sync_ordered_sequence_loads(&callback, &patch, 2, &["automation"]);
+    let older_one = sequence_graph(&callback, &patch, 2);
+    let older_two = sequence_graph(&callback, &patch, 2);
+    sync_ordered_sequence_loads(&callback, &patch, 3, &["automation_b"]);
+    assert!(updates.push(sequence_graph(&callback, &patch, 3)).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    // One retired donor plus the first rejected graph fill the two-slot queue.
+    assert!(updates.push(older_one).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    assert!(updates.push(older_two).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    assert_eq!(callback.graphs.active.revision, 3);
+    assert_eq!(
+        callback
+            .graphs
+            .waiting_retirement
+            .as_ref()
+            .unwrap()
+            .revision,
+        2
+    );
+    assert!(callback.graphs.previous.is_none());
+    sync_ordered_sequence_loads(&callback, &patch, 4, &["automation"]);
+    assert!(updates.push(sequence_graph(&callback, &patch, 4)).is_ok());
+    render_sequence_lane(&mut callback, 0.75);
+    assert_eq!(callback.graphs.active.revision, 3);
+    let mut retired_count = 0;
+    while retired.pop().is_ok() {
+        retired_count += 1;
+    }
+    assert_eq!(retired_count, 2);
+    render_sequence_lane(&mut callback, 0.25);
+    assert_eq!(callback.graphs.active.revision, 4);
+    assert!(callback.graphs.waiting_retirement.is_none());
+    while retired.pop().is_ok() {
+        retired_count += 1;
+    }
+    // Initial donor, both rejected graphs, and revision 3 all return to control.
+    assert_eq!(retired_count, 4);
+}
+
+#[test]
+fn sequence_load_shared_creation_and_duplication_commit_the_last_claim_through_history() {
+    let full = competing_sequence_load_patch();
+    let mut initial = full.clone();
+    initial
+        .nodes
+        .retain(|node| node.kind != "rackmcp_sequencer");
+    let (mut callback, mut updates, mut retired) = sequence_callback(&initial);
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    session.replace_patch(initial, Some(0)).unwrap();
+    session
+        .set_live_module_events(Some(callback.performance.clone()))
+        .unwrap();
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    let add = |node: &openpatch_core::Node| {
+        serde_json::json!({
+            "tool":"add_module","arguments":{"id":node.id,"kind":node.kind,
+                "params":node.params,"rackmcp_sequence":node.rackmcp_sequence}
+        })
+    };
+    session.execute("apply_edits", serde_json::json!({"edits":[
+        add(&full.nodes[0]), add(&full.nodes[1]),
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"automation","rackmcp_sequence":full.nodes[0].rackmcp_sequence}}
+    ]})).unwrap();
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    session.execute("undo", serde_json::json!({})).unwrap();
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    render_sequence_lane(&mut callback, 0.6);
+    session.execute("redo", serde_json::json!({})).unwrap();
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    session.execute("apply_edits", serde_json::json!({"edits":[
+        {"tool":"duplicate_modules","arguments":{"modules":[{"id":"automation","new_id":"copy_z"},{"id":"automation_b","new_id":"copy_a"}]}},
+        {"tool":"set_rackmcp_sequence","arguments":{"id":"copy_z","rackmcp_sequence":full.nodes[0].rackmcp_sequence}}
+    ]})).unwrap();
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    session.execute("undo", serde_json::json!({})).unwrap();
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    render_sequence_lane(&mut callback, 0.6);
+    session.execute("redo", serde_json::json!({})).unwrap();
+    assert!(updates
+        .push(sequence_graph(
+            &callback,
+            session.patch(),
+            session.revision()
+        ))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+}
+
+#[test]
+fn sequence_load_revision_fence_survives_an_intermediate_nonsequence_rollback() {
+    let sequenced = competing_sequence_load_patch();
+    let mut unsequenced = sequenced.clone();
+    unsequenced
+        .nodes
+        .retain(|node| node.kind != "rackmcp_sequencer");
+    let (mut callback, mut updates, mut retired) = sequence_callback(&unsequenced);
+    callback.performance.sync_patch(&unsequenced, 2);
+    let older_unsequenced = sequence_graph(&callback, &unsequenced, 2);
+    sync_ordered_sequence_loads(&callback, &sequenced, 3, &["automation_b", "automation"]);
+    let older_sequenced = sequence_graph(&callback, &sequenced, 3);
+    assert!(updates
+        .push(sequence_graph(&callback, &sequenced, 3))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    while retired.pop().is_ok() {}
+    callback.performance.sync_patch(&unsequenced, 4);
+    assert!(updates
+        .push(sequence_graph(&callback, &unsequenced, 4))
+        .is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    assert_eq!(callback.graphs.active.revision, 4);
+    while retired.pop().is_ok() {}
+    // Existing non-sequence graph behavior permits this rollback, but it must
+    // not lower the fence that prevents removed sequencing from reappearing.
+    assert!(updates.push(older_unsequenced).is_ok());
+    render_sequence_lane(&mut callback, 0.25);
+    assert_eq!(callback.graphs.active.revision, 2);
+    assert_eq!(callback.graph_revision_high_water, 4);
+    while retired.pop().is_ok() {}
+    set_live_parameter(&mut callback, "vca", "level", 0.6);
+    assert!(updates.push(older_sequenced).is_ok());
+    render_sequence_lane(&mut callback, 0.6);
+    assert_eq!(callback.graphs.active.revision, 2);
+    assert_eq!(callback.graph_revision_high_water, 4);
+    assert!(callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("automation")
+        .is_err());
+    assert!(callback.graphs.previous.is_none());
 }

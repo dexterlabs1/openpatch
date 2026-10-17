@@ -4,7 +4,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct EditEffects {
     pub parameters: super::parameters::ParameterEffects,
-    pub sequence_loads: BTreeSet<String>,
+    pub sequence_loads: Vec<String>,
     pub replacement_document: Option<ProjectDocument>,
     pub playback_mode: Option<PlaybackMode>,
     pub source_copies: BTreeMap<String, String>,
@@ -30,6 +30,15 @@ pub(super) struct EditEffects {
     pub placements: BTreeMap<String, u32>,
     pub(super) live_snapshot: Option<Value>,
     pub(super) live_frame: Option<u64>,
+}
+
+impl EditEffects {
+    fn record_sequence_load(&mut self, id: String) {
+        // A transaction publishes one final state per module. Its last load
+        // determines acquisition order when several sequencers share a target.
+        self.sequence_loads.retain(|existing| existing != &id);
+        self.sequence_loads.push(id);
+    }
 }
 
 #[cfg(test)]
@@ -377,13 +386,25 @@ impl Session {
         let retired_before = effects.retired.len();
         let parameter_targets =
             super::parameters::before_edit(self, candidate, name, args, effects)?;
+        let sequence_ids_before = matches!(name, "add_module" | "duplicate_modules").then(|| {
+            candidate
+                .nodes
+                .iter()
+                .map(|node| node.id.clone())
+                .collect::<BTreeSet<_>>()
+        });
         self.apply_session_edit_inner(candidate, name, args, effects)?;
+        if let Some(before) = sequence_ids_before {
+            for node in &candidate.nodes {
+                if node.kind == "rackmcp_sequencer" && !before.contains(&node.id) {
+                    effects.record_sequence_load(node.id.clone());
+                }
+            }
+        }
         if name == "set_rackmcp_sequence"
             || (name == "apply_module_preset" && args["preset"].get("rackmcp_sequence").is_some())
         {
-            effects
-                .sequence_loads
-                .insert(string(args, "id")?.to_owned());
+            effects.record_sequence_load(string(args, "id")?.to_owned());
         }
         super::parameters::after_edit(self, candidate, &parameter_targets, effects);
         effects.lifecycle_captured = true;

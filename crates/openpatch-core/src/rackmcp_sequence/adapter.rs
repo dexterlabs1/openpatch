@@ -268,6 +268,12 @@ impl RackMcpSequencer {
         }
     }
 
+    /// Binding changes acquire the receiving target set after donor ownership
+    /// restoration, even when source data itself is unchanged.
+    pub(crate) fn claims_match(&self, previous: &Self) -> bool {
+        self.data_matches(previous) && self.target_fingerprints == previous.target_fingerprints
+    }
+
     /// Source-data identity is independent of resolved native target routes.
     pub(crate) fn data_matches(&self, previous: &Self) -> bool {
         self.data_fingerprint == previous.data_fingerprint

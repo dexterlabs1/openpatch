@@ -25,6 +25,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod live_parameters;
+mod sequence_ownership;
 pub use live_parameters::{
     runtime_parameter_descriptor, runtime_parameter_names, ParameterDescriptor, ParameterHandle,
 };
@@ -2061,7 +2062,8 @@ impl Engine {
 
     /// Apply an explicit RackMCP data-load event to the receiving compiled
     /// sequence. Preserves transport and rearms selection/automation caches,
-    /// including when loaded data equals the prior data. Hosts call this after
+    /// including when loaded data equals the prior data, and atomically acquires its
+    /// native targets. Hosts call this after
     /// compatible graph adoption, never for unrelated graph replacements.
     pub fn reload_rackmcp_sequence_data(&mut self, handle: ModuleHandle) -> bool {
         if handle.generation != self.identity {
@@ -2069,6 +2071,19 @@ impl Engine {
         }
         match &mut self.inner {
             EngineKind::Poly(engine) => engine.reload_rackmcp_sequence_data(handle.node),
+            _ => false,
+        }
+    }
+
+    /// Acquire this sequence's compiled native targets without reloading data
+    /// or clearing its acknowledged-write cache. Explicit host events call this
+    /// in their persistent global event order after graph adoption.
+    pub fn claim_rackmcp_sequence_targets(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.claim_rackmcp_sequence_targets(handle.node),
             _ => false,
         }
     }

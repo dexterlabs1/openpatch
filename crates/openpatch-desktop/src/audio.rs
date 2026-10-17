@@ -390,6 +390,8 @@ struct PreparedGraph {
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
+    // Compiled on the control thread; callback rollback checks stay constant time.
+    contains_rackmcp_sequence: bool,
     port_lights: Option<PortLightProducer>,
     port_light_reader: Option<PortLightReader>,
     port_light_control: u64,
@@ -402,6 +404,7 @@ impl From<Engine> for PreparedGraph {
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
+            contains_rackmcp_sequence: false,
             port_lights: None,
             port_light_reader: None,
             port_light_control: 1,
@@ -485,6 +488,10 @@ fn prepare_graph_for_control(
         engine,
         modules: ModulePlan::default(),
         revision: 0,
+        contains_rackmcp_sequence: patch
+            .nodes
+            .iter()
+            .any(|node| node.kind == "rackmcp_sequencer"),
         scope: ScopeSetup {
             generation,
             enabled: binding.is_some(),
@@ -1049,12 +1056,24 @@ struct Exchange<T> {
 }
 
 impl<T> Exchange<T> {
+    #[cfg(test)]
     fn poll(&mut self) -> bool {
+        self.poll_if(|_, _| true)
+    }
+
+    /// Inspect at most one incoming graph per callback. Rejected graphs share
+    /// the retirement path with completed donors and stay owned if it is full.
+    fn poll_if(&mut self, accept: impl FnOnce(&T, &T) -> bool) -> bool {
         self.recycle();
         if self.waiting_retirement.is_some() || self.previous.is_some() {
             return false;
         }
         if let Ok(next) = self.incoming.pop() {
+            if !accept(&self.active, &next) {
+                self.waiting_retirement = Some(next);
+                self.recycle();
+                return false;
+            }
             self.previous = Some(std::mem::replace(&mut self.active, next));
             true
         } else {
@@ -1125,6 +1144,8 @@ struct Callback {
     port_light_control: u64,
     execution_cancel: u64,
     execution_frozen: bool,
+    // Retained even when an allowed non-sequence graph rolls active backward.
+    graph_revision_high_water: u64,
 }
 
 impl Callback {
@@ -1169,6 +1190,7 @@ impl Callback {
             port_light_control,
             execution_cancel: 0,
             execution_frozen: false,
+            graph_revision_high_water: 0,
         }
     }
 
@@ -1187,6 +1209,11 @@ impl Callback {
             self.performance
                 .plan(patch, &self.graphs.active.engine, revision)?;
         self.graphs.active.revision = revision;
+        self.graph_revision_high_water = self.graph_revision_high_water.max(revision);
+        self.graphs.active.contains_rackmcp_sequence = patch
+            .nodes
+            .iter()
+            .any(|node| node.kind == "rackmcp_sequencer");
         Ok(())
     }
 
@@ -1235,7 +1262,17 @@ impl Callback {
     fn render_inner<T: OutputSample>(&mut self, output: &mut [T], channels: usize) -> (bool, bool) {
         let control = self.shared.port_light_control.load(Ordering::SeqCst);
         let control_changed = self.port_light_control != control;
-        let adopted = self.graphs.poll();
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
+        let revision_floor = self.graph_revision_high_water;
+        let adopted = self.graphs.poll_if(|active, next| {
+            next.revision >= revision_floor
+                || !(active.contains_rackmcp_sequence || next.contains_rackmcp_sequence)
+        });
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
         // Align a queued graph before adoption; steady enabled adoption may
         // inherit decay, while a newly acknowledged epoch is reset below.
         self.graphs
@@ -1985,6 +2022,10 @@ mod tests {
         let mut callback =
             Callback::new(patch.compile().unwrap(), incoming, retired, shared, 48000);
         callback.graphs.active.prepare_port_lights(patch).unwrap();
+        callback.graphs.active.contains_rackmcp_sequence = patch
+            .nodes
+            .iter()
+            .any(|node| node.kind == "rackmcp_sequencer");
         callback.gain.value = 1.0;
         (callback, updates, disposal)
     }

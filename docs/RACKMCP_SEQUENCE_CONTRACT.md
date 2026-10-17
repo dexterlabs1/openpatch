@@ -172,7 +172,11 @@ event: the pinned module has no onReset/onSampleRateChange override.
 now carry data-load intent through graph activation, including equal data.
 Parameter-only presets and unrelated edits do not reload. One atomic native
 transaction loads its final state once per module; it does not replay intermediate
-JSON states. Prepared plans freeze requested epochs; a separate per-incarnation
+JSON states. Final loads retain their action order, including creation and
+duplication: loading A, then B, then A publishes B followed by A. Undo restores
+these final module states in reverse order; redo restores the forward order.
+This is native atomic-transaction behavior, not replay of intermediate Rack JSON.
+Prepared plans freeze requested `(revision, order)` epochs; a separate per-incarnation
 applied high-water mark prevents stale plans from replaying consumed events.
 Fresh constructors and changed-data adoption consume a load once. Compatible
 equal-data adoption applies the explicit event without resetting transport.
@@ -182,7 +186,7 @@ visibility, bypass freeze/resume, edits, adoption, publication, save and history
 Actual callback processing/adoption is allocation/deallocation-free in the tested
 workflows. The dedicated Signal Atlas rack/browser panel displays authored
 selection/notes/drum hits/accents, never an invented live playhead. Direct
-transport/seek/status publication, exclusive target ownership, provenance-safe import,
+transport/seek/status publication, provenance-safe import,
 Bridge and Listen capture remain open; this is not whole-module or whole-patch
 qualification.
 
@@ -211,7 +215,27 @@ See [machine-readable evidence](benchmarks/rackmcp-sequence-loads.json).
 A separate real two-sequencer probe passes six stages / 192 frames: the later
 claim displaces the former owner, reloading a displaced writer can reclaim it,
 and deleting the winner does not automatically restore the former writer.
-**Native exclusive ownership is not yet implemented.** It must preserve claims
-across ordinary rebuilds, apply explicit acquisition events in a declared order,
-and avoid callback allocation. Do not silently use native node order as competing
-writer arbitration or enable source import before this boundary is closed.
+Native exclusive ownership now uses prepared native module/parameter keys and
+fixed lane slots. Only the owner may write or acknowledge a lane's cached value.
+Cold standalone graphs acquire in node/lane order; later loads acquire in
+document action order, independent of DSP traversal. Fresh constructors and
+changed data already perform their load; the host's subsequent ordered acquisition
+does not reload them again or alter first-advance pattern selection.
+
+Compatible node reorder, rate changes and unrelated edits preserve ownership.
+Missing targets retain claims and caches. Deleted or retargeted winners leave
+vacant claims; displaced writers do not automatically recover. An explicit
+load can reclaim a target. Healthy incumbent reloads retain ownership as the
+declared correction to SDK self-unbinding.
+
+Before adoption, the desktop rejects graphs below its persistent revision
+high-water mark when either graph contains a RackMCP sequencer. That fence
+survives sequence removal and intervening older non-sequence graphs.
+Already-prepared graphs remain valid in forward
+order; a late plan cannot restore old data, claims or a deleted incarnation.
+Rejected graphs use the existing retirement queue, retaining ownership locally
+if it is full rather than freeing memory in the callback. Equal-revision
+rebuilds remain supported. Focused Core and actual callback tests cover these
+native policies, including allocation/deallocation checks; they do not establish
+general equivalence to Rack's scheduler. Source-provenance binding and the
+registered imported workflow remain required before enabling source import.

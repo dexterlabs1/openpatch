@@ -143,8 +143,26 @@ idempotent, and the raw comparison remains honestly failed for those target
 writes. All 18 output fields match throughout 25,104 frames; a strict separate
 audit verifies the exact native correction. [Evidence and remaining ownership boundary](RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-finding-and-deliberate-host-correction).
 
-Next implement exclusive target ownership against the genuine two-sequencer
-probe, guard source-provenance target binding, then close Bridge/Listen and the
+**Ownership checkpoint:** competing sequencers now acquire exclusively in the
+order of their final document actions, including creation, duplication, presets
+and undo/redo. Reorder/rate changes retain the winner; deleting it leaves the
+target unclaimed. A displaced writer only returns through explicit acquisition.
+Late sequencing graphs below the callback revision high-water mark are rejected
+before adoption, even after sequence removal, and retained
+safely if retirement is full. Focused native/callback checks cover the policy;
+the genuine single-module comparison was rerun after the Core change and retains
+the same declared SDK self-unbinding differences. No whole-module equivalence
+or new installation is claimed.
+
+[Ownership checks and reference result](benchmarks/rackmcp-sequence-ownership.json):
+8 ownership, 9 adapter and 3 Core heap checks; 287 control, 28 performance and
+220 audio regressions (one intentionally ignored), including shared-session
+creation/duplication/history and persistent rollback fencing; one real MCP stdio roundtrip.
+Strict Core/CLI/desktop all-target Clippy and workspace formatting pass. The
+initial audio run exposed an obsolete VCA fixture that omitted explicit knob
+assignment intent; its gain/no-heap assertions pass after correcting that input.
+
+Next guard source-provenance target binding, then close Bridge/Listen and the
 real musical excerpt. No release, installation or whole-module equivalence is
 claimed.
 

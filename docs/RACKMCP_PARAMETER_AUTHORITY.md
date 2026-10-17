@@ -111,15 +111,18 @@ unavailable values are never guessed from stale authored parameters.
 Patch/assignment synchronization shares one backend registry lock. Per-field
 epochs persist across ordinary synchronization and are frozen into each prepared
 plan. Adoption compares receiver/donor epochs, so skipped plans and equal-value
-assignments retain their meaning. An old plan already prepared remains valid;
+assignments retain their meaning. An old plan already prepared remains valid in
+forward revision order; sequencer-containing graph rollback is rejected before
+DSP adoption, with rejected graphs retained through retirement backpressure;
 late preparation after newer parameter metadata is explicitly rejected. The
 callback uses graph-sized scratch allocated on the control thread.
 
 Actual headless callback checks cover manual/equal assignments, unrelated
 recompiles, frozen/skipped plans, rate changes, deletion/recreation, host resets,
 shared Session edit/undo/redo/save/reopen and suspension/resume, with no callback
-heap activity. These are native parameter authority checks. Source target
-scheduling, lane-cache ownership and a registered RackMCP workflow remain open.
+heap activity. These are native parameter authority checks. Exclusive lane
+ownership now follows ordered document loads and preserves vacant claims after
+winner deletion. Source provenance and a registered RackMCP workflow remain open.
 
 
 ## Observed SDK binding boundary

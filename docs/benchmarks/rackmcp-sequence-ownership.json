@@ -1,0 +1,94 @@
+{
+  "status": "Native exclusive sequencing ownership validated; source-provenance import remains pending; not installed",
+  "source": {
+    "plugin": "RackMCP",
+    "version": "2.0.0",
+    "commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+    "sdk": "2.6.6"
+  },
+  "implemented": {
+    "arbitration": "Prepared native module/parameter keys, fixed lane slots; only exclusive owner writes or acknowledges cache",
+    "ordering": "Cold native node/lane order; later explicit loads follow last-occurrence document action order. Undo reverses final module order, redo restores forward order; intermediate JSON loads are not replayed",
+    "continuity": "Claims and vacant tombstones survive reorder, rate changes and unrelated rebuilds. Removing winner does not revive a displaced writer",
+    "missing_targets": "Keep claims and last successful lane value across target disappearance/recreation",
+    "reload": "Healthy incumbent stays bound as declared SDK correction. Claim-only activation avoids repeating constructor/changed-data load",
+    "rollback": "When either graph contains RackMCP sequencing, reject graph revisions below the persistent callback high-water mark before adoption. Fence survives sequence removal and intervening older non-sequence graphs; forward frozen graphs and equal-revision rebuilds remain valid",
+    "realtime": "Keys/order allocated off-thread; claims and callback graph rejection/retirement use no heap in tested workflows"
+  },
+  "validation": {
+    "core_ownership": {
+      "passed": 8,
+      "log": "ownership-core.log"
+    },
+    "core_adapter": {
+      "passed": 9,
+      "log": "ownership-adapter.log"
+    },
+    "core_heap": {
+      "passed": 3,
+      "allocations": 0,
+      "deallocations": 0,
+      "log": "ownership-heap.log"
+    },
+    "cli_ordered_loads": {
+      "passed": 7,
+      "log": "ownership-control.log"
+    },
+    "all_control_regressions": {
+      "passed": 287,
+      "log": "ownership-control-regression.log"
+    },
+    "all_performance_regressions": {
+      "passed": 28,
+      "log": "ownership-backend-regression.log"
+    },
+    "all_audio_regressions": {
+      "passed": 220,
+      "ignored": 1,
+      "log": "ownership-audio-regression-final.log"
+    },
+    "mcp_stdio_edit_history_save_reopen": {
+      "passed": 1,
+      "log": "ownership-mcp.log"
+    },
+    "clippy": "Core/CLI/desktop all-targets, warnings denied; final desktop delta also checked",
+    "formatting": "workspace cargo fmt --check",
+    "shared_creation_duplication_history_callback": {
+      "passed": 1,
+      "log": "ownership-creation-callback.log",
+      "also_included_in_all_audio_regressions": true
+    }
+  },
+  "genuine_reference_rerun": {
+    "directory": "native-test-output/rack-control-import/module-reference-005",
+    "cases": 9,
+    "frames": 25104,
+    "raw_full_module_passed": false,
+    "raw_failing_cases": [
+      "manual_cache_equal_reload",
+      "changed_data",
+      "written_target_disappear_return"
+    ],
+    "output_words_equal": 7681824,
+    "declared_correction_target_words": 1964,
+    "strict_correction_contract_passed": true,
+    "frozen_production_entries": 96,
+    "production_manifest_sha256": "212bc722ecfc0f641daca611d833a0f9efad965d7aeaf8c9c9bd528b75b63214",
+    "manifest_sha256": "0e4dcac60a346fc030f61a959a37e3ac31ea3ae15b20a3a4980d4b647abd524d",
+    "raw_report_sha256": "4e40c5bb6d3a39142c7f4960402647f5c921fa4d37df6acc30dc337422cee525",
+    "correction_audit_sha256": "15e661bdf8ed59b5316712599299f2d695f942d353ad7706dbebab6066f796a0",
+    "limits": "Single-module proof retains SDK self-unbinding differences. Separate genuine two-sequencer probe has six ownership stages/192 frames; native ownership tests exercise the declared host policy, not general Rack scheduler equivalence"
+  },
+  "preserved_failures": {
+    "core_check": "Missing Debug derive in new registry; fixed; focused Core tests and strict Clippy pass",
+    "audio": "Old VCA test simulated a knob edit through ordinary refresh. Diagnostic measured preserved level 0.8 vs intended 0.3. Fixture now supplies explicit assignment intent, retaining exact gain/no-heap assertions; full audio rerun passes",
+    "raw_reference": "Three SDK self-unbinding cases deliberately remain failed; strict separate correction audit passes"
+  },
+  "remaining": [
+    "Source-provenance binding before import",
+    "Transport/seek/status publication",
+    "Bridge/Listen real control/capture boundaries",
+    "Actual imported musical excerpt and full milestone macOS CI"
+  ],
+  "installed_app": "Unchanged OpenPatch 0.2.6 build 8"
+}
