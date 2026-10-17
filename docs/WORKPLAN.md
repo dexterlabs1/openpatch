@@ -42,6 +42,22 @@ Implement the Fundamental 2.6.4 **VCO → VCF** voice chain using separate sourc
 
 Reuse the existing frozen Stock reference harness architecture without changing its pins or declarations. Qualify actual 2.6.4 C++ class behavior, mono/16-channel routing, sync/PWM, regrowth, LP/HP connectivity, driven filtering and self-oscillation. Audit the old VCF's previous-input initialization before claiming frame-zero equivalence. Then import a real voice chain through VCA/ADSR, verify finite audible output and edit/history/save/reopen behavior, and add the pinned mappings. Third-party plugins and binary hosting remain tracked parity work; MIDI/live and other platforms remain deferred.
 
+**Processor checkpoint:** distinct `rack264_vco` / `rack264_vcf` now pass the
+[pinned-class reference suite](../scripts/rack264_voice_reference/README.md):
+45 oscillator cases, 78 filter cases and ten genuine SDK loading/reset cases
+on macOS ARM with Rack SDK 2.6.6. All compared finite voltages and observed
+states matched exactly in these fixtures; this is a bounded source-version
+result, not hardware accuracy or whole-patch equivalence. VCF explicitly uses
+recorded initial history because the C++ constructor leaves it uninitialized;
+Rust starts fresh histories at zero. Its legacy loader distinguishes absent
+`params` from a present array missing newer CV-depth entries. The 19 focused
+processor cases, three actual Core voice/adoption/no-heap checks, strict Core
+Clippy and desktop compilation pass. Source-adaptation GPL notices and combined
+binary licensing are included; original OpenPatch code remains MIT. Existing
+Stock oracles are unchanged. **Shared panels, catalog fixtures, pinned import
+mappings and application workflows are next; no full milestone CI/package or
+installation yet.** Installed 0.2.6 build 8 is unchanged.
+
 Reuse this integration checkout; do not create another worktree for a small slice. The import milestone's local evidence is `native-test-output/rack-import/STATE.json`; Stock Scope's frozen evidence remains under `native-test-output/stock-scope/`. Start one compact current state for the version-correct voice work, referencing those completed records rather than copying their histories.
 
 ## Course to completion

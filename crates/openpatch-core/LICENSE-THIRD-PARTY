@@ -1,3 +1,37 @@
+Fundamental 2.6.4 VCO and VCF source adaptations
+==============================================
+
+Covered OpenPatch files:
+  src/rack264_vco.rs
+  src/rack264_vcf.rs
+
+Adapted from VCV Fundamental src/VCO.cpp and src/VCF.cpp:
+Copyright © 2016-2023 VCV.
+Source revision: e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e
+https://github.com/VCVRack/Fundamental/tree/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e
+https://raw.githubusercontent.com/VCVRack/Fundamental/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/LICENSE.md
+
+License: GPL-3.0-or-later. These are modified Rust adaptations, including
+OpenPatch host integration, bounded runtime storage, input validation and
+documented deterministic startup/safety policies; they are not the original
+VCV source files. The original source is by Andrew Belt and contributors.
+No Fundamental panel artwork, VCV logo or icon is included in these adaptations.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+It is distributed WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE-GPL-3.0.txt
+for the complete license, also available at https://www.gnu.org/licenses/gpl-3.0.txt.
+
+Original OpenPatch code remains MIT-licensed under the repository LICENSE.
+Combined OpenPatch binaries containing these adaptations are distributed under
+GPL-3.0-or-later. The package SPDX expression MIT AND GPL-3.0-or-later records
+both sets of terms; it does not offer the GPL-covered adaptations under MIT.
+Corresponding OpenPatch source: https://github.com/dexterlabs1/openpatch
+Use the source revision matching the distributed binary.
+
+
 OpenPatch MACRO VOICE
 
 The feedback FM and additive spectral-shaping algorithms in

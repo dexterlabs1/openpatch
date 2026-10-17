@@ -1,3 +1,32 @@
+Fundamental 2.6.4 VCO and VCF source adaptations
+==============================================
+
+openpatch-core/src/rack264_vco.rs and src/rack264_vcf.rs are modified Rust
+adaptations of VCV Fundamental src/VCO.cpp and src/VCF.cpp.
+Copyright © 2016-2023 VCV. Original source by Andrew Belt and contributors.
+Source revision: e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e
+https://github.com/VCVRack/Fundamental/tree/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e
+https://raw.githubusercontent.com/VCVRack/Fundamental/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/LICENSE.md
+
+License: GPL-3.0-or-later. Modifications include Rust conversion, OpenPatch host
+integration, bounded runtime storage, input validation and documented
+deterministic startup/safety policies. No Fundamental panel artwork, VCV logo
+or icon is included in these adaptations.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+It is distributed WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. The complete license is
+included as LICENSE-GPL-3.0.txt and printed by --third-party-licenses.
+
+Original OpenPatch code remains MIT-licensed under the repository LICENSE.
+Combined binaries containing these adaptations are distributed under
+GPL-3.0-or-later; MIT AND GPL-3.0-or-later records both sets of terms, not an MIT
+alternative for the adaptations. Corresponding OpenPatch source is available at
+https://github.com/dexterlabs1/openpatch, at the revision matching the binary.
+
+
 OpenPatch waveform snapshot transport uses triple_buffer 9.0.0 (unmodified),
 Copyright its respective contributors, licensed under Mozilla Public License 2.0.
 Source: https://crates.io/crates/triple_buffer/9.0.0

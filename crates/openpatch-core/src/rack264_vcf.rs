@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Adapted from VCV Fundamental, Andrew Belt and contributors; see LICENSE.
+// Adapted from VCV Fundamental, copyright 2016-2023 VCV, Andrew Belt and contributors.
+// See ../LICENSE-GPL-3.0.txt and ../LICENSE-THIRD-PARTY.
 //! Fundamental 2.6.4's non-oversampled, rational-clipped RK4 ladder VCF.
 //!
 //! The source leaves LadderFilter::input uninitialized at construction. This
@@ -276,6 +277,76 @@ impl Rack264Vcf {
     }
 }
 
+/// Persistent integration histories and the exact module-local RNG words.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+pub struct Rack264VcfSnapshot {
+    /// Lane-major: four RK4 states, followed by the previous input.
+    pub states: [[f32; 5]; 16],
+    pub rng: [u64; 2],
+}
+
+/// Observation adapter around the actual processor used by the audio engine.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct Rack264VcfProbe(Rack264Vcf);
+
+impl Rack264VcfProbe {
+    pub fn new(node: &Node, rate: u32) -> Result<Self, String> {
+        Rack264Vcf::build(node, rate).map(Self)
+    }
+
+    pub fn step(&mut self, inputs: &[PortFrame; 4], mask: u16) -> [PortFrame; 2] {
+        let mut outputs = [PortFrame::default(); 2];
+        self.0.process(inputs, &mut outputs, mask);
+        outputs
+    }
+
+    pub fn snapshot(&self) -> Rack264VcfSnapshot {
+        Rack264VcfSnapshot {
+            states: self.0.lanes.map(|lane| {
+                [
+                    lane.state[0],
+                    lane.state[1],
+                    lane.state[2],
+                    lane.state[3],
+                    lane.input,
+                ]
+            }),
+            rng: self.0.rng,
+        }
+    }
+
+    pub fn initialize(&mut self) {
+        self.0.initialize_state();
+    }
+
+    pub fn adopt(&mut self, old: &Self) {
+        self.0.adopt(&old.0);
+    }
+
+    /// Recorded harness startup assignment, performed before the first step.
+    /// This does not establish equivalence to upstream's undefined cold start.
+    /// Existing integration states are untouched; seed() discards one RNG draw.
+    pub fn initialize_reference(
+        &mut self,
+        previous_input: [f32; 16],
+        seed: [u64; 2],
+    ) -> Result<(), String> {
+        if !previous_input.iter().all(|value| value.is_finite()) || seed == [0; 2] {
+            return Err(
+                "reference startup requires finite previous inputs and a nonzero RNG seed".into(),
+            );
+        }
+        for (lane, input) in self.0.lanes.iter_mut().zip(previous_input) {
+            lane.input = input;
+        }
+        self.0.rng = seed;
+        self.0.draw();
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,5 +572,32 @@ mod tests {
             }
             step(&mut a, i, 3);
         }
+    }
+
+    #[test]
+    fn production_probe_records_initial_history_and_rejects_invalid_assignment_atomically() {
+        let mut probe = Rack264VcfProbe::new(&node(&[]), 48_000).unwrap();
+        probe.initialize_reference([-0.75; 16], SEED).unwrap();
+        let startup = probe.snapshot();
+        assert_eq!(startup.states, [[0.0, 0.0, 0.0, 0.0, -0.75]; 16]);
+        assert_eq!(startup.rng, model().rng);
+        let mut invalid = [0.0; 16];
+        invalid[15] = f32::NAN;
+        assert!(probe.initialize_reference(invalid, SEED).is_err());
+        assert!(probe.initialize_reference([0.0; 16], [0; 2]).is_err());
+        assert_eq!(probe.snapshot(), startup);
+        probe.step(&input(5), 3);
+        let prior = probe.snapshot();
+        probe.initialize();
+        let reset = probe.snapshot();
+        assert_eq!(reset.rng, prior.rng);
+        for (lane, before) in reset.states.iter().zip(prior.states) {
+            assert_eq!(&lane[..4], &[0.0; 4]);
+            assert_eq!(lane[4], before[4]);
+        }
+        let mut next = Rack264VcfProbe::new(&node(&[("drive", 1.0)]), 48_000).unwrap();
+        next.adopt(&probe);
+        assert_eq!(next.snapshot(), reset);
+        assert_eq!(next.0.parameters[4], 1.0);
     }
 }

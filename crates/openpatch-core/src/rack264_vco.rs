@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Adapted from VCV Fundamental, Andrew Belt and contributors; see LICENSE.
+// Adapted from VCV Fundamental, copyright 2016-2023 VCV, Andrew Belt and contributors.
+// See ../LICENSE-GPL-3.0.txt and ../LICENSE-THIRD-PARTY.
 //! Scalar realization of the Fundamental 2.6.4 VCO numerical contract at
 //! e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e. This identity deliberately retains
 //! its curved waves, square latch, original event ordering and quartet lifecycle.

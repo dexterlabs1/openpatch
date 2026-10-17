@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "status": "Processor qualification checkpoint; shared panels/import workflows and full milestone CI unfinished. Not installed.",
+  "source_commit": "e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e",
+  "models": [
+    "rack264_vco",
+    "rack264_vcf"
+  ],
+  "sdk": "2.6.6",
+  "machine": "arm64",
+  "toolchain": {
+    "rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "cpp": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+    "profile": "Cargo dev; rustc -O diagnostic driver"
+  },
+  "reports": [
+    {
+      "attempt": "vco-attempt-003",
+      "report_sha256": "020c55d41ac7c76db6b01e5e6c4d82626c471a2232bc777e2f57683f4aeed59e",
+      "acceptance_sha256": "54286db180fefc36d5b1492149d9def4f4f08b54957c84dbb247ceb6aec7e4f7",
+      "cases": 42,
+      "rates": [
+        44100,
+        48000,
+        96000
+      ],
+      "maximum_errors": {
+        "exact": 0,
+        "voltage": 0,
+        "phase": 0,
+        "frequency": 0,
+        "state": 0
+      },
+      "passed": true
+    },
+    {
+      "attempt": "vco-low-cycle-001",
+      "report_sha256": "abe4173456602ec099117b467c6c8df6ca9006371d969d1d061360be3a456ec4",
+      "acceptance_sha256": "c279887cca11c0fbb67586b499a59379b50ba1d13520e3fd124a838bef44e384",
+      "cases": 3,
+      "rates": [
+        44100,
+        48000,
+        96000
+      ],
+      "maximum_errors": {
+        "exact": 0,
+        "voltage": 0,
+        "phase": 0,
+        "frequency": 0,
+        "state": 0
+      },
+      "passed": true
+    },
+    {
+      "attempt": "vcf-attempt-003",
+      "report_sha256": "74dab5da16fda5ba338c21ba1e57e1f41fdec2ee2a3d4339c6aab6eb07894ae4",
+      "acceptance_sha256": "79ae9bb1886dde4c5835cbaf4d4f67a7ad13134f4b21aa733b56500047053d3a",
+      "cases": 78,
+      "rates": [
+        44100,
+        48000,
+        96000
+      ],
+      "maximum_errors": {
+        "exact": 0,
+        "voltage": 0,
+        "state": 0
+      },
+      "passed": true
+    }
+  ],
+  "loader": {
+    "cases": 10,
+    "passed": true,
+    "adapter_sha256": "bcff92157927be985bc052d47ba43393a62b22123ec20fe34166880e9e002fcd",
+    "report_sha256": "6442199f299b08f7b48adcd2d088f5caf43ee373ead600a2cb2625d14795d1b7",
+    "binary_sha256": "065a9e9217ae5f8653dc45b6e41e143f780d95489f2f021d9855b7617c6f1d1f",
+    "context": "Genuine headless Context/Engine; no device/window/audio initialization.",
+    "finding": "Absent params retains constructor CV depths0; present array with missing newer depths loads1; explicit values override. Genuine ResetEvent restores defaults and clears integrator states while preserving previous input."
+  },
+  "post_reference_source_audit_sha256": "c1d7170a95c9e4f8056fd40ba7886538e756cd6ced18564cb116da3052f1d5ef",
+  "local_evidence": "native-test-output/rack-264-voice/STATE.json",
+  "reproduction": "scripts/rack264_voice_reference/README.md",
+  "limits": [
+    "Finite declared domain, recorded SDK/toolchain only; no hardware or universal Rack equivalence claim.",
+    "VCF explicitly assigned previous input; upstream uninitialized cold-start equivalence unclaimed.",
+    "Rust VCF module-local RNG intentionally differs from shared Rack RNG; comparisons use controlled matching streams.",
+    "No undefined SDK BLEP endpoint behavior qualification.",
+    "No new source mappings enabled until shared panels and imported workflow checks pass.",
+    "Existing Stock oracle pins and declarations untouched."
+  ]
+}
