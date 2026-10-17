@@ -28,10 +28,14 @@ mod adsr_eg;
 mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
+mod rack264_vcf;
+mod rack264_vco;
 mod stereo_output;
 mod stock_delay;
 mod stock_noise;
 mod stock_vco;
+#[doc(hidden)]
+pub use rack264_vco::{Rack264VcoProbe, Rack264VcoSnapshot};
 #[doc(hidden)]
 pub use stock_noise::{StockNoiseDrawEvent, StockNoiseSnapshot};
 #[doc(hidden)]
@@ -440,6 +444,14 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_vco::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rack264_vco::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rack264_vcf::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
