@@ -26,6 +26,7 @@ mod project;
 #[cfg(test)]
 mod project_acceptance_tests;
 mod rack;
+mod rack264_voice_fixture;
 mod scope;
 mod scope_transport;
 mod smoke_schedule;

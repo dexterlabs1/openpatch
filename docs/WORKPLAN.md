@@ -32,7 +32,7 @@ The frozen actual Core/genuine Rack result covers **4,242 complete snapshots acr
 
 [PR #30](https://github.com/dexterlabs1/openpatch/pull/30) is merged at `b03ced7`, with runtime source `cc14da0`. Desktop and MCP share the complete project document, dependency repair, undo/history and saved layout. Verified mappings become native modules; unsupported modules retain their source data, assets and incident routes as visible placeholders. Exact playback stays suspended; Partial playback and substitutions are explicit. Source-only routes carry no invented signal activity. Native v1/legacy JSON migration, recovery and templates remain supported. [Support and limits](VCV_IMPORT.md).
 
-The user's real fixture preserves **55 modules and 83 cables**, with **24 verified native mappings and 31 unresolved dependencies**, through native import/save/reopen. The declared synthetic collection exercises real 16-channel native processing, delayed feedback startup/steady-state and unsupported effects. Six focused host regressions cover repair, saved camera/placement, authored MCP loads, same-package reimport, unseen history geometry and early startup fitting. This proves the supported subset and preservation, not sonic equivalence of the whole patch.
+At the PR #30 checkpoint, the user's real fixture preserved **55 modules and 83 cables**, with **24 verified native mappings and 31 unresolved dependencies**, through native import/save/reopen. The declared synthetic collection exercises real 16-channel native processing, delayed feedback startup/steady-state and unsupported effects. Six focused host regressions cover repair, saved camera/placement, authored MCP loads, same-package reimport, unseen history geometry and early startup fitting. This proves the supported subset and preservation, not sonic equivalence of the whole patch.
 
 [Full macOS ARM CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed **2,378 Rust tests**, including **1,206 desktop cases** (eight intentionally ignored), **117 Python/MCP tests**, strict workspace lint/formatting, optimized binaries, app packaging and visualizer integration. The downloaded artifact's GitHub SHA-256 digest, ARM64 executables and deep/strict ad-hoc signature were verified. This internal candidate retains base metadata 0.2.6/build 8; the installed app remains unchanged. No native-window/audio-device qualification is claimed.
 
@@ -54,9 +54,18 @@ Rust starts fresh histories at zero. Its legacy loader distinguishes absent
 processor cases, three actual Core voice/adoption/no-heap checks, strict Core
 Clippy and desktop compilation pass. Source-adaptation GPL notices and combined
 binary licensing are included; original OpenPatch code remains MIT. Existing
-Stock oracles are unchanged. **Shared panels, catalog fixtures, pinned import
-mappings and application workflows are next; no full milestone CI/package or
-installation yet.** Installed 0.2.6 build 8 is unchanged.
+Stock oracles are unchanged.
+
+**Integration candidate:** the two models now use the shared detailed rack/browser
+panels with source-specific bounds, guides and lights. All 83 catalog previews
+match default rack drawing. Five new UI checks and targeted CPU-only normal/dark
+and browser renders pass. Import transforms preserve sync encoding, removed
+source slots and legacy CV-depth defaults. The actual user fixture now has
+**29 mapped / 26 unresolved** modules; all 55 modules, 83 cables, source JSON and
+assets survive save/reopen. A real shared-session mono/16-channel voice passes
+parameter edit/undo/redo and fresh saved reopen; the MCP stdio test renders a
+non-silent WAV after the same workflow. Full macOS candidate CI is next; no
+installation yet. Installed 0.2.6 build 8 is unchanged.
 
 Reuse this integration checkout; do not create another worktree for a small slice. The import milestone's local evidence is `native-test-output/rack-import/STATE.json`; Stock Scope's frozen evidence remains under `native-test-output/stock-scope/`. Start one compact current state for the version-correct voice work, referencing those completed records rather than copying their histories.
 

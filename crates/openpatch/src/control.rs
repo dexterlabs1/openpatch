@@ -5,6 +5,8 @@ mod construction;
 mod document;
 #[cfg(test)]
 mod document_tests;
+#[cfg(test)]
+mod rack264_import_tests;
 mod rack_import;
 use crate::project_document::{
     DocumentNode, ExecutionDisposition, PlaybackMode, ProjectDocument, ProjectLayout,

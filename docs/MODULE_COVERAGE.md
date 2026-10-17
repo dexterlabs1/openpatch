@@ -193,6 +193,17 @@ complete traces and no discarded snapshots. Native-device and general import
 gates remain open.
 Catalog size does not count completed VCV equivalents.
 
+## Version-specific Rack voice imports
+
+`rack264_vco` and `rack264_vcf` preserve Fundamental 2.6.4's older source
+behavior without changing the newer Stock models. The catalog now contains
+83 kinds; this does not count completed VCV equivalents. The separate models
+have shared detailed rack/browser panels and pinned import transforms. Their
+45 VCO / 78 VCF source-reference cases and ten genuine loading/reset cases
+pass on the recorded macOS ARM profile. Controlled VCF startup/RNG limits,
+source attribution and remaining unsupported dependencies are documented in
+[Rack import](VCV_IMPORT.md). [Actual panel review](../design/reviews/rack264-voice/README.md).
+
 ## Implemented functional utility contracts
 
 Five additional original models use at most two inputs and one output. No VCV or third-party plugin source code was copied; these Rust algorithms were authored against the contracts below. All five are labeled `functional` in the machine-readable catalog, with port names, parameter defaults, bounds, and discrete parameter steps. They retain mono version-1 behavior; version 2 adds the declared voice policies below. They extend the usable toolkit; they do not establish full VCV module parity.

@@ -366,6 +366,59 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(inspect()["document"], original)
         self.assertEqual(source_path.read_bytes(), vcv_bytes)
 
+    def test_rack264_voice_import_render_edit_and_reopen(self) -> None:
+        source = {
+            "version": "2.6.6",
+            "modules": [
+                {"id": 1, "plugin": "Fundamental", "model": "VCO", "version": "2.6.4",
+                 "pos": [0, 0], "params": [{"id": 2, "value": -12}, {"id": 1, "value": 0}]},
+                {"id": 2, "plugin": "Fundamental", "model": "VCF", "version": "2.6.4",
+                 "pos": [10, 0], "params": [{"id": 0, "value": 0.6}, {"id": 4, "value": -0.3}]},
+            ],
+            "cables": [{"id": 1, "outputModuleId": 1, "outputId": 2,
+                        "inputModuleId": 2, "inputId": 3, "color": "#123456"}],
+            "future": {"retained": True},
+        }
+        original = (json.dumps(source, indent=2) + "\n").encode()
+        path = self.workspace / "voice.vcv"
+        path.write_bytes(original)
+        result = self.payload(self.require_tool_success("import_vcv", {"filename": path.name}))
+        self.assertEqual(result["report"]["mapped_count"], 2)
+        self.assertEqual(result["report"]["unresolved_count"], 0)
+        self.assertTrue(any("previous-input" in warning for warning in result["report"]["warnings"]))
+
+        def document() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+
+        imported = document()
+        nodes = {item["node"]["id"]: item["node"] for item in imported["graph"]["nodes"]}
+        self.assertEqual(nodes["vcv_m_1"]["kind"], "rack264_vco")
+        self.assertEqual(nodes["vcv_m_1"]["params"]["frequency"], -12)
+        self.assertEqual(nodes["vcv_m_1"]["params"]["soft_sync"], 1)
+        self.assertEqual(nodes["vcv_m_2"]["kind"], "rack264_vcf")
+        self.assertEqual(nodes["vcv_m_2"]["params"]["drive_cv_amount"], 1)
+        self.require_tool_success("set_output", {"id": "vcv_m_2", "port": "lowpass"})
+        before = document()
+        self.require_tool_success("set_parameter", {"id": "vcv_m_2", "parameter": "frequency", "value": 0.45})
+        edited = document()
+        self.assertNotEqual(edited, before)
+        self.require_tool_success("undo")
+        self.assertEqual(document(), before)
+        self.require_tool_success("redo")
+        self.assertEqual(document(), edited)
+        self.require_tool_success("save_document", {"filename": "voice.json"})
+        self.require_tool_success("set_parameter", {"id": "vcv_m_2", "parameter": "frequency", "value": 0.7})
+        self.require_tool_success("load_document", {"filename": "voice.json"})
+        self.assertEqual(document(), edited)
+        self.require_tool_success("render_audio", {"filename": "voice.wav", "seconds": 0.05})
+        with wave.open(str(self.workspace / "voice.wav"), "rb") as rendered:
+            samples = self._first_channel_samples(rendered.readframes(rendered.getnframes()),
+                                                  rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(sample) > 100 for sample in samples))
+        self.assertEqual(document()["sources"], imported["sources"])
+        self.assertEqual(document()["source_blobs"], imported["source_blobs"])
+        self.assertEqual(path.read_bytes(), original)
+
     def test_portable_source_document_history_save_and_explicit_partial_playback(self) -> None:
         blob = b"\x00\xfforiginal sample"
         blob_id = hashlib.sha256(blob).hexdigest()

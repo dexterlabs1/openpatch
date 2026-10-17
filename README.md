@@ -414,7 +414,7 @@ after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
 passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-**81 built-in module kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+**83 built-in module kinds.** Version-specific [Rack 2.6.4 VCO and VCF](docs/VCV_IMPORT.md#supported-source-identities) add pinned voice imports with matching detailed rack/browser panels. [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
 
 The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
 

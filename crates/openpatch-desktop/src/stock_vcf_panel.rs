@@ -16,6 +16,27 @@ fn stock_vcf_frequency_raw(hz: f32) -> f32 {
 fn stock_vcf_frequency_hz(raw: f32) -> f32 {
     STOCK_VCF_C4 * 2.0_f32.powf(raw * 10.0 - 5.0)
 }
+fn stock_vcf_raw_bounds(kind: &str) -> (f32, f32) {
+    if kind == "rack264_vcf" {
+        (
+            ((STOCK_VCF_C4 / 8000.0).log2() + 5.0) / 10.0,
+            ((8000.0 / STOCK_VCF_C4).log2() + 5.0) / 10.0,
+        )
+    } else {
+        (
+            stock_vcf_frequency_raw(8.0),
+            stock_vcf_frequency_raw(22000.0),
+        )
+    }
+}
+fn stock_vcf_hz_bounds(kind: &str) -> (f32, f32) {
+    if kind == "rack264_vcf" {
+        let (min, max) = stock_vcf_raw_bounds(kind);
+        (stock_vcf_frequency_hz(min), stock_vcf_frequency_hz(max))
+    } else {
+        (8.0, 22000.0)
+    }
+}
 const STOCK_VCF_KNOB_BODY: f32 = 25.0;
 const STOCK_VCF_DEPTH_BODY: f32 = 16.0;
 fn stock_vcf_knob_rect(index: usize) -> Rect {
@@ -105,7 +126,16 @@ fn paint_stock_vcf_routing(
             Stroke::NONE,
         ));
     };
-    text(135.0, 274.0, "SIGNAL FLOW", 8.0);
+    text(
+        135.0,
+        274.0,
+        if node.kind == "rack264_vcf" {
+            "RK4 · NO OVERSAMPLING"
+        } else {
+            "SIGNAL FLOW"
+        },
+        8.0,
+    );
     text(37.0, 288.0, "IN", 8.0);
     for (left, right, label) in [(53.0, 85.0, "DRIVE"), (114.0, 186.0, "4P LADDER")] {
         painter.rect_stroke(
@@ -138,7 +168,11 @@ fn paint_stock_vcf_routing(
     text(140.0, 302.0, "−RESONANCE", 6.5);
     lighting.preserve(painter, start);
     ui.interact(bounds,ui.id().with(("stock-vcf-routing",&node.id)),Sense::hover())
-        .on_hover_text("Signal-flow guide, not a live response plot. Frequency CV × signed depth adds to octave pitch (1 V/oct at +100%). Resonance and drive use base + CV / 10 × depth, then clamp. Drive precedes the four-pole ladder. Resonance subtracts the previous fourth-stage state before saturation. Lowpass uses the final stage; highpass combines the input and all four stages before output saturation and decimation.");
+        .on_hover_text(if node.kind == "rack264_vcf" {
+            "Fundamental 2.6.4 signal-flow guide, not a live response plot. Frequency CV × signed depth adds to octave pitch (1 V/oct at +100%). Resonance and drive use base + CV / 10 × depth, then clamp. Drive precedes a rational-clipped four-pole RK4 ladder with no oversampling. Resonance subtracts the fourth stage before input clipping. Lowpass reads the fourth stage; highpass clips a weighted mix of the input and all four stages. Runtime cutoff is limited to 1 Hz–0.18 × sample rate."
+        } else {
+            "Signal-flow guide, not a live response plot. Frequency CV × signed depth adds to octave pitch (1 V/oct at +100%). Resonance and drive use base + CV / 10 × depth, then clamp. Drive precedes the four-pole ladder. Resonance subtracts the previous fourth-stage state before saturation. Lowpass uses the final stage; highpass combines the input and all four stages before output saturation and decimation."
+        });
 }
 fn stock_vcf_readout(index: usize, raw: f32) -> String {
     if index == 0 {
@@ -159,6 +193,7 @@ fn stock_vcf_default(index: usize) -> f32 {
     }
 }
 fn stock_vcf_edit(node: &Node, index: usize, revision: u64) -> ParameterEdit {
+    let (min_hz, max_hz) = stock_vcf_hz_bounds(&node.kind);
     let name = STOCK_VCF_PARAMS[index];
     let raw = node
         .params
@@ -166,7 +201,7 @@ fn stock_vcf_edit(node: &Node, index: usize, revision: u64) -> ParameterEdit {
         .copied()
         .unwrap_or(stock_vcf_default(index));
     let value = if index == 0 {
-        stock_vcf_frequency_hz(raw).clamp(8.0, 22000.0)
+        stock_vcf_frequency_hz(raw).clamp(min_hz, max_hz)
     } else if index == 2 {
         (raw + 1.0) * 100.0
     } else {
@@ -186,14 +221,14 @@ fn stock_vcf_edit(node: &Node, index: usize, revision: u64) -> ParameterEdit {
             format!("{value:.2}")
         },
         min: if index == 0 {
-            8.0
+            min_hz
         } else if index >= 3 {
             -100.0
         } else {
             0.0
         },
         max: if index == 0 {
-            22000.0
+            max_hz
         } else if index == 2 {
             200.0
         } else {
@@ -253,19 +288,16 @@ impl Rack {
             );
         }
         paint_stock_vcf_routing(ui, &painter, node, rect, z, &self.lighting);
+        let (frequency_min, frequency_max) = stock_vcf_raw_bounds(&node.kind);
         for (i, name) in STOCK_VCF_PARAMS.iter().enumerate() {
             let min = if i == 0 {
-                stock_vcf_frequency_raw(8.0)
+                frequency_min
             } else if i >= 2 {
                 -1.0
             } else {
                 0.0
             };
-            let max = if i == 0 {
-                stock_vcf_frequency_raw(22000.0)
-            } else {
-                1.0
-            };
+            let max = if i == 0 { frequency_max } else { 1.0 };
             let raw = node
                 .params
                 .get(*name)
@@ -344,7 +376,7 @@ impl Rack {
                     screen(stock_vcf_value_rect(i)),
                 );
             }
-            knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(if i == 0 { "Cutoff 8 Hz–22 kHz. The rotary follows octaves; click the readout for exact Hz or note entry. Drag vertically; Ctrl/Cmd for fine adjustment. Home/End select limits." } else if i == 2 { "Input drive 0–200%. 100% is nominal. Double-click resets to 100%. Drag vertically; Ctrl/Cmd for fine adjustment." } else if i == 3 { "Frequency CV adds volts × signed depth to octave pitch; +100% gives 1 V/oct, and negative depth inverts modulation. Drag vertically; Ctrl/Cmd for fine adjustment." } else if i >= 4 { "Resonance/drive CV adds CV / 10 × signed depth to the base control, then clamps. Negative depth inverts modulation. Drag vertically; Ctrl/Cmd for fine adjustment." } else { "Resonance 0–100%. Drag vertically; Ctrl/Cmd for fine adjustment." });
+            knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(if i == 0 && node.kind == "rack264_vcf" { "Fundamental 2.6.4 source cutoff range, approximately 8.56 Hz–8 kHz. The rotary follows octaves; click the readout for exact Hz or note entry. Runtime cutoff also caps at 0.18 × sample rate. Home/End select the source knob limits." } else if i == 0 { "Cutoff 8 Hz–22 kHz. The rotary follows octaves; click the readout for exact Hz or note entry. Drag vertically; Ctrl/Cmd for fine adjustment. Home/End select limits." } else if i == 2 { "Input drive 0–200%. 100% is nominal. Double-click resets to 100%. Drag vertically; Ctrl/Cmd for fine adjustment." } else if i == 3 { "Frequency CV adds volts × signed depth to octave pitch; +100% gives 1 V/oct, and negative depth inverts modulation. Drag vertically; Ctrl/Cmd for fine adjustment." } else if i >= 4 { "Resonance/drive CV adds CV / 10 × signed depth to the base control, then clamps. Negative depth inverts modulation. Drag vertically; Ctrl/Cmd for fine adjustment." } else { "Resonance 0–100%. Drag vertically; Ctrl/Cmd for fine adjustment." });
             paint_atlas_voice_rotary(
                 &painter,
                 knob_rect.center(),
