@@ -78,7 +78,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "WAVETABLE VOICE\n\nLFO \u2192 table position\nVCO \u2192 VCF \u2192 VCA \u2192 out\nClock \u2192 ADSR \u2192 VCA CV\n\nFour mathematical waves\nblend without switching.\n\nRight-click either table\nto import a WAV/raw bank\nor export exact .f32 data.\n\nScope X: filtered voice\nScope Y: envelope gain"
+        "text": "WAVETABLE VOICE\n\nLFO \u2192 table position\nVCO \u2192 VCF \u2192 VCA \u2192 out\nClock \u2192 ADSR \u2192 VCA CV\nFour mathematical waves\nblend without switching.\nRight-click either table\nto import a WAV/raw bank\nor export exact .f32 data.\nScope X: filtered voice\nScope Y: envelope gain"
       }
     }
   ],

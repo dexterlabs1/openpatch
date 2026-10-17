@@ -10,7 +10,7 @@
     {"id":"motion","kind":"stock_lfo","params":{"rate":-3,"offset":1,"invert":1}},
     {"id":"scope","kind":"scope","params":{"time":0.025,"trigger_enabled":0,"x_scale":1,"y_scale":1}},
     {"id":"out","kind":"audio_stereo","params":{"gain":0.12,"dc_block":1}},
-    {"id":"guide","kind":"notes","content":{"type":"notes","text":"VCA MIX · FOUR LAYERS\n\nFour tones build one voice.\nKnobs set each layer.\nClick a value to type.\n\nChannel CV: four VCAs.\nMix CV: overall volume.\nLIN / EXP sets CV response.\n\nMeters follow real signals.\nPoly voices can cancel.\n\nScope X: bass strip.\nScope Y: full mix.\nMaster feeds stereo output."}}
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"VCA MIX · FOUR LAYERS\nFour tones build one voice.\nKnobs set each layer.\nClick a value to type.\nChannel CV: four VCAs.\nMix CV: overall volume.\nLIN / EXP sets CV response.\nMeters follow real signals.\nPoly voices can cancel.\nScope X: bass strip.\nScope Y: full mix.\nMaster feeds stereo output."}}
   ],
   "cables": [
     {"id":"bass-strip","from":"bass","output":"triangle","to":"mix","input":"in1","color":[226,171,65]},

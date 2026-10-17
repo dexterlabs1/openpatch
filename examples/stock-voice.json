@@ -77,7 +77,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "STOCK VOICE\n\nVCO saw \u2192 VCF LP\nVCF \u2192 VCA \u2192 stereo out\nClock \u2192 ADSR \u2192 VCA\nADSR also opens the filter.\nLFO adds gentle vibrato.\n\nScope X: filtered audio\nScope Y: high-pass audio\n\nTry Frequency, Cutoff\nand the LFO Rate.\n\nOriginal Rust DSP;\nstock-style digital models."
+        "text": "STOCK VOICE\nVCO saw \u2192 VCF LP\nVCF \u2192 VCA \u2192 stereo out\nClock \u2192 ADSR \u2192 VCA\nADSR also opens the filter.\nLFO adds gentle vibrato.\nScope X: filtered audio\nScope Y: high-pass audio\nTry Frequency, Cutoff\nand the LFO Rate.\nOriginal Rust DSP;\nstock-style digital models."
       }
     }
   ],

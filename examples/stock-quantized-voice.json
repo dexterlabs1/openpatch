@@ -105,7 +105,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "QUANTIZED STOCK VOICE\n\nSequence row 1 sends\nunquantized pitch.\nThe keyboard selects\nallowed notes: C major.\n\nClick or paint notes.\nShift transposes the scale.\nPre-offset shifts input.\n\nEmpty scale: chromatic.\nCyan shows actual notes.\n\nScope X: raw pitch\nScope Y: quantized pitch"
+        "text": "QUANTIZED STOCK VOICE\nSequence row 1 sends\nunquantized pitch.\nThe keyboard selects\nallowed notes: C major.\nClick or paint notes.\nShift transposes the scale.\nPre-offset shifts input.\nEmpty scale: chromatic.\nCyan shows actual notes.\nScope X: raw pitch\nScope Y: quantized pitch"
       }
     }
   ],

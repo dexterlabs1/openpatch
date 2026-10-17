@@ -22,7 +22,7 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 ## Validation proportional to the change
 
 - Fix compiler/type errors with cargo check or the focused test target before broad suites. A useful test targets a user behavior, state/lifecycle invariant, numerical contract or realtime property; avoid tests that only repeat implementation structure.
-- UI-only changes: focused headless interaction/geometry checks, the inexpensive shared default rack/browser drawing check, and review affected views. No DSP oracle rerun without relevant production DSP changes. Documentation-only changes: links/diff checks; no app build.
+- UI-only changes: focused headless interaction/geometry checks, the inexpensive shared default rack/browser drawing check, and review affected views. When label/font changes affect app fixtures or factory content, include those workflow checks; rack-only cases do not cover their selector/copy assumptions. No DSP oracle rerun without relevant production DSP changes. Documentation-only changes: links/diff checks; no app build.
 - DSP changes: focused numerical/lifecycle and allocation/deallocation checks, plus the relevant existing frozen reference when its production inputs change. Do not regenerate or weaken an oracle to obtain a pass.
 - Run the complete macOS workspace/MCP regression once at a milestone candidate, after focused fixes settle. Repeat only checks affected by subsequent changes; preserve logs of failures.
 - Reuse an unchanged built binary and its source/toolchain hashes for existing evidence. Test/doc/view changes do not justify repeating unrelated numerical comparisons. If a relevant source/toolchain changes, requalify the affected result explicitly.

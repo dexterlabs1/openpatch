@@ -9,7 +9,7 @@
     {"id":"voice","kind":"stock_vco","params":{"frequency":-12}},
     {"id":"scope","kind":"scope","params":{"time":1.5,"trigger_enabled":0}},
     {"id":"out","kind":"audio_stereo","params":{"gain":0.15,"dc_block":1}},
-    {"id":"guide","kind":"notes","content":{"type":"notes","text":"STOCK PROCESS VOICE\n\nLFO × 0.12 → SIGNAL\nClock → GATE CV\nGLIDE → VCO → audio\nScope X: input / Y: glide\n\nS/H 1 latest; S/H 2 prior\nTH: high holds / low tracks\nHT: low holds / high tracks\nSLEW: high jumps\nGLIDE: high >1 ms slews\n\nHold PRESS for legato.\nOnly PRESS lights lamp.\nTry S/H 1 into VCO pitch.\nSLEW TIME shapes travel."}}
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"STOCK PROCESS VOICE\nLFO × 0.12 → SIGNAL\nClock → GATE CV\nGLIDE → VCO → audio\nScope X: input / Y: glide\nS/H 1 latest; S/H 2 prior\nTH: high holds / low tracks\nHT: low holds / high tracks\nHigh: SLEW jumps; GLIDE >1ms\nHold PRESS: legato + lamp\nTry S/H 1 into VCO pitch.\nSLEW TIME shapes travel."}}
   ],
   "cables": [
     {"id":"process-voice-0","from":"pitch-motion","output":"sine","to":"pitch-range","input":"signal","color":[66,182,172]},

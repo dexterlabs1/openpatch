@@ -181,3 +181,12 @@ The current 80-kind catalog accounts for **76 detailed Signal Atlas panels, the 
 | Custom console retained | Existing add/remove, hidden wiring, source-caption bounds, FX-return factory and Custom/Mixing category tests |
 
 **32 focused audit checks passed** (19 motion-render cases, eight other mixer/workflow cases, four Custom cases and one all-catalog drawing check), with strict desktop Clippy/formatting and clean diff checks. Static Studio Mixer captures are reused across the motion-only fix because its panel geometry/materials did not change. These checks are headless UI/Session/CPU-render evidence. Full Mac workspace/MCP CI, release packaging and native-window/audio-device qualification remain separate; no new application was installed. This closes the non-MIDI layout inventory, while final Mac candidate qualification remains pending. Complete VCV parity, the deferred MIDI panels and the broader roadmap remain open.
+
+
+## Factory guide fit and candidate regression fixes
+
+Final Mac CI for `7784f53` passed the visualizer job and 1,170 desktop cases but found four desktop failures: two app fixtures looked for the replaced Notes button label, the stereo-label fixture expected the old DC-filter caption, and the selected Notes font clipped the Stock VCF factory guide. The fixtures now target **EDIT NOTES** and **10 Hz DC BLOCK**, retaining their original shortcut/race/clearance assertions.
+
+The guide regression was real. Fourteen shipped Notes guides now use shorter copy/spacing that fits the larger selected font, with no changes to graph connections, parameters, assets or model behavior. The font and user-entered notes behavior remain unchanged. One new actual-render check covers every guide at 25%, 35%, 42%, 80% and 100% zoom. [Process guide](notes-stock-process-voice.png), [Noise guide](notes-stock-noise-resonator.png) and [Drum guide](notes-annotated-drum-rack.png) show the reviewed native result. CPU captures do not establish native window/audio-device qualification.
+
+**211 affected checks passed** across project workflows, annotation editing/resize/history, all-catalog default drawing equality and studio text clearance, before one new full Mac run. Strict desktop Clippy, formatting, links and diff checks passed; all three guide captures were inspected. The failed run is retained as evidence; no app installation or release qualification is claimed from it.

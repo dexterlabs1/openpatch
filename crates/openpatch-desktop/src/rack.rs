@@ -12000,6 +12000,8 @@ mod tests {
                                     } else {
                                         "SEED · 24-BIT"
                                     }
+                                } else if kind == "audio_stereo" && name == "dc_block" {
+                                    "10 Hz DC BLOCK"
                                 } else if kind == "fade" && name == "law" {
                                     "LINEAR LAW"
                                 } else if kind == "fade" && name == "cv_amount" {
