@@ -2,10 +2,22 @@
 
 Planning checkpoint, 2026-10-17, following the successful bounded
 [actual-binary test](../scripts/rack_binary_host/README.md) and one focused
-architecture advisory. **This application path is not implemented.** The
+architecture advisory. **Application integration is not implemented.** The
 installed OpenPatch 0.2.7 remains unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
+
+## Implemented transport foundation
+
+The separate [Rust/SDK companion gate](../scripts/rack_binary_host/README.md#rustshared-memory-transport-foundation)
+now passes actual binary processing through bounded shared memory, per-frame
+polyphony, ordered sample-offset events and persistent restore. It measures one
+Rack routing frame in its source/sink harness and verifies a non-silent native
+oscillator WAV sample-by-sample. Actual stall/crash/late/malformed/parent-death
+cases and eight parent boundary tests pass; parent endpoint calls allocate and
+deallocate no heap memory. This is a debug correctness gate, not an application
+or device benchmark. Document/UI/MCP authority, the mixed graph execution plan,
+feedback behavior and sustained realtime deadlines remain the next work.
 
 ## User-visible exit
 
@@ -24,6 +36,12 @@ native graph and audio device callback. A proposed first transport quantum is
 **128 frames at 48 kHz**, introducing a fixed 2.667 ms transport delay plus actual
 Rack routing/adapter effects, which must be measured. Other rates must be
 explicitly qualified or refused; do not process them as though they were 48 kHz.
+
+The actual callback size/submission phase must leave a measured child-compute
+window before output is due. A 128-frame transport unit alone establishes no
+such window for every device callback size. Qualify the selected buffer profile
+and startup/partial-block behavior before enabling it; the current offline WAV's
+explicit padding is not a callback-latency qualification.
 
 Preallocated shared-memory slots carry inputs for quantum n and outputs labeled
 for n+1. The callback never waits for the child. Consume only an output with the

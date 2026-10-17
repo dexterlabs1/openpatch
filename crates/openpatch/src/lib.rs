@@ -3,6 +3,8 @@
 //! The shared session belongs to UI and MCP control threads. Audio callbacks
 //! must consume compiled engines separately and must never lock this session.
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub mod binary_host;
 pub mod control;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod local_mcp;

@@ -118,7 +118,12 @@ failure containment through the [compatibility gate](COMPATIBILITY_DECISION.md#e
 The next [application-host milestone](BINARY_HOST_V1.md) is one playable
 native → existing OFFSET binary → native path with shared UI/MCP/history,
 persistent save/reopen and measured delay/failure containment. Its proposed
-128-frame transport contract is not yet implemented or realtime-qualified.
+128-frame transport is now implemented as a separate foundation with real
+plugin processing, per-frame counts/events, zero-heap parent endpoint calls and
+actual stall/crash/malformed/parent-death checks. The gate verifies a native
+oscillator WAV sample-by-sample and measures one Rack routing frame. This debug
+control-driver result does not qualify asynchronous device deadlines or fulfill
+document/UI/MCP/history integration. The installed app remains unchanged.
 
 ## Delivered: Core text and host boundary
 

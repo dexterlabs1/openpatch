@@ -82,3 +82,59 @@ audio/control transfer, crash/stall containment, explicit hosted identities and
 state ownership, mixed-graph/feedback scheduling, UI policy and licensing/
 redistribution review. No performance, general plugin, GUI, device or hardware
 accuracy claim follows from these observations.
+
+## Rust/shared-memory transport foundation
+
+The next implementation is `companion.cpp` plus the macOS ARM
+`openpatch::binary_host` Rust module. It is still separate from application
+playback. Run its actual-binary gate with the complete `saved-module.json` from
+the first probe:
+
+```sh
+python3 scripts/rack_binary_host/run_transport.py \
+  --sdk /path/to/Rack-SDK \
+  --plugin /path/to/Bogaudio \
+  --state /path/to/first-attempt/saved-module.json \
+  --output native-test-output/rack-control-import/binary-host
+```
+
+The runner builds the optimized C++ companion and debug Rust control driver
+serially, hashes their sources/SDK/plugin before and after execution, and retains
+toolchains, exact Cargo artifact selection, loaded-image receipts, binary hashes,
+child logs, saved state, WAV and result/artifact manifests. It never launches an
+audio device or installed app. Signal injection/termination affects only children
+spawned by this gate.
+
+Protocol v1 (`wire.h`) has four owned slots, 128 frames at 48 kHz, three inputs,
+one output, up to 16 channels per frame and 64 ordered parameter events per block.
+The fixed plan's input connection mask preserves disconnected-port semantics.
+Acquire/release ownership publishes complete payloads across processes; all
+concurrent state words are aligned lock-free u32 atomics. Incarnation, document
+generation, revision and sequence fence every block. Bounds, finite values,
+reserved fields, event order and unused payloads are validated before execution.
+Each region supplies exactly one parent endpoint and is never reused after fault.
+
+Endpoint submit/receive functions have no locks, loops waiting on a peer,
+allocation, process operations or formatted errors. A deadline failure latches
+silence; a later result cannot resume execution or replay stale CV. Mapping
+creation/destruction, process supervision and JSON stay on control threads. The
+companion detects supervising-parent death, cleans up its engine and exits.
+
+The actual gate covers an impulse, settled mono/poly16, within-block width
+changes at the pinned source modulation cadence, mono offset CV/poly16 bipolar
+scale CV, sample-offset and simultaneous ordered events, quiescent state capture
+and fresh-process restoration. It checks 48,000 samples of a native Rust
+oscillator through the existing binary against the expected gain/routing and
+audible RMS, then writes a WAV. SIGSTOP, late results, SIGKILL, malformed requests
+and supervising-parent death exercise real failure paths. Instrumented parent
+endpoint calls perform zero heap allocations/deallocations. Eight focused Rust
+boundary tests also exercise stale fences, malformed output, full queues and
+retired endpoints.
+
+The measured Rack source-input → observed-sink path adds **one frame** in this
+harness. The WAV explicitly prepends the **proposed** 128-frame transport delay;
+its control driver waits outside endpoint calls. This does **not** demonstrate
+asynchronous callback scheduling, device latency, deadline sustainability or a
+feedback contract. Those measurements, shared ProjectDocument/UI/MCP/history
+integration and application packaging remain open in
+[the application-host milestone](../../docs/BINARY_HOST_V1.md).

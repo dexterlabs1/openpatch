@@ -107,5 +107,56 @@
     "No widgets, audio devices, general plugin compatibility or performance claim",
     "Internal Engine APIs; plugin registry/library retained until child exit",
     "Process isolation is not a security sandbox"
-  ]
+  ],
+  "transport_foundation": {
+    "status": "passed focused actual-binary transport gate; application integration pending",
+    "local_evidence": "native-test-output/rack-control-import/binary-host/transport-jx9_5egc",
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "parent_sha256": "40cfb8e3399450339597dee257e04a2605d666fcde57173d392245fbff0ab884",
+    "artifact_manifest_sha256": "c970854a3497f6f3db0a0e6ecc66dde88b2f15478543b1a27b3d4fa475ffa045",
+    "validation": {
+      "build": "debug",
+      "checks": [
+        "actual plugin/runtime image identities",
+        "mono impulse",
+        "settled poly16",
+        "within-block channel changes at pinned source cadence",
+        "mono offset CV and poly16 bipolar scale CV",
+        "sample-offset and simultaneous ordered parameter events",
+        "native Rust oscillator waveform and gain through existing plugin offline WAV",
+        "quiescent capture/fresh-process restore",
+        "SIGSTOP deadline and late-result silence",
+        "no endpoint reacquisition",
+        "SIGKILL deadline silence",
+        "malformed input rejected before processing"
+      ],
+      "document_ui_mcp_integration": false,
+      "endpoint_heap_allocations": 0,
+      "endpoint_heap_deallocations": 0,
+      "gate": "actual binary transport foundation; application integration pending",
+      "native_window_or_device_test": false,
+      "offline_wav_frames": 48128,
+      "offline_wav_rms": 0.4413536495579388,
+      "parent_death_cleanup": true,
+      "passed": true,
+      "proposed_transport_delay_frames": 128,
+      "quantum": 128,
+      "rack_input_to_observed_output_frames": 1,
+      "rate": 48000,
+      "realtime_deadlines_qualified": false
+    },
+    "parent_boundary_tests": 8,
+    "strict_clippy": "cargo clippy --locked -p openpatch --all-targets -- -D warnings: passed",
+    "full_application_ci": "not rerun before the application-host milestone candidate",
+    "review": "Independent read-only ownership/atomics/fences/lifecycle review found no blocker; reserved bytes and audible waveform guards strengthened afterward",
+    "reusable_prior_evidence": [
+      "transport-attempt-g6alv4cf",
+      "transport-8newekay",
+      "transport-q76av1pz"
+    ],
+    "retained_failures": [
+      "transport-tests-001.log: four Rust test float literals lacked integer parts; corrected",
+      "transport-clippy-001.log: test explicitly dropped non-Drop endpoint; changed to lexical scope"
+    ]
+  }
 }
