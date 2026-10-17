@@ -113,7 +113,7 @@ impl Category {
                 Self::InputOutput
             }
             "pulses" | "push" | "gates" | "poly_viz" | "scope" | "stock_scope"
-            | "stock_process" => Self::Utilities,
+            | "stock_process" | "rackmcp_listen" => Self::Utilities,
             _ => Self::Utilities,
         }
     }

@@ -1,13 +1,15 @@
 //! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use super::audio_diagnostics::{Diagnostics, Recorder};
+use crate::listen_capture::{self, CaptureProducer, CaptureService, StartRequest, Target};
 use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
 use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
-    Cable, CableHandle, Engine, FixedPatternName, ModuleAction, ModuleControlState, ModuleHandle,
-    ModuleLightState, ModuleTelemetry, ParameterHandle, Patch, RackMcpSequenceStatus,
-    RackMcpTransport, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
+    Cable, CableHandle, Engine, FixedPatternName, ListenSink, ListenStatus, ModuleAction,
+    ModuleControlState, ModuleHandle, ModuleLightState, ModuleTelemetry, ParameterHandle, Patch,
+    RackMcpSequenceStatus, RackMcpTransport, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS,
+    MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -36,6 +38,10 @@ struct Event {
     revision: u64,
     deadline: u64,
 }
+type ScopeCaptureBuffers<'a> = (
+    &'a [Option<openpatch_core::ResolvedTap>; 2],
+    &'a mut [[openpatch_core::TapSample; 2]],
+);
 #[derive(Clone, Copy)]
 enum PerformanceAction {
     Module(ModuleAction),
@@ -72,6 +78,7 @@ impl PerformanceAction {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModuleKind {
     RackMcpSequencer,
+    RackMcpListen,
     Sequence,
     StockSeq3,
     StockQuantizer,
@@ -113,6 +120,7 @@ impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
         match name {
             "rackmcp_sequencer" => Some(Self::RackMcpSequencer),
+            "rackmcp_listen" => Some(Self::RackMcpListen),
             "seq3" => Some(Self::Sequence),
             "stock_seq3" => Some(Self::StockSeq3),
             "stock_quantizer" => Some(Self::StockQuantizer),
@@ -155,6 +163,7 @@ impl ModuleKind {
     fn name(self) -> &'static str {
         match self {
             Self::RackMcpSequencer => "rackmcp_sequencer",
+            Self::RackMcpListen => "rackmcp_listen",
             Self::Sequence => "seq3",
             Self::StockSeq3 => "stock_seq3",
             Self::StockQuantizer => "stock_quantizer",
@@ -363,6 +372,7 @@ struct ModuleSnapshot {
     frame: u64,
     state: Option<ModuleTelemetry>,
     rackmcp_sequence: Option<(RackMcpSequenceStatus, [u8; 32])>,
+    listen: Option<ListenStatus>,
     saved_state: Option<SavedModuleState>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
@@ -380,6 +390,9 @@ struct Meter {
     flags: AtomicU32,
     saved_state: AtomicU32,
     pattern_name: [AtomicU32; 8],
+    listen_frames: AtomicU64,
+    listen_dropped: AtomicU32,
+    listen_flags: AtomicU32,
     rackmcp_status: [AtomicU64; 12],
     rackmcp_fingerprint: [AtomicU64; 4],
     random_values: [[AtomicU32; 16]; 7],
@@ -412,6 +425,9 @@ impl Meter {
             flags: AtomicU32::new(0),
             saved_state: AtomicU32::new(0),
             pattern_name: std::array::from_fn(|_| AtomicU32::new(0)),
+            listen_frames: AtomicU64::new(0),
+            listen_dropped: AtomicU32::new(0),
+            listen_flags: AtomicU32::new(0),
             rackmcp_status: std::array::from_fn(|_| AtomicU64::new(0)),
             rackmcp_fingerprint: std::array::from_fn(|_| AtomicU64::new(0)),
             random_values: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
@@ -446,6 +462,18 @@ impl Meter {
                 u32::from(state.step)
                     | (u32::from(state.length) << 8)
                     | (u32::from(state.running) << 16),
+                Ordering::SeqCst,
+            );
+        }
+        if let Some(status) = snapshot.listen {
+            flags |= 1 << 7;
+            self.listen_frames
+                .store(status.frames_seen, Ordering::SeqCst);
+            self.listen_dropped.store(status.dropped, Ordering::SeqCst);
+            self.listen_flags.store(
+                u32::from(status.left_connected)
+                    | (u32::from(status.right_connected) << 1)
+                    | (u32::from(status.capturing) << 2),
                 Ordering::SeqCst,
             );
         }
@@ -739,6 +767,14 @@ impl Meter {
                 },
                 fingerprint,
             ));
+            let listen_flags = self.listen_flags.load(Ordering::SeqCst);
+            let listen = (flags & (1 << 7) != 0).then_some(ListenStatus {
+                frames_seen: self.listen_frames.load(Ordering::SeqCst),
+                dropped: self.listen_dropped.load(Ordering::SeqCst),
+                left_connected: listen_flags & 1 != 0,
+                right_connected: listen_flags & 2 != 0,
+                capturing: listen_flags & 4 != 0,
+            });
             let after = self.serial.load(Ordering::SeqCst);
             if before != after {
                 continue;
@@ -749,6 +785,7 @@ impl Meter {
                     frame,
                     parameters,
                     rackmcp_sequence,
+                    listen,
                     state: (flags & 1 != 0).then_some(ModuleTelemetry {
                         step: value as u8,
                         length: (value >> 8) as u8,
@@ -939,6 +976,7 @@ struct Shared {
     meters: Box<[Meter; MAX_NODES]>,
     saved_acknowledgments: Box<[StateAcknowledgment; MAX_NODES]>,
     sampled_sequence: AtomicU64,
+    published_sample_rate: AtomicU32,
     backend: u64,
     closed: AtomicBool,
     // One writer (the audio callback) surrounds the complete meter batch.
@@ -994,6 +1032,7 @@ pub(super) struct Performance {
     pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
+    listen: CaptureService,
 }
 #[derive(Clone, Copy)]
 pub(super) struct Binding {
@@ -1422,6 +1461,7 @@ impl ModulePlan {
 }
 pub(super) struct EventReader {
     queue: Consumer<Event>,
+    listen: CaptureProducer,
     head: Option<Event>,
     shared: Arc<Shared>,
 }
@@ -1449,6 +1489,9 @@ impl Performance {
             && control.execution.disposition == disposition
         {
             return;
+        }
+        if !disposition.is_runnable() {
+            self.listen.invalidate_unless(|_| false);
         }
         self.shared.execution_serial.fetch_add(1, Ordering::SeqCst);
         let cancel_events =
@@ -1491,6 +1534,7 @@ impl Performance {
     pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader, Recorder) {
         let (diagnostics, timing) = Diagnostics::new(rate);
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
+        let (listen, listen_producer) = listen_capture::channel();
         let shared = Arc::new(Shared {
             execution_serial: AtomicU64::new(0),
             execution_revision: AtomicU64::new(0),
@@ -1519,6 +1563,7 @@ impl Performance {
                 .ok()
                 .expect("fixed state acknowledgment capacity"),
             sampled_sequence: AtomicU64::new(0),
+            published_sample_rate: AtomicU32::new(rate),
             backend: NEXT_MIDI_BACKEND.fetch_add(1, Ordering::Relaxed),
             closed: AtomicBool::new(false),
             publish_serial: AtomicU64::new(0),
@@ -1544,6 +1589,7 @@ impl Performance {
         });
         let reader = EventReader {
             queue: input,
+            listen: listen_producer,
             head: None,
             shared: shared.clone(),
         };
@@ -1567,6 +1613,7 @@ impl Performance {
                 shared,
                 diagnostics,
                 rate,
+                listen,
             }),
             reader,
             timing,
@@ -2043,6 +2090,13 @@ impl Performance {
                 ))
             })
             .collect();
+        self.listen.invalidate_unless(|target| {
+            control.entries.values().any(|entry| {
+                entry.slot == target.slot
+                    && entry.token == target.token
+                    && entry.kind == ModuleKind::RackMcpListen
+            })
+        });
         self.sync_midi_learns(&mut control, patch, revision);
         control.revision = revision;
     }
@@ -2124,6 +2178,7 @@ impl Performance {
         for mailbox in self.shared.midi_learns.iter() {
             let _ = mailbox.cancel_armed();
         }
+        self.listen.close();
         self.diagnostics.close();
     }
     fn load_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
@@ -2198,6 +2253,61 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn start_listen_capture(
+        &self,
+        id: &str,
+        seconds: f64,
+        write_wav: bool,
+        workspace: &std::path::Path,
+    ) -> Result<Value, String> {
+        let control = self
+            .control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !self.execution_available() {
+            return Err("live audio is closed, suspended or pending".into());
+        }
+        let entry = *control
+            .entries
+            .get(id)
+            .filter(|entry| entry.kind == ModuleKind::RackMcpListen)
+            .ok_or("module is not a current Listen instance")?;
+        let before = self.shared.publish_serial.load(Ordering::SeqCst);
+        let actual = self.shared.meters[entry.slot]
+            .read(entry, control.revision)
+            .filter(|snapshot| snapshot.listen.is_some())
+            .ok_or("Listen has no current live publication")?;
+        let rate = self.shared.published_sample_rate.load(Ordering::SeqCst);
+        let frame = self.shared.frame.load(Ordering::SeqCst);
+        if before & 1 != 0
+            || self.shared.publish_serial.load(Ordering::SeqCst) != before
+            || actual.frame != frame
+        {
+            return Err("Listen live publication changed; retry capture".into());
+        }
+        self.listen.start(StartRequest {
+            target: Target {
+                slot: entry.slot,
+                token: entry.token,
+            },
+            module: id,
+            revision: actual.revision,
+            rate,
+            seconds,
+            write_wav,
+            workspace,
+        })
+    }
+    fn latest_listen_capture(&self, id: &str) -> Option<Value> {
+        self.listen.latest_for(id)
+    }
+    fn inspect_listen_capture(&self, job: &str) -> Result<Value, String> {
+        self.listen.poll(job)
+    }
+    fn cancel_listen_capture(&self, job: &str) -> Result<Value, String> {
+        self.listen.cancel(job)
+    }
+
     fn rackmcp_transport(
         &self,
         id: &str,
@@ -2460,6 +2570,13 @@ impl LiveModuleEvents for Performance {
                 self.shared.desired[entry.slot].store(0, Ordering::Release);
             }
         }
+        self.listen.invalidate_unless(|target| {
+            control.entries.values().any(|entry| {
+                entry.slot == target.slot
+                    && entry.token == target.token
+                    && entry.kind == ModuleKind::RackMcpListen
+            })
+        });
     }
     fn retire_cables(&self, ids: &[String]) {
         let mut control = self
@@ -2553,6 +2670,7 @@ impl LiveModuleEvents for Performance {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
                 }),
+                "listen":actual.and_then(|snapshot| snapshot.listen),
                 "rackmcp_sequence":actual.and_then(|snapshot| snapshot.rackmcp_sequence).map(|(status, fingerprint)| {
                     let names = control.rackmcp_metadata.get(id).filter(|(expected, _)| *expected == fingerprint).map(|(_, names)| names);
                     let name = |index: usize| names.and_then(|names| names.get(index)).cloned();
@@ -2576,6 +2694,46 @@ impl LiveModuleEvents for Performance {
     }
 }
 impl EventReader {
+    pub(super) fn process_audio(
+        &mut self,
+        engine: &mut Engine,
+        plan: &ModulePlan,
+        output: &mut [[f32; 2]],
+        taps: Option<ScopeCaptureBuffers<'_>>,
+    ) {
+        let shared = &self.shared;
+        let handle = self.listen.prepare(|target| {
+            let binding = plan.bindings.get(target.slot).copied().flatten()?;
+            (binding.token == target.token
+                && binding.kind == ModuleKind::RackMcpListen
+                && shared.desired[target.slot].load(Ordering::Acquire) == target.token)
+                .then_some(binding.handle)
+        });
+        if let Some(handle) = handle {
+            if let Some(status) = engine.listen_status(handle) {
+                self.listen.observe_status(status);
+            }
+            if let Some((taps, samples)) = taps {
+                engine.process_audio_block_with_taps_and_listen_capture(
+                    output,
+                    taps,
+                    samples,
+                    handle,
+                    &mut self.listen,
+                );
+            } else {
+                engine.process_audio_block_with_listen_capture(output, handle, &mut self.listen);
+            }
+        } else if let Some((taps, samples)) = taps {
+            engine.process_audio_block_with_taps(output, taps, samples);
+        } else {
+            engine.process_audio_block(output);
+        }
+    }
+    pub(super) fn invalidate_listen(&self) {
+        self.listen.invalidate();
+    }
+
     pub(super) fn execution_cancellation(&self) -> u64 {
         self.shared.execution_cancel.load(Ordering::SeqCst)
     }
@@ -2769,6 +2927,9 @@ impl EventReader {
     }
     pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
         self.shared.publish_frame(frame, || {
+            self.shared
+                .published_sample_rate
+                .store(engine.sample_rate(), Ordering::SeqCst);
             for (slot, binding) in plan.states.iter().enumerate() {
                 if let Some(binding) = binding {
                     self.shared.saved_acknowledgments[slot]
@@ -2796,6 +2957,7 @@ impl EventReader {
                             revision,
                             frame,
                             parameters,
+                            listen: engine.listen_status(binding.handle),
                             rackmcp_sequence: engine
                                 .rackmcp_sequence_status(binding.handle)
                                 .zip(engine.rackmcp_sequence_content_fingerprint(binding.handle)),
@@ -2851,6 +3013,7 @@ mod tests {
     use super::*;
 
     include!("split_performance_tests.rs");
+    include!("listen_performance_tests.rs");
     include!("stock_lfo_performance_tests.rs");
     include!("stock_vco_performance_tests.rs");
     include!("stock_seq3_performance_tests.rs");
@@ -3184,6 +3347,7 @@ mod tests {
                         entry.token,
                         ModuleSnapshot {
                             rackmcp_sequence: None,
+                            listen: None,
                             parameters: [None; MAX_PUBLISHED_PARAMETERS],
                             revision: 7,
                             frame: 101,
@@ -3276,6 +3440,7 @@ mod tests {
                     11 + frame % 2,
                     ModuleSnapshot {
                         rackmcp_sequence: None,
+                        listen: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,
@@ -3352,6 +3517,7 @@ mod tests {
                             slot as u64 + 11,
                             ModuleSnapshot {
                                 rackmcp_sequence: None,
+                                listen: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 revision: frame + 1,
                                 frame,
@@ -3429,6 +3595,7 @@ mod tests {
                     entry.token,
                     ModuleSnapshot {
                         rackmcp_sequence: None,
+                        listen: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame,
@@ -3496,6 +3663,7 @@ mod tests {
                     entry.token,
                     ModuleSnapshot {
                         rackmcp_sequence: None,
+                        listen: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame: 2_001,
@@ -3566,6 +3734,7 @@ mod tests {
                             slot as u64 + 11,
                             ModuleSnapshot {
                                 rackmcp_sequence: None,
+                                listen: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
@@ -3659,6 +3828,7 @@ mod tests {
                             slot as u64 + 11,
                             ModuleSnapshot {
                                 rackmcp_sequence: None,
+                                listen: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
@@ -3735,6 +3905,7 @@ mod tests {
                             slot as u64 + 11,
                             ModuleSnapshot {
                                 rackmcp_sequence: None,
+                                listen: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,

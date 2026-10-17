@@ -50,6 +50,9 @@ mod cable_edit_tests;
 mod cable_order_tests;
 #[cfg(test)]
 mod duplicate_tests;
+mod listen;
+#[cfg(test)]
+mod listen_tests;
 #[cfg(test)]
 mod parameter_action_tests;
 mod parameters;
@@ -170,6 +173,27 @@ pub trait LiveModuleEvents: Send + Sync {
         _data: &openpatch_core::rackmcp_sequence::SequenceData,
     ) -> Result<Value, String> {
         Err("RackMCP transport unsupported by this backend".into())
+    }
+    /// Capture work is off the audio thread and never edits the document.
+    fn start_listen_capture(
+        &self,
+        _id: &str,
+        _seconds: f64,
+        _write_wav: bool,
+        _workspace: &Path,
+    ) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
+    }
+    /// Latest global capture, only when it belongs to this module. Lets native
+    /// controls discover jobs started by an external MCP client.
+    fn latest_listen_capture(&self, _id: &str) -> Option<Value> {
+        None
+    }
+    fn inspect_listen_capture(&self, _job: &str) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
+    }
+    fn cancel_listen_capture(&self, _job: &str) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
     }
     /// Effective native raw parameter values are present in the same fenced
     /// module snapshot as persistent state. Older backends retain authored
@@ -1310,6 +1334,8 @@ impl Session {
                     | "rotate_sequence"
                     | "trigger_module"
                     | "rackmcp_transport"
+                    | "start_listen_capture"
+                    | "cancel_listen_capture"
                     | "learn_midi_cc"
                     | "cancel_midi_cc_learn"
                     | "learn_midi_gate"
@@ -1329,6 +1355,7 @@ impl Session {
                 | "capture_signal"
                 | "trigger_module"
                 | "rackmcp_transport"
+                | "start_listen_capture"
         ) {
             self.require_document_execution()?;
         }
@@ -1404,6 +1431,11 @@ impl Session {
             }
             "rackmcp_transport" => return self.rackmcp_transport_tool(&args),
             "inspect_rackmcp_sequence" => return self.inspect_rackmcp_sequence_tool(&args),
+            "inspect_listen" => return self.inspect_listen_tool(&args),
+            "start_listen_capture" => return self.start_listen_capture_tool(&args),
+            "inspect_listen_capture" | "cancel_listen_capture" => {
+                return self.listen_capture_job_tool(name, &args)
+            }
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
                 let id = string(&args, "id")?;
@@ -2668,6 +2700,10 @@ pub fn tools() -> Value {
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("inspect_listen","Read actual coherent Listen counters, connection hints and capture lamp. Reports unavailable without current runnable live publication; never substitutes authored or offline state.",json!({"id":s,"expected_revision":rev}),&["id"],true),
+        tool("start_listen_capture","Capture 0.1 to 30 seconds from a live Listen module. Omit id only when exactly one Listen exists. One global job; raw poly sums, fixed initial sample rate, off-thread source analysis. write_wav explicitly writes a new stereo float WAV in the workspace (10V full scale). Does not start audio or change the patch/history. Poll the returned job.",json!({"id":s,"seconds":{"type":"number","minimum":0.1,"maximum":30},"write_wav":{"type":"boolean"},"expected_revision":rev}),&["seconds"],false),
+        tool("inspect_listen_capture","Poll a retained Listen capture job, including after its module is removed or execution is suspended. Returns actual progress, dropped frames, analysis or failure.",json!({"job":s,"expected_revision":rev}),&["job"],true),
+        tool("cancel_listen_capture","Request cancellation of an active Listen capture job. Receipt confirms the request; poll for worker acknowledgment. Does not edit document/history.",json!({"job":s,"expected_revision":rev}),&["job"],false),
         tool("rackmcp_transport","Queue live RackMCP 2.0.0 Sequencer play/stop/toggle/reset/select/seek. Optional pattern names select atomically with play/stop/toggle/reset; quantize is now (next advance) or wrap (default). select requires pattern; seek requires bar in 0..100000 and forbids pattern/quantize. No sequence data load, automation reclaim, history entry or speaker startup. Requires runnable live execution. Receipt confirms bounded queue acceptance, not callback application.",json!({"id":s,"action":{"type":"string","enum":["play","stop","toggle","reset","select","seek"]},"pattern":{"type":"string","minLength":1,"maxLength":32},"quantize":{"type":"string","enum":["now","wrap"]},"bar":{"type":"number","minimum":0,"maximum":100000},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_rackmcp_sequence","Read actual coherent live RackMCP sequence transport, selected/active/pending patterns, step/loop/bar, clock source, tempo and counts. Position follows source 64-sample publication. Reports unavailable before publication or without runnable live execution; never substitutes authored state or offline analysis.",json!({"id":s,"expected_revision":rev}),&["id"],true),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),

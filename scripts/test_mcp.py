@@ -225,6 +225,27 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_listen_capture_discovery_and_headless_unavailable_boundary(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertTrue({"inspect_listen", "start_listen_capture", "inspect_listen_capture", "cancel_listen_capture"}.issubset(names))
+        self.require_tool_success("add_module", {"id": "tap", "kind": "rackmcp_listen"})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_listen", {"id": "tap"}))
+        self.assertFalse(observed["available"])
+        self.assertNotIn("listen", observed)
+        for arguments in [{"seconds": 1}, {"id": "tap", "seconds": 0.1, "write_wav": True},
+                          {"seconds": 0.09}, {"seconds": 30.1}, {"seconds": 1, "id": 7},
+                          {"seconds": 1, "write_wav": "yes"}]:
+            self.require_tool_error("start_listen_capture", arguments)
+        self.require_tool_error("inspect_listen_capture", {"job": "listen-1"})
+        self.require_tool_error("cancel_listen_capture", {"job": "listen-1"})
+        self.require_tool_error("inspect_listen", {"id": "tap", "expected_revision": 0})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        self.assertEqual(list(self.workspace.iterdir()), [], "unavailable capture wrote a file")
+
     def test_rackmcp_transport_discovery_and_headless_unavailable_boundary(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}

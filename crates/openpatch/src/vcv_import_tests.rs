@@ -857,7 +857,19 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
         })
         .count();
     assert_eq!(source_sequences, 2);
-    let new_mappings: usize = voice_counts.into_iter().sum::<usize>() + source_sequences;
+    let source_listens = source_patch["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|module| {
+            module["plugin"] == "RackMCP"
+                && module["model"] == "Listen"
+                && module["version"] == "2.0.0"
+        })
+        .count();
+    assert_eq!(source_listens, 1);
+    let new_mappings: usize =
+        voice_counts.into_iter().sum::<usize>() + source_sequences + source_listens;
     let result = import(&bytes).unwrap();
     assert_eq!(
         (result.report.module_count, result.report.cable_count),
@@ -925,4 +937,66 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     let reopened = ProjectDocument::decode(&encoded).unwrap();
     assert_eq!(reopened.encode().unwrap(), encoded);
     assert_eq!(reopened.graph.cables.len(), 83);
+}
+
+#[test]
+fn listen_import_requires_pinned_identity_and_preserves_independent_routes_and_source() {
+    let source = json!({"id":77,"plugin":"RackMCP","model":"Listen","version":"2.0.0","bypass":true,"params":[],"data":{},"future":{"retained":true}});
+    let patch = json!({"version":"2.6.6","modules":[source.clone()],"cables":[cable(1,77,0,77,1),cable(2,77,1,77,0)]});
+    let result = run(patch.clone()).unwrap();
+    assert_eq!(
+        (result.report.mapped_count, result.report.unresolved_count),
+        (1, 0)
+    );
+    let node = native(&result.document, 0);
+    assert_eq!(node.kind, "rackmcp_listen");
+    assert!(node.bypassed && node.params.is_empty());
+    assert_eq!(
+        result.document.graph.nodes[0]
+            .source()
+            .unwrap()
+            .mapping
+            .as_ref()
+            .unwrap()
+            .fidelity,
+        MappingFidelity::MusicalRole
+    );
+    assert_eq!(result.document.graph.cables[0].route.output, "left");
+    assert_eq!(result.document.graph.cables[0].route.input, "right");
+    assert_eq!(result.document.graph.cables[1].route.output, "right");
+    assert_eq!(result.document.graph.cables[1].route.input, "left");
+    let reopened = ProjectDocument::decode(&result.document.encode().unwrap()).unwrap();
+    assert_eq!(
+        reopened
+            .source_module(reopened.graph.nodes[0].source().unwrap())
+            .unwrap(),
+        &source
+    );
+    reopened
+        .project(crate::project_document::PlaybackMode::Exact)
+        .unwrap()
+        .patch
+        .compile()
+        .unwrap();
+    for (key, value) in [
+        ("version", json!("2.0.1")),
+        ("params", json!([{"id":0,"value":1}])),
+        ("data", json!({"futureCapture":true})),
+    ] {
+        let mut altered = patch.clone();
+        altered["modules"][0][key] = value;
+        let result = run(altered.clone()).unwrap();
+        assert_eq!(
+            (result.report.mapped_count, result.report.unresolved_count),
+            (0, 1),
+            "{key}"
+        );
+        let package = result.document.sources.values().next().unwrap();
+        assert_eq!(package.patch.as_ref(), &altered);
+    }
+    let mut malformed = patch;
+    malformed["modules"][0]["params"] = json!({});
+    assert!(run(malformed)
+        .unwrap_err()
+        .contains("params must be an array"));
 }

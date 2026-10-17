@@ -34,10 +34,13 @@ mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod rack264_vcf;
+pub mod rackmcp_listen;
+pub mod rackmcp_listen_analysis;
 #[doc(hidden)]
 pub mod rackmcp_sequence;
 #[doc(hidden)]
 pub use rack264_vcf::{Rack264VcfProbe, Rack264VcfSnapshot};
+pub use rackmcp_listen::{ListenFrame, ListenSink, ListenStatus};
 pub use rackmcp_sequence::{RackMcpSequenceStatus, RackMcpTransport};
 mod rack264_vco;
 mod stereo_output;
@@ -521,6 +524,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(rackmcp_sequence::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_listen::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1383,6 +1390,13 @@ enum EngineKind {
     Poly(Box<poly::PolyEngine>),
 }
 impl Engine {
+    /// Actual processing rate of the active compiled engine.
+    pub fn sample_rate(&self) -> u32 {
+        match &self.inner {
+            EngineKind::Legacy(engine) => engine.sample_rate as u32,
+            EngineKind::Poly(engine) => engine.sample_rate(),
+        }
+    }
     fn port_light_observer(&self) -> &port_lights::Observer {
         match &self.inner {
             EngineKind::Legacy(engine) => &engine.port_lights,
@@ -1487,6 +1501,17 @@ impl Engine {
             generation: self.identity,
             node,
         })
+    }
+    /// Actual Listen counters and published connection/lamp hints.
+    /// The handle is fenced to this compiled engine generation.
+    pub fn listen_status(&self, handle: ModuleHandle) -> Option<ListenStatus> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.listen_status(handle.node),
+            EngineKind::Legacy(_) => None,
+        }
     }
     /// Inspect actual Stock Mix controls without consuming an output.
     #[doc(hidden)]
@@ -2380,6 +2405,27 @@ impl Engine {
             }
         }
     }
+    /// Render with a borrowed capture sink at the selected Listen's actual
+    /// per-sample processing point. Stale or non-Listen handles capture nothing.
+    pub fn process_audio_block_with_listen_capture(
+        &mut self,
+        output: &mut [[f32; 2]],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        let index = (handle.generation == self.identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                for sample in output {
+                    let frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                    let left = frame.channel(0);
+                    *sample = [left, if stereo { frame.channel(1) } else { left }];
+                }
+            }
+            EngineKind::Legacy(_) => self.process_audio_block(output),
+        }
+    }
     /// Resolve on the control thread. Channels are zero-based direct reads,
     /// never mono broadcasts; a valid but absent lane reports inactive.
     pub fn resolve_tap(&self, id: &str, port: &str, channel: usize) -> Result<ResolvedTap, String> {
@@ -2458,6 +2504,42 @@ impl Engine {
                     }
                 }
             }
+        }
+    }
+    /// Render Scope taps and the selected Listen capture in the same traversal.
+    /// Both output slices must have equal length. No transport is retained here.
+    pub fn process_audio_block_with_taps_and_listen_capture<const N: usize>(
+        &mut self,
+        output: &mut [[f32; 2]],
+        taps: &[Option<ResolvedTap>; N],
+        samples: &mut [[TapSample; N]],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        assert_eq!(output.len(), samples.len());
+        let identity = self.identity;
+        let index = (handle.generation == identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                engine.begin_taps(
+                    &taps.map(|tap| tap.filter(|t| t.owner == identity).map(|t| t.index)),
+                );
+                for (audio, sample) in output.iter_mut().zip(samples) {
+                    let frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                    let left = frame.channel(0);
+                    *audio = [left, if stereo { frame.channel(1) } else { left }];
+                    for (sample, tap) in sample.iter_mut().zip(taps) {
+                        *sample = tap
+                            .filter(|tap| tap.owner == identity)
+                            .map_or(TapSample::default(), |tap| {
+                                engine.tap_sample(tap.index, tap.channel)
+                            });
+                    }
+                }
+                engine.end_taps();
+            }
+            EngineKind::Legacy(_) => self.process_audio_block_with_taps(output, taps, samples),
         }
     }
     pub fn solver_failures(&self) -> u64 {
@@ -2631,6 +2713,23 @@ impl Engine {
                     *sample = engine.process_sample().channel(0);
                 }
             }
+        }
+    }
+    /// Render full port frames while capturing one generation-fenced Listen.
+    pub fn process_poly_block_with_listen_capture(
+        &mut self,
+        output: &mut [PortFrame],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        let index = (handle.generation == self.identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                for frame in output {
+                    *frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                }
+            }
+            EngineKind::Legacy(_) => self.process_poly_block(output),
         }
     }
     /// Render full port frames. Unused values are zero. No allocation, locking,

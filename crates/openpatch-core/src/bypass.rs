@@ -2,7 +2,7 @@
 use serde_json::{json, Value};
 pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
     match kind {
-        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" => {
+        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "rackmcp_listen" => {
             &[("left", "left"), ("right", "right")]
         }
         "modal_resonator" => &[("excite", "out")],
@@ -40,6 +40,12 @@ pub(crate) fn annotate(module: &mut Value) {
         "state_policy":if kind=="midi_cv" {"events are consumed and MIDI state/pulses continue processing in fixed scratch storage; published outputs are mono zero"} else {"DSP state freezes while bypassed; bypass transitions preserve DSP and incoming delayed frames but clear output/outgoing delayed frames to mono zero, including self-loops"},
         "module_actions":"bypassed sequencers reject actions; manual presses reject while matching releases remain accepted and clear held/pending controls immediately; transitions discard pending actions and release held manual controls while preserving DSP",
         "compatibility":"explicit OpenPatch host policy; generic utility/filter routes are chosen for existing OpenPatch kinds, not a claim of full Rack bypass parity"});
+    if kind == "rackmcp_listen" {
+        module["bypass"]["output_policy"] = json!("source configBypass copies matching L/R active raw slots before SDK setChannels; disconnected output retains raw storage");
+        module["bypass"]["state_policy"] = json!("skip Listen processing: frames_seen, dropped, divider phase, connection hints, lamp and capture freeze");
+        module["bypass"]["compatibility"] =
+            json!("RackMCP 2.0.0 configured L/R bypass routes and native raw host lifecycle");
+    }
     if kind == "stock_quantizer" {
         module["bypass"]["output_policy"] = json!("actual connected context: raw active pitch slots, no offset/quantization; connected empty input gives mono+0, disconnected output stays0 channels; inactive storage is zero padded");
         module["bypass"]["state_policy"] =

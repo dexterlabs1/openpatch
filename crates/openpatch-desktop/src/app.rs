@@ -25,6 +25,7 @@ use openpatch::project_document::{
 use openpatch_core::{catalog, MidiEvent, Patch};
 include!("toolbar.rs");
 include!("app_import.rs");
+include!("app_listen.rs");
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1283,6 +1284,15 @@ impl OpenPatch {
         self.files.sort();
     }
     fn command(&mut self, name: &str, mut args: Value) -> bool {
+        if matches!(
+            name,
+            "start_listen_capture"
+                | "inspect_listen_capture"
+                | "cancel_listen_capture"
+                | "inspect_listen"
+        ) {
+            return self.listen_command(name, args);
+        }
         if matches!(name, "open_wavetable_import" | "open_wavetable_export") {
             return self.wavetable_file_dialog(name, &args);
         }
@@ -8239,6 +8249,7 @@ impl eframe::App for OpenPatch {
         self.rack
             .set_construction_motion_mode(self.construction.motion_mode());
         self.footer(ctx);
+        self.listen_capture_ui(ctx);
         let library_action = self.browser(ctx);
         let palette_enabled = self.library_enabled();
         if self
@@ -8422,6 +8433,9 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod listen_app_tests {
+        include!("listen_app_tests.rs");
+    }
     mod toolbar_settings_tests {
         include!("toolbar_settings_tests.rs");
     }

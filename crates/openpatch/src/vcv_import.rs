@@ -340,7 +340,13 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         .iter()
         .any(|module| module.native_kind.as_deref() == Some("rackmcp_sequencer"))
     {
-        warnings.push("RackMCP 2.0.0 Sequencer uses a MusicalRole mapping: native healthy-target rebinding deliberately corrects SDK self-unbinding; native scheduling and exclusive automation ownership apply. Whole-module and whole-patch equivalence are unclaimed; Bridge and Listen remain unresolved.".into());
+        warnings.push("RackMCP 2.0.0 Sequencer uses a MusicalRole mapping: native healthy-target rebinding deliberately corrects SDK self-unbinding; native scheduling and exclusive automation ownership apply. Whole-module and whole-patch equivalence are unclaimed; Bridge remains unresolved.".into());
+    }
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rackmcp_listen"))
+    {
+        warnings.push("RackMCP 2.0.0 Listen preserves raw passthrough and source analysis. Capture is a native host job with acknowledged ring reuse and explicit cancellation on removed/replaced/suspended execution; import never starts a capture or audio device. Whole-host equivalence is unclaimed.".into());
     }
     if !unsupported_lanes.is_empty() {
         warnings.push(format!("{} RackMCP automation lane(s) have no qualified native target and remain preserved without a binding: {}.", unsupported_lanes.len(), unsupported_lanes.join(", ")));
@@ -483,6 +489,15 @@ struct Manifest {
     outputs: &'static [&'static str],
 }
 fn manifest(module: &Value) -> Option<Manifest> {
+    if module["plugin"] == "RackMCP" && module["model"] == "Listen" && module["version"] == "2.0.0"
+    {
+        return Some(Manifest {
+            kind: "rackmcp_listen",
+            params: &[],
+            inputs: &["left", "right"],
+            outputs: &["left", "right"],
+        });
+    }
     if module["plugin"] == "RackMCP"
         && module["model"] == "Sequencer"
         && module["version"] == "2.0.0"
@@ -634,7 +649,7 @@ pub(crate) fn registered_source_mapping(module: &Value) -> Option<SourceMapping>
             module["version"].as_str()?
         ),
         version: 1,
-        fidelity: if mapping.kind == "rackmcp_sequencer" {
+        fidelity: if matches!(mapping.kind, "rackmcp_sequencer" | "rackmcp_listen") {
             MappingFidelity::MusicalRole
         } else {
             MappingFidelity::SourceBehavior
@@ -698,14 +713,22 @@ fn convert(
     source_assets: &BTreeMap<String, Vec<u8>>,
 ) -> Result<(Node, Option<WaveAsset>), String> {
     let mut params = BTreeMap::new();
-    if matches!(mapping.kind, "rack264_vco" | "rack264_vcf")
-        && module.get("data").is_some_and(|data| {
-            !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
-        })
-    {
+    if matches!(
+        mapping.kind,
+        "rack264_vco" | "rack264_vcf" | "rackmcp_listen"
+    ) && module.get("data").is_some_and(|data| {
+        !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
+    }) {
         return Err(
-            "unrecognized source module data is outside the pinned voice mapping contract".into(),
+            "unrecognized source module data is outside the pinned mapping contract".into(),
         );
+    }
+    if mapping.kind == "rackmcp_listen"
+        && module
+            .get("params")
+            .is_some_and(|params| !params.is_array())
+    {
+        return Err("Listen source params must be an empty array or absent".into());
     }
     if let Some(values) = module["params"].as_array() {
         if mapping.kind == "rack264_vcf" {

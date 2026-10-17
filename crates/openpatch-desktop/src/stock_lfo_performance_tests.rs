@@ -1,5 +1,5 @@
 fn stock_lfo_packet(frame: u64, clock_frequency: Option<f32>, present: bool) -> ModuleSnapshot {
-    ModuleSnapshot { rackmcp_sequence: None, parameters: [None; MAX_PUBLISHED_PARAMETERS], revision: frame + 1, frame, state: None, saved_state: None, controls: None, midi_learning: None,
+    ModuleSnapshot { rackmcp_sequence: None, listen: None, parameters: [None; MAX_PUBLISHED_PARAMETERS], revision: frame + 1, frame, state: None, saved_state: None, controls: None, midi_learning: None,
         lights: present.then_some(ModuleLightState { count: 5, clock_frequency, ..Default::default() }) }
 }
 #[test]

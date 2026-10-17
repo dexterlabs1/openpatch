@@ -17,6 +17,7 @@ mod keyboard;
 mod keyboard_acceptance_tests;
 mod library;
 mod lighting;
+mod listen_capture;
 mod mcp_session_ui;
 mod menu_motion;
 mod midi;

@@ -203,7 +203,7 @@ fn actual_vcv_native_open_save_reopen_and_capture() {
     let mut app = host(directory.path());
     app.load_document("source.vcv", false);
     assert_eq!(app.project.graph.nodes.len(), 55, "{}", app.status);
-    assert_eq!(app.patch.nodes.len(), 31);
+    assert_eq!(app.patch.nodes.len(), 32);
     assert_eq!(app.project.graph.cables.len(), 83);
     assert!(!app.shared.lock().unwrap().layout_pending());
     let expected = app.project.clone();

@@ -20,6 +20,7 @@ use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
 use crate::rack264_vcf::{self, Rack264Vcf};
 use crate::rack264_vco::{self, Rack264Vco};
+use crate::rackmcp_listen::{self, ListenSink, ListenStatus, RackMcpListen};
 use crate::rackmcp_sequence::{self, RackMcpSequencer, ResolvedTarget};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
@@ -98,6 +99,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || kind == "colored_noise"
         || kind == "score_sequencer"
         || kind == "rackmcp_sequencer"
+        || kind == "rackmcp_listen"
         || kind == "modal_resonator"
         || kind == "macro_voice"
         || kind == "studio_mixer"
@@ -172,6 +174,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
     if kind == "rackmcp_sequencer" {
         return rackmcp_sequence::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_listen" {
+        return rackmcp_listen::INPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::INPUTS.iter().position(|p| *p == name);
@@ -258,6 +263,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     }
     if kind == "rackmcp_sequencer" {
         return rackmcp_sequence::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_listen" {
+        return rackmcp_listen::OUTPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::OUTPUTS.iter().position(|p| *p == name);
@@ -423,6 +431,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "stock_noise" {
         stock_noise::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "rackmcp_listen" {
+        rackmcp_listen::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -820,6 +833,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_scope" {
         stock_scope::annotate(module);
     }
+    if kind == "rackmcp_listen" {
+        rackmcp_listen::annotate(module);
+    }
     if kind == "stock_vca_mix" {
         stock_vca_mix::annotate(module);
     }
@@ -849,6 +865,7 @@ enum Model {
     ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
     RackMcpSequencer(Box<RackMcpSequencer>),
+    RackMcpListen(RackMcpListen),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
     MacroVoice(Box<MacroVoice>),
@@ -932,6 +949,9 @@ impl Model {
         }
         if node.kind == "studio_mixer" {
             return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
+        }
+        if node.kind == "rackmcp_listen" {
+            return RackMcpListen::build(node).map(Self::RackMcpListen);
         }
         if node.kind == "rackmcp_sequencer" {
             return RackMcpSequencer::build(node, rate)
@@ -1113,7 +1133,8 @@ impl Model {
     fn native_host(&self) -> bool {
         matches!(
             self,
-            Self::StockMidSide(_)
+            Self::RackMcpListen(_)
+                | Self::StockMidSide(_)
                 | Self::StockMix(_)
                 | Self::StockOctave(_)
                 | Self::StockProcess(_)
@@ -1945,6 +1966,7 @@ impl PolyEngine {
     }
     pub(crate) fn module_lights(&self, index: usize) -> Option<ModuleLightState> {
         match self.nodes.get(index).map(|n| &n.model) {
+            Some(Model::RackMcpListen(s)) => Some(s.lights()),
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
@@ -2642,6 +2664,8 @@ impl PolyEngine {
                 colored_noise::OUTPUTS.len()
             } else if node.kind == "stock_noise" {
                 stock_noise::OUTPUTS.len()
+            } else if node.kind == "rackmcp_listen" {
+                rackmcp_listen::OUTPUTS.len()
             } else if node.kind == "rackmcp_sequencer" {
                 rackmcp_sequence::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
@@ -2923,6 +2947,9 @@ impl PolyEngine {
         }
         Ok(engine)
     }
+    pub(crate) fn sample_rate(&self) -> u32 {
+        self.rate
+    }
     pub(crate) fn output_channels(&self) -> u16 {
         if self.stereo {
             2
@@ -2941,6 +2968,19 @@ impl PolyEngine {
         }
     }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
+        self.process_sample_with_listen_capture(None, None)
+    }
+    pub(crate) fn listen_status(&self, index: usize) -> Option<ListenStatus> {
+        match &self.nodes.get(index)?.model {
+            Model::RackMcpListen(model) => Some(model.status()),
+            _ => None,
+        }
+    }
+    pub(crate) fn process_sample_with_listen_capture(
+        &mut self,
+        listen_index: Option<usize>,
+        mut sink: Option<&mut dyn ListenSink>,
+    ) -> PortFrame {
         if self.host_context_dirty {
             for index in 0..self.nodes.len() {
                 self.reconcile_host_context(index);
@@ -3010,6 +3050,13 @@ impl PolyEngine {
                     &mut host.outputs[node.output_start..node.output_start + node.output_count];
                 if !node.bypassed {
                     match &mut node.model {
+                        Model::RackMcpListen(model) => {
+                            if listen_index == Some(node_index) {
+                                model.process(&host.inputs[node_index], outputs, sink.take());
+                            } else {
+                                model.process(&host.inputs[node_index], outputs, None);
+                            }
+                        }
                         Model::StockMidSide(model) => {
                             model.process(&host.inputs[node_index], outputs)
                         }
@@ -3033,6 +3080,8 @@ impl PolyEngine {
                         Model::StockNoise(model) => model.process(outputs),
                         _ => unreachable!("native predicate validated model"),
                     }
+                } else if let Model::RackMcpListen(model) = &node.model {
+                    model.process_bypass(&host.inputs[node_index], outputs);
                 } else if let Model::StockOctave(model) = &node.model {
                     model.process_bypass(&host.inputs[node_index], outputs);
                 }
@@ -3089,7 +3138,8 @@ impl PolyEngine {
                 .unwrap_or_default();
             match &mut node.model {
                 Model::Annotation => {}
-                Model::StockMidSide(_)
+                Model::RackMcpListen(_)
+                | Model::StockMidSide(_)
                 | Model::StockMix(_)
                 | Model::StockOctave(_)
                 | Model::StockProcess(_)
@@ -3919,6 +3969,21 @@ impl PolyEngine {
         for index in 0..self.nodes.len() {
             if self.sequence_ownership.acquire[index] {
                 self.sequence_ownership.claim(index);
+            }
+        }
+        // Listen has no rate-dependent runtime; capture transport is borrowed
+        // only by the active graph, never copied from the donor.
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&previous) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if let (Model::RackMcpListen(current), Model::RackMcpListen(previous)) =
+                (&mut self.nodes[index].model, &old.nodes[previous].model)
+            {
+                current.adopt(previous);
             }
         }
         if self.rate != old.rate {

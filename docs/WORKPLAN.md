@@ -198,14 +198,25 @@ checks (two ignored), 229 audio-callback checks (one ignored), 37 publication
 checks, nine document-state checks and five real MCP stdio workflows pass.
 Strict Core/CLI/Desktop all-target Clippy and formatting pass.
 
-Next close Bridge/Listen and the full imported musical control workflow,
-including live panel transport presentation. No release, installation or whole-module equivalence
-is claimed.
+**Listen checkpoint (not installed):** raw L/R passthrough, host-owned armed
+capture, source analysis/WAV and shared rack/browser controls now work through
+the same Session MCP authority. The pinned source comparison passes 821 cases /
+9,873 complete observations exactly; all 17 analysis fixtures and both WAV export
+policies match exactly. [Evidence and declared host corrections](benchmarks/rackmcp-listen.json).
+The real shared-session musical fixture passes live capture, octave edit/undo/redo
+and source-preserving save/reopen. The full user collection now preserves all
+55 modules/83 cables with 32 mapped and 23 unresolved dependencies. Focused Core,
+CLI, callback, UI, real stdio and actual-fixture checks plus strict all-target
+Clippy/formatting pass. The installed app remains 0.2.6 build 8.
+
+Next close Bridge and live Sequencer panel transport presentation, then one
+complete macOS family milestone validation/PR. No release, installation or
+whole-module/whole-patch equivalence is claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.
-The current read-only import finds 24 unresolved modules in
+The current read-only import finds 23 unresolved modules in
 the full user patch: third-party instruments/effects, RackMCP controls and Core
 Notes/audio I/O. Preserve that complete fixture; a supported excerpt or explicit
 Partial playback is not whole-patch equivalence.

@@ -491,7 +491,7 @@ fn prepare_graph_for_control(
         contains_rackmcp_sequence: patch
             .nodes
             .iter()
-            .any(|node| node.kind == "rackmcp_sequencer"),
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen")),
         scope: ScopeSetup {
             generation,
             enabled: binding.is_some(),
@@ -1213,7 +1213,7 @@ impl Callback {
         self.graphs.active.contains_rackmcp_sequence = patch
             .nodes
             .iter()
-            .any(|node| node.kind == "rackmcp_sequencer");
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen"));
         Ok(())
     }
 
@@ -1240,6 +1240,7 @@ impl Callback {
         // Waiting for a runnable replacement is a state/publication freeze,
         // not an input cancellation. New actions already target that revision.
         if self.module_events.document_suspended() {
+            self.module_events.invalidate_listen();
             let active = &mut self.graphs.active;
             self.module_events
                 .suspend(&mut active.engine, &mut active.modules);
@@ -1479,15 +1480,15 @@ impl Callback {
                 });
                 let count = if one_frame { 1 } else { count };
                 let active = &mut self.graphs.active;
-                if active.scope.enabled {
-                    active.engine.process_audio_block_with_taps(
-                        &mut current[..count],
-                        &active.scope.taps,
-                        &mut taps[..count],
-                    );
-                } else {
-                    active.engine.process_audio_block(&mut current[..count]);
-                }
+                self.module_events.process_audio(
+                    &mut active.engine,
+                    &active.modules,
+                    &mut current[..count],
+                    active
+                        .scope
+                        .enabled
+                        .then_some((&active.scope.taps, &mut taps[..count])),
+                );
                 let active_stereo = self.graphs.active.output_channels() == 2;
                 let previous_stereo = self.frozen_previous.map_or_else(
                     || {
@@ -2025,7 +2026,7 @@ mod tests {
         callback.graphs.active.contains_rackmcp_sequence = patch
             .nodes
             .iter()
-            .any(|node| node.kind == "rackmcp_sequencer");
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen"));
         callback.gain.value = 1.0;
         (callback, updates, disposal)
     }
@@ -6094,6 +6095,8 @@ mod tests {
     include!("live_parameter_audio_tests.rs");
     include!("sequence_load_audio_tests.rs");
     include!("rackmcp_transport_audio_tests.rs");
+    include!("listen_audio_tests.rs");
+    include!("listen_session_tests.rs");
     include!("rackmcp_transport_session_tests.rs");
     include!("imported_sequence_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");

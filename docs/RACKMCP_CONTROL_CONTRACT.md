@@ -110,3 +110,29 @@ RackMCP is by Zachary Scheffler (`R/plugin.json`), GPL-3.0-or-later (`R/LICENSE`
 Any source adaptations must retain attribution/provenance and follow the project's
 GPL distribution notices; original OpenPatch code remains MIT. This audit copies
 no implementation and establishes neither Rack protocol nor whole-patch parity.
+
+
+## Listen implementation checkpoint (2026-10-17)
+
+The distinct native Listen model and real capture host are implemented on the
+milestone branch. The [bounded source proofs and host checks](benchmarks/rackmcp-listen.json)
+cover raw routing, source analysis/WAV, actual callback publication, capture job
+lifecycle, revision/history authority and a source-preserving imported musical
+workflow. The [shared panel review](../design/reviews/rackmcp-listen-v1/README.md)
+includes actual normal/dark drawing. This is not installed.
+
+Capture storage belongs to the host, with one producer in the active callback
+and one worker consumer. Stop acknowledgment precedes ring reuse. Ordinary graph
+edits preserve a job, crossfade donors never capture, and initial sample rate
+fixes the clip length and analysis rate. Removal/recreation/suspension/close fail
+the active generation promptly; missing callback/frame progress fails after two
+seconds. These host corrections differ from the source per-module shared tap
+and are explicitly declared. Standalone analysis also rejects invalid/nonfinite,
+over-30-second and out-of-Core-rate input. No callback allocation is introduced.
+
+UI and external MCP use the same Session operations; external jobs appear in the
+native capture inspector. Start/poll/cancel do not add history or mutate layout.
+WAV creation is explicit, never overwrites and alone duplicates L when R is
+absent. No import or capture command starts a speaker/device. Bridge still needs
+its real session/control/save lifecycle; this checkpoint does not satisfy the
+entire control-family acceptance list above.
