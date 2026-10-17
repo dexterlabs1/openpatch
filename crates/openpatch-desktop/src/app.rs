@@ -5895,6 +5895,33 @@ impl OpenPatch {
         self.status = "Actual offline DSP snapshot · MIX and WET Scope traces · CLK from the delay engine · no live audio".into();
     }
 
+    fn prepare_rack264_voice_fixture(&mut self) {
+        let (patch, engine) = crate::rack264_voice_fixture::observed_voice();
+        let lights = BTreeMap::from([(
+            "voice".into(),
+            engine
+                .module_lights(engine.resolve_module_lights("voice").unwrap())
+                .unwrap(),
+        )]);
+        self.smoke_motion_origin = None;
+        self.keyboard_open = false;
+        self.settings_open = false;
+        self.audio_performance_open = false;
+        self.select_analysis(None);
+        execute_shared(&self.shared, "replace_patch", json!({"patch":patch})).unwrap();
+        self.sync();
+        self.replace_rack(Rack::default());
+        self.rack.restore_layout(&json!({"version":1,"zoom":1.25,"pan":[24,12],"positions":{"voice":[0,0],"filter":[378,0]}})).unwrap();
+        self.rack.set_agent_follow(false);
+        self.rack.set_module_states(lights, BTreeMap::new());
+        self.rack.set_port_lights(Some(
+            crate::audio::offline_frame(&patch, &engine, self.revision).unwrap(),
+        ));
+        self.browser_open = false;
+        self.title = "Fundamental 2.6.4 · source-version voice".into();
+        self.status = "Actual offline Engine · separate 2.6.4 VCO → RK4 ladder · source curves and actual phase/mode lamps · no live audio".into();
+    }
+
     fn prepare_stock_vcf_fixture(&mut self) {
         let patch: Patch =
             serde_json::from_str(include_str!("../../../examples/stock-vcf-voice.json")).unwrap();
@@ -8009,7 +8036,7 @@ impl OpenPatch {
                 ctx.data_mut(|d| d.remove::<crate::smoke_schedule::Receipt>(receipt_id));
             }
             eprintln!(
-                "Native smoke: capture {}/149 at frame {frame}: {}",
+                "Native smoke: capture {}/153 at frame {frame}: {}",
                 captures + 1,
                 target.display()
             );
@@ -8027,12 +8054,14 @@ impl eframe::App for OpenPatch {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let tail_id = egui::Id::new("native-smoke-noise-tail");
         if let Some(mut tail) = ctx.data(|d| d.get_temp::<NoiseSmokeCapture>(tail_id)) {
-            if matches!(tail.index, 141 | 144) && !tail.query_sent {
+            if matches!(tail.index, 141 | 144 | 151 | 152) && !tail.query_sent {
                 input.events.push(egui::Event::Text(
-                    if tail.index == 141 {
-                        "stock_noise"
-                    } else {
-                        "studio_mixer"
+                    match tail.index {
+                        141 => "stock_noise",
+                        144 => "studio_mixer",
+                        151 => "rack264_vco",
+                        152 => "rack264_vcf",
+                        _ => unreachable!(),
                     }
                     .into(),
                 ));

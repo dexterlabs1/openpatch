@@ -90,6 +90,30 @@ fn stock_vco_nominal(wave: usize, phase: f32, width: f32) -> f32 {
         }
     }
 }
+// Configured Fundamental 2.6.4 shapes before BLEP corrections and the square's
+// highpass. These display equations never synthesize or imply live telemetry.
+fn rack264_vco_nominal(wave: usize, phase: f32, width: f32) -> f32 {
+    let curve = |x: f32| (3.0 + x * (-13.0 + 5.0 * x)) / (3.0 + 2.0 * x);
+    match wave {
+        0 => {
+            let first = phase < 0.5;
+            let x = phase - if first { 0.25 } else { 0.75 };
+            (1.0 - 16.0 * x * x) * if first { 1.0 } else { -1.0 }
+        }
+        1 => {
+            let x = (phase + 0.25).fract();
+            curve((x * 2.0).fract()) * if x >= 0.5 { 1.0 } else { -1.0 }
+        }
+        2 => -curve((phase + 0.5).fract()),
+        _ => {
+            if phase < width {
+                1.0
+            } else {
+                -1.0
+            }
+        }
+    }
+}
 fn paint_stock_oscillator_configuration(
     painter: &egui::Painter,
     node: &Node,
@@ -165,6 +189,8 @@ fn paint_stock_oscillator_configuration(
                         * if lfo {
                             stock_lfo_guide_sample(node, wave, phase) / 5.0
                                 - if offset { 1.0 } else { 0.0 }
+                        } else if node.kind == "rack264_vco" {
+                            rack264_vco_nominal(wave, phase, width)
                         } else {
                             stock_vco_nominal(wave, phase, width)
                         },
@@ -196,6 +222,8 @@ fn paint_stock_oscillator_configuration(
         } else {
             ["1/256 Hz", "1024 Hz"]
         }
+    } else if node.kind == "rack264_vco" {
+        ["−54 st", "+54 st"]
     } else {
         ["−76 st", "+76 st"]
     };
@@ -235,7 +263,11 @@ impl Rack {
             rect.min + vec2(227.0, 191.0) * zoom,
         );
         ui.interact(help_rect, ui.id().with(("stock-vco-configured", &node.id)), Sense::hover())
-            .on_hover_text("Nominal ±5 V shapes over one cycle at zero CV. The engine uses a polynomial sine, minimum-phase step/ramp correction and a 20 Hz output DC blocker; this configured guide is not live output. Width affects Square. EXP target: C4·2^(T/12+V+F·A). LIN target: C4·2^(T/12+V)+C4·F·A. T is tuning in semitones, V is V/OCT, F is FM volts and A is signed FM depth. Runtime phase and mode lamps use engine snapshots only.");
+            .on_hover_text(if node.kind == "rack264_vco" {
+                "Fundamental 2.6.4 nominal curves over one cycle at zero CV: quadratic sine and rational curved triangle/saw, before minimum-phase step correction. Only Square has the 20 Hz highpass and 0.95 gain. This configured guide is not live output. Tuning is −54 to +54 semitones. EXP target: C4·2^(T/12+V+F·A). LIN target: C4·2^(T/12+V)+C4·F·A. Width affects Square. Soft sync reverses subsequent phase motion. Runtime phase and mode lamps use engine snapshots only."
+            } else {
+                "Nominal ±5 V shapes over one cycle at zero CV. The engine uses a polynomial sine, minimum-phase step/ramp correction and a 20 Hz output DC blocker; this configured guide is not live output. Width affects Square. EXP target: C4·2^(T/12+V+F·A). LIN target: C4·2^(T/12+V)+C4·F·A. T is tuning in semitones, V is V/OCT, F is FM volts and A is signed FM depth. Runtime phase and mode lamps use engine snapshots only."
+            });
         let point = |x, y| rect.min + vec2(x, y) * zoom;
         let painter = ui.painter();
         let packet = self.module_lights.get(&node.id);

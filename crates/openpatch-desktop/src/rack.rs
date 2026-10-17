@@ -93,7 +93,7 @@ fn port_material_scale(kind: &str) -> f32 {
                 / 10.3
         }
         "stock_vca_mix" => STOCK_VCA_MIX_PORT_SCALE,
-        "stock_lfo" | "stock_vco" => STOCK_OSCILLATOR_PORT_SCALE,
+        "stock_lfo" | "stock_vco" | "rack264_vco" => STOCK_OSCILLATOR_PORT_SCALE,
         "stock_noise" => STOCK_NOISE_PORT_SCALE,
         "colored_noise" | "random_values" | "sh_asr" => 1.10,
         "sample_hold" | "mult" | "switch_1to4" | "switch_4to1" => REDESIGNED_PORT_SCALE,
@@ -126,6 +126,7 @@ fn port_material_scale(kind: &str) -> f32 {
         | "wavetable_vco"
         | "wavetable_lfo"
         | "stock_vcf"
+        | "rack264_vcf"
         | "stock_vca"
         | "adsr_eg"
         | "svf_filter"
@@ -159,7 +160,9 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("mixer" | "output" | "audio_out" | "vca_mix", _, _) => Above(25.0),
         ("oscillator", _, true) => Right(36.0),
         ("logic" | "gates" | "push" | "oscillator" | "constant" | "octave", _, _) => Above(25.0),
-        ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
+        ("stock_lfo" | "stock_vco" | "rack264_vco" | "stock_noise" | "stock_process", _, _) => {
+            ExistingEnlarged
+        }
         (
             "seq3",
             "step1" | "step2" | "step3" | "step4" | "step5" | "step6" | "step7" | "step8",
@@ -178,7 +181,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("quantizer", "pitch", false) => Left(34.0),
         ("quantizer", "offset_cv", false) => Right(40.0),
         ("process" | "multi_vco" | "multi_lfo", _, false) => Above(21.0),
-        ("stock_vcf", _, false) => Above(21.0),
+        ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
         ("macro_voice", _, false) => Above(21.0),
@@ -211,7 +214,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("compare" | "process" | "wavetable_vco" | "wavetable_lfo" | "stock_vca", _, true) => {
             Above(24.0)
         }
-        ("multi_vco" | "multi_lfo" | "stock_vcf", _, true) => Right(30.0),
+        ("multi_vco" | "multi_lfo" | "stock_vcf" | "rack264_vcf", _, true) => Right(30.0),
         (
             "analog_vco" | "ladder_vcf" | "fade" | "rescale" | "gate" | "attenuverter"
             | "white_noise",
@@ -320,7 +323,10 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
-        || matches!(kind, "stock_vco" | "stock_lfo" | "mix6" | "stock_mix")
+        || matches!(
+            kind,
+            "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
+        )
     {
         GenericParameterHardware::Rotary {
             body_radius: layout_radius,
@@ -3091,7 +3097,10 @@ impl Rack {
                 let header_rect = Rect::from_min_max(
                     point(15.0, 19.0),
                     point(
-                        if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                        if matches!(
+                            node.kind.as_str(),
+                            "stock_vco" | "rack264_vco" | "stock_lfo"
+                        ) {
                             174.0
                         } else {
                             width - 15.0
@@ -3197,7 +3206,10 @@ impl Rack {
                 let header = Rect::from_min_max(
                     point(15.0, 19.0),
                     point(
-                        if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                        if matches!(
+                            node.kind.as_str(),
+                            "stock_vco" | "rack264_vco" | "stock_lfo"
+                        ) {
                             174.0
                         } else {
                             width - 15.0
@@ -3530,7 +3542,7 @@ impl Rack {
             if node.kind == "stock_lfo" {
                 self.stock_lfo_lights(ui, node, rect);
             }
-            if node.kind == "stock_vco" {
+            if matches!(node.kind.as_str(), "stock_vco" | "rack264_vco") {
                 self.stock_vco_lights(ui, node, rect);
             }
             if atlas_poly_kind(&node.kind) {
@@ -3696,7 +3708,7 @@ impl Rack {
                     action = Some(edit);
                 }
             }
-            if node.kind == "stock_vcf" {
+            if matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf") {
                 if let Some(edit) = self.stock_vcf_panel(ui, node, rect, revision) {
                     action = Some(edit);
                 }
@@ -3804,7 +3816,7 @@ impl Rack {
                     || node.kind == "random_values"
                     || node.kind == "sh_asr"
                     || node.kind == "adsr_eg"
-                    || node.kind == "stock_vcf"
+                    || matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf")
                     || node.kind == "stock_delay"
                     || node.kind == "stock_vca"
                     || node.kind == "stock_octave"
@@ -3918,7 +3930,9 @@ impl Rack {
                     response.on_hover_text(if *name=="linear_fm"{"Use linear FM. Off selects exponential FM. This mode is saved with the patch."}else{"Use soft sync. Off selects hard sync. This mode is saved with the patch."});
                     continue;
                 }
-                if node.kind == "stock_vco" && matches!(*name, "linear_fm" | "soft_sync") {
+                if matches!(node.kind.as_str(), "stock_vco" | "rack264_vco")
+                    && matches!(*name, "linear_fm" | "soft_sync")
+                {
                     let enabled = value_or_default(node, name, spec) >= 0.5;
                     let toggle = stock_vco_mode_rect(name);
                     let response = crate::panel_skin::toggle_button(
@@ -4204,7 +4218,7 @@ impl Rack {
                     continue;
                 }
                 let mut label_gap = match node.kind.as_str() {
-                    "stock_lfo" | "stock_vco" => 10.0,
+                    "stock_lfo" | "stock_vco" | "rack264_vco" => 10.0,
                     // The two rotary rows share a compact 300-point face.
                     // Place captions just above their hit regions so the
                     // preceding row's readout clears the next caption at 25%.
@@ -4271,7 +4285,10 @@ impl Rack {
                         random_parameter_position(index),
                         random_parameter_radius(index),
                     )
-                } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stock_vco" | "rack264_vco" | "stock_lfo"
+                ) {
                     stock_vco_control(name)
                 } else if is_wavetable(&node.kind) {
                     (
@@ -4315,7 +4332,8 @@ impl Rack {
                     || (atlas_voice(&node.kind) && logarithmic && min > 0.0);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
-                let stock_pitch = node.kind == "stock_vco" && *name == "frequency";
+                let stock_pitch = matches!(node.kind.as_str(), "stock_vco" | "rack264_vco")
+                    && *name == "frequency";
                 let stock_tempo = node.kind == "stock_seq3" && *name == "tempo";
                 let observed_clock = stock_lfo_clock(self.module_lights.get(&node.id));
                 let hz_rate = wave_rate || stock_rate || (node.kind == "random" && *name == "rate");
@@ -4335,8 +4353,10 @@ impl Rack {
                     || node.kind == "fade"
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
-                    (matches!(node.kind.as_str(), "multi_vco" | "stock_lfo" | "stock_vco")
-                        && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
+                    (matches!(
+                        node.kind.as_str(),
+                        "multi_vco" | "stock_lfo" | "stock_vco" | "rack264_vco"
+                    ) && matches!(*name, "pulse_width" | "fm_amount" | "pwm_amount"))
                         || (is_wavetable(&node.kind)
                             && matches!(*name, "position" | "fm_amount" | "position_cv_amount"));
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
@@ -4378,7 +4398,7 @@ impl Rack {
                     stock_quantizer_offset_value(value)
                 } else if stock_tempo {
                     stock_seq3_tempo_value(value)
-                } else if node.kind == "stock_vco" {
+                } else if matches!(node.kind.as_str(), "stock_vco" | "rack264_vco") {
                     stock_vco_parameter_value(name, value)
                 } else if node.kind == "stock_lfo" {
                     stock_lfo_parameter_value(name, value, observed_clock)
@@ -4489,7 +4509,10 @@ impl Rack {
                 };
                 let value_offset = if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     21.0
-                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stock_lfo" | "stock_vco" | "rack264_vco"
+                ) {
                     16.0
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
                     18.0
@@ -4567,7 +4590,10 @@ impl Rack {
                 } else if atlas_studio_effect(&node.kind) {
                     let local = atlas_studio_effect_value_center(&node.kind, name);
                     point(local.x, local.y)
-                } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stock_vco" | "rack264_vco" | "stock_lfo"
+                ) {
                     let local = stock_vco_value_center(name);
                     point(local.x, local.y)
                 } else if atlas_voice(&node.kind) {
@@ -4656,7 +4682,10 @@ impl Rack {
                     "stereo_reverb" | "sidechain_compressor" | "drum_voice"
                 ) {
                     width / 3.0 - 12.0
-                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stock_lfo" | "stock_vco" | "rack264_vco"
+                ) {
                     82.0
                 } else if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
                     if node.kind == "stock_seq3" && sequence_cell(name).is_none() {
@@ -4931,7 +4960,7 @@ impl Rack {
                         || atlas_creative_kind(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
+                            "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
                         ) {
                         paint_atlas_voice_rotary
                     } else {
@@ -4987,7 +5016,10 @@ impl Rack {
                     paint_stochastic_control_print(
                         &painter, rect, &node.kind, index, name, self.zoom,
                     );
-                } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stock_vco" | "rack264_vco" | "stock_lfo"
+                ) {
                     stock_oscillator_control_print(
                         &painter,
                         rect.min,
@@ -5036,7 +5068,7 @@ impl Rack {
                             stock_seq3_parameter_label(name)
                         } else if node.kind == "stock_quantizer" {
                             "OFFSET (SEMITONES)"
-                        } else if node.kind == "stock_vco" {
+                        } else if matches!(node.kind.as_str(), "stock_vco" | "rack264_vco") {
                             stock_vco_parameter_label(name)
                         } else if node.kind == "stock_lfo" {
                             stock_lfo_parameter_label(name, clock_ratio)
@@ -5091,7 +5123,7 @@ impl Rack {
                     || atlas_creative_kind(&node.kind)
                     || matches!(
                         node.kind.as_str(),
-                        "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
+                        "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
                     )
                 {
                     paint_atlas_voice_readout
@@ -5137,7 +5169,7 @@ impl Rack {
                             stock_quantizer_offset_value(old)
                         } else if stock_tempo {
                             stock_seq3_tempo_value(old)
-                        } else if node.kind == "stock_vco" {
+                        } else if matches!(node.kind.as_str(), "stock_vco" | "rack264_vco") {
                             stock_vco_parameter_value(name, old)
                         } else if node.kind == "stock_lfo" {
                             stock_lfo_parameter_value(name, old, observed_clock)
@@ -5260,7 +5292,7 @@ impl Rack {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
-                        } else if node.kind == "stock_vcf" {
+                        } else if matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf") {
                             stock_vcf_port_label(port)
                         } else if node.kind == "random" {
                             random_port_label(port)
@@ -5308,7 +5340,7 @@ impl Rack {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
-                    } else if node.kind == "stock_vcf" {
+                    } else if matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf") {
                         stock_vcf_port_label(port)
                     } else if node.kind == "random" {
                         random_port_label(port)
@@ -5331,7 +5363,10 @@ impl Rack {
                                 | "stock_noise"
                                 | "stock_process"
                         ),
-                    if matches!(node.kind.as_str(), "sh_asr" | "stock_lfo" | "stock_vco") {
+                    if matches!(
+                        node.kind.as_str(),
+                        "sh_asr" | "stock_lfo" | "stock_vco" | "rack264_vco"
+                    ) {
                         12.0
                     } else {
                         18.0
@@ -5471,7 +5506,7 @@ impl Rack {
                             stock_octave_port_label(port)
                         } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
-                        } else if node.kind == "stock_vcf" {
+                        } else if matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf") {
                             stock_vcf_port_label(port)
                         } else if node.kind == "random" {
                             random_port_label(port)
@@ -5529,7 +5564,7 @@ impl Rack {
                         stock_octave_port_label(port)
                     } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
-                    } else if node.kind == "stock_vcf" {
+                    } else if matches!(node.kind.as_str(), "stock_vcf" | "rack264_vcf") {
                         stock_vcf_port_label(port)
                     } else if node.kind == "random" {
                         random_port_label(port)
@@ -5566,6 +5601,7 @@ impl Rack {
                             | "midi_gate"
                             | "stock_lfo"
                             | "stock_vco"
+                            | "rack264_vco"
                             | "stock_noise"
                     ) {
                         12.0
@@ -5891,7 +5927,10 @@ impl Rack {
                     Stroke::new(2.0 * self.zoom, gold.gamma_multiply((1.0 - t) * 0.5)),
                 );
             }
-            let header_width = if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+            let header_width = if matches!(
+                node.kind.as_str(),
+                "stock_vco" | "rack264_vco" | "stock_lfo"
+            ) {
                 174.0 * self.zoom
             } else {
                 rect.width()
@@ -7727,11 +7766,30 @@ fn parameter_edit_raw_value(edit: &ParameterEdit, parsed: f32) -> f32 {
         (parsed / edit.display_scale).log2()
     } else if edit.kind == "stock_seq3" && edit.parameter == "tempo" {
         (parsed / 60.0).log2()
-    } else if edit.kind == "stock_vco" && edit.parameter == "frequency" {
-        stock_vco_frequency_raw(parsed)
-    } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
-        stock_vcf_frequency_raw(parsed)
-    } else if edit.kind == "stock_vcf" && edit.parameter == "drive" {
+    } else if matches!(edit.kind.as_str(), "stock_vco" | "rack264_vco")
+        && edit.parameter == "frequency"
+    {
+        stock_vco_frequency_raw(parsed).clamp(
+            if edit.kind == "rack264_vco" {
+                -54.0
+            } else {
+                -76.0
+            },
+            if edit.kind == "rack264_vco" {
+                54.0
+            } else {
+                76.0
+            },
+        )
+    } else if matches!(edit.kind.as_str(), "stock_vcf" | "rack264_vcf")
+        && edit.parameter == "frequency"
+    {
+        stock_vcf_frequency_raw(parsed).clamp(
+            stock_vcf_raw_bounds(&edit.kind).0,
+            stock_vcf_raw_bounds(&edit.kind).1,
+        )
+    } else if matches!(edit.kind.as_str(), "stock_vcf" | "rack264_vcf") && edit.parameter == "drive"
+    {
         parsed / 100.0 - 1.0
     } else if adsr_eg_time_edit(edit) || stock_delay_time_edit(edit) {
         parsed.log10() / 4.0
@@ -7803,8 +7861,9 @@ fn parameter_editor_contents_with_navigation(
     } else if edit.kind == "adsr_eg" {
         ui.label("Enter CV depth from −100% to +100%. Negative depth inverts the CV contribution.");
     }
-    if edit.kind == "stock_vcf" {
+    if matches!(edit.kind.as_str(), "stock_vcf" | "rack264_vcf") {
         ui.label(match edit.parameter.as_str() {
+            "frequency" if edit.kind == "rack264_vcf" => "Enter cutoff within the Fundamental 2.6.4 knob range, approximately 8.56 to 8,000 Hz, or a note such as A4.",
             "frequency" => "Enter cutoff from 8 to 22,000 Hz, or a note such as A4.",
             "drive" => "Enter drive from 0% to 200%; 100% is nominal drive.",
             "resonance" => "Enter resonance from 0% to 100%.",
@@ -8295,12 +8354,16 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
     {
         text = text[..text.len() - 2].trim_end();
     }
-    if matches!(edit.kind.as_str(), "adsr_eg" | "stock_vcf" | "stock_delay")
-        || (edit.kind == "stock_vca" && edit.parameter == "level")
+    if matches!(
+        edit.kind.as_str(),
+        "adsr_eg" | "stock_vcf" | "rack264_vcf" | "stock_delay"
+    ) || (edit.kind == "stock_vca" && edit.parameter == "level")
     {
         let suffix = if adsr_eg_time_edit(edit) || stock_delay_time_edit(edit) {
             "ms"
-        } else if edit.kind == "stock_vcf" && edit.parameter == "frequency" {
+        } else if matches!(edit.kind.as_str(), "stock_vcf" | "rack264_vcf")
+            && edit.parameter == "frequency"
+        {
             "Hz"
         } else {
             "%"
@@ -8352,7 +8415,7 @@ fn parsed_parameter_result(edit: &ParameterEdit) -> Result<f32, String> {
             text = text[..text.len() - suffix.len()].trim_end();
         }
     }
-    if edit.kind == "stock_vco" {
+    if matches!(edit.kind.as_str(), "stock_vco" | "rack264_vco") {
         let suffix = if edit.parameter == "frequency" {
             "Hz"
         } else {
@@ -8649,7 +8712,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
             }
         }
         "stock_noise" if !input => return pos2(width - 30.0, stock_noise_row_y(index)),
-        "stock_lfo" | "stock_vco" => {
+        "stock_lfo" | "stock_vco" | "rack264_vco" => {
             return pos2(
                 width * (index + 1) as f32 / 5.0,
                 if input { 334.0 } else { 376.0 },
@@ -8695,7 +8758,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 pos2(stock_delay_column(index + 2), 380.0)
             };
         }
-        "stock_vcf" => {
+        "stock_vcf" | "rack264_vcf" => {
             return if input {
                 pos2(37.5 + index as f32 * 65.0, 337.0)
             } else {
@@ -9692,8 +9755,9 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "sample_hold" => HP * 10.0,
         "adsr" => HP * 16.0,
         "adsr_eg" => HP * 24.0,
-        "stock_vcf" => HP * 18.0,
-        "stock_delay" | "stock_lfo" | "stock_vco" | "wavetable_vco" | "wavetable_lfo" => HP * 24.0,
+        "stock_vcf" | "rack264_vcf" => HP * 18.0,
+        "stock_delay" | "stock_lfo" | "stock_vco" | "rack264_vco" | "wavetable_vco"
+        | "wavetable_lfo" => HP * 24.0,
         "stock_vca" => HP * 12.0,
         "stock_octave" => HP * 12.0,
         "analog_vco" | "ladder_vcf" => HP * 14.0,
@@ -9765,12 +9829,14 @@ pub(crate) fn title(kind: &str) -> &str {
         "analog_vco" => "VCO",
         "ladder_vcf" => "LADDER",
         "stock_vcf" => "VCF",
+        "rack264_vcf" => "RACK 2.6.4 VCF",
         "wavetable_vco" => "WAVETABLE VCO",
         "wavetable_lfo" => "WAVETABLE LFO",
         "stock_delay" => "DELAY",
         "stock_vca" => "VCA",
         "stock_lfo" => "STOCK LFO",
         "stock_vco" => "STOCK VCO",
+        "rack264_vco" => "RACK 2.6.4 VCO",
         "stock_seq3" => "STOCK SEQ3",
         "stock_quantizer" => "STOCK QUANTIZER",
         "stock_octave" => "STOCK OCTAVE",
@@ -10032,7 +10098,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "crossfade" => &["mix", "law"],
         "analog_vco" => &["frequency", "waveform", "pulse_width"],
         "ladder_vcf" => &["cutoff", "resonance", "drive"],
-        "stock_vcf" => &STOCK_VCF_PARAMS,
+        "stock_vcf" | "rack264_vcf" => &STOCK_VCF_PARAMS,
         "wavetable_vco" => &[
             "tune",
             "position",
@@ -10072,7 +10138,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "linear_fm",
             "soft_sync",
         ],
-        "stock_vco" => &[
+        "stock_vco" | "rack264_vco" => &[
             "frequency",
             "pulse_width",
             "fm_amount",
@@ -10279,7 +10345,7 @@ fn denormalize_geometric(value: f32, min: f32, max: f32) -> f32 {
     (min * (value.clamp(0.0, 1.0) * (max / min).log2()).exp2()).clamp(min, max)
 }
 fn logarithmic_parameter(kind: &str, name: &str) -> bool {
-    if kind == "stock_vco" && name == "frequency" {
+    if matches!(kind, "stock_vco" | "rack264_vco") && name == "frequency" {
         // The stored pitch is already logarithmic in Hz.
         return false;
     }
@@ -10515,9 +10581,11 @@ fn paint_panel(
         || matches!(
             node.kind.as_str(),
             "stock_vco"
+                | "rack264_vco"
                 | "adsr_eg"
                 | "stock_lfo"
                 | "stock_vcf"
+                | "rack264_vcf"
                 | "stock_vca"
                 | "stock_process"
                 | "stock_octave"
@@ -10615,9 +10683,11 @@ fn paint_panel(
         || matches!(
             node.kind.as_str(),
             "stock_vco"
+                | "rack264_vco"
                 | "adsr_eg"
                 | "stock_lfo"
                 | "stock_vcf"
+                | "rack264_vcf"
                 | "stock_vca"
                 | "stock_process"
                 | "stock_octave"
@@ -10702,7 +10772,7 @@ fn jack_target_rect(
     // VCF's staggered rows have a 37-point vertical center gap and closely
     // spaced diagonal ports. Keep an 18-screen-point minimum at small zoom,
     // but avoid overlapping the two rows at native scale.
-    let height = if kind == "stock_vcf" {
+    let height = if matches!(kind, "stock_vcf" | "rack264_vcf") {
         (36.0 * zoom).max(minimum_target)
     } else {
         side
@@ -10860,9 +10930,11 @@ fn paint_jack(
         || matches!(
             kind,
             "stock_vco"
+                | "rack264_vco"
                 | "adsr_eg"
                 | "stock_lfo"
                 | "stock_vcf"
+                | "rack264_vcf"
                 | "stock_vca"
                 | "stock_process"
                 | "stock_octave"
@@ -11913,7 +11985,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            81,
+            83,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -18796,6 +18868,9 @@ mod tests {
     }
     mod stock_vco_ui_tests {
         include!("stock_vco_ui_tests.rs");
+    }
+    mod rack264_voice_ui_tests {
+        include!("rack264_voice_ui_tests.rs");
     }
     mod stock_lfo_ui_tests {
         include!("stock_lfo_ui_tests.rs");

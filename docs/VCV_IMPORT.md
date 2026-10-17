@@ -18,7 +18,7 @@ Portable project JSON from MCP can also be opened in the desktop. Legacy native 
 
 ## Supported source identities
 
-Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e`. The mapped implementations were compared with the existing native source-oracle revision `10dd016`; relevant source files match. Original native model identities and patches are unchanged.
+Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e`. Six mappings share source files with the existing native source-oracle revision `10dd016`. VCO and VCF use separate version-specific processors, qualified against their actual older classes. Original native model identities and patches are unchanged.
 
 | Rack model | Native kind |
 | --- | --- |
@@ -28,10 +28,16 @@ Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0
 | Noise | `stock_noise` |
 | VCMixer | `stock_vca_mix` |
 | LFO2 | `wavetable_lfo`, with its embedded wavetable |
+| VCO | `rack264_vco` |
+| VCF | `rack264_vcf` |
 
 Unsupported source state, parameter ranges, missing required assets or connected ports outside a mapping's contract leave the module unresolved. Version strings alone are insufficient to certify arbitrary third-party builds. Noise mapping does not promise identical independent random streams. This is software source-behavior compatibility, not measured analog hardware modeling.
 
-Fundamental 2.6.4 **VCO and VCF remain unresolved**: their source differs from the currently qualified native revisions. Third-party plugins, RackMCP sequencers and Core audio interfaces also require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
+The version-specific VCO preserves the source semitone knob, curved waveforms and hard/soft sync encoding. The VCF preserves its non-oversampled RK4 ladder, signed drive and source cutoff range. Its legacy loader treats absent `params` differently from an array missing newer CV-depth entries; explicit zero values stay zero. These models share the detailed rack/browser panels but retain their own identities and source controls.
+
+VCF starts previous-input history at zero because the upstream constructor leaves it uninitialized; undefined C++ cold-start equivalence is unclaimed. Its deterministic module-local noise stream intentionally differs from Rack's shared process-global stream. The import report discloses these limits. [Pinned comparison method and evidence](../scripts/rack264_voice_reference/README.md) cover 45 VCO cases, 78 VCF cases and ten genuine loading/reset cases; they do not establish physical hardware accuracy or whole-patch equivalence. The source-adapted processors carry GPL-3.0-or-later notices; original OpenPatch code remains MIT.
+
+Third-party plugins, RackMCP sequencers and Core audio interfaces still require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
 
 ## MCP boundary
 
@@ -46,6 +52,6 @@ Desktop and MCP use the same Session-owned document. DSP receives a derived nati
 
 ## Acceptance evidence
 
-The user-supplied “So There I Was” fixture imports as **55 modules and 83 cables: 24 verified native mappings and 31 unresolved dependencies**. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
+The user-supplied “So There I Was” fixture imports as **55 modules and 83 cables: 29 native mappings and 26 unresolved dependencies**. The version-specific extension maps its one VCO and four VCFs. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
 
 Focused checks cover source/archive limits, repair and undo, native migration/save/recovery/templates, stale UI/MCP edits, layout publication and startup suspension. Headless normal/dim captures use the real shared renderer without opening an audio device. Working logs and captures are recorded in the ignored `native-test-output/rack-import` state; [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed 2,378 Rust tests and 117 Python/MCP tests plus packaging and visualizer integration. Installation remains a separate delivery step.

@@ -63,7 +63,7 @@ impl OpenPatch {
     // Append captures only after all 139 existing receipts have been saved.
     // The old logical-frame schedule and its <2960 guard remain unchanged.
     fn smoke_noise_tail(&mut self, ctx: &egui::Context, path: &Path, captures: usize) {
-        if captures == 149 {
+        if captures == 153 {
             self.allow_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
@@ -137,6 +137,31 @@ impl OpenPatch {
                     self.library.request_focus();
                     self.title = "Stock Process · shared rack and browser panel".into();
                 }
+                149 => {
+                    egui::Popup::close_all(ctx);
+                    self.library = ModuleLibrary::default();
+                    self.prepare_rack264_voice_fixture();
+                    self.rack.set_room_brightness(1.0);
+                }
+                150 => {
+                    self.rack.set_room_brightness(0.0);
+                    self.status = "Fundamental 2.6.4 · lights out · actual VCO phase/mode lamps and cable voltages · no invented filter lamps".into();
+                }
+                151 | 152 => {
+                    let kind = if captures == 151 {
+                        "rack264_vco"
+                    } else {
+                        "rack264_vcf"
+                    };
+                    self.rack.set_room_brightness(1.0);
+                    self.library = ModuleLibrary::default();
+                    self.library.set_preview_zoom(1.0);
+                    self.browse();
+                    assert!(self.library.inspect(kind, &self.catalog));
+                    self.library.request_focus();
+                    self.title = format!("{} · shared library panel", crate::rack::title(kind));
+                    self.status = "Source-version controls and configured guide · shared rack/browser drawing · preview has no runtime telemetry".into();
+                }
                 _ => panic!("Unexpected Noise tail capture"),
             }
         } else if let Some(expected) = stage.pending {
@@ -168,6 +193,10 @@ impl OpenPatch {
                     146 => "rack-stock-process.png",
                     147 => "rack-stock-process-lights-out.png",
                     148 => "stock-process-library.png",
+                    149 => "rack264-voice.png",
+                    150 => "rack264-voice-lights-out.png",
+                    151 => "rack264_vco-library.png",
+                    152 => "rack264_vcf-library.png",
                     _ => unreachable!(),
                 };
                 let target = path.with_file_name(name);
@@ -180,13 +209,13 @@ impl OpenPatch {
                 )
                 .expect("Save Noise screenshot");
                 eprintln!(
-                    "Native smoke: capture {}/149 at frame 2959: {}",
+                    "Native smoke: capture {}/153 at frame 2959: {}",
                     captures + 1,
                     target.display()
                 );
                 self.smoke_test.as_mut().unwrap().2 = captures + 1;
                 stage.pending = None;
-                if captures == 148 {
+                if captures == 152 {
                     self.allow_close = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }

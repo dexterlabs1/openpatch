@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "source_commit": "e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e",
+  "source_sha256": {
+    "vco": "53031376c80983f79a13a5546ea430e54b9a7e73037717e18ffd2b19190f37ec",
+    "vcf": "413f01d8b9a80e61b162443a2437ecf719743e6dadc9ec79ba31ea5dbfb76916"
+  },
+  "rates": [44100, 48000, 96000],
+  "frames": 2048,
+  "observe_frames": [0, 1, 15, 16, 31, 63, 255, 511, 1023, 2047],
+  "vco_cases": ["unpatched", "mono", "poly16", "low", "high", "exp_fm", "linear_fm", "pwm", "hard_sync", "soft_sync", "short_cv", "shrink_regrow", "connectivity", "lifecycle", "low_cycle"],
+  "additional_fixture_declaration": "After the original42 cases passed, add low_cycle before its first comparison: ceil(rate/(261.6256*2**(-54/12)))+65 frames at -54semitones and zero pitch CV. This covers a complete slow oscillator cycle and correction tail; existing fixtures and limits are unchanged.",
+  "vco_limits": {
+    "voltage": {"absolute": 0.002, "relative": 0.00001},
+    "phase": {"absolute": 0.000002, "relative": 0},
+    "frequency": {"absolute": 0.03, "relative": 0.000002},
+    "state": {"absolute": 0.0002, "relative": 0.00001},
+    "exact": {"absolute": 0, "relative": 0}
+  },
+  "scope": "Every published voltage from frame zero, all lanes, plus complete processor snapshots on declared frames. No alignment, discarded startup, fitted tolerance or replacement DSP oracle. Diagnostic adapters use actual compiled production Core and genuine SDK class.",
+  "limitations": [
+    "Only the pinned source, recorded compiler/SDK and finite generated input domain are covered; no universal numerical or analog hardware claim.",
+    "C++ MinBlepGenerator's undefined one-past-end interpolation is not repaired or qualified; the Rust implementation safely defines its endpoint. No undefined-source-behavior equivalence claim.",
+    "VCF previous input is uninitialized upstream. Its qualification requires explicit recorded initial conditions in both implementations, never hidden warmup.",
+    "Disconnected and inactive output storage is canonically published as zero; raw SDK storage equivalence is not claimed.",
+    "VCF thresholds and fixtures must be separately declared before its first numerical comparison; this declaration currently qualifies VCO only.",
+    "No GUI, audio device, installed app, throughput or full Rack parity qualification."
+  ]
+}

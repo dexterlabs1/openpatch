@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "source_commit": "e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e",
+  "source_sha256": {"vcf": "413f01d8b9a80e61b162443a2437ecf719743e6dadc9ec79ba31ea5dbfb76916"},
+  "rates": [44100, 48000, 96000],
+  "frames": 4096,
+  "observe_frames": [0, 1, 15, 16, 31, 63, 255, 511, 1023, 2047, 4095],
+  "cases": ["impulse", "dc", "poly16", "drive", "audio_rate_cv", "mono_cv", "short_cv", "cutoff_limits", "resonance_limits", "shrink_regrow", "connectivity", "lifecycle", "self_oscillation"],
+  "histories": [0.0, 0.75],
+  "seeds": [["0x123456789abcdef0", "0xfedcba9876543210"], ["0x8", "0x1000000000000001"]],
+  "limits": {
+    "voltage": {"absolute": 0.002, "relative": 0.00001},
+    "state": {"absolute": 0.0004, "relative": 0.00001}
+  },
+  "self_oscillation": {
+    "frames": 65536,
+    "pointwise_frames": 2048,
+    "startup_threshold_volts": 0.05,
+    "startup_absolute_seconds": 0.002,
+    "startup_relative": 0.01,
+    "late_window_fraction": 0.5,
+    "minimum_late_crossings": 10,
+    "rms_relative": 0.01,
+    "peak_relative": 0.02,
+    "frequency_relative": 0.001,
+    "method": "Every startup sample through frame2047 and matching observed startup state; entire trace finite, exact width/RNG; first absolute threshold crossing from frame zero. Final-half RMS, peak, interpolated rising-crossing frequency compare independently per output. No alignment or hidden warmup; no pointwise phase-equivalence claim after frame2047. Both implementations must cross the threshold and contain at least ten late crossings."
+  },
+  "scope": "Stable-driven cases use first declared seed, both recorded initial previous-input values, all rates. Autonomous self-oscillation uses both seeds, zero previous input, all rates. All integrator states start at zero; harness explicitly assigns all16 previous inputs before processing, then seeds genuine SDK RNG and production Rust RNG with one documented discard. No upstream undefined cold-start equivalence claim.",
+  "limitations": ["Actual compiled Core and pinned unchanged C++ class; no reference DSP replacement or tolerance fitting.", "Module-local Rust RNG deliberately differs from Rack's shared process-global stream; comparisons control the stream explicitly.", "Finite fixture domain only; no device, native-window, physical hardware or universal Rack parity claim."]
+}

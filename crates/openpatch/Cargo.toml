@@ -2,7 +2,7 @@
 name = "openpatch"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "MIT AND GPL-3.0-or-later"
 description = "An agent-controllable modular synthesizer in Rust"
 
 [dependencies]

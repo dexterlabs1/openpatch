@@ -2,8 +2,8 @@
 name = "openpatch-core"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
-description = "Original, allocation-free block DSP engine for OpenPatch"
+license = "MIT AND GPL-3.0-or-later"
+description = "Allocation-free block DSP engine for OpenPatch with attributed source adaptations"
 
 [dependencies]
 serde = { version = "1", features = ["derive", "rc"] }

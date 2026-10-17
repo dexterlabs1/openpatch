@@ -84,10 +84,10 @@ impl Category {
     fn of_kind(kind: &str) -> Self {
         match kind {
             "studio_mixer" => Self::Mixing,
-            "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise"
-            | "drum_voice" | "modal_resonator" | "colored_noise" | "stock_noise"
-            | "macro_voice" | "wavetable_vco" => Self::Oscillators,
-            "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
+            "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "rack264_vco"
+            | "white_noise" | "drum_voice" | "modal_resonator" | "colored_noise"
+            | "stock_noise" | "macro_voice" | "wavetable_vco" => Self::Oscillators,
+            "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" | "rack264_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "stock_seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
@@ -1498,9 +1498,11 @@ mod tests {
         assert_eq!(library.filtered(&catalog)[0]["kind"], "analog_vco");
         assert_eq!(Category::of_kind("ladder_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("stock_vcf"), Category::Filters);
+        assert_eq!(Category::of_kind("rack264_vcf"), Category::Filters);
         assert_eq!(Category::of_kind("stock_delay"), Category::Mixing);
         assert_eq!(Category::of_kind("stock_lfo"), Category::Modulation);
         assert_eq!(Category::of_kind("stock_vco"), Category::Oscillators);
+        assert_eq!(Category::of_kind("rack264_vco"), Category::Oscillators);
         assert_eq!(Category::of_kind("stock_noise"), Category::Oscillators);
         assert_eq!(Category::of_kind("stock_process"), Category::Utilities);
         assert_eq!(Category::of_kind("stock_scope"), Category::Utilities);

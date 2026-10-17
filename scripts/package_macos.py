@@ -39,6 +39,9 @@ shutil.copy2(icon.parent / "fonts/OFL-Rajdhani.txt", licenses / "Rajdhani.txt")
 for notice in (icon.parent / "licenses").iterdir():
     if notice.is_file():
         shutil.copy2(notice, licenses / notice.name)
+shutil.copy2(root / "LICENSE", licenses / "OpenPatch-MIT.txt")
+shutil.copy2(root / "crates/openpatch-core/LICENSE-THIRD-PARTY", licenses / "OpenPatch-core-THIRD-PARTY.txt")
+shutil.copy2(root / "crates/openpatch-core/LICENSE-GPL-3.0.txt", licenses / "LICENSE-GPL-3.0.txt")
 with (contents / "Info.plist").open("wb") as stream:
     plistlib.dump({
         "CFBundleName": "OpenPatch",
@@ -51,7 +54,7 @@ with (contents / "Info.plist").open("wb") as stream:
         "CFBundlePackageType": "APPL",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "12.0",
-        "NSHumanReadableCopyright": "OpenPatch contributors. MIT license.",
+        "NSHumanReadableCopyright": "OpenPatch contributors; VCV © 2016-2023. Combined binaries: GPL-3.0-or-later; original OpenPatch code: MIT.",
     }, stream)
 # Local ad-hoc signing satisfies Apple Silicon code-signing requirements. This
 # is not a Developer ID signature or notarization for external distribution.

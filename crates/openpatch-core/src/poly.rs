@@ -18,6 +18,8 @@ use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
+use crate::rack264_vcf::{self, Rack264Vcf};
+use crate::rack264_vco::{self, Rack264Vco};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
@@ -130,10 +132,12 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "push"
                 | "adsr_eg"
                 | "stock_vcf"
+                | "rack264_vcf"
                 | "stock_vca"
                 | "stock_delay"
                 | "stock_quantizer"
                 | "stock_vco"
+                | "rack264_vco"
                 | "stock_noise"
                 | "stock_lfo"
                 | "random_values"
@@ -195,7 +199,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_quantizer" => stock_quantizer::INPUTS
             .iter()
             .position(|port| *port == name),
-        "stock_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
+        "stock_vco" | "rack264_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
@@ -203,7 +207,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "seq3" => sequence::INPUTS.iter().position(|port| *port == name),
         "scope" => scope::INPUTS.iter().position(|port| *port == name),
         "adsr_eg" => adsr_eg::INPUTS.iter().position(|port| *port == name),
-        "stock_vcf" => stock_vcf::INPUTS.iter().position(|port| *port == name),
+        "stock_vcf" | "rack264_vcf" => stock_vcf::INPUTS.iter().position(|port| *port == name),
         "stock_vca" => stock_vca::INPUTS.iter().position(|port| *port == name),
         "stock_delay" => stock_delay::INPUTS.iter().position(|port| *port == name),
         "push" => push::INPUTS.iter().position(|port| *port == name),
@@ -282,7 +286,7 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if kind == "random_values" {
         random_values::OUTPUTS.iter().position(|port| *port == name)
-    } else if kind == "stock_vcf" {
+    } else if matches!(kind, "stock_vcf" | "rack264_vcf") {
         stock_vcf::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_delay" {
         stock_delay::OUTPUTS.iter().position(|port| *port == name)
@@ -314,7 +318,7 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         stock_quantizer::OUTPUTS
             .iter()
             .position(|port| *port == name)
-    } else if kind == "stock_vco" {
+    } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
@@ -383,7 +387,7 @@ fn voice_policy(kind: &str) -> VoicePolicy {
             VoicePolicy::Generator
         }
         "sample_hold" => VoicePolicy::Primary(1),
-        "stock_vcf" | "random" => VoicePolicy::Primary(3),
+        "stock_vcf" | "rack264_vcf" | "random" => VoicePolicy::Primary(3),
         "mixer" | "crossfade" | "modal_resonator" | "stock_vca" | "wavetable_vco" => {
             VoicePolicy::Maximum
         }
@@ -458,7 +462,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
-    } else if kind == "stock_vcf" {
+    } else if matches!(kind.as_str(), "stock_vcf" | "rack264_vcf") {
         stock_vcf::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -528,7 +532,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
-    } else if kind == "stock_vco" {
+    } else if matches!(kind.as_str(), "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -735,6 +739,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_vco" {
         stock_vco::annotate(module);
     }
+    if kind == "rack264_vco" {
+        rack264_vco::annotate(module);
+    }
     if kind == "stock_lfo" {
         stock_lfo::annotate(module);
     }
@@ -767,6 +774,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     }
     if kind == "stock_vcf" {
         stock_vcf::annotate(module);
+    }
+    if kind == "rack264_vcf" {
+        rack264_vcf::annotate(module);
     }
     if kind == "stock_delay" {
         stock_delay::annotate(module);
@@ -838,6 +848,7 @@ enum Model {
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
     StockVco(Box<StockVco>),
+    Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
     StockQuantizer(Box<StockQuantizer>),
     StockMidSide(StockMidSide),
@@ -853,6 +864,7 @@ enum Model {
     Push(Box<Push>),
     AdsrEg(Box<AdsrEg>),
     StockVcf(Box<StockVcf>),
+    Rack264Vcf(Box<Rack264Vcf>),
     StockDelay(Box<StockDelay>),
     StockVca(Box<StockVca>),
     ShiftRegister(Box<ShiftRegister>),
@@ -941,6 +953,9 @@ impl Model {
         if node.kind == "stock_vcf" {
             return Ok(Self::StockVcf(Box::new(StockVcf::build(node, rate)?)));
         }
+        if node.kind == "rack264_vcf" {
+            return Ok(Self::Rack264Vcf(Box::new(Rack264Vcf::build(node, rate)?)));
+        }
         if node.kind == "stock_delay" {
             return Ok(Self::StockDelay(Box::new(StockDelay::build(node, rate)?)));
         }
@@ -983,6 +998,9 @@ impl Model {
         }
         if node.kind == "stock_vco" {
             return Ok(Self::StockVco(Box::new(StockVco::build(node, rate)?)));
+        }
+        if node.kind == "rack264_vco" {
+            return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
         }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
@@ -1818,6 +1836,7 @@ impl PolyEngine {
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
+            Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
             Some(Model::StockOctave(o)) => Some(ModuleLightState {
                 octave_shift: Some(o.last_octave()),
@@ -2162,6 +2181,10 @@ impl PolyEngine {
                 p.initialize_state();
                 stock_vcf::OUTPUTS.len()
             }
+            Model::Rack264Vcf(p) => {
+                p.initialize_state();
+                rack264_vcf::OUTPUTS.len()
+            }
             Model::StockDelay(p) => {
                 p.reset_state();
                 stock_delay::OUTPUTS.len()
@@ -2219,6 +2242,7 @@ impl PolyEngine {
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
+            Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
             Model::StockQuantizer(q) => q.initialize_state(),
             Model::Wavetable(oscillator) => oscillator.initialize_state(),
@@ -2228,6 +2252,7 @@ impl PolyEngine {
             Model::Push(p) => p.initialize_state(),
             Model::AdsrEg(p) => p.initialize_state(),
             Model::StockVcf(p) => p.initialize_state(),
+            Model::Rack264Vcf(p) => p.initialize_state(),
             Model::StockVca(p) => p.initialize_state(),
             Model::StockDelay(p) => p.initialize_state(),
             Model::StockOctave(o) => o.reset(),
@@ -2420,6 +2445,7 @@ impl PolyEngine {
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
+                    "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
                     "stock_quantizer" => stock_quantizer::OUTPUTS.len(),
                     "stock_mid_side" => stock_mid_side::OUTPUTS.len(),
@@ -2435,6 +2461,7 @@ impl PolyEngine {
                     "push" => push::OUTPUTS.len(),
                     "adsr_eg" => adsr_eg::OUTPUTS.len(),
                     "stock_vcf" => stock_vcf::OUTPUTS.len(),
+                    "rack264_vcf" => rack264_vcf::OUTPUTS.len(),
                     "stock_delay" => stock_delay::OUTPUTS.len(),
                     "sh_asr" => shift_register::OUTPUTS.len(),
                     "random_values" => random_values::OUTPUTS.len(),
@@ -2924,6 +2951,19 @@ impl PolyEngine {
                         node.connected_mask as u16,
                     );
                 }
+                Model::Rack264Vcf(p) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    p.process(
+                        &inputs,
+                        &mut self.outputs[node.output_start..node.output_start + node.output_count],
+                        node.connected_mask as u16,
+                    );
+                }
                 Model::AdsrEg(p) => {
                     let mut inputs = [PortFrame::default(); 6];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -3155,6 +3195,20 @@ impl PolyEngine {
                         node.connected_mask as u16,
                         &mut self.outputs
                             [node.output_start..node.output_start + stock_vco::OUTPUTS.len()],
+                    );
+                }
+                Model::Rack264Vco(vco) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    vco.process(
+                        &inputs,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
                 Model::StockLfo(lfo) => {
@@ -3642,6 +3696,7 @@ impl PolyEngine {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
+                (Model::Rack264Vco(s), Model::Rack264Vco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),
                 (Model::StockOctave(o), Model::StockOctave(old)) => o.adopt(old),
                 (Model::StockProcess(p), Model::StockProcess(old)) => p.adopt(old),
@@ -3724,6 +3779,11 @@ impl PolyEngine {
                 p.adopt(previous);
             }
             if let (Model::StockVcf(p), Model::StockVcf(previous)) =
+                (&mut node.model, &previous.model)
+            {
+                p.adopt(previous);
+            }
+            if let (Model::Rack264Vcf(p), Model::Rack264Vcf(previous)) =
                 (&mut node.model, &previous.model)
             {
                 p.adopt(previous);

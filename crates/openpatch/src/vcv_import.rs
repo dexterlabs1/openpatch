@@ -4,7 +4,8 @@
 //! Fundamental v2.6.4 = e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e.
 //! VCA-1, ADSR, LFO, Noise, VCMixer, WTLFO.cpp and Wavetable.hpp are
 //! byte-identical to the existing native source reference 10dd0160c664770910e5584b7b00498cc48d9ddd.
-//! VCO and VCF are NOT: their 2.6.4 DSP must remain unresolved.
+//! VCO and VCF use separate source-version processors; they do not alias the
+//! newer Stock identities. VCF startup history and RNG ownership are disclosed.
 //! Primary source: https://github.com/VCVRack/Fundamental/tree/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src
 //! This is source-behavior conversion, not official binary/hardware equivalence.
 
@@ -283,6 +284,12 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         })
         .collect();
     let mut warnings = vec!["Source-behavior mappings use OpenPatch scheduling, lifecycle and random streams; no official binary or hardware equivalence is claimed.".into()];
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rack264_vcf"))
+    {
+        warnings.push("Fundamental 2.6.4 VCF starts every previous-input history at zero because its source constructor leaves that history undefined; undefined cold-start equivalence is unclaimed. Its deterministic module-local noise RNG intentionally differs from Rack's global random stream.".into());
+    }
     let layout = layout(&patch, &mut warnings)?;
     let document = ProjectDocument {
         format: "openpatch-project".into(),
@@ -419,6 +426,36 @@ fn manifest(module: &Value) -> Option<Manifest> {
         return None;
     }
     Some(match module_model(module) {
+        // Removed MODE/FINE slots retain their source indices and no semantics.
+        "VCO" => Manifest {
+            kind: "rack264_vco",
+            params: &[
+                "",
+                "soft_sync",
+                "frequency",
+                "",
+                "fm_amount",
+                "pulse_width",
+                "pwm_amount",
+                "linear_fm",
+            ],
+            inputs: &["pitch", "fm", "sync", "pwm"],
+            outputs: &["sine", "triangle", "saw", "square"],
+        },
+        "VCF" => Manifest {
+            kind: "rack264_vcf",
+            params: &[
+                "frequency",
+                "",
+                "resonance",
+                "cutoff_cv_amount",
+                "drive",
+                "resonance_cv_amount",
+                "drive_cv_amount",
+            ],
+            inputs: &["cutoff_cv", "resonance_cv", "drive_cv", "signal"],
+            outputs: &["lowpass", "highpass"],
+        },
         "VCA-1" => Manifest {
             kind: "stock_vca",
             params: &["level", "response"],
@@ -493,28 +530,11 @@ fn manifest(module: &Value) -> Option<Manifest> {
         _ => return None,
     })
 }
-fn unsupported_reason(module: &Value) -> String {
-    if module["plugin"] == "Fundamental"
-        && module["version"] == "2.6.4"
-        && matches!(module_model(module), "VCO" | "VCF")
-    {
-        "2.6.4 source DSP differs from the native pinned reference; no equivalent mapping".into()
-    } else {
-        "no mapping for this exact plugin/model/version identity".into()
-    }
+fn unsupported_reason(_module: &Value) -> String {
+    "no mapping for this exact plugin/model/version identity".into()
 }
 fn source_port_counts(module: &Value) -> Option<(usize, usize)> {
-    if let Some(mapping) = manifest(module) {
-        return Some((mapping.inputs.len(), mapping.outputs.len()));
-    }
-    if module["plugin"] == "Fundamental" && module["version"] == "2.6.4" {
-        return match module_model(module) {
-            "VCO" => Some((4, 4)),
-            "VCF" => Some((4, 2)),
-            _ => None,
-        };
-    }
-    None
+    manifest(module).map(|mapping| (mapping.inputs.len(), mapping.outputs.len()))
 }
 fn route_port(mapping: Option<&Manifest>, direction: PortDirection, index: u32) -> String {
     match mapping {
@@ -535,7 +555,23 @@ fn convert(
     source_assets: &BTreeMap<String, Vec<u8>>,
 ) -> Result<(Node, Option<WaveAsset>), String> {
     let mut params = BTreeMap::new();
+    if matches!(mapping.kind, "rack264_vco" | "rack264_vcf")
+        && module.get("data").is_some_and(|data| {
+            !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
+        })
+    {
+        return Err(
+            "unrecognized source module data is outside the pinned voice mapping contract".into(),
+        );
+    }
     if let Some(values) = module["params"].as_array() {
+        if mapping.kind == "rack264_vcf" {
+            // Genuine Module::fromJson calls paramsFromJson only when params
+            // exists. The 2.6.4 override supplies 1 before saved entries apply.
+            // An entirely absent params property retains constructor defaults0.
+            params.insert("resonance_cv_amount".into(), 1.0);
+            params.insert("drive_cv_amount".into(), 1.0);
+        }
         for value in values {
             let index = port_index(&value["id"])? as usize;
             let name = *mapping
@@ -550,19 +586,36 @@ fn convert(
                 }
                 continue;
             }
-            let valid = match name {
-                "mix_level" | "level1" | "level2" | "level3" | "level4" => true, // source saved raw gains
-                "response" | "offset" | "invert" => value == 0.0 || value == 1.0,
-                "rate" => (-8.0..=10.0).contains(&value),
-                "pulse_width" => (0.01..=0.99).contains(&value),
-                name if name.ends_with("amount") => (-1.0..=1.0).contains(&value),
-                _ => (0.0..=1.0).contains(&value),
+            let valid = match (mapping.kind, name) {
+                ("rack264_vco", "frequency") => (-54.0..=54.0).contains(&value),
+                ("rack264_vco", "linear_fm" | "soft_sync") => value == 0.0 || value == 1.0,
+                ("rack264_vcf", "frequency") => {
+                    let c4: f32 = 261.6256;
+                    let min = ((c4 / 8000.0).log2() + 5.0) / 10.0;
+                    let max = ((8000.0 / c4).log2() + 5.0) / 10.0;
+                    (min..=max).contains(&value)
+                }
+                ("rack264_vcf", "drive") => (-1.0..=1.0).contains(&value),
+                (_, name) => match name {
+                    "mix_level" | "level1" | "level2" | "level3" | "level4" => true, // source saved raw gains
+                    "response" | "offset" | "invert" => value == 0.0 || value == 1.0,
+                    "rate" => (-8.0..=10.0).contains(&value),
+                    "pulse_width" => (0.01..=0.99).contains(&value),
+                    name if name.ends_with("amount") => (-1.0..=1.0).contains(&value),
+                    _ => (0.0..=1.0).contains(&value),
+                },
             };
             if !valid {
                 return Err(format!(
                     "source parameter {name} is outside the native supported contract"
                 ));
             }
+            let value = if mapping.kind == "rack264_vco" && name == "soft_sync" {
+                // Source switch is 1=hard, 0=soft; native flag is 1=soft.
+                1.0 - value
+            } else {
+                value
+            };
             params.insert(name.into(), value);
         }
     }

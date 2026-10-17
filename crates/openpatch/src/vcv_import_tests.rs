@@ -84,10 +84,14 @@ fn imports_source_controls_routing_provenance_and_layout_without_changing_origin
 }
 
 #[test]
-fn unknown_versions_and_different_source_dsp_remain_recoverable_and_suspend_exact() {
+fn unknown_versions_remain_recoverable_and_suspend_exact() {
     let mut unknown = module(1, "VCA-1");
     unknown["version"] = json!("2.6.5");
-    let patch = json!({"modules":[unknown,module(2,"VCF"),module(3,"VCO"),module(4,"VCA-1")],"cables":[cable(4,1,123,4,0),cable(5,3,2,2,3)]});
+    let mut filter = module(2, "VCF");
+    filter["version"] = json!("2.6.5");
+    let mut oscillator = module(3, "VCO");
+    oscillator["version"] = json!("2.6.3");
+    let patch = json!({"modules":[unknown,filter,oscillator,module(4,"VCA-1")],"cables":[cable(4,1,123,4,0),cable(5,3,2,2,3)]});
     let result = run(patch.clone()).unwrap();
     assert_eq!(result.report.unresolved_count, 3);
     assert_eq!(result.report.omitted_route_count, 2);
@@ -113,6 +117,272 @@ fn unknown_versions_and_different_source_dsp_remain_recoverable_and_suspend_exac
     assert_eq!(document.graph.cables[0].route.output, "vcv_out_123");
     assert_eq!(document.graph.cables[0].route.input, "cv");
     assert_eq!(*document.sources[&result.report.package_id].patch, patch);
+}
+
+#[test]
+fn rack264_voice_maps_exact_controls_removed_slots_and_preserves_source_archive() {
+    let mut oscillator = module(1, "VCO");
+    oscillator["params"] = json!([
+        {"id":0,"value":0.37}, {"id":1,"value":0}, {"id":2,"value":-54},
+        {"id":3,"value":-999}, {"id":4,"value":-0.75}, {"id":5,"value":0.99},
+        {"id":6,"value":0.625}, {"id":7,"value":1}
+    ]);
+    oscillator["future_source_metadata"] = json!({"opaque":true});
+    let mut filter = module(2, "VCF");
+    filter["params"] = json!([
+        {"id":0,"value":0.625}, {"id":1,"value":-999}, {"id":2,"value":0.875},
+        {"id":3,"value":-0.5}, {"id":4,"value":-1}, {"id":5,"value":0},
+        {"id":6,"value":0.75}
+    ]);
+    filter["bypass"] = json!(true);
+    let patch =
+        json!({"version":"2.6.6","modules":[oscillator,filter],"cables":[cable(7,1,2,2,3)]});
+    let result = import(&tar_patch(&patch, &[("modules/2/opaque.bin", b"retain")])).unwrap();
+    assert_eq!(
+        (result.report.mapped_count, result.report.unresolved_count),
+        (2, 0)
+    );
+    let oscillator = native(&result.document, 0);
+    assert_eq!(oscillator.kind, "rack264_vco");
+    assert_eq!(oscillator.params.len(), 6);
+    for (name, value) in [
+        ("soft_sync", 1.0),
+        ("frequency", -54.0),
+        ("fm_amount", -0.75),
+        ("pulse_width", 0.99),
+        ("pwm_amount", 0.625),
+        ("linear_fm", 1.0),
+    ] {
+        assert_eq!(oscillator.params[name], value);
+    }
+    let filter = native(&result.document, 1);
+    assert_eq!(filter.kind, "rack264_vcf");
+    assert!(filter.bypassed);
+    assert_eq!(filter.params.len(), 6);
+    for (name, value) in [
+        ("frequency", 0.625),
+        ("resonance", 0.875),
+        ("cutoff_cv_amount", -0.5),
+        ("drive", -1.0),
+        ("resonance_cv_amount", 0.0),
+        ("drive_cv_amount", 0.75),
+    ] {
+        assert_eq!(filter.params[name], value);
+    }
+    let document = &result.document;
+    assert_eq!(document.graph.cables[0].route.output, "saw");
+    assert_eq!(document.graph.cables[0].route.input, "signal");
+    assert_eq!(document.graph.cables[0].route.color, Some([234, 179, 8]));
+    let package = &document.sources[&result.report.package_id];
+    assert_eq!(*package.patch, patch);
+    assert_eq!(
+        document.source_blobs[&package.assets["patch.json"]].bytes(),
+        serde_json::to_vec(&patch).unwrap()
+    );
+    assert_eq!(
+        document.source_blobs[&package.assets["modules/2/opaque.bin"]].bytes(),
+        b"retain"
+    );
+    for (index, model) in [(0, "VCO"), (1, "VCF")] {
+        let mapping = document.graph.nodes[index]
+            .source()
+            .unwrap()
+            .mapping
+            .as_ref()
+            .unwrap();
+        assert_eq!(mapping.id, format!("vcv/Fundamental/{model}/2.6.4"));
+        assert_eq!(mapping.fidelity, MappingFidelity::SourceBehavior);
+    }
+    assert!(result
+        .report
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("previous-input")
+            && warning.contains("undefined")
+            && warning.contains("module-local")));
+    let reopened = ProjectDocument::decode(&document.encode().unwrap()).unwrap();
+    assert_eq!(reopened.encode().unwrap(), document.encode().unwrap());
+    assert!(reopened
+        .project(crate::project_document::PlaybackMode::Exact)
+        .is_ok());
+}
+
+#[test]
+fn rack264_vcf_loader_defaults_distinguish_absent_empty_partial_and_explicit_depths() {
+    let mut modules = vec![module(1, "VCF")];
+    for (index, params) in [
+        json!([]),
+        json!([{"id":0,"value":0.625}]),
+        json!([{"id":5,"value":0},{"id":6,"value":0}]),
+        json!([{"id":5,"value":-0.5},{"id":6,"value":0.75}]),
+        json!([{"id":6,"value":0.25}]),
+        json!([{"id":5,"value":-0.5}]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut source = module(index as u64 + 2, "VCF");
+        source["params"] = params;
+        modules.push(source);
+    }
+    let result = run(json!({"modules":modules,"cables":[]})).unwrap();
+    let catalog = openpatch_core::catalog();
+    let defaults = &catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == "rack264_vcf")
+        .unwrap()["params"];
+    for (index, expected) in [
+        (0, [0.0, 0.0]),
+        (1, [1.0, 1.0]),
+        (2, [1.0, 1.0]),
+        (3, [0.0, 0.0]),
+        (4, [-0.5, 0.75]),
+        (5, [1.0, 0.25]),
+        (6, [-0.5, 1.0]),
+    ] {
+        let node = native(&result.document, index);
+        for (name, expected) in ["resonance_cv_amount", "drive_cv_amount"]
+            .into_iter()
+            .zip(expected)
+        {
+            let actual = node
+                .params
+                .get(name)
+                .copied()
+                .unwrap_or_else(|| defaults[name]["default"].as_f64().unwrap() as f32);
+            assert_eq!(actual, expected, "module {index}, {name}");
+        }
+        assert!(!node.params.contains_key("resonance"));
+        assert!(!node.params.contains_key("drive"));
+    }
+    assert_eq!(native(&result.document, 2).params["frequency"], 0.625);
+}
+
+#[test]
+fn rack264_vco_sync_inversion_constructor_defaults_and_source_port_topology() {
+    let mut hard = module(1, "VCO");
+    hard["params"] = json!([{"id":1,"value":1},{"id":2,"value":54},{"id":5,"value":0.01}]);
+    let cables: Vec<_> = (0..4)
+        .map(|port| cable(port as u64 + 1, 1, port, 2, port))
+        .chain((0..4).map(|port| cable(port as u64 + 5, 2, port % 2, 1, port)))
+        .collect();
+    let result =
+        run(json!({"modules":[hard,module(2,"VCF"),module(3,"VCO")],"cables":cables})).unwrap();
+    assert_eq!(native(&result.document, 0).params["soft_sync"], 0.0);
+    assert_eq!(native(&result.document, 0).params["frequency"], 54.0);
+    assert_eq!(native(&result.document, 0).params["pulse_width"], 0.01);
+    assert!(native(&result.document, 2).params.is_empty());
+    for (route, (output, input)) in result.document.graph.cables.iter().zip([
+        ("sine", "cutoff_cv"),
+        ("triangle", "resonance_cv"),
+        ("saw", "drive_cv"),
+        ("square", "signal"),
+        ("lowpass", "pitch"),
+        ("highpass", "fm"),
+        ("lowpass", "sync"),
+        ("highpass", "pwm"),
+    ]) {
+        assert_eq!(route.route.output, output);
+        assert_eq!(route.route.input, input);
+    }
+    for (model, output, input) in [("VCO", 4, 0), ("VCO", 0, 4), ("VCF", 2, 0), ("VCF", 0, 4)] {
+        assert!(
+            run(json!({"modules":[module(1,model)],"cables":[cable(1,1,output,1,input)]})).is_err()
+        );
+    }
+}
+
+#[test]
+fn rack264_voice_unrepresentable_parameters_and_unknown_data_remain_unresolved() {
+    let catalog = openpatch_core::catalog();
+    let filter = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == "rack264_vcf")
+        .unwrap();
+    let low = filter["params"]["frequency"]["min"].as_f64().unwrap() as f32;
+    let high = filter["params"]["frequency"]["max"].as_f64().unwrap() as f32;
+    for frequency in [low, high] {
+        let mut source = module(1, "VCF");
+        source["params"] = json!([{"id":0,"value":frequency}]);
+        assert_eq!(
+            run(json!({"modules":[source]}))
+                .unwrap()
+                .report
+                .mapped_count,
+            1
+        );
+    }
+    for (model, id, value) in [
+        ("VCO", 1, 0.5),
+        ("VCO", 2, -54.01),
+        ("VCO", 2, 54.01),
+        ("VCO", 4, -1.01),
+        ("VCO", 5, 0.0),
+        ("VCO", 6, 1.01),
+        ("VCO", 7, 0.5),
+        ("VCO", 8, 0.0),
+        ("VCF", 0, low - 0.001),
+        ("VCF", 0, high + 0.001),
+        ("VCF", 2, 1.01),
+        ("VCF", 3, -1.01),
+        ("VCF", 4, -1.01),
+        ("VCF", 5, 1.01),
+        ("VCF", 6, -1.01),
+        ("VCF", 7, 0.0),
+    ] {
+        let mut source = module(1, model);
+        source["params"] = json!([{"id":id,"value":value}]);
+        let patch = json!({"modules":[source]});
+        let result = run(patch.clone()).unwrap();
+        assert_eq!(
+            result.report.unresolved_count, 1,
+            "{model} parameter {id}={value}"
+        );
+        assert!(result.report.modules[0].reason.is_some());
+        assert_eq!(
+            *result.document.sources[&result.report.package_id].patch,
+            patch
+        );
+    }
+    for model in ["VCO", "VCF"] {
+        for data in [json!({"future":true}), json!([]), json!(1)] {
+            let mut source = module(1, model);
+            source["data"] = data;
+            assert_eq!(
+                run(json!({"modules":[source]}))
+                    .unwrap()
+                    .report
+                    .unresolved_count,
+                1
+            );
+        }
+        for data in [json!({}), Value::Null] {
+            let mut source = module(1, model);
+            source["data"] = data;
+            assert_eq!(
+                run(json!({"modules":[source]}))
+                    .unwrap()
+                    .report
+                    .mapped_count,
+                1
+            );
+        }
+        for version in [json!("2.6.3"), json!("2.6.5"), json!("2.6.6"), Value::Null] {
+            let mut source = module(1, model);
+            source["version"] = version;
+            assert_eq!(
+                run(json!({"modules":[source]}))
+                    .unwrap()
+                    .report
+                    .unresolved_count,
+                1
+            );
+        }
+    }
 }
 
 #[test]
@@ -562,6 +832,21 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     let path = std::env::var_os("OPENPATCH_VCV_IMPORT_FIXTURE").expect("fixture path required");
     let bytes = std::fs::read(path).unwrap();
     let archive = crate::vcv_archive::read(&bytes).unwrap();
+    let source_patch: Value = serde_json::from_slice(&archive.patch_json).unwrap();
+    let voice_counts = ["VCO", "VCF"].map(|model| {
+        source_patch["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|module| {
+                module["plugin"] == "Fundamental"
+                    && module["version"] == "2.6.4"
+                    && module["model"] == model
+            })
+            .count()
+    });
+    assert_eq!(voice_counts, [1, 4]);
+    let new_mappings: usize = voice_counts.into_iter().sum();
     let result = import(&bytes).unwrap();
     assert_eq!(
         (result.report.module_count, result.report.cable_count),
@@ -569,7 +854,7 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     );
     assert_eq!(
         (result.report.mapped_count, result.report.unresolved_count),
-        (24, 31)
+        (24 + new_mappings, 31 - new_mappings)
     );
     assert_eq!(result.report.asset_count, 1);
     let doc = result.document;
@@ -593,7 +878,7 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     let partial = doc
         .project(crate::project_document::PlaybackMode::Partial)
         .unwrap();
-    assert_eq!(partial.unresolved_modules.len(), 31);
+    assert_eq!(partial.unresolved_modules.len(), 31 - new_mappings);
     assert_eq!(
         partial.omitted_routes.len(),
         result.report.omitted_route_count

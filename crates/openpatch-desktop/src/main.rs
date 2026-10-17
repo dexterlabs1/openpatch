@@ -26,6 +26,7 @@ mod project;
 #[cfg(test)]
 mod project_acceptance_tests;
 mod rack;
+mod rack264_voice_fixture;
 mod scope;
 mod scope_transport;
 mod smoke_schedule;
@@ -58,11 +59,12 @@ fn run() -> Result<(), String> {
         match arg.as_str() {
             "--third-party-licenses" => {
                 println!(
-                    "{}\n{}\n{}\n{}",
+                    "{}\n{}\n{}\n{}\n{}",
                     include_str!("../assets/licenses/THIRD_PARTY.txt"),
                     include_str!("../assets/licenses/triple_buffer-MPL-2.0.txt"),
                     include_str!("../assets/licenses/Plaits-algorithms.txt"),
-                    include_str!("../assets/licenses/libsamplerate-0.1.9.txt")
+                    include_str!("../assets/licenses/libsamplerate-0.1.9.txt"),
+                    include_str!("../../openpatch-core/LICENSE-GPL-3.0.txt")
                 );
                 return Ok(());
             }

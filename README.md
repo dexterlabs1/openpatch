@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml"><img src="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml/badge.svg" alt="Build and test"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8bb9a6" alt="MIT license"></a>
+  <a href="crates/openpatch-core/LICENSE-THIRD-PARTY"><img src="https://img.shields.io/badge/license-MIT%20%2B%20GPLv3%2B-8bb9a6" alt="MIT original code and GPL-3.0-or-later adaptations"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/built_with-Rust-dea584" alt="Built with Rust"></a>
 </p>
 
@@ -414,7 +414,7 @@ after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
 passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-**81 built-in module kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+**83 built-in module kinds.** Version-specific [Rack 2.6.4 VCO and VCF](docs/VCV_IMPORT.md#supported-source-identities) add pinned voice imports with matching detailed rack/browser panels. [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
 
 The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
 
@@ -516,4 +516,4 @@ See the [CI workflow](.github/workflows/ci.yml) for the platform build matrix an
 
 ---
 
-[MIT licensed](LICENSE). Original native artwork; Rust DSP includes attributed algorithm adaptations under their respective licenses. OpenPatch is independent of VCV and is not affiliated with or endorsed by VCV. Dependency licenses remain with their respective authors. Stock Delay's mono sinc adaptation credits [BSD-2-Clause libsamplerate](docs/licenses/libsamplerate-0.1.9.txt); its notice is bundled and available with `openpatch-desktop --third-party-licenses`. Panel typography uses [Rajdhani SemiBold](crates/openpatch-desktop/assets/fonts/README.md) under the SIL Open Font License; its notice is bundled with the Mac app and available with `openpatch-desktop --font-license`.
+Original OpenPatch code remains [MIT licensed](LICENSE). The source-adapted Fundamental 2.6.4 VCO and VCF are [GPL-3.0-or-later](crates/openpatch-core/LICENSE-GPL-3.0.txt), copyright © 2016–2023 VCV; combined binaries containing them are distributed under GPL-3.0-or-later. The crate expression `MIT AND GPL-3.0-or-later` records both sets of terms. [Source pins and adaptation notices](crates/openpatch-core/LICENSE-THIRD-PARTY) and the full GPL text are bundled with the Mac app and printed by `openpatch-desktop --third-party-licenses`. Corresponding source is in this repository at the revision matching the binary. OpenPatch uses original native artwork and is independent of VCV, with no affiliation or endorsement. Other dependency licenses remain with their authors, including Stock Delay's [BSD-2-Clause libsamplerate](docs/licenses/libsamplerate-0.1.9.txt) adaptation. Panel typography uses [Rajdhani SemiBold](crates/openpatch-desktop/assets/fonts/README.md) under the SIL Open Font License; bundled font notices are available with `openpatch-desktop --font-license`.

@@ -25,11 +25,12 @@ const UNICODE_FALLBACK_FONTS: [(&str, &[u8]); 3] = [
 /// Every stock kind is assigned explicitly; unknown modules use neutral metal.
 pub(crate) fn family_accent(kind: &str) -> Color32 {
     match kind {
-        "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "white_noise" | "drum_voice"
-        | "modal_resonator" | "colored_noise" | "stock_noise" | "macro_voice" | "wavetable_vco" => {
-            Color32::from_rgb(158, 92, 52)
+        "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "rack264_vco" | "white_noise"
+        | "drum_voice" | "modal_resonator" | "colored_noise" | "stock_noise" | "macro_voice"
+        | "wavetable_vco" => Color32::from_rgb(158, 92, 52),
+        "lowpass" | "ladder_vcf" | "stock_vcf" | "rack264_vcf" | "svf_filter" => {
+            Color32::from_rgb(32, 120, 132)
         }
-        "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(32, 120, 132),
         "adsr" | "adsr_eg" => Color32::from_rgb(145, 85, 160),
         "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
         | "random_values" | "sh_asr" | "sample_hold" | "pulses" | "push" | "gates" => {

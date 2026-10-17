@@ -32,7 +32,7 @@ The frozen actual Core/genuine Rack result covers **4,242 complete snapshots acr
 
 [PR #30](https://github.com/dexterlabs1/openpatch/pull/30) is merged at `b03ced7`, with runtime source `cc14da0`. Desktop and MCP share the complete project document, dependency repair, undo/history and saved layout. Verified mappings become native modules; unsupported modules retain their source data, assets and incident routes as visible placeholders. Exact playback stays suspended; Partial playback and substitutions are explicit. Source-only routes carry no invented signal activity. Native v1/legacy JSON migration, recovery and templates remain supported. [Support and limits](VCV_IMPORT.md).
 
-The user's real fixture preserves **55 modules and 83 cables**, with **24 verified native mappings and 31 unresolved dependencies**, through native import/save/reopen. The declared synthetic collection exercises real 16-channel native processing, delayed feedback startup/steady-state and unsupported effects. Six focused host regressions cover repair, saved camera/placement, authored MCP loads, same-package reimport, unseen history geometry and early startup fitting. This proves the supported subset and preservation, not sonic equivalence of the whole patch.
+At the PR #30 checkpoint, the user's real fixture preserved **55 modules and 83 cables**, with **24 verified native mappings and 31 unresolved dependencies**, through native import/save/reopen. The declared synthetic collection exercises real 16-channel native processing, delayed feedback startup/steady-state and unsupported effects. Six focused host regressions cover repair, saved camera/placement, authored MCP loads, same-package reimport, unseen history geometry and early startup fitting. This proves the supported subset and preservation, not sonic equivalence of the whole patch.
 
 [Full macOS ARM CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed **2,378 Rust tests**, including **1,206 desktop cases** (eight intentionally ignored), **117 Python/MCP tests**, strict workspace lint/formatting, optimized binaries, app packaging and visualizer integration. The downloaded artifact's GitHub SHA-256 digest, ARM64 executables and deep/strict ad-hoc signature were verified. This internal candidate retains base metadata 0.2.6/build 8; the installed app remains unchanged. No native-window/audio-device qualification is claimed.
 
@@ -41,6 +41,31 @@ The user's real fixture preserves **55 modules and 83 cables**, with **24 verifi
 Implement the Fundamental 2.6.4 **VCO → VCF** voice chain using separate source-version identities, preserving existing Stock and Multi VCO/VCF patches. The real fixture contains one such VCO and four VCFs. Their source behavior differs substantially from the currently qualified newer Stock implementations; do not silently map them as equivalents.
 
 Reuse the existing frozen Stock reference harness architecture without changing its pins or declarations. Qualify actual 2.6.4 C++ class behavior, mono/16-channel routing, sync/PWM, regrowth, LP/HP connectivity, driven filtering and self-oscillation. Audit the old VCF's previous-input initialization before claiming frame-zero equivalence. Then import a real voice chain through VCA/ADSR, verify finite audible output and edit/history/save/reopen behavior, and add the pinned mappings. Third-party plugins and binary hosting remain tracked parity work; MIDI/live and other platforms remain deferred.
+
+**Processor checkpoint:** distinct `rack264_vco` / `rack264_vcf` now pass the
+[pinned-class reference suite](../scripts/rack264_voice_reference/README.md):
+45 oscillator cases, 78 filter cases and ten genuine SDK loading/reset cases
+on macOS ARM with Rack SDK 2.6.6. All compared finite voltages and observed
+states matched exactly in these fixtures; this is a bounded source-version
+result, not hardware accuracy or whole-patch equivalence. VCF explicitly uses
+recorded initial history because the C++ constructor leaves it uninitialized;
+Rust starts fresh histories at zero. Its legacy loader distinguishes absent
+`params` from a present array missing newer CV-depth entries. The 19 focused
+processor cases, four actual Core voice/bypass/adoption/no-heap checks, strict Core
+Clippy and desktop compilation pass. Source-adaptation GPL notices and combined
+binary licensing are included; original OpenPatch code remains MIT. Existing
+Stock oracles are unchanged.
+
+**Integration candidate:** the two models now use the shared detailed rack/browser
+panels with source-specific bounds, guides and lights. All 83 catalog previews
+match default rack drawing. Five new UI checks and targeted CPU-only normal/dark
+and browser renders pass. Import transforms preserve sync encoding, removed
+source slots and legacy CV-depth defaults. The actual user fixture now has
+**29 mapped / 26 unresolved** modules; all 55 modules, 83 cables, source JSON and
+assets survive save/reopen. A real shared-session mono/16-channel voice passes
+parameter edit/undo/redo and fresh saved reopen; the MCP stdio test renders a
+non-silent WAV after the same workflow. The older filter bypasses raw signal to both outputs and freezes its integrator/RNG history; an actual Core regression covers empty, mono and 16-channel routes. Full macOS candidate CI is next; no
+installation yet. Installed 0.2.6 build 8 is unchanged.
 
 Reuse this integration checkout; do not create another worktree for a small slice. The import milestone's local evidence is `native-test-output/rack-import/STATE.json`; Stock Scope's frozen evidence remains under `native-test-output/stock-scope/`. Start one compact current state for the version-correct voice work, referencing those completed records rather than copying their histories.
 
