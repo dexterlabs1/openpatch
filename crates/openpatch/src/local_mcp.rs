@@ -1,5 +1,5 @@
 //! Same-user Unix socket discovery and attachment for live desktop sessions.
-use crate::control::SharedSession;
+use crate::control::{BridgeObservation, SharedSession};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::{self, File, Metadata, OpenOptions};
@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[cfg(test)]
+static REGISTRY_TEST: Mutex<()> = Mutex::new(());
 
 const MAX_CLIENTS: usize = 8;
 const MAX_DESCRIPTOR: u64 = 16 * 1024;
@@ -127,17 +130,38 @@ struct Connections {
     stopping: bool,
     next_id: u64,
     streams: HashMap<u64, UnixStream>,
+    #[cfg(test)]
+    fail_listener: bool,
 }
 
 pub struct LocalServer {
     id: String,
     connections: Arc<Mutex<Connections>>,
     authorization: Arc<AtomicBool>,
+    observation: Arc<BridgeObservation>,
+    generation: u64,
     _files: InstanceFiles,
 }
 
 impl LocalServer {
     pub fn start(session: SharedSession, workspace: &Path) -> Result<Self, String> {
+        let observation = session
+            .lock()
+            .map_err(|_| "session lock poisoned")?
+            .bridge_observation();
+        let generation = observation.reserve_start()?;
+        let result = Self::start_reserved(session, workspace, observation.clone(), generation);
+        if let Err(error) = &result {
+            observation.failed(generation, error.clone());
+        }
+        result
+    }
+    fn start_reserved(
+        session: SharedSession,
+        workspace: &Path,
+        observation: Arc<BridgeObservation>,
+        generation: u64,
+    ) -> Result<Self, String> {
         let workspace = workspace.canonicalize().map_err(|e| e.to_string())?;
         if workspace.to_str().is_none() {
             return Err("local MCP workspace must be valid UTF-8".into());
@@ -196,10 +220,54 @@ impl LocalServer {
         let state = connections.clone();
         let authorization = Arc::new(AtomicBool::new(true));
         let listener_authorization = authorization.clone();
+        let listener_observation = observation.clone();
+        let owned_files = InstanceFiles {
+            directory: files.directory.clone(),
+            files: files.files.clone(),
+        };
+        observation.running(generation, &id);
         thread::Builder::new()
             .name("openpatch-mcp-listener".into())
             .spawn(move || {
+                // Liveness follows this actual listener, not a retained UI handle.
+                struct ListenerExit {
+                    state: Arc<Mutex<Connections>>,
+                    authorization: Arc<AtomicBool>,
+                    observation: Arc<BridgeObservation>,
+                    generation: u64,
+                    error: String,
+                    _files: InstanceFiles,
+                }
+                impl Drop for ListenerExit {
+                    fn drop(&mut self) {
+                        self.authorization.store(false, Ordering::Release);
+                        let mut clients = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                        clients.stopping = true;
+                        for stream in clients.streams.values() {
+                            let _ = stream.shutdown(Shutdown::Both);
+                        }
+                        clients.streams.clear();
+                        self.observation.failed(self.generation, self.error.clone());
+                    }
+                }
+                let mut exit = ListenerExit {
+                    state: state.clone(),
+                    authorization: listener_authorization.clone(),
+                    observation: listener_observation.clone(),
+                    generation,
+                    error: "local MCP listener exited unexpectedly".into(),
+                    _files: owned_files,
+                };
                 loop {
+                    #[cfg(test)]
+                    if state
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .fail_listener
+                    {
+                        break;
+                    }
+
                     if state.lock().unwrap_or_else(|e| e.into_inner()).stopping {
                         break;
                     }
@@ -221,26 +289,37 @@ impl LocalServer {
                                 clients.next_id = clients.next_id.wrapping_add(1);
                                 let id = clients.next_id;
                                 clients.streams.insert(id, tracked);
+                                listener_observation.clients(generation, clients.streams.len());
                                 id
                             };
                             let worker_state = state.clone();
                             let worker_session = session.clone();
                             let worker_authorization = listener_authorization.clone();
+                            let worker_observation = listener_observation.clone();
                             if thread::Builder::new()
                                 .name("openpatch-mcp-client".into())
                                 .spawn(move || {
                                     // Cleanup runs on errors and unwinding as well as EOF.
-                                    struct ClientGuard(Arc<Mutex<Connections>>, u64);
+                                    struct ClientGuard(
+                                        Arc<Mutex<Connections>>,
+                                        u64,
+                                        Arc<BridgeObservation>,
+                                        u64,
+                                    );
                                     impl Drop for ClientGuard {
                                         fn drop(&mut self) {
-                                            self.0
-                                                .lock()
-                                                .unwrap_or_else(|e| e.into_inner())
-                                                .streams
-                                                .remove(&self.1);
+                                            let mut clients =
+                                                self.0.lock().unwrap_or_else(|e| e.into_inner());
+                                            clients.streams.remove(&self.1);
+                                            self.2.clients(self.3, clients.streams.len());
                                         }
                                     }
-                                    let _guard = ClientGuard(worker_state, client_id);
+                                    let _guard = ClientGuard(
+                                        worker_state,
+                                        client_id,
+                                        worker_observation,
+                                        generation,
+                                    );
                                     let _ = crate::mcp::run_socket_authorized(
                                         stream,
                                         worker_session,
@@ -249,11 +328,9 @@ impl LocalServer {
                                 })
                                 .is_err()
                             {
-                                state
-                                    .lock()
-                                    .unwrap_or_else(|e| e.into_inner())
-                                    .streams
-                                    .remove(&client_id);
+                                let mut clients = state.lock().unwrap_or_else(|e| e.into_inner());
+                                clients.streams.remove(&client_id);
+                                listener_observation.clients(generation, clients.streams.len());
                             }
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -269,11 +346,18 @@ impl LocalServer {
                                 && std::io::Error::last_os_error().kind()
                                     != std::io::ErrorKind::Interrupted
                             {
+                                exit.error = format!(
+                                    "local MCP listener poll failed: {}",
+                                    std::io::Error::last_os_error()
+                                );
                                 break;
                             }
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                        Err(_) => break,
+                        Err(error) => {
+                            exit.error = format!("local MCP listener accept failed: {error}");
+                            break;
+                        }
                     }
                 }
             })
@@ -282,10 +366,20 @@ impl LocalServer {
             id,
             connections,
             authorization,
+            observation,
+            generation,
             _files: files,
         })
     }
 
+    pub fn failure_reason(&self) -> Option<String> {
+        self.observation.snapshot()["last_error"]
+            .as_str()
+            .map(str::to_owned)
+    }
+    pub fn is_running(&self) -> bool {
+        self.observation.is_running(self.generation)
+    }
     pub fn session_id(&self) -> &str {
         &self.id
     }
@@ -304,6 +398,7 @@ impl Drop for LocalServer {
         // Desktop Stop holds the session lock here: queued dispatch and final
         // construction registration must recheck this token under that lock.
         self.authorization.store(false, Ordering::Release);
+        self.observation.stopped(self.generation);
         let mut clients = self.connections.lock().unwrap_or_else(|e| e.into_inner());
         clients.stopping = true;
         for stream in clients.streams.values() {
@@ -623,8 +718,6 @@ mod tests {
     use super::*;
     use crate::control::Application;
 
-    static REGISTRY_TEST: Mutex<()> = Mutex::new(());
-
     fn temporary() -> PathBuf {
         let path = PathBuf::from("/tmp").join(format!("opm-test-{}", random_id().unwrap()));
         fs::create_dir(&path).unwrap();
@@ -790,7 +883,10 @@ mod tests {
         let workspace = temporary();
         let session = Application::new(&workspace).unwrap().into_shared();
         let first = LocalServer::start(session.clone(), &workspace).unwrap();
-        let second = LocalServer::start(session, &workspace).unwrap();
+        // Separate windows have separate Session authorities, even when they
+        // open the same workspace. One Session owns one local listener.
+        let second_session = Application::new(&workspace).unwrap().into_shared();
+        let second = LocalServer::start(second_session, &workspace).unwrap();
         assert_ne!(first.session_id(), second.session_id());
         assert!(connect(None, Some(&workspace))
             .unwrap_err()
@@ -884,7 +980,10 @@ mod tests {
         let workspace = temporary().canonicalize().unwrap();
         let session = Application::new(&workspace).unwrap().into_shared();
         let first = LocalServer::start(session.clone(), &workspace).unwrap();
-        let second = LocalServer::start(session, &workspace).unwrap();
+        // Separate windows have separate Session authorities, even when they
+        // open the same workspace. One Session owns one local listener.
+        let second_session = Application::new(&workspace).unwrap().into_shared();
+        let second = LocalServer::start(second_session, &workspace).unwrap();
         for errno in [
             None,
             Some(libc::EAGAIN),
@@ -967,5 +1066,139 @@ mod tests {
         fs::remove_file(path).unwrap();
         fs::remove_file(root.join("old")).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bridge_observation_tests {
+    use super::*;
+    use crate::control::{execute_shared, execute_shared_authorized, Session};
+
+    fn wait_until(mut ready: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !ready() {
+            assert!(
+                Instant::now() < deadline,
+                "native bridge observation did not settle"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    fn status(session: &SharedSession) -> Value {
+        execute_shared(session, "inspect_bridge", json!({})).unwrap()
+    }
+
+    #[test]
+    fn bridge_native_transport_counts_real_admitted_sockets_and_restart_fences_old_generation() {
+        let _serial = REGISTRY_TEST.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path()).unwrap().into_shared();
+        execute_shared(
+            &session,
+            "add_module",
+            json!({"id":"bridge","kind":"rackmcp_bridge"}),
+        )
+        .unwrap();
+        let before = session.lock().unwrap().snapshot();
+        let observation = session.lock().unwrap().bridge_observation();
+        observation.set_stdio_enabled(true);
+        assert_eq!(status(&session)["transport"]["state"], "stopped");
+        let server = LocalServer::start(session.clone(), dir.path()).unwrap();
+        let first = server.session_id().to_owned();
+        let generation = server.generation;
+        assert!(LocalServer::start(session.clone(), dir.path()).is_err());
+        let running = status(&session);
+        assert_eq!(running["transport"]["state"], "running");
+        assert_eq!(running["transport"]["attachment_id"], first);
+        assert_eq!(running["authority"]["writer_lease"], false);
+        assert!(running["authority"]["stdio_client_count"].is_null());
+        let stream = connect(Some(&first), None).unwrap();
+        wait_until(|| status(&session)["transport"]["admitted_clients"] == 1);
+        drop(stream);
+        wait_until(|| status(&session)["transport"]["admitted_clients"] == 0);
+        drop(server);
+        assert_eq!(status(&session)["transport"]["state"], "stopped");
+        assert_eq!(status(&session)["transport"]["stdio_enabled"], true);
+        let next = LocalServer::start(session.clone(), dir.path()).unwrap();
+        assert_ne!(next.session_id(), first);
+        observation.failed(generation, "old listener exit".into());
+        observation.clients(generation, 7);
+        observation.stopped(generation);
+        assert_eq!(
+            status(&session)["transport"]["attachment_id"],
+            next.session_id()
+        );
+        assert_eq!(status(&session)["transport"]["admitted_clients"], 0);
+        assert_eq!(session.lock().unwrap().snapshot(), before);
+    }
+
+    #[test]
+    fn bridge_listener_exit_revokes_clients_and_discovery_even_with_a_retained_server_handle() {
+        let _serial = REGISTRY_TEST.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path()).unwrap().into_shared();
+        let server = LocalServer::start(session.clone(), dir.path()).unwrap();
+        let id = server.session_id().to_owned();
+        let _client = connect(Some(&id), None).unwrap();
+        wait_until(|| server.client_count() == 1);
+        server.connections.lock().unwrap().fail_listener = true;
+        wait_until(|| status(&session)["transport"]["state"] == "failed");
+        wait_until(|| !registry().join(&id).join(DESCRIPTOR).exists());
+        assert!(!server.is_running());
+        assert!(!server.authorization.load(Ordering::Acquire));
+        assert_eq!(server.client_count(), 0);
+        let failed = status(&session);
+        assert!(failed["transport"]["attachment_id"].is_null());
+        assert!(failed["transport"]["last_error"].is_string());
+        assert!(execute_shared_authorized(
+            &session,
+            "add_module",
+            json!({"id":"old","kind":"constant"}),
+            Some(&server.authorization)
+        )
+        .is_err());
+        // Native/stdio authority survives local listener failure.
+        execute_shared(
+            &session,
+            "add_module",
+            json!({"id":"native","kind":"constant"}),
+        )
+        .unwrap();
+        let next = LocalServer::start(session.clone(), dir.path()).unwrap();
+        drop(server);
+        assert!(next.is_running());
+        assert_eq!(
+            status(&session)["transport"]["attachment_id"],
+            next.session_id()
+        );
+        assert_eq!(session.lock().unwrap().patch().nodes.len(), 1);
+    }
+
+    #[test]
+    fn bridge_failed_start_and_panel_document_changes_never_advertise_a_usable_endpoint() {
+        let _serial = REGISTRY_TEST.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::new(dir.path()).unwrap().into_shared();
+        let source = json!({"version":"2.6.6","modules":[{"id":1,"plugin":"RackMCP","model":"Bridge","version":"2.0.0","params":[{"id":0,"value":0}]}],"cables":[]});
+        std::fs::write(
+            dir.path().join("bridge.vcv"),
+            serde_json::to_vec(&source).unwrap(),
+        )
+        .unwrap();
+        execute_shared(&session, "import_vcv", json!({"filename":"bridge.vcv"})).unwrap();
+        assert_eq!(status(&session)["transport"]["state"], "stopped");
+        let before = status(&session)["last_operation"].clone();
+        status(&session);
+        status(&session);
+        assert_eq!(status(&session)["last_operation"], before);
+        assert!(execute_shared(&session, "_native_bridge_start", json!({})).is_err());
+        assert_eq!(status(&session)["transport"]["state"], "stopped");
+        assert!(LocalServer::start(session.clone(), &dir.path().join("missing")).is_err());
+        assert_eq!(status(&session)["transport"]["state"], "failed");
+        assert!(status(&session)["transport"]["attachment_id"].is_null());
+        assert!(!status(&session)["transport"]["last_error"]
+            .as_str()
+            .unwrap()
+            .is_empty());
     }
 }

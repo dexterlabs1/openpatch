@@ -97,6 +97,19 @@ pub fn prepare(
             .is_some_and(|store| !store.recoveries().is_empty());
     let mut session = Session::new(workspace)?;
     session.new_project_document(document.project().clone(), None)?;
+    let checkpoint = openpatch::control::ProjectSaveCheckpoint {
+        generation: session.project_save_baseline().generation(),
+        revision: session.revision(),
+        frame: None,
+        edit_content: openpatch::control::project_saved::saved_content(
+            document.project(),
+            document.layout().clone(),
+            &openpatch::control::project_saved::configured_document_states(document.project()),
+        ),
+    };
+    session
+        .project_save_baseline()
+        .register(&checkpoint, active_file.clone())?;
     let startup = Startup {
         store,
         document,

@@ -33,7 +33,11 @@ impl Panel {
     pub(crate) fn set_server(&mut self, result: Result<LocalServer, String>) {
         match result {
             Ok(server) => {
-                if self.server.is_none() {
+                if self
+                    .server
+                    .as_ref()
+                    .is_none_or(|server| !server.is_running())
+                {
                     self.server = Some(server);
                 }
                 self.error = None;
@@ -60,7 +64,10 @@ impl Panel {
     fn session_id(&self) -> Option<&str> {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
-            self.server.as_ref().map(LocalServer::session_id)
+            self.server
+                .as_ref()
+                .filter(|server| server.is_running())
+                .map(LocalServer::session_id)
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -71,7 +78,10 @@ impl Panel {
     fn clients(&self) -> usize {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
-            self.server.as_ref().map_or(0, LocalServer::client_count)
+            self.server
+                .as_ref()
+                .filter(|server| server.is_running())
+                .map_or(0, LocalServer::client_count)
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
@@ -79,6 +89,29 @@ impl Panel {
         }
     }
 
+    fn listener_failed(&self) -> bool {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            self.server
+                .as_ref()
+                .is_some_and(|server| !server.is_running())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            false
+        }
+    }
+    fn error_message(&self) -> Option<String> {
+        let error = self.error.clone();
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            error.or_else(|| self.server.as_ref().and_then(LocalServer::failure_reason))
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            error
+        }
+    }
     fn summary(&self) -> String {
         if self.session_id().is_some() {
             let clients = self.clients();
@@ -90,10 +123,10 @@ impl Panel {
                     if clients == 1 { "" } else { "s" }
                 )
             }
+        } else if self.error.is_some() || self.listener_failed() {
+            "MCP · needs attention".into()
         } else if self.stdio {
             "MCP · stdio enabled".into()
-        } else if self.error.is_some() {
-            "MCP · needs attention".into()
         } else {
             "MCP off".into()
         }
@@ -101,9 +134,18 @@ impl Panel {
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn start(&mut self, session: &SharedSession, workspace: &Path) {
-        if self.server.is_some() {
+        if self.server.as_ref().is_some_and(LocalServer::is_running) {
             self.error = None;
             return;
+        }
+        if self.server.is_some() {
+            self.stop(session);
+            if self.error.is_some() {
+                return;
+            }
+        }
+        if let Ok(live) = session.try_lock() {
+            live.bridge_observation().set_stdio_enabled(self.stdio);
         }
         self.set_server(LocalServer::start(session.clone(), workspace));
     }
@@ -143,6 +185,42 @@ impl Panel {
         self.error = result.err();
     }
 
+    pub(crate) fn bridge_action(
+        &mut self,
+        action: &str,
+        session: &SharedSession,
+        workspace: &Path,
+    ) -> Result<(), String> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            match action {
+                "start" => self.start(session, workspace),
+                "stop" => {
+                    self.error = None;
+                    self.stop(session);
+                }
+                "restart" => {
+                    self.error = None;
+                    self.stop(session);
+                    if self.error.is_none() {
+                        self.start(session, workspace);
+                    }
+                }
+                _ => return Err("unknown native bridge action".into()),
+            }
+            let result = self.error.clone().map_or(Ok(()), Err);
+            if let Ok(mut live) = session.try_lock() {
+                live.record_bridge_action(action, result.is_ok());
+            }
+            result
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            let _ = (action, session, workspace);
+            Err("local MCP attachment unavailable on this platform".into())
+        }
+    }
+
     pub(crate) fn toolbar(&mut self, ui: &mut egui::Ui, session: &SharedSession, workspace: &Path) {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         let _ = (session, workspace);
@@ -165,7 +243,7 @@ impl Panel {
         {
             if self.session_id().is_none() {
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
-                self.start(session, workspace);
+                let _ = self.bridge_action("start", session, workspace);
             }
             self.open = true;
         }
@@ -201,14 +279,14 @@ impl Panel {
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
                     {
                         ui.horizontal(|ui| {
-                            if self.server.is_some() {
+                            if self.session_id().is_some() {
                                 if ui.button("Stop bridge").clicked() {
-                                    self.stop(session);
+                                    let _ = self.bridge_action("stop", session, workspace);
                                 }
                             } else {
                                 let label = if self.error.is_some() { "Retry" } else { "Start bridge" };
                                 if ui.button(label).clicked() {
-                                    self.start(session, workspace);
+                                    let _ = self.bridge_action("start", session, workspace);
                                 }
                             }
                         });
@@ -222,7 +300,7 @@ impl Panel {
                     if self.stdio {
                         ui.small("Stdio was enabled at launch. It is independent of this bridge; its connection status is not tracked here. Stop bridge leaves stdio available.");
                     }
-                    if let Some(error) = &self.error {
+                    if let Some(error) = self.error_message() {
                         ui.label(RichText::new(error).color(ui.visuals().error_fg_color));
                     }
                     ui.separator();

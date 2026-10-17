@@ -27,6 +27,7 @@ include!("atlas_mid_side_panels.rs");
 include!("atlas_score_panel.rs");
 include!("atlas_rackmcp_sequencer_panel.rs");
 include!("atlas_listen_panel.rs");
+include!("atlas_bridge_panel.rs");
 include!("atlas_poly_panels.rs");
 include!("atlas_fade_panel.rs");
 include!("atlas_signal_utility_panels.rs");
@@ -733,6 +734,8 @@ impl ModulePreview {
 include!("rack_import_panels.rs");
 
 pub struct Rack {
+    bridge_ui: BridgeUi,
+    rackmcp_ui: RackMcpUi,
     listen_ui: ListenUi,
     unresolved_panels: Vec<UnresolvedPanel>,
     source_routes: Vec<Cable>,
@@ -805,6 +808,8 @@ pub struct Rack {
 impl Default for Rack {
     fn default() -> Self {
         Self {
+            bridge_ui: BridgeUi::default(),
+            rackmcp_ui: RackMcpUi::default(),
             listen_ui: ListenUi::default(),
             unresolved_panels: Vec::new(),
             source_routes: Vec::new(),
@@ -3514,7 +3519,18 @@ impl Rack {
                 }
             }
             if node.kind == "rackmcp_sequencer" {
-                paint_atlas_rackmcp_configuration(&painter, node, rect, self.zoom, &self.lighting);
+                if let Some(edit) =
+                    self.atlas_rackmcp_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "rackmcp_bridge" {
+                if let Some(edit) =
+                    self.atlas_bridge_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
             }
             if node.kind == "rackmcp_listen" {
                 if let Some(edit) =
@@ -9782,7 +9798,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "rackmcp_sequencer" => HP * 48.0,
-        "rackmcp_listen" => HP * 24.0,
+        "rackmcp_listen" | "rackmcp_bridge" => HP * 24.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
         "svf_filter" => HP * 18.0,
@@ -9835,6 +9851,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "score_sequencer" => "SCORE",
         "rackmcp_sequencer" => "RACKMCP SEQUENCER",
         "rackmcp_listen" => "RACKMCP LISTEN",
+        "rackmcp_bridge" => "MCP BRIDGE",
         "stereo_delay" => "STEREO DELAY",
         "stereo_reverb" => "SPACE",
         "sidechain_compressor" => "DUCK",
@@ -12051,7 +12068,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            85,
+            86,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -18924,6 +18941,9 @@ mod tests {
     }
     mod poly_constant_atlas_ui_tests {
         include!("poly_constant_atlas_ui_tests.rs");
+    }
+    mod atlas_bridge_ui_tests {
+        include!("atlas_bridge_ui_tests.rs");
     }
     mod atlas_listen_ui_tests {
         include!("atlas_listen_ui_tests.rs");

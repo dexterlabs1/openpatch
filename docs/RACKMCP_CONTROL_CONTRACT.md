@@ -133,6 +133,57 @@ over-30-second and out-of-Core-rate input. No callback allocation is introduced.
 UI and external MCP use the same Session operations; external jobs appear in the
 native capture inspector. Start/poll/cancel do not add history or mutate layout.
 WAV creation is explicit, never overwrites and alone duplicates L when R is
-absent. No import or capture command starts a speaker/device. Bridge still needs
-its real session/control/save lifecycle; this checkpoint does not satisfy the
-entire control-family acceptance list above.
+absent. No import or capture command starts a speaker/device. This checkpoint
+qualifies Listen; native Bridge integration is described below.
+
+
+## Native Bridge and live Sequencer checkpoint (2026-10-17)
+
+`RackMCP / Bridge / 2.0.0` maps to a separate `rackmcp_bridge` host panel.
+It has no signal ports, DSP lamps or persistent module state. Unknown source
+parameter slots, held reset-pairing controls, unsupported versions and custom
+source data stay unresolved. Import, duplication, bypass, removal, undo and
+reopen never start a service or bind audio hardware.
+
+`inspect_bridge` observes the actual app-owned local listener, generation,
+attachment identity, admitted same-user sockets, launch-enabled stdio and last
+meaningful operation. Read-only polling cannot start or restart the service.
+Start/Stop/Restart are native app actions, shared with the toolbar; they are not
+remote MCP tools or graph parameters. A listener failure revokes admission and
+withdraws its discovery files even if the UI retains the failed handle. Stop
+serializes authorization revocation and construction pause with shared edits;
+restart makes a fresh attachment identity. Removing the last Bridge leaves the
+app-owned service running. No server is retained by the Session, avoiding a
+session/worker ownership cycle.
+
+Native authority is **same-user shared mutation**. Rack's HMAC/pairing secret,
+TCP endpoint and single-writer lease are not implemented or fabricated. Stdio
+has no invented client count. Status is observed by the UI at 100 ms, with stale
+or wrong-revision observations disabled after 500 ms; this deliberately differs
+from the source module's 512-sample lamp cadence.
+
+The Save control uses the native project's existing Save/Save As workflow.
+Desktop dirty/close guards and Bridge share one generation-fenced baseline:
+**authored document, layout and source references plus durable module state**.
+Ordinary effective automation values do not repeatedly dirty the document.
+Persistence still samples those actual effective values and durable state from
+one coherent capture; the authored baseline is captured at the same boundary.
+Run/HOLD, selected patterns, RNG and other durable changes remain meaningful.
+Unavailable durable state or pending layout is explicitly unknown. Untitled is
+not called saved. Native active-project save registers only the captured baseline
+after successful publication, rejecting an obsolete document generation; later
+authored edits remain dirty. Save/load/template/example completions serialize
+local project metadata with the shared document boundary. Snapshot exports
+(`save_document`/`save_patch`) do not clean the active project.
+
+The live Sequencer panel now shows actual active/pending pattern, clock,
+playhead/bar/beat/step and loop observations. Anchored menus select patterns,
+now/wrap policy and seek positions through existing shared transport operations.
+Drawing and polling never advance an inferred timer or add history/layout edits.
+Browser previews retain authored pattern drawing and have no live controls.
+[Actual shared-renderer captures](../design/reviews/rackmcp-control-v1/README.md).
+
+These are native host adaptations, not whole Rack transport, scheduler, hardware
+or complete third-party patch equivalence. This checkpoint is installed in
+OpenPatch 0.2.7 build 9 after an explicit user request; local validation and
+[artifact evidence](benchmarks/rackmcp-control.json) do not qualify physical devices.

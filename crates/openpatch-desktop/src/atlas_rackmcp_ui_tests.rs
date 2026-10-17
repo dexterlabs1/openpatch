@@ -282,7 +282,7 @@ fn rackmcp_controls_and_all_eighteen_output_cable_targets_are_independent() {
 }
 
 #[test]
-#[ignore = "writes eight CPU review PNGs to OPENPATCH_RACKMCP_REVIEW_DIR"]
+#[ignore = "writes twelve CPU review PNGs to OPENPATCH_RACKMCP_REVIEW_DIR"]
 fn rackmcp_sequencer_headless_review() {
     let destination =
         std::path::PathBuf::from(std::env::var_os("OPENPATCH_RACKMCP_REVIEW_DIR").expect(
@@ -333,7 +333,8 @@ fn rackmcp_sequencer_headless_review() {
         .unwrap();
     for (illumination, brightness) in [("normal", 1.0), ("dim", 0.0)] {
         for (view, scale) in [("rack", 1.0), ("thumbnail", 0.42)] {
-            for authored in [true, false] {
+            for panel_state in ["live", "authored", "default-preview"] {
+                let authored = panel_state != "default-preview";
                 let ctx = egui::Context::default();
                 crate::panel_skin::install_fonts(&ctx);
                 let mut capture = crate::headless_review::CpuCapture::default();
@@ -350,6 +351,11 @@ fn rackmcp_sequencer_headless_review() {
                 // single-panel capture. There are no invented signal lights.
                 rack.positions.insert("vca".into(), pos2(10_000.0, 0.0));
                 rack.set_room_brightness(brightness);
+                if panel_state == "live" {
+                    let mut receipt = live_sequence_receipt(0, "Verse", "Fill", json!("Fill"), 6);
+                    receipt["rackmcp_sequence"]["bpm"] = json!(124.0);
+                    rack.accept_rackmcp_receipt("inspect_rackmcp_sequence", receipt);
+                }
                 let mut preview = ModulePreview::new(module);
                 preview.renderer.set_room_brightness(brightness);
                 assert!(preview.patch.nodes[0].rackmcp_sequence.is_none());
@@ -397,16 +403,323 @@ fn rackmcp_sequencer_headless_review() {
                     &ctx,
                     last.unwrap(),
                     size,
-                    destination.join(format!(
-                        "rackmcp-{}-{view}-{illumination}.png",
-                        if authored {
-                            "authored"
-                        } else {
-                            "default-preview"
-                        }
-                    )),
+                    destination.join(format!("rackmcp-{}-{view}-{illumination}.png", panel_state)),
                 );
             }
         }
     }
+}
+
+fn live_sequence_receipt(
+    revision: u64,
+    active: &str,
+    desired: &str,
+    pending: Value,
+    step: i64,
+) -> Value {
+    json!({"id":"seq","revision":revision,"available":true,"frame":48000,
+        "rackmcp_sequence":{"running":true,"active_pattern_name":active,
+            "selected_pattern_name":desired,"pending_pattern_name":pending,"step":step,
+            "loop_count":3,"beat":2.5,"bar":0.625,"bpm":137.0,"swing":61.0,
+            "external_clock":true,"pattern_count":2,"lane_count":0}})
+}
+
+fn live_sequence_patch() -> Patch {
+    serde_json::from_value(
+        json!({"version":2,"nodes":[{"id":"seq","kind":"rackmcp_sequencer",
+        "rackmcp_sequence":{"data":{"selectedPattern":"A","patterns":[
+            {"name":"A","length":8,"tracks":[{"steps":[{"step":0,"notes":[0]}]}]},
+            {"name":"Bass","length":16,"tracks":[{"steps":[{"step":2,"notes":[7]}]}]}
+        ]}}}]}),
+    )
+    .unwrap()
+}
+
+fn live_texts(output: &egui::FullOutput) -> Vec<(String, Rect)> {
+    let mut result = Vec::new();
+    for shape in &output.shapes {
+        labels(&shape.shape, &mut result);
+    }
+    result
+}
+
+fn live_playheads(output: &egui::FullOutput) -> Vec<Rect> {
+    output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Rect(cell) if cell.stroke.color == Color32::from_rgb(190, 225, 193) => {
+                Some(cell.rect)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn rackmcp_live_external_updates_show_actual_active_pending_clock_and_source_position() {
+    let ctx = egui::Context::default();
+    let patch = live_sequence_patch();
+    let mut rack = Rack::default();
+    rack.accept_rackmcp_receipt(
+        "inspect_rackmcp_sequence",
+        live_sequence_receipt(9, "A", "Bass", json!("Bass"), 3),
+    );
+    let (_, first) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
+    let texts = live_texts(&first);
+    for expected in [
+        "ACTIVE A · NEXT Bass",
+        "SELECT Bass  ▾",
+        "RUNNING · 137.0 BPM · EXT CLOCK",
+        "BAR 0.62 · BEAT 2.50 · STEP 4 · LOOP 3",
+    ] {
+        assert!(
+            texts.iter().any(|(text, _)| text == expected),
+            "Missing {expected}"
+        );
+    }
+    assert_eq!(live_playheads(&first).len(), 1);
+    let (_, unchanged) =
+        frame_revision_state(&ctx, &mut rack, &patch, 100.0, vec![], true, true, 9);
+    assert_eq!(
+        live_playheads(&first),
+        live_playheads(&unchanged),
+        "UI elapsed time does not advance source position"
+    );
+    rack.accept_rackmcp_receipt(
+        "rackmcp_transport",
+        json!({"revision":9,"receipt":{"accepted":true}}),
+    );
+    let (_, accepted) = frame_revision_state(&ctx, &mut rack, &patch, 101.0, vec![], true, true, 9);
+    assert_eq!(
+        live_playheads(&first),
+        live_playheads(&accepted),
+        "Queue acceptance does not invent callback application"
+    );
+    rack.accept_rackmcp_receipt(
+        "inspect_rackmcp_sequence",
+        live_sequence_receipt(9, "Bass", "Bass", Value::Null, 5),
+    );
+    let (_, advanced) = frame_revision_state(&ctx, &mut rack, &patch, 102.0, vec![], true, true, 9);
+    assert!(live_texts(&advanced)
+        .iter()
+        .any(|(text, _)| text == "ACTIVE Bass · NEXT —"));
+    assert_ne!(live_playheads(&first), live_playheads(&advanced));
+    assert!(rack.sequence_states.is_empty() && rack.module_lights.is_empty());
+}
+
+#[test]
+fn rackmcp_stale_unavailable_and_revision_changed_status_clear_live_position_and_controls() {
+    let patch = live_sequence_patch();
+    for cause in ["expired", "unavailable", "revision", "error"] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.accept_rackmcp_receipt(
+            "inspect_rackmcp_sequence",
+            live_sequence_receipt(9, "A", "Bass", json!("Bass"), 3),
+        );
+        match cause {
+            "expired" => rack.rackmcp_ui.statuses.get_mut("seq").unwrap().1 -= std::time::Duration::from_secs(1),
+            "unavailable" => rack.accept_rackmcp_receipt("inspect_rackmcp_sequence", json!({"id":"seq","revision":9,"available":false,"reason":"document execution is suspended"})),
+            "error" => rack.rackmcp_command_error("inspect_rackmcp_sequence", &json!({"id":"seq"}), "stale revision".into()),
+            _ => (),
+        }
+        let revision = if cause == "revision" { 10 } else { 9 };
+        let (_, output) =
+            frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, revision);
+        assert!(live_playheads(&output).is_empty(), "{cause}");
+        assert!(
+            live_texts(&output)
+                .iter()
+                .any(|(text, _)| text == "SAVED NOTES · LIVE POSITION UNAVAILABLE"),
+            "{cause}"
+        );
+        let target = pos2(24.0, 12.0) + atlas_rackmcp_native_control("pattern").center().to_vec2();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(target), button(target, true)],
+            true,
+            true,
+            revision,
+        );
+        let (action, _) = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![button(target, false)],
+            true,
+            true,
+            revision,
+        );
+        assert!(
+            action.is_none() && rack.rackmcp_ui.menu.is_none(),
+            "{cause}: unavailable control accepted input"
+        );
+    }
+}
+
+#[test]
+fn rackmcp_pattern_dropdown_emits_real_revision_fenced_wrap_and_now_transport() {
+    let patch = live_sequence_patch();
+    for now in [false, true] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        rack.rackmcp_ui.select_now.insert("seq".into(), now);
+        rack.accept_rackmcp_receipt(
+            "inspect_rackmcp_sequence",
+            live_sequence_receipt(9, "A", "A", Value::Null, 3),
+        );
+        frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
+        let target = pos2(24.0, 12.0) + atlas_rackmcp_native_control("pattern").center().to_vec2();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(target), button(target, true)],
+            true,
+            true,
+            9,
+        );
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![button(target, false)],
+            true,
+            true,
+            9,
+        );
+        let (_, menu) = frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, 9);
+        let choice = live_texts(&menu)
+            .iter()
+            .find(|(text, _)| text == "Bass")
+            .expect("anchored pattern choice")
+            .1
+            .center();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.0,
+            vec![egui::Event::PointerMoved(choice), button(choice, true)],
+            true,
+            true,
+            9,
+        );
+        let (action, _) = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.1,
+            vec![button(choice, false)],
+            true,
+            true,
+            9,
+        );
+        assert!(
+            matches!(action, Some(RackAction::Command("rackmcp_transport", ref args)) if args["id"] == "seq" && args["action"] == "select" && args["pattern"] == "Bass" && args["quantize"] == if now { "now" } else { "wrap" } && args["expected_revision"] == 9)
+        );
+    }
+}
+
+#[test]
+fn rackmcp_polling_is_throttled_and_discards_removed_or_previous_revision_observations() {
+    let patch = live_sequence_patch();
+    let mut rack = Rack::default();
+    assert_eq!(
+        rack.rackmcp_poll_commands(&patch, 9),
+        vec![(
+            "inspect_rackmcp_sequence",
+            json!({"id":"seq","expected_revision":9})
+        )]
+    );
+    assert!(rack.rackmcp_poll_commands(&patch, 9).is_empty());
+    rack.accept_rackmcp_receipt(
+        "inspect_rackmcp_sequence",
+        live_sequence_receipt(9, "A", "A", Value::Null, 3),
+    );
+    rack.rackmcp_poll_commands(&patch, 10);
+    assert!(rack.rackmcp_ui.statuses.is_empty());
+    rack.accept_rackmcp_receipt(
+        "inspect_rackmcp_sequence",
+        live_sequence_receipt(10, "A", "A", Value::Null, 3),
+    );
+    rack.rackmcp_poll_commands(&Patch::default(), 10);
+    assert!(rack.rackmcp_ui.statuses.is_empty());
+}
+
+#[test]
+fn rackmcp_seek_dropdown_emits_source_bars_and_closes_on_revision_change() {
+    let ctx = egui::Context::default();
+    let patch = live_sequence_patch();
+    let mut rack = Rack::default();
+    rack.rackmcp_ui.seek_bars.insert("seq".into(), 2.5);
+    rack.accept_rackmcp_receipt(
+        "inspect_rackmcp_sequence",
+        live_sequence_receipt(9, "A", "A", Value::Null, 3),
+    );
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
+    let target = pos2(24.0, 12.0) + atlas_rackmcp_native_control("seek").center().to_vec2();
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.0,
+        vec![egui::Event::PointerMoved(target), button(target, true)],
+        true,
+        true,
+        9,
+    );
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        1.1,
+        vec![button(target, false)],
+        true,
+        true,
+        9,
+    );
+    let (_, menu) = frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, 9);
+    let choice = live_texts(&menu)
+        .iter()
+        .find(|(text, _)| text == "Seek")
+        .expect("anchored seek action")
+        .1
+        .center();
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        2.0,
+        vec![egui::Event::PointerMoved(choice), button(choice, true)],
+        true,
+        true,
+        9,
+    );
+    let (action, _) = frame_revision_state(
+        &ctx,
+        &mut rack,
+        &patch,
+        2.1,
+        vec![button(choice, false)],
+        true,
+        true,
+        9,
+    );
+    assert!(
+        matches!(action, Some(RackAction::Command("rackmcp_transport", ref args)) if args["id"] == "seq" && args["action"] == "seek" && args["bar"] == 2.5 && args["expected_revision"] == 9)
+    );
+    rack.rackmcp_ui.menu = Some(("seq".into(), 9, "seek"));
+    rack.rackmcp_poll_commands(&patch, 10);
+    assert!(
+        rack.rackmcp_ui.menu.is_none(),
+        "An open editor cannot apply to a later document revision"
+    );
 }

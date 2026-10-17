@@ -428,14 +428,16 @@ MCP edits remain part of the controls; LED and screen glow is now more restraine
 
 [Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Stock Scope and softer lighting](https://github.com/dexterlabs1/openpatch/pull/29)
 
-The installed Mac checkpoint is **0.2.6 build 8**, with the earlier 34-panel pass
-and stronger glow. The redesign is [merged](https://github.com/dexterlabs1/openpatch/pull/28), with
-[full Mac workspace/MCP CI](https://github.com/dexterlabs1/openpatch/actions/runs/39007243527)
-and the internal app artifact verified. [Stock Scope and the softer lighting](https://github.com/dexterlabs1/openpatch/pull/29)
-also passed [full Mac CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579):
-2,312 Rust tests, 115 Python/MCP tests, release packaging and visualizer integration.
-These changes have not replaced that installed app.
-Native-window and physical audio-device qualification remain separate.
+The local Mac checkpoint is **0.2.7 build 9**, with the full non-MIDI panel pass,
+softer glow, Stock Scope, pinned voice models and source-preserving Rack import.
+The native RackMCP family adds live sequencing controls, bounded Listen capture
+and a Bridge panel with real connection/save status. Ferrofluid and Studio Mixer
+remain included. [Host contract and limits](docs/RACKMCP_CONTROL_CONTRACT.md) ·
+[Control-panel review](design/reviews/rackmcp-control-v1/README.md).
+Local validation passed 2,616 Rust tests and 123 Python/MCP tests, strict workspace
+Clippy/formatting, release packaging/signature checks and four bundled CLI smoke
+tests. Native-window, GPU-driver and physical audio-device qualification remain
+separate. This local build is ad-hoc signed, not a notarized public download.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

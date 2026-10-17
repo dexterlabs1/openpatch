@@ -868,8 +868,21 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
         })
         .count();
     assert_eq!(source_listens, 1);
-    let new_mappings: usize =
-        voice_counts.into_iter().sum::<usize>() + source_sequences + source_listens;
+    let source_bridges = source_patch["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|module| {
+            module["plugin"] == "RackMCP"
+                && module["model"] == "Bridge"
+                && module["version"] == "2.0.0"
+        })
+        .count();
+    assert_eq!(source_bridges, 1);
+    let new_mappings: usize = voice_counts.into_iter().sum::<usize>()
+        + source_sequences
+        + source_listens
+        + source_bridges;
     let result = import(&bytes).unwrap();
     assert_eq!(
         (result.report.module_count, result.report.cable_count),
@@ -999,4 +1012,121 @@ fn listen_import_requires_pinned_identity_and_preserves_independent_routes_and_s
     assert!(run(malformed)
         .unwrap_err()
         .contains("params must be an array"));
+}
+
+#[test]
+fn bridge_import_maps_only_unheld_pinned_source_and_preserves_original_bytes() {
+    for params in [
+        None,
+        Some(json!([])),
+        Some(json!([{"id":0,"value":0}])),
+        Some(json!([{"id":0,"value":-0.0}])),
+    ] {
+        let mut source = json!({"id":77,"plugin":"RackMCP","model":"Bridge","version":"2.0.0","bypass":true,"data":{},"future":{"retained":[1,2,3]},"pos":[15,0]});
+        if let Some(params) = params {
+            source["params"] = params;
+        }
+        let patch = json!({"version":"2.6.6","modules":[source.clone()],"cables":[],"futurePatch":"preserved"});
+        let bytes = serde_json::to_vec_pretty(&patch).unwrap();
+        let result = import(&bytes).unwrap();
+        assert_eq!(
+            (result.report.mapped_count, result.report.unresolved_count),
+            (1, 0)
+        );
+        assert!(result
+            .report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("100 ms") && warning.contains("512-sample")));
+        let node = native(&result.document, 0);
+        assert_eq!(node.kind, "rackmcp_bridge");
+        assert!(node.bypassed && node.params.is_empty());
+        assert!(node.content.is_none() && node.score.is_none() && node.rackmcp_sequence.is_none());
+        let provenance = result.document.graph.nodes[0].source().unwrap();
+        let mapping = provenance.mapping.as_ref().unwrap();
+        assert_eq!(mapping.id, "vcv/RackMCP/Bridge/2.0.0");
+        assert_eq!(mapping.fidelity, MappingFidelity::MusicalRole);
+        assert!(source_automation_parameter(&source, mapping, "rackmcp_bridge", 0).is_none());
+        let package = &result.document.sources[&result.report.package_id];
+        assert_eq!(package.patch.as_ref(), &patch);
+        assert_eq!(
+            result.document.source_blobs[&package.assets["patch.json"]].bytes(),
+            bytes
+        );
+        let encoded = result.document.encode().unwrap();
+        let reopened = ProjectDocument::decode(&encoded).unwrap();
+        assert_eq!(reopened.encode().unwrap(), encoded);
+        assert_eq!(
+            reopened
+                .source_module(reopened.graph.nodes[0].source().unwrap())
+                .unwrap(),
+            &source
+        );
+        let projection = reopened
+            .project(crate::project_document::PlaybackMode::Exact)
+            .unwrap();
+        let mut engine = projection.patch.compile().unwrap();
+        let handle = engine.resolve_module_state("vcv_m_77").unwrap();
+        assert_eq!(engine.host_module_snapshot(handle).unwrap().output_count, 0);
+        assert!(engine.module_saved_state(handle).is_none());
+        assert!(engine.initialize_module_state(handle));
+    }
+}
+
+#[test]
+fn bridge_import_preserves_unsupported_holds_versions_and_custom_state_unresolved() {
+    let patch = json!({"modules":[{"id":77,"plugin":"RackMCP","model":"Bridge","version":"2.0.0"}],"cables":[]});
+    for (key, value) in [
+        ("version", json!("2.0.1")),
+        ("version", Value::Null),
+        ("plugin", json!("rackmcp")),
+        ("model", json!("bridge")),
+        ("params", json!([{"id":0,"value":1}])),
+        ("params", json!([{"id":0,"value":0.5}])),
+        ("params", json!([{"id":0,"value":-1}])),
+        ("params", json!([{"id":0,"value":1e-100}])),
+        ("params", json!([{"id":1,"value":0}])),
+        ("data", json!({"pairing":"must remain source-only"})),
+        ("data", json!([])),
+        ("data", json!(false)),
+    ] {
+        let mut altered = patch.clone();
+        altered["modules"][0][key] = value;
+        let result = run(altered.clone()).unwrap();
+        assert_eq!(
+            (result.report.mapped_count, result.report.unresolved_count),
+            (0, 1),
+            "{key}"
+        );
+        let package = result.document.sources.values().next().unwrap();
+        assert_eq!(package.patch.as_ref(), &altered);
+        let reopened = ProjectDocument::decode(&result.document.encode().unwrap()).unwrap();
+        assert!(matches!(
+            reopened.graph.nodes[0],
+            DocumentNode::Unresolved { .. }
+        ));
+        assert_eq!(
+            reopened.sources.values().next().unwrap().patch.as_ref(),
+            &altered
+        );
+    }
+    for data in [Value::Null, json!({})] {
+        let mut accepted = patch.clone();
+        accepted["modules"][0]["data"] = data;
+        assert_eq!(run(accepted).unwrap().report.mapped_count, 1);
+    }
+    for params in [
+        json!({}),
+        json!([{"id":0,"value":"0"}]),
+        json!([{"id":0,"value":0},{"id":0,"value":0}]),
+    ] {
+        let mut malformed = patch.clone();
+        malformed["modules"][0]["params"] = params;
+        assert!(run(malformed).is_err());
+    }
+    for route in [cable(1, 77, 0, 77, 0), cable(1, 77, 1, 77, 0)] {
+        let mut malformed = patch.clone();
+        malformed["cables"] = json!([route]);
+        assert!(run(malformed).unwrap_err().contains("invalid source port"));
+    }
 }

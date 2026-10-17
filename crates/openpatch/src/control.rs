@@ -1,8 +1,15 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
+mod bridge;
 mod cable_edits;
 mod capture;
 mod construction;
 mod document;
+pub use bridge::BridgeObservation;
+pub mod project_saved;
+pub use project_saved::{
+    configured_document_states, saved_content, ActiveProjectSave, ProjectSaveCheckpoint,
+    SharedProjectSave,
+};
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]
@@ -367,6 +374,9 @@ pub trait LiveModuleEvents: Send + Sync {
 pub struct Session {
     // Authoritative portable document; patch is its validated native state carrier.
     document: ProjectDocument,
+    project_save: SharedProjectSave,
+    bridge_observation: Arc<BridgeObservation>,
+    last_operation: Option<Value>,
     playback_mode: PlaybackMode,
     document_execution: bool,
     patch: Patch,
@@ -397,6 +407,9 @@ impl Clone for Session {
     fn clone(&self) -> Self {
         Self {
             document: self.document.clone(),
+            project_save: self.project_save.detached(),
+            bridge_observation: self.bridge_observation.clone(),
+            last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
             patch: self.patch.clone(),
@@ -527,10 +540,18 @@ pub(crate) fn execute_shared_authorized(
     authorization: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<Value, String> {
     if name == "start_construction" {
-        return construction::start(session, args, authorization);
+        let result = construction::start(session, args, authorization);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     if name == "import_wavetable" {
-        return wavetable_import::execute(session, args, authorization);
+        let result = wavetable_import::execute(session, args, authorization);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     #[cfg(test)]
     transport_authorization_tests::pause_if_requested(
@@ -546,7 +567,11 @@ pub(crate) fn execute_shared_authorized(
         let filename = string(&args, "filename")?;
         let path = live.file(filename, ".json")?;
         drop(live);
-        return document::write_document_snapshot(&path, filename, captured);
+        let result = document::write_document_snapshot(&path, filename, captured);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     match name {
         "export_visualizer"
@@ -566,10 +591,15 @@ pub(crate) fn execute_shared_authorized(
                 snapshot.patch = live.capture_project_patch(expected_revision(&args)?)?.patch;
             }
             drop(live);
-            snapshot.execute(name, args)
+            let result = snapshot.execute(name, args);
+            if let Ok(mut live) = session.lock() {
+                live.record_operation(name, authorization.is_some(), &result);
+            }
+            result
         }
         _ => {
             let result = live.execute(name, args);
+            live.record_operation(name, authorization.is_some(), &result);
             midi_cc::start_worker(session, &mut live);
             result
         }
@@ -612,6 +642,9 @@ impl Session {
         let document = ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?;
         Ok(Self {
             document,
+            project_save: SharedProjectSave::default(),
+            bridge_observation: Arc::new(BridgeObservation::default()),
+            last_operation: None,
             playback_mode: PlaybackMode::Exact,
             document_execution: false,
             patch,
@@ -1432,6 +1465,7 @@ impl Session {
             "rackmcp_transport" => return self.rackmcp_transport_tool(&args),
             "inspect_rackmcp_sequence" => return self.inspect_rackmcp_sequence_tool(&args),
             "inspect_listen" => return self.inspect_listen_tool(&args),
+            "inspect_bridge" => return self.inspect_bridge_tool(&args),
             "start_listen_capture" => return self.start_listen_capture_tool(&args),
             "inspect_listen_capture" | "cancel_listen_capture" => {
                 return self.listen_capture_job_tool(name, &args)
@@ -2700,6 +2734,7 @@ pub fn tools() -> Value {
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("inspect_bridge","Read native local MCP transport liveness, admitted same-user sockets, explicit shared mutation authority, active-project save basis and last operation. Optional id must be a native Bridge panel. No Rack HMAC, TCP port or writer lease is invented. Read-only; never starts/stops a listener or audio device.",json!({"id":s,"expected_revision":rev}),&[],true),
         tool("inspect_listen","Read actual coherent Listen counters, connection hints and capture lamp. Reports unavailable without current runnable live publication; never substitutes authored or offline state.",json!({"id":s,"expected_revision":rev}),&["id"],true),
         tool("start_listen_capture","Capture 0.1 to 30 seconds from a live Listen module. Omit id only when exactly one Listen exists. One global job; raw poly sums, fixed initial sample rate, off-thread source analysis. write_wav explicitly writes a new stereo float WAV in the workspace (10V full scale). Does not start audio or change the patch/history. Poll the returned job.",json!({"id":s,"seconds":{"type":"number","minimum":0.1,"maximum":30},"write_wav":{"type":"boolean"},"expected_revision":rev}),&["seconds"],false),
         tool("inspect_listen_capture","Poll a retained Listen capture job, including after its module is removed or execution is suspended. Returns actual progress, dropped frames, analysis or failure.",json!({"job":s,"expected_revision":rev}),&["job"],true),

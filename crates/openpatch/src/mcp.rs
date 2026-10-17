@@ -195,7 +195,13 @@ impl Connection {
 pub fn serve(app: Application) -> Result<(), String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    run(stdin.lock(), stdout.lock(), app.into_shared(), false)
+    let session = app.into_shared();
+    session
+        .lock()
+        .map_err(|_| "session lock unavailable")?
+        .bridge_observation()
+        .set_stdio_enabled(true);
+    run(stdin.lock(), stdout.lock(), session, false)
 }
 
 /// Serve stdio on a desktop control thread. The GUI retains ownership of its
@@ -204,6 +210,11 @@ pub fn serve(app: Application) -> Result<(), String> {
 pub fn serve_shared(session: SharedSession) -> Result<(), String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
+    session
+        .lock()
+        .map_err(|_| "session lock unavailable")?
+        .bridge_observation()
+        .set_stdio_enabled(true);
     run_shared(stdin.lock(), stdout.lock(), session)
 }
 

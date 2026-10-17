@@ -100,6 +100,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || kind == "score_sequencer"
         || kind == "rackmcp_sequencer"
         || kind == "rackmcp_listen"
+        || kind == "rackmcp_bridge"
         || kind == "modal_resonator"
         || kind == "macro_voice"
         || kind == "studio_mixer"
@@ -255,7 +256,7 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if kind == "stock_noise" {
         return stock_noise::OUTPUTS.iter().position(|p| *p == name);
     }
-    if kind == "poly_viz" || crate::content::is_annotation(kind) {
+    if kind == "poly_viz" || kind == "rackmcp_bridge" || crate::content::is_annotation(kind) {
         return None;
     }
     if kind == "modal_resonator" {
@@ -583,7 +584,8 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
-    } else if kind == "poly_viz" || crate::content::is_annotation(&kind) {
+    } else if kind == "poly_viz" || kind == "rackmcp_bridge" || crate::content::is_annotation(&kind)
+    {
         Vec::new()
     } else if kind == "midi_gate" {
         midi_gate::OUTPUTS
@@ -836,6 +838,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "rackmcp_listen" {
         rackmcp_listen::annotate(module);
     }
+    if kind == "rackmcp_bridge" {
+        crate::rackmcp_bridge::annotate(module);
+    }
     if kind == "stock_vca_mix" {
         stock_vca_mix::annotate(module);
     }
@@ -862,6 +867,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 #[derive(Debug)]
 enum Model {
     Annotation,
+    HostBridge,
     ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
     RackMcpSequencer(Box<RackMcpSequencer>),
@@ -949,6 +955,10 @@ impl Model {
         }
         if node.kind == "studio_mixer" {
             return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
+        }
+        if node.kind == "rackmcp_bridge" {
+            crate::rackmcp_bridge::validate(node)?;
+            return Ok(Self::HostBridge);
         }
         if node.kind == "rackmcp_listen" {
             return RackMcpListen::build(node).map(Self::RackMcpListen);
@@ -2686,7 +2696,7 @@ impl PolyEngine {
                 ports.len()
             } else {
                 match node.kind.as_str() {
-                    "poly_viz" | "notes" | "blank" => 0,
+                    "poly_viz" | "notes" | "blank" | "rackmcp_bridge" => 0,
                     "poly_split" | "midi_cc" | "midi_gate" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
@@ -3035,6 +3045,10 @@ impl PolyEngine {
         }
         for node_index in 0..self.nodes.len() {
             let node = &mut self.nodes[node_index];
+            // Host status/actions live outside the audio graph. No per-sample work.
+            if matches!(node.model, Model::HostBridge) {
+                continue;
+            }
             // Only a sequencer produces the bounded write batch; ordinary
             // nodes do not initialize or walk eight unused target slots.
             let mut parameter_writes = None;
@@ -3137,7 +3151,7 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
-                Model::Annotation => {}
+                Model::Annotation | Model::HostBridge => {}
                 Model::RackMcpListen(_)
                 | Model::StockMidSide(_)
                 | Model::StockMix(_)

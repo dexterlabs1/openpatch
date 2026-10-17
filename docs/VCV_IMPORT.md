@@ -60,7 +60,7 @@ unrelated module rejects the edit atomically; missing targets keep dormant
 bindings. Clear the binding before replacing that target, or use a fresh ID for
 the new module. Original source data remains intact through edits and saves.
 
-Third-party plugins, RackMCP Bridge and Core audio interfaces still require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
+Third-party plugins and Core audio interfaces still require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
 
 ## MCP boundary
 
@@ -75,7 +75,7 @@ Desktop and MCP use the same Session-owned document. DSP receives a derived nati
 
 ## Acceptance evidence
 
-The user-supplied “So There I Was” fixture now imports on the milestone branch as **55 modules and 83 cables: 32 native mappings and 23 unresolved dependencies**. This includes its one version-specific VCO, four VCFs, both RackMCP sequencers and Listen. All 13 automation lanes survive; ten bind to qualified VCA/filter controls and three Surge targets remain unbound. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
+The user-supplied “So There I Was” fixture now imports on the milestone branch as **55 modules and 83 cables: 33 native mappings and 22 unresolved dependencies**. This includes its one version-specific VCO, four VCFs, both RackMCP sequencers, Listen and Bridge. All 13 automation lanes survive; ten bind to qualified VCA/filter controls and three Surge targets remain unbound. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
 
 Focused checks cover source/archive limits, repair and undo, native migration/save/recovery/templates, stale UI/MCP edits, layout publication and startup suspension. Headless normal/dim captures use the real shared renderer without opening an audio device. Working logs and captures are recorded in the ignored `native-test-output/rack-import` state; [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed 2,378 Rust tests and 117 Python/MCP tests plus packaging and visualizer integration. Installation remains a separate delivery step.
 
@@ -91,3 +91,15 @@ custom source data remain unresolved. Import never starts recording or a device.
 Use the module's Capture/Inspect controls or `start_listen_capture`,
 `inspect_listen_capture`, `cancel_listen_capture` and `inspect_listen` over MCP.
 [Behavior, checks and limits](benchmarks/rackmcp-listen.json).
+
+
+## Bridge and live Sequencer controls on the milestone branch
+
+`RackMCP / Bridge / 2.0.0` maps to the actual native MCP session panel, with
+explicit Start/Stop/Restart, project Save and session details. Duplicate panels
+observe the same app-owned service; removal or import has no service side effect.
+`inspect_bridge` exposes truthful native transport, same-user authority and
+shared authored/durable saved-state status. Rack pairing/HMAC, TCP transport and
+writer leases are explicitly unsupported. Held source reset-pairing or custom
+state stays unresolved. Sequencer active/pending pattern and playhead controls
+use real shared transport observations. [Host contract and limits](RACKMCP_CONTROL_CONTRACT.md#native-bridge-and-live-sequencer-checkpoint-2026-10-17).

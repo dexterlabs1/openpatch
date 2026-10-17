@@ -412,6 +412,7 @@ impl Session {
         if prepared_layout {
             complete_host_layout(&document, &document.layout)?;
         }
+        let next_generation = self.project_save.next_generation()?;
         let carrier = document.state_carrier()?;
         self.validate_document_backend(
             &document,
@@ -431,6 +432,7 @@ impl Session {
             &effects,
             prepared_layout,
         )?;
+        self.project_save.begin_document(next_generation)?;
         self.layout_origin = if prepared_layout {
             None
         } else {
@@ -767,6 +769,6 @@ pub(super) fn write_document_snapshot(
         .write_all(&bytes)
         .map_err(|e| e.to_string())?;
     Ok(
-        json!({"filename":filename,"revision":captured.revision,"state_id":captured.state_id,"layout_generation":captured.layout_generation,"state_source":captured.state_source,"frame":captured.frame}),
+        json!({"filename":filename,"revision":captured.revision,"state_id":captured.state_id,"layout_generation":captured.layout_generation,"state_source":captured.state_source,"frame":captured.frame,"persistence":"snapshot","affects_active_project_baseline":false}),
     )
 }

@@ -34,6 +34,7 @@ mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod rack264_vcf;
+mod rackmcp_bridge;
 pub mod rackmcp_listen;
 pub mod rackmcp_listen_analysis;
 #[doc(hidden)]
@@ -528,6 +529,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(rackmcp_listen::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_bridge::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

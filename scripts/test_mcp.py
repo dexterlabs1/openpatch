@@ -225,6 +225,40 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_bridge_observation_and_exports_do_not_invent_native_services_or_active_saves(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertIn("inspect_bridge", names)
+        self.assertFalse({"_native_bridge_start", "_native_bridge_stop", "_native_bridge_restart", "_native_bridge_save"} & names)
+        for module in ["bridge", "bridge-two"]:
+            self.require_tool_success("add_module", {"id": module, "kind": "rackmcp_bridge"})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_bridge", {"id": "bridge"}))
+        self.assertEqual(observed["bridge_panels"], 2)
+        self.assertEqual(observed["transport"]["state"], "stopped")
+        self.assertIsNone(observed["transport"]["attachment_id"])
+        self.assertEqual(observed["transport"]["admitted_clients"], 0)
+        self.assertTrue(observed["transport"]["stdio_enabled"])
+        self.assertEqual(observed["authority"]["kind"], "same_user_shared_mutation")
+        self.assertFalse(observed["authority"]["writer_lease"])
+        self.assertIsNone(observed["authority"]["stdio_client_count"])
+        self.assertEqual(observed["save"]["basis"], "authored_content_and_durable_state")
+        self.assertFalse(observed["save"]["saved"])
+        receipt = self.payload(self.require_tool_success("save_document", {"filename": "snapshot.json"}))
+        self.assertFalse(receipt["affects_active_project_baseline"])
+        after = self.payload(self.require_tool_success("inspect_bridge", {"id": "bridge-two"}))
+        self.assertEqual(after["transport"], observed["transport"])
+        self.assertEqual(after["save"], observed["save"])
+        self.assertEqual(after["last_operation"]["name"], "save_document")
+        self.assertEqual(after["last_operation"]["outcome"], "completed")
+        self.require_tool_error("inspect_bridge", {"id": "missing"})
+        self.require_tool_error("inspect_bridge", {"expected_revision": 0})
+        self.require_tool_error("_native_bridge_start")
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        self.assertEqual([path.name for path in self.workspace.iterdir()], ["snapshot.json"])
+
     def test_listen_capture_discovery_and_headless_unavailable_boundary(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}

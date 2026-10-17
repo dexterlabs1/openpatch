@@ -4,7 +4,18 @@ Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md)
 
 ## Stable release
 
-**OpenPatch 0.2.6 build 8 is installed at `~/Applications/OpenPatch.app`.** The user explicitly requested this upgrade. It includes the 34-panel detailed Signal Atlas pass, stronger lights-off glow, value bubbles, undo/toolbar fixes, Ferrofluid and Studio Mixer. The optimized ARM64 desktop/CLI bundle is locally ad-hoc signed, with installed hashes/signature verified; 0.2.5 build 7 was removed. Keep this build stable during continued development. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last. No native-window/audio-device qualification is claimed.
+**OpenPatch 0.2.7 build 9 is installed at `~/Applications/OpenPatch.app`.**
+The user explicitly requested this upgrade on 2026-10-17. It includes the 77-panel
+Signal Atlas design, softer local glow, Stock Scope, pinned 2.6.4 voice models,
+source-preserving Rack import and native RackMCP Sequencer/Listen/Bridge controls.
+Ferrofluid, Studio Mixer and Stock Process are present. The optimized ARM64
+bundle's installed binary hashes and deep/strict ad-hoc signature match the
+verified build. The previous 0.2.6 app and an older extracted candidate were
+removed; patches/settings were untouched. Local family validation passed 2,616
+Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
+One family PR CI is still pending; this is not a notarized public release or a
+native-window/audio-device qualification. Keep the installed app stable; macOS
+ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
 ## Execution changes
 
@@ -28,7 +39,12 @@ The frozen actual Core/genuine Rack result covers **4,242 complete snapshots acr
 
 [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579) passed **2,312 Rust tests**, including **1,188 desktop cases** (seven intentionally ignored), **115 Python/MCP tests**, strict workspace Clippy/formatting, optimized binaries, application packaging and visualizer integration. The first CI attempt stopped on an obsolete global catalog-count assertion; all five unrelated count fixtures were corrected and their affected checks passed before the successful run. The shared renderer retains its exhaustive 81-kind coverage guard. Installed 0.2.6 build 8 is unchanged; no native-window/audio-device qualification is claimed.
 
-**Further lighting refinement (2026-10-17, not installed):** following renewed feedback about unnatural glow, dark-room halo intensity is reduced another 38%, diffusion is tighter, display spill is dimmer and knob-ring haze is narrower. Lens brightness and weak-signal response remain intact. Sixteen focused checks of the actual lighting/shared-control source pass, with a CPU-rendered calibration reviewed at normal, dim and zero room light. The source was tested independently using cached dependencies while the separate sequencing edits remain unfinished; this is not a full application-build or device qualification. A follow-up reduces dark-room halo intensity another 31% and diffusion 38%, with narrower knob haze; all 16 focused checks pass and weak-signal lenses remain visible. Neither refinement is installed.
+**Further lighting refinement (2026-10-17, installed in 0.2.7):** following
+feedback about unnatural glow, local halos, diffusion, display spill and knob-ring
+haze are substantially reduced while lens brightness and weak-signal response
+remain visible. Sixteen focused shared-control/lighting checks and normal/dim/off
+CPU calibration pass. This also passes the complete local desktop suite; it does
+not establish physical-light or GPU-driver accuracy.
 
 ## Delivered: Rack patch import and repair
 
@@ -86,6 +102,19 @@ Reuse this integration checkout. The import evidence is
 `native-test-output/rack-import/STATE.json`; the completed voice milestone is
 `native-test-output/rack-264-voice/STATE.json`. Keep their frozen evidence rather
 than copying or regenerating it for a later module family.
+
+## Current candidate: native sequencing/control workflow
+
+Bridge now has real app-owned connection lifecycle, shared native save status and
+explicit panel controls. The Sequencer panel displays actual active/pending
+patterns and playhead and sends pattern/seek requests through shared transport.
+The actual source fixture preserves 55 modules/83 cables with 33 mapped and 22
+unresolved. Remaining third-party/Core host/text boundaries stay explicit; this
+is not whole-patch or Rack-host equivalence. Native save concurrency, listener
+failure/discovery, import boundaries and shared panel checks pass. The complete
+local Mac workspace/MCP regression passes; one family PR CI remains pending. [Behavior and boundaries](RACKMCP_CONTROL_CONTRACT.md#native-bridge-and-live-sequencer-checkpoint-2026-10-17).
+Installed 0.2.7 build 9 includes this checkpoint. Earlier checkpoints below record the
+incremental evidence and do not override this current status.
 
 ## Active next: imported sequencing and control
 
@@ -216,8 +245,8 @@ whole-module/whole-patch equivalence is claimed.
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.
-The current read-only import finds 23 unresolved modules in
-the full user patch: third-party instruments/effects, RackMCP controls and Core
+The current read-only import finds 22 unresolved modules in
+the full user patch: third-party instruments/effects and Core
 Notes/audio I/O. Preserve that complete fixture; a supported excerpt or explicit
 Partial playback is not whole-patch equivalence.
 

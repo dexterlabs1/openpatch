@@ -40,6 +40,15 @@ pub(crate) fn annotate(module: &mut Value) {
         "state_policy":if kind=="midi_cv" {"events are consumed and MIDI state/pulses continue processing in fixed scratch storage; published outputs are mono zero"} else {"DSP state freezes while bypassed; bypass transitions preserve DSP and incoming delayed frames but clear output/outgoing delayed frames to mono zero, including self-loops"},
         "module_actions":"bypassed sequencers reject actions; manual presses reject while matching releases remain accepted and clear held/pending controls immediately; transitions discard pending actions and release held manual controls while preserving DSP",
         "compatibility":"explicit OpenPatch host policy; generic utility/filter routes are chosen for existing OpenPatch kinds, not a claim of full Rack bypass parity"});
+    if kind == "rackmcp_bridge" {
+        module["bypass"]["output_policy"] = json!("no signal outputs or routes");
+        module["bypass"]["state_policy"] = json!("no DSP state; bypass does not change native host service lifecycle or status observation");
+        module["bypass"]["module_actions"] = json!(
+            "native host actions belong to the app independently of panel bypass or presence"
+        );
+        module["bypass"]["compatibility"] =
+            json!("native host-only adaptation; source DSP lamp cadence is not reproduced");
+    }
     if kind == "rackmcp_listen" {
         module["bypass"]["output_policy"] = json!("source configBypass copies matching L/R active raw slots before SDK setChannels; disconnected output retains raw storage");
         module["bypass"]["state_policy"] = json!("skip Listen processing: frames_seen, dropped, divider phase, connection hints, lamp and capture freeze");

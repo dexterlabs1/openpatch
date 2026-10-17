@@ -340,13 +340,19 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         .iter()
         .any(|module| module.native_kind.as_deref() == Some("rackmcp_sequencer"))
     {
-        warnings.push("RackMCP 2.0.0 Sequencer uses a MusicalRole mapping: native healthy-target rebinding deliberately corrects SDK self-unbinding; native scheduling and exclusive automation ownership apply. Whole-module and whole-patch equivalence are unclaimed; Bridge remains unresolved.".into());
+        warnings.push("RackMCP 2.0.0 Sequencer uses a MusicalRole mapping: native healthy-target rebinding deliberately corrects SDK self-unbinding; native scheduling and exclusive automation ownership apply. Whole-module and whole-patch equivalence are unclaimed.".into());
     }
     if summaries
         .iter()
         .any(|module| module.native_kind.as_deref() == Some("rackmcp_listen"))
     {
         warnings.push("RackMCP 2.0.0 Listen preserves raw passthrough and source analysis. Capture is a native host job with acknowledged ring reuse and explicit cancellation on removed/replaced/suspended execution; import never starts a capture or audio device. Whole-host equivalence is unclaimed.".into());
+    }
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rackmcp_bridge"))
+    {
+        warnings.push("RackMCP 2.0.0 Bridge uses a MusicalRole host adaptation: real native session/control/save status is observed by the UI every 100 ms instead of source 512-sample DSP lamps. Native service lifecycle is global and controlled explicitly by app actions; import, duplicate, initialize, undo, removal and reopen do not start a listener or audio device. Rack pairing, writer lease, SDK, DSP and hardware equality are unclaimed.".into());
     }
     if !unsupported_lanes.is_empty() {
         warnings.push(format!("{} RackMCP automation lane(s) have no qualified native target and remain preserved without a binding: {}.", unsupported_lanes.len(), unsupported_lanes.join(", ")));
@@ -489,6 +495,15 @@ struct Manifest {
     outputs: &'static [&'static str],
 }
 fn manifest(module: &Value) -> Option<Manifest> {
+    if module["plugin"] == "RackMCP" && module["model"] == "Bridge" && module["version"] == "2.0.0"
+    {
+        return Some(Manifest {
+            kind: "rackmcp_bridge",
+            params: &[],
+            inputs: &[],
+            outputs: &[],
+        });
+    }
     if module["plugin"] == "RackMCP" && module["model"] == "Listen" && module["version"] == "2.0.0"
     {
         return Some(Manifest {
@@ -649,7 +664,10 @@ pub(crate) fn registered_source_mapping(module: &Value) -> Option<SourceMapping>
             module["version"].as_str()?
         ),
         version: 1,
-        fidelity: if matches!(mapping.kind, "rackmcp_sequencer" | "rackmcp_listen") {
+        fidelity: if matches!(
+            mapping.kind,
+            "rackmcp_sequencer" | "rackmcp_listen" | "rackmcp_bridge"
+        ) {
             MappingFidelity::MusicalRole
         } else {
             MappingFidelity::SourceBehavior
@@ -715,7 +733,7 @@ fn convert(
     let mut params = BTreeMap::new();
     if matches!(
         mapping.kind,
-        "rack264_vco" | "rack264_vcf" | "rackmcp_listen"
+        "rack264_vco" | "rack264_vcf" | "rackmcp_listen" | "rackmcp_bridge"
     ) && module.get("data").is_some_and(|data| {
         !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
     }) {
@@ -740,6 +758,19 @@ fn convert(
         }
         for value in values {
             let index = port_index(&value["id"])? as usize;
+            if mapping.kind == "rackmcp_bridge" {
+                // Source slot 0 is a transient reset-pairing button, never a
+                // durable native parameter or an action caused by import.
+                if index != 0 {
+                    return Err("unrecognized source parameter index".into());
+                }
+                if value["value"].as_f64() != Some(0.0) {
+                    return Err(
+                        "saved Bridge reset-pairing hold cannot be represented durably".into(),
+                    );
+                }
+                continue;
+            }
             let name = *mapping
                 .params
                 .get(index)
