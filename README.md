@@ -42,10 +42,12 @@ Choose a **genre**, a **mood** and a **texture**, and the Patch Engine composes 
 - **A new composition every time.** The seed chooses the key, progression and voicing, drum, bass and chord patterns, a hook, arpeggio, riff, bells or counter-line, optional percussion and pad layers, and the song form.
 - **Musical by construction.** Clean subtractive voices (filtered saw, square, triangle, sine), rootless chord voicings with no clashing seconds, melodies built from chord tones, and levels calibrated from offline stem renders.
 - **Fast and visible.** **Reveal** (default, ~1.5–2 s), **Showtime** (modules arrive one by one, ~5 s) or **Instant**. Builds use the same construction pipeline as agent edits, so they are undoable and animate in the rack.
-- **Steam Deck friendly.** Touch-sized buttons. D-pad ▲▼ picks the row, ◀▶ picks the word, **A** builds, **X** surprises you, **B** closes.
+- **Real song structure.** Intro → build (riser, drum fill, kick cut) → drop → breakdown → second drop → outro; Dub Techno, Techno and Ambient grow over four 16-bar sections instead. Genre-true harmony (pedals, shell-voiced vamps, full progressions where they belong), call-and-answer hooks, a sliding bass and a kick tuned to the key.
+- **C418 mode.** A Minecraft-style mode: soft piano broken chords, slow lydian and major-seventh harmony, a sparse piano melody and a lot of space. Original music in that spirit.
+- **Steam Deck friendly.** Compact touch panel, D-pad ▲▼ row · ◀▶ word, **A** build, **X** surprise, **B** close, **F1** Patch Engine, **PageUp/PageDown** zoom, **Home** view, **F11** full screen. **Light** mode (on by default on Linux) keeps every song inside one Deck core.
 - **Scriptable.** `openpatch patch-engine "Deep House" Dreamy Liquid --seed 7 [--info|--reveal|--showtime]` prints the patch, its recipe card or its build plan.
 
-**Download the preview:** [Steam Deck / Linux x86_64 and macOS (Apple silicon)](https://github.com/dexterlabs1/openpatch/releases/tag/patch-engine-preview-1). On the Deck, extract the archive and run `install.sh`; full steps are in `STEAM-DECK.md`.
+**Download the preview:** [latest Steam Deck / Linux x86_64 and macOS (Apple silicon) builds](https://github.com/dexterlabs1/openpatch/releases) · [openpatch.dexterbrewer.com](https://openpatch.dexterbrewer.com) once its DNS is live. On the Deck, `openpatch-update` installs the newest build. On the Deck, extract the archive and run `install.sh`; full steps are in `STEAM-DECK.md`.
 
 
 - **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
